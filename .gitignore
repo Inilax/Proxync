@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+.env
+.env.*.local
+.DS_Store
+*.log
+coverage/
+.next/
+out/
+.nuxt/
+.vercel/
+.svelte-kit/
+.svelte/
+src-tauri/target/
