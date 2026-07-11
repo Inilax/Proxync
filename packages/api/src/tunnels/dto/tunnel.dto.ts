@@ -17,4 +17,9 @@ export class CreateTunnelDto {
   @IsOptional()
   @IsString()
   region?: string;
+
+  @ApiPropertyOptional({ description: 'Optional password to restrict visitor access to the tunnel' })
+  @IsOptional()
+  @IsString()
+  password?: string;
 }

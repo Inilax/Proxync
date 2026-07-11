@@ -7,7 +7,6 @@ const WS_URL = API_BASE.replace(/^http/, 'ws') + '/relay';
 
 interface ChatPanelProps {
   workspace: any;
-  user: any;
 }
 
 interface Message {
@@ -25,7 +24,7 @@ interface PresenceMember {
   name: string;
 }
 
-export function ChatPanel({ workspace, user }: ChatPanelProps) {
+export function ChatPanel({ workspace }: ChatPanelProps) {
   const [channels, setChannels] = useState<any[]>([]);
   const [activeChannel, setActiveChannel] = useState<any | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);

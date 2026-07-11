@@ -73,6 +73,13 @@ export default function App() {
     setAppState('workspace-picker');
   }
 
+  function handleUpgradeGuest() {
+    clearTokens();
+    setUser(null);
+    setWorkspace(null);
+    setAppState('auth');
+  }
+
   return (
     <div className="app-layout">
       {/* Titlebar */}
@@ -92,6 +99,17 @@ export default function App() {
           </span>
         )}
       </div>
+
+      {user?.email?.endsWith('@proxync.local') && appState === 'dashboard' && (
+        <div className="guest-banner">
+          <span>
+            ⚠️ <strong>Guest Mode:</strong> You are using a temporary workspace. Sign up to make it permanent.
+          </span>
+          <button className="guest-banner-action" onClick={handleUpgradeGuest}>
+            Sign Up
+          </button>
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="main-content">

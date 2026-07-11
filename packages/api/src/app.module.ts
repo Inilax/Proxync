@@ -12,6 +12,7 @@ import { RelayMiddleware } from './relay/relay.middleware';
 import { RequestsModule } from './requests/requests.module';
 import { ChannelsModule } from './channels/channels.module';
 import { MessagesModule } from './messages/messages.module';
+import { DomainsModule } from './domains/domains.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { MessagesModule } from './messages/messages.module';
     RequestsModule,
     ChannelsModule,
     MessagesModule,
+    DomainsModule,
     HealthModule,
   ],
 })

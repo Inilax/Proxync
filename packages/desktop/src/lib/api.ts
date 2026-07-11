@@ -82,6 +82,11 @@ async function request<T>(path: string, opts: RequestOptions = {}, isRetry = fal
 // ─── Auth ──────────────────────────────────────────────────────
 export const api = {
   auth: {
+    config: () => request<{ requireAuthentication: boolean }>('/auth/config'),
+    guest: () =>
+      request<{ accessToken: string; refreshToken: string }>('/auth/guest', {
+        method: 'POST',
+      }),
     signup: (name: string, email: string, password: string) =>
       request<{ accessToken: string; refreshToken: string }>('/auth/signup', {
         method: 'POST',
@@ -102,13 +107,31 @@ export const api = {
     get: (id: string) => request<any>(`/workspaces/${id}`),
   },
 
+  domains: {
+    list: (workspaceId: string) =>
+      request<any[]>(`/workspaces/${workspaceId}/domains`),
+    create: (workspaceId: string, name: string) =>
+      request<any>(`/workspaces/${workspaceId}/domains`, {
+        method: 'POST',
+        body: { name },
+      }),
+    verify: (workspaceId: string, domainId: string) =>
+      request<any>(`/workspaces/${workspaceId}/domains/${domainId}/verify`, {
+        method: 'POST',
+      }),
+    delete: (workspaceId: string, domainId: string) =>
+      request<any>(`/workspaces/${workspaceId}/domains/${domainId}`, {
+        method: 'DELETE',
+      }),
+  },
+
   tunnels: {
     list: (workspaceId: string) =>
       request<any[]>(`/workspaces/${workspaceId}/tunnels`),
-    create: (workspaceId: string, localPort: number, protocol = 'http') =>
+    create: (workspaceId: string, localPort: number, protocol = 'http', password?: string) =>
       request<any>(`/workspaces/${workspaceId}/tunnels`, {
         method: 'POST',
-        body: { localPort, protocol },
+        body: { localPort, protocol, password },
       }),
     close: (workspaceId: string, tunnelId: string) =>
       request<any>(`/workspaces/${workspaceId}/tunnels/${tunnelId}`, {
@@ -150,6 +173,11 @@ export const api = {
     replay: (workspaceId: string, tunnelId: string, reqId: string) =>
       request<any>(`/workspaces/${workspaceId}/tunnels/${tunnelId}/requests/${reqId}/replay`, {
         method: 'POST',
+      }),
+    execute: (workspaceId: string, tunnelId: string, method: string, path: string, headers?: Record<string, string>, body?: string) =>
+      request<any>(`/workspaces/${workspaceId}/tunnels/${tunnelId}/requests/execute`, {
+        method: 'POST',
+        body: { method, path, headers, body },
       }),
   },
 

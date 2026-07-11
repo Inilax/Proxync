@@ -226,11 +226,63 @@ async fn close_tunnel(tunnel_id: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn scan_directory(path: String) -> Result<Vec<String>, String> {
+    let mut files = Vec::new();
+    let root = std::path::Path::new(&path);
+    if !root.is_dir() {
+        return Err("Provided path is not a directory".to_string());
+    }
+
+    fn visit_dirs(dir: &std::path::Path, files: &mut Vec<String>, root_len: usize) -> std::io::Result<()> {
+        if dir.is_dir() {
+            for entry in std::fs::read_dir(dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_dir() {
+                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    if name == "node_modules" || name == "target" || name == ".git" || name == "build" || name == "bin" || name == ".gradle" {
+                        continue;
+                    }
+                    visit_dirs(&path, files, root_len)?;
+                } else {
+                    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                        let ext = ext.to_lowercase();
+                        if ext == "java" || ext == "ts" || ext == "js" || ext == "py" || ext == "go" || ext == "cs" || ext == "controller" {
+                            let rel_path = path.to_str().unwrap_or("")[root_len..].to_string();
+                            files.push(rel_path);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    visit_dirs(root, &mut files, root.to_str().unwrap_or("").len()).map_err(|e| e.to_string())?;
+    Ok(files)
+}
+
+#[tauri::command]
+async fn read_file_content(root_path: String, rel_path: String) -> Result<String, String> {
+    let path = std::path::Path::new(&root_path).join(rel_path.trim_start_matches('/').trim_start_matches('\\'));
+    if !path.exists() {
+        return Err("File does not exist".to_string());
+    }
+    std::fs::read_to_string(path).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![scan_ports, open_tunnel, close_tunnel])
+        .invoke_handler(tauri::generate_handler![
+            scan_ports, 
+            open_tunnel, 
+            close_tunnel,
+            scan_directory,
+            read_file_content
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

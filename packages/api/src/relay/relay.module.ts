@@ -4,9 +4,10 @@ import { TunnelsModule } from '../tunnels/tunnels.module';
 import { AuthModule } from '../auth/auth.module';
 import { RequestsModule } from '../requests/requests.module';
 import { MessagesModule } from '../messages/messages.module';
+import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
-  imports: [TunnelsModule, AuthModule, forwardRef(() => RequestsModule), MessagesModule],
+  imports: [TunnelsModule, AuthModule, forwardRef(() => RequestsModule), MessagesModule, PrismaModule],
   providers: [RelayGateway],
   exports: [RelayGateway],
 })

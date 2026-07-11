@@ -4,6 +4,7 @@ import { showToast } from '../lib/toast';
 import { TunnelsView } from './TunnelsView';
 import { ApiKeysView } from './ApiKeysView';
 import { MembersView } from './MembersView';
+import { DomainsSettings } from '../components/DomainsSettings';
 
 interface DashboardProps {
   workspace: any;
@@ -12,7 +13,7 @@ interface DashboardProps {
   onSwitchWorkspace: () => void;
 }
 
-type View = 'tunnels' | 'api-keys' | 'members';
+type View = 'tunnels' | 'api-keys' | 'members' | 'domains';
 
 export function Dashboard({ workspace, user, onLogout, onSwitchWorkspace }: DashboardProps) {
   const [view, setView] = useState<View>('tunnels');
@@ -29,76 +30,81 @@ export function Dashboard({ workspace, user, onLogout, onSwitchWorkspace }: Dash
 
   return (
     <div className="dashboard">
-      {/* Sidebar */}
-      <aside className="sidebar">
-        <div style={{ padding: '4px 8px 12px' }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 2 }}>
-            WORKSPACE
-          </div>
-          <div style={{
-            fontSize: 14,
-            fontWeight: 700,
-            color: 'var(--text-primary)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}>
-            {workspace.name}
-          </div>
+      {/* Top Header */}
+      <header className="dashboard-header">
+        <div className="header-brand">
+          <div className="header-logo">P</div>
+          <button
+            id="switch-workspace"
+            className="header-workspace-select"
+            onClick={onSwitchWorkspace}
+            title="Click to switch workspace"
+          >
+            <span>{workspace.name}</span>
+            <span style={{ fontSize: 10, opacity: 0.6 }}>⇄</span>
+          </button>
         </div>
 
-        <div className="sidebar-divider" />
+        {/* Tab navigation in center */}
+        <nav className="header-tabs">
+          <button
+            id="nav-tunnels"
+            className={`header-tab ${view === 'tunnels' ? 'active' : ''}`}
+            onClick={() => setView('tunnels')}
+          >
+            <span className="header-tab-icon">⚡</span>
+            <span>Tunnels</span>
+          </button>
 
-        <button
-          id="nav-tunnels"
-          className={`sidebar-item ${view === 'tunnels' ? 'active' : ''}`}
-          onClick={() => setView('tunnels')}
-        >
-          <span className="sidebar-item-icon">⚡</span>
-          Tunnels
-        </button>
+          <button
+            id="nav-api-keys"
+            className={`header-tab ${view === 'api-keys' ? 'active' : ''}`}
+            onClick={() => setView('api-keys')}
+          >
+            <span className="header-tab-icon">🔑</span>
+            <span>API Keys</span>
+          </button>
 
-        <button
-          id="nav-api-keys"
-          className={`sidebar-item ${view === 'api-keys' ? 'active' : ''}`}
-          onClick={() => setView('api-keys')}
-        >
-          <span className="sidebar-item-icon">🔑</span>
-          API Keys
-        </button>
+          <button
+            id="nav-members"
+            className={`header-tab ${view === 'members' ? 'active' : ''}`}
+            onClick={() => setView('members')}
+          >
+            <span className="header-tab-icon">👥</span>
+            <span>Members</span>
+          </button>
 
-        <button
-          id="nav-members"
-          className={`sidebar-item ${view === 'members' ? 'active' : ''}`}
-          onClick={() => setView('members')}
-        >
-          <span className="sidebar-item-icon">👥</span>
-          Members
-        </button>
+          <button
+            id="nav-domains"
+            className={`header-tab ${view === 'domains' ? 'active' : ''}`}
+            onClick={() => setView('domains')}
+          >
+            <span className="header-tab-icon">🌐</span>
+            <span>Custom Domains</span>
+          </button>
+        </nav>
 
-        <div className="sidebar-divider" />
-
-        <button
-          id="switch-workspace"
-          className="sidebar-item"
-          onClick={onSwitchWorkspace}
-        >
-          <span className="sidebar-item-icon">⇄</span>
-          Switch Workspace
-        </button>
-
-        <div className="sidebar-user" onClick={handleLogout} id="logout-btn" title="Click to sign out">
-          <div className="avatar">{initials}</div>
-          <span className="avatar-name">{user?.name ?? 'User'}</span>
-          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>↩</span>
+        {/* User avatar & logout on right */}
+        <div className="header-actions">
+          <div
+            className="header-user"
+            onClick={handleLogout}
+            id="logout-btn"
+            title="Click to sign out"
+          >
+            <div className="avatar">{initials}</div>
+            <span className="avatar-name">{user?.name ?? 'User'}</span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>↩</span>
+          </div>
         </div>
-      </aside>
+      </header>
 
       {/* Main panel */}
       <main className="main-panel">
-        {view === 'tunnels' && <TunnelsView workspace={workspace} user={user} />}
+        {view === 'tunnels' && <TunnelsView workspace={workspace} />}
         {view === 'api-keys' && <ApiKeysView workspace={workspace} />}
         {view === 'members' && <MembersView workspace={workspace} />}
+        {view === 'domains' && <DomainsSettings workspace={workspace} />}
       </main>
     </div>
   );
