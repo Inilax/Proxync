@@ -32,6 +32,51 @@ async fn scan_ports() -> Result<Vec<u16>, String> {
     Ok(active)
 }
 
+#[derive(Serialize)]
+struct ProcessCandidate {
+    id: String,
+    name: String,
+    port: u16,
+    pid: Option<u32>,
+    command: Option<String>,
+    directory: Option<String>,
+    executable: Option<String>,
+    framework: Option<String>,
+    access: String,
+    uptime: Option<String>,
+}
+
+#[tauri::command]
+async fn scan_processes() -> Result<Vec<ProcessCandidate>, String> {
+    let ports = scan_ports().await?;
+    Ok(ports.into_iter().map(|port| {
+        let framework = match port {
+            3000 | 3001 => "Node app",
+            4000 => "GraphQL service",
+            4200 => "Angular app",
+            5000 => "Flask or .NET app",
+            5173 => "Vite server",
+            8000 => "Django or FastAPI app",
+            8080 => "HTTP service",
+            8888 => "Notebook server",
+            _ => "Development server",
+        };
+
+        ProcessCandidate {
+            id: format!("port-{}", port),
+            name: framework.to_string(),
+            port,
+            pid: None,
+            command: Some(format!("localhost:{}", port)),
+            directory: Some("unknown".to_string()),
+            executable: Some("unknown".to_string()),
+            framework: Some(framework.to_string()),
+            access: "ready".to_string(),
+            uptime: Some("live".to_string()),
+        }
+    }).collect())
+}
+
 #[derive(Deserialize, Serialize)]
 struct TunnelRegisterPayload {
     event: String,
@@ -278,6 +323,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             scan_ports, 
+            scan_processes,
             open_tunnel, 
             close_tunnel,
             scan_directory,

@@ -81,7 +81,7 @@ export class AuthService {
   }
 
   getAuthConfig() {
-    const requireAuth = this.config.get<string>('REQUIRE_AUTHENTICATION') !== 'false';
+    const requireAuth = this.config.get<string>('REQUIRE_AUTHENTICATION') === 'true';
     return { requireAuthentication: requireAuth };
   }
 
