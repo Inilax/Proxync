@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap');
 
 :root {
   --ink: #071015;
@@ -19,13 +19,31 @@
   --red: #ff7180;
   --red-dim: rgba(255, 113, 128, 0.14);
   --shadow: 0 32px 90px rgba(0, 0, 0, 0.46);
-  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 12px;
+  line-height: 1.5;
   color: var(--text);
   background: var(--ink);
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* Custom scrollbar styling globally for high visibility */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(7, 16, 21, 0.2);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(156, 192, 210, 0.22);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 192, 210, 0.38);
 }
 
 html,
@@ -105,7 +123,7 @@ pre,
 }
 
 .brand-name {
-  font-size: 17px;
+  font-size: 14px;
   font-weight: 700;
 }
 
@@ -137,7 +155,7 @@ pre,
 }
 
 .workspace-summary strong {
-  font-size: 18px;
+  font-size: 14px;
 }
 
 .workspace-summary small {
@@ -454,8 +472,8 @@ pre,
 .welcome-view h1 {
   max-width: 860px;
   margin: 0;
-  font-size: clamp(36px, 5vw, 68px);
-  line-height: 0.98;
+  font-size: clamp(18px, 3.5vw, 24px);
+  line-height: 1.25;
 }
 
 .welcome-view p,
@@ -524,7 +542,7 @@ pre,
 
 .metric-card strong {
   display: block;
-  font-size: 28px;
+  font-size: 20px;
 }
 
 .metric-card span,
@@ -557,7 +575,7 @@ pre,
 .page-heading h1,
 .settings-view h1 {
   margin: 0;
-  font-size: 34px;
+  font-size: 16px;
 }
 
 .badge-row,
@@ -601,7 +619,7 @@ pre,
 .collection-rail h2,
 .response-pane h2 {
   margin: 0 0 14px;
-  font-size: 16px;
+  font-size: 13px;
 }
 
 .lobby-create {
@@ -712,7 +730,7 @@ pre,
 .info-tile strong {
   display: block;
   overflow-wrap: anywhere;
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .share-box {
@@ -1140,6 +1158,12 @@ pre,
   font-size: 13px !important;
 }
 
+.toggle-row input {
+  width: auto !important;
+  height: auto !important;
+  padding: 0 !important;
+}
+
 .settings-section textarea {
   min-height: 180px;
 }
@@ -1368,5 +1392,630 @@ pre,
     left: 12px;
     right: 12px;
     width: auto;
+  }
+}
+
+/* ==========================================
+   Tunnels View, Bento Grid & Panel Layouts
+   ========================================== */
+
+.tunnels-view-container {
+  display: flex;
+  height: 100%;
+  gap: 0;
+  overflow: hidden;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.page-title {
+  margin: 0;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.page-subtitle {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Bento Grid Layout */
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
+.bento-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px 20px;
+  transition: all 0.2s ease-in-out;
+}
+
+.bento-card:hover {
+  border-color: var(--line-strong);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.bento-card.bento-full {
+  grid-column: span 2;
+}
+
+.bento-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.bento-card-subtitle {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 16px;
+  line-height: 1.4;
+}
+
+/* Pulse Indicator */
+.pulse-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--teal);
+  background: var(--teal-dim);
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(29, 215, 178, 0.2);
+}
+
+.pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--teal);
+  box-shadow: 0 0 8px var(--teal);
+  animation: pulse 1.6s infinite alternate;
+}
+
+@keyframes pulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(29, 215, 178, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(29, 215, 178, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(29, 215, 178, 0); }
+}
+
+/* Local ports scanner list */
+.port-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.port-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  transition: all 0.15s ease;
+}
+
+.port-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--line-strong);
+}
+
+.port-badge {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--teal);
+  background: var(--teal-dim);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.port-label {
+  font-size: 11px;
+  color: var(--muted);
+  flex: 1;
+}
+
+.port-status {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--teal);
+}
+
+/* Tunnels List and Cards */
+.tunnel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tunnel-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+  transition: all 0.2s ease;
+}
+
+.tunnel-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--line-strong);
+}
+
+.tunnel-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.tunnel-card-url {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--blue);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tunnel-status-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+  border: 1px solid transparent;
+}
+
+.tunnel-status-badge.active {
+  background: var(--teal-dim);
+  color: var(--teal);
+  border-color: rgba(29, 215, 178, 0.2);
+}
+
+.tunnel-status-badge.closed {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--faint);
+  border-color: var(--line);
+}
+
+.tunnel-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.tunnel-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tunnel-actions {
+  margin-left: auto;
+}
+
+/* Port Share Form */
+.share-input-group {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.share-input {
+  flex: 1;
+  height: 38px;
+  padding: 0 12px;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(4, 10, 14, 0.86);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.share-input:focus {
+  border-color: var(--teal);
+}
+
+.preset-ports-container {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.preset-port-pill {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.preset-port-pill:hover:not(:disabled) {
+  color: var(--text);
+  background: rgba(29, 215, 178, 0.1);
+  border-color: rgba(29, 215, 178, 0.2);
+}
+
+/* Active Tunnel Inspector Panel */
+.inspector-panel {
+  width: 440px;
+  min-width: 380px;
+  border-left: 1px solid var(--line);
+  background: var(--panel-2);
+  backdrop-filter: blur(20px);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.inspector-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background: rgba(18, 29, 37, 0.5);
+  flex-shrink: 0;
+}
+
+.inspector-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+  background: rgba(10, 18, 24, 0.4);
+  flex-shrink: 0;
+}
+
+.inspector-tab {
+  flex: 1;
+  padding: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border-bottom: 2px solid transparent;
+}
+
+.inspector-tab:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.inspector-tab.active {
+  color: var(--teal);
+  border-bottom-color: var(--teal);
+  background: rgba(29, 215, 178, 0.05);
+}
+
+.inspector-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+/* Chat Panel Styles */
+.chat-panel {
+  width: 360px;
+  min-width: 320px;
+  border-left: 1px solid var(--line);
+  background: var(--panel-3);
+  backdrop-filter: blur(20px);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.chat-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(23, 39, 48, 0.5);
+  flex-shrink: 0;
+}
+
+.chat-channels {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(10, 18, 24, 0.3);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.chat-channel-tab {
+  padding: 6px 12px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.chat-channel-tab.active {
+  color: var(--text);
+  background: rgba(29, 215, 178, 0.1);
+  border-color: rgba(29, 215, 178, 0.15);
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--muted);
+  text-align: center;
+  font-size: 11px;
+}
+
+.chat-message {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px solid transparent;
+}
+
+.chat-message.feedback {
+  background: var(--amber-dim);
+  border-color: rgba(245, 176, 74, 0.15);
+}
+
+.chat-message.feedback.resolved {
+  background: var(--teal-dim);
+  border-color: rgba(29, 215, 178, 0.15);
+}
+
+.chat-message-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+}
+
+.chat-avatar-sm {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--blue-dim);
+  color: var(--blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 9px;
+}
+
+.chat-author {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.chat-time {
+  color: var(--faint);
+  margin-left: auto;
+}
+
+.chat-message-text {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.chat-screenshot {
+  max-width: 100%;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.chat-screenshot:hover {
+  opacity: 0.85;
+}
+
+.feedback-badge {
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--amber);
+  background: rgba(245, 176, 74, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(245, 176, 74, 0.2);
+}
+
+.feedback-badge.resolved {
+  color: var(--teal);
+  background: var(--teal-dim);
+  border-color: rgba(29, 215, 178, 0.2);
+}
+
+.resolve-btn {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.resolve-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.screenshot-preview {
+  padding: 8px 16px;
+  background: rgba(0, 0, 0, 0.2);
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.chat-input-bar {
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: rgba(10, 18, 24, 0.4);
+  flex-shrink: 0;
+}
+
+.kind-toggle {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--muted);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.kind-toggle:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.kind-toggle.feedback-mode {
+  color: var(--amber);
+  background: rgba(245, 176, 74, 0.1);
+  border-color: rgba(245, 176, 74, 0.2);
+}
+
+.chat-input {
+  flex: 1;
+  height: 32px;
+  font-size: 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(4, 10, 14, 0.86);
+  color: var(--text);
+  padding: 0 10px;
+  outline: none;
+}
+
+.chat-input:focus {
+  border-color: var(--teal);
+}
+
+.presence-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--blue-dim);
+  color: var(--blue);
+  border: 1px solid rgba(113, 166, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 10px;
+  margin-left: -6px;
+  transition: transform 0.15s ease;
+  cursor: default;
+}
+
+.presence-avatar:first-child {
+  margin-left: 0;
+}
+
+.presence-avatar:hover {
+  transform: translateY(-2px);
+  z-index: 10;
+}
+
+/* ==========================================
+   Responsive Grid Adaptations
+   ========================================== */
+@media (max-width: 960px) {
+  .bento-grid {
+    grid-template-columns: 1fr;
+  }
+  .bento-card.bento-full {
+    grid-column: span 1;
+  }
+}
+
+@media (max-width: 600px) {
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
   }
 }
