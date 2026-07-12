@@ -1018,6 +1018,7 @@ export default function App() {
               'postman',
               'swagger',
               'observability',
+              'settings',
             ] as MainView[]
           ).map((view) => (
             <button
@@ -1907,7 +1908,7 @@ function SettingsView({
         <InfoTile label="Workspace" value={workspace?.name ?? 'starting'} />
         <InfoTile
           label="User mode"
-          value={context?.user.email.endsWith('@proxync.local') ? 'guest relay session' : 'local'}
+          value={context?.user?.email?.endsWith('@proxync.local') ? 'guest relay session' : 'local'}
         />
         <InfoTile label="Remote workspace" value={workspace?.remoteWorkspaceId ?? 'not synced'} monospace />
         <InfoTile label="Relay state" value={bootstrapError || 'connected'} />
@@ -1934,7 +1935,7 @@ function SettingsView({
               {scanningProject ? 'Scanning...' : 'Scan project folder'}
             </button>
             <span>
-              {workspace?.scannedFiles.length ?? 0} files indexed
+              {workspace?.scannedFiles?.length ?? 0} files indexed
             </span>
           </div>
         </div>
@@ -2039,13 +2040,13 @@ function SettingsView({
         )}
         {loadingDomains ? (
           <div className="settings-empty">Loading domains...</div>
-        ) : domains.length === 0 ? (
+        ) : (domains || []).length === 0 ? (
           <div className="settings-empty">
             No domains added yet. Start with a subdomain or apex domain you control.
           </div>
         ) : (
           <div className="domain-list">
-            {domains.map((domain) => (
+            {(domains || []).map((domain) => (
               <article key={domain.id} className="domain-card">
                 <div className="domain-card-head">
                   <div>
