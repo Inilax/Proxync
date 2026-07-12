@@ -190,7 +190,7 @@ export function TunnelsView({ workspace }: TunnelsViewProps) {
   const pastTunnels = tunnels.filter((t) => t.status !== 'ACTIVE');
 
   return (
-    <div style={{ display: 'flex', height: '100%', gap: 0, overflow: 'hidden' }}>
+    <div className="tunnels-view-container">
       {/* ── Main content ── */}
       <div style={{ flex: 1, overflow: 'hidden auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* Share Modal */}
@@ -287,7 +287,7 @@ export function TunnelsView({ workspace }: TunnelsViewProps) {
       {/* ── Bento Grid Dashboard ── */}
         <div className="page-header">
           <div>
-            <h1 className="page-title" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.03em' }}>Tunnels</h1>
+            <h1 className="page-title" style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em' }}>Tunnels</h1>
             <p className="page-subtitle">Expose and share local development environments instantly</p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -366,8 +366,8 @@ export function TunnelsView({ workspace }: TunnelsViewProps) {
             <div style={{ flex: 1, overflowY: 'auto', maxHeight: 200 }}>
               {detectedPorts.length === 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '16px 0', color: 'var(--text-muted)' }}>
-                  <span style={{ fontSize: 24, marginBottom: 8 }}>📡</span>
-                  <span style={{ fontSize: 12 }}>No dev servers detected on standard ports.</span>
+                  <span style={{ fontSize: 18, marginBottom: 6 }}>📡</span>
+                  <span style={{ fontSize: 11 }}>No dev servers detected on standard ports.</span>
                 </div>
               ) : (
                 <div className="port-list" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -408,9 +408,9 @@ export function TunnelsView({ workspace }: TunnelsViewProps) {
                 <div className="spinner" style={{ width: 24, height: 24 }} />
               </div>
             ) : tunnels.length === 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px 0', color: 'var(--text-muted)' }}>
-                <span style={{ fontSize: 32, marginBottom: 12 }}>⚡</span>
-                <span style={{ fontSize: 13, fontWeight: 500 }}>No tunnels established yet. Expose a port to see it here!</span>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 0', color: 'var(--text-muted)' }}>
+                <span style={{ fontSize: 22, marginBottom: 8 }}>⚡</span>
+                <span style={{ fontSize: 11, fontWeight: 500 }}>No tunnels established yet. Expose a port to see it here!</span>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -453,9 +453,9 @@ export function TunnelsView({ workspace }: TunnelsViewProps) {
           <div className="inspector-header">
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: 'var(--green)', fontSize: 12 }}>●</span>
-                <span style={{ fontWeight: 600, fontSize: 15, color: 'var(--text-primary)' }}>Tunnel Active</span>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>:{activeTunnel.localPort}</span>
+                <span style={{ color: 'var(--green)', fontSize: 10 }}>●</span>
+                <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' }}>Tunnel Active</span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>:{activeTunnel.localPort}</span>
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>
                 {activeTunnel.publicUrl}
