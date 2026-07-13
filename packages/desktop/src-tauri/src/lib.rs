@@ -32,6 +32,51 @@ async fn scan_ports() -> Result<Vec<u16>, String> {
     Ok(active)
 }
 
+#[derive(Serialize)]
+struct ProcessCandidate {
+    id: String,
+    name: String,
+    port: u16,
+    pid: Option<u32>,
+    command: Option<String>,
+    directory: Option<String>,
+    executable: Option<String>,
+    framework: Option<String>,
+    access: String,
+    uptime: Option<String>,
+}
+
+#[tauri::command]
+async fn scan_processes() -> Result<Vec<ProcessCandidate>, String> {
+    let ports = scan_ports().await?;
+    Ok(ports.into_iter().map(|port| {
+        let framework = match port {
+            3000 | 3001 => "Node app",
+            4000 => "GraphQL service",
+            4200 => "Angular app",
+            5000 => "Flask or .NET app",
+            5173 => "Vite server",
+            8000 => "Django or FastAPI app",
+            8080 => "HTTP service",
+            8888 => "Notebook server",
+            _ => "Development server",
+        };
+
+        ProcessCandidate {
+            id: format!("port-{}", port),
+            name: framework.to_string(),
+            port,
+            pid: None,
+            command: Some(format!("localhost:{}", port)),
+            directory: Some("unknown".to_string()),
+            executable: Some("unknown".to_string()),
+            framework: Some(framework.to_string()),
+            access: "ready".to_string(),
+            uptime: Some("live".to_string()),
+        }
+    }).collect())
+}
+
 #[derive(Deserialize, Serialize)]
 struct TunnelRegisterPayload {
     event: String,
@@ -226,11 +271,64 @@ async fn close_tunnel(tunnel_id: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn scan_directory(path: String) -> Result<Vec<String>, String> {
+    let mut files = Vec::new();
+    let root = std::path::Path::new(&path);
+    if !root.is_dir() {
+        return Err("Provided path is not a directory".to_string());
+    }
+
+    fn visit_dirs(dir: &std::path::Path, files: &mut Vec<String>, root_len: usize) -> std::io::Result<()> {
+        if dir.is_dir() {
+            for entry in std::fs::read_dir(dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_dir() {
+                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    if name == "node_modules" || name == "target" || name == ".git" || name == "build" || name == "bin" || name == ".gradle" {
+                        continue;
+                    }
+                    visit_dirs(&path, files, root_len)?;
+                } else {
+                    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                        let ext = ext.to_lowercase();
+                        if ext == "java" || ext == "ts" || ext == "js" || ext == "py" || ext == "go" || ext == "cs" || ext == "controller" {
+                            let rel_path = path.to_str().unwrap_or("")[root_len..].to_string();
+                            files.push(rel_path);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    visit_dirs(root, &mut files, root.to_str().unwrap_or("").len()).map_err(|e| e.to_string())?;
+    Ok(files)
+}
+
+#[tauri::command]
+async fn read_file_content(root_path: String, rel_path: String) -> Result<String, String> {
+    let path = std::path::Path::new(&root_path).join(rel_path.trim_start_matches('/').trim_start_matches('\\'));
+    if !path.exists() {
+        return Err("File does not exist".to_string());
+    }
+    std::fs::read_to_string(path).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![scan_ports, open_tunnel, close_tunnel])
+        .invoke_handler(tauri::generate_handler![
+            scan_ports, 
+            scan_processes,
+            open_tunnel, 
+            close_tunnel,
+            scan_directory,
+            read_file_content
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

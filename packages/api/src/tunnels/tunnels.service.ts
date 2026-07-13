@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { WorkspacesService } from '../workspaces/workspaces.service';
 import { CreateTunnelDto } from './dto/tunnel.dto';
 import { randomBytes } from 'crypto';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class TunnelsService implements OnModuleInit {
@@ -62,12 +63,31 @@ export class TunnelsService implements OnModuleInit {
       effectiveOwnerId = workspace.ownerId;
     }
 
+    const workspaceOwner = await this.prisma.user.findUnique({
+      where: { id: effectiveOwnerId },
+      select: { email: true },
+    });
+
+    if (workspaceOwner?.email?.endsWith('@proxync.local')) {
+      const activeTunnelsCount = await this.prisma.tunnel.count({
+        where: { workspaceId, status: 'ACTIVE' },
+      });
+      if (activeTunnelsCount >= 1) {
+        throw new ForbiddenException('Guest workspaces are limited to 1 active tunnel at a time.');
+      }
+    }
+
     const subdomain = this.generateSubdomain();
     const relayHost = process.env.RELAY_SUBDOMAIN_BASE ?? 'localtest.me';
     const isDev = process.env.NODE_ENV !== 'production';
     const protocol = isDev ? 'http' : 'https';
     const portSuffix = isDev ? `:${process.env.PORT || 3000}` : '';
     const publicUrl = `${protocol}://${subdomain}.${relayHost}${portSuffix}`;
+
+    let passwordHash: string | null = null;
+    if (dto.password) {
+      passwordHash = await bcrypt.hash(dto.password, 12);
+    }
 
     const tunnel = await this.prisma.tunnel.create({
       data: {
@@ -79,6 +99,7 @@ export class TunnelsService implements OnModuleInit {
         subdomain,
         region: dto.region ?? 'auto',
         status: 'ACTIVE',
+        passwordHash,
       },
     });
 

@@ -1,4 +1,4 @@
-import { Controller, Get, Param, UseGuards, Post, forwardRef, Inject } from '@nestjs/common';
+import { Controller, Get, Param, UseGuards, Post, forwardRef, Inject, Body } from '@nestjs/common';
 import { RequestsService } from './requests.service';
 import { BearerGuard } from '../auth/guards/bearer.guard';
 import { TunnelsService } from '../tunnels/tunnels.service';
@@ -76,5 +76,55 @@ export class RequestsController {
     });
     
     return { success: true, newRequestId: newReqId };
+  }
+
+  @Post('execute')
+  async executeRequest(
+    @Param('workspaceId') workspaceId: string,
+    @Param('tunnelId') tunnelId: string,
+    @Body() dto: { method: string; path: string; headers?: Record<string, string>; body?: string }
+  ) {
+    const tunnel = await this.tunnelsService.findOne(null, workspaceId, tunnelId);
+    const newReqId = uuidv4();
+    const startTime = Date.now();
+
+    await this.requestsService.logRequest({
+      id: newReqId,
+      tunnelId,
+      method: dto.method,
+      path: dto.path,
+      headers: dto.headers || {},
+      bodyPreview: dto.body || '',
+      capturedAt: new Date().toISOString()
+    });
+
+    const responsePayload = await this.relayGateway.forwardRequest(
+      tunnel.subdomain,
+      newReqId,
+      dto.method,
+      dto.path,
+      dto.headers || {},
+      dto.body || '',
+      30000
+    );
+
+    if (!responsePayload) {
+      await this.requestsService.updateResponse(tunnelId, newReqId, 504, Date.now() - startTime);
+      return { status: 504, headers: {}, body: '' };
+    }
+
+    await this.requestsService.updateResponse(
+      tunnelId,
+      newReqId,
+      responsePayload.status,
+      Date.now() - startTime,
+      responsePayload.headers
+    );
+
+    return {
+      status: responsePayload.status,
+      headers: responsePayload.headers,
+      body: responsePayload.body,
+    };
   }
 }

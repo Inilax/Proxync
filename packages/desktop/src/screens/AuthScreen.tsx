@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { api, saveTokens } from '../lib/api';
 import { showToast } from '../lib/toast';
 
@@ -13,6 +13,28 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [requireAuth, setRequireAuth] = useState(true);
+
+  useEffect(() => {
+    api.auth.config()
+      .then((cfg) => setRequireAuth(cfg.requireAuthentication))
+      .catch(() => setRequireAuth(true));
+  }, []);
+
+  async function handleContinueAsGuest() {
+    setError('');
+    setLoading(true);
+    try {
+      const tokens = await api.auth.guest();
+      saveTokens(tokens.accessToken, tokens.refreshToken);
+      showToast('Welcome to Proxync (Guest Session)!', 'success');
+      onAuthenticated();
+    } catch (err: any) {
+      setError(err.message ?? 'Failed to start guest session');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -126,6 +148,24 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
             {loading ? <span className="spinner" /> : null}
             {loading ? 'Please wait...' : tab === 'login' ? 'Sign In' : 'Create Account'}
           </button>
+
+          {!requireAuth && (
+            <>
+              <div className="auth-guest-divider">
+                <span>or</span>
+              </div>
+              <button
+                id="auth-guest-submit"
+                type="button"
+                className="btn btn-ghost"
+                style={{ width: '100%' }}
+                onClick={handleContinueAsGuest}
+                disabled={loading}
+              >
+                Continue as Guest
+              </button>
+            </>
+          )}
         </form>
       </div>
     </div>

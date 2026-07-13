@@ -77,14 +77,7 @@ export function WorkspacePicker({ onSelect }: WorkspacePickerProps) {
                 <button
                   key={ws.id}
                   id={`workspace-${ws.id}`}
-                  className="sidebar-item"
-                  style={{
-                    padding: '14px 16px',
-                    background: 'var(--bg-elevated)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 'var(--radius-md)',
-                    width: '100%',
-                  }}
+                  className="workspace-select-btn"
                   onClick={() => selectWorkspace(ws)}
                 >
                   <div className="avatar">{ws.name[0].toUpperCase()}</div>

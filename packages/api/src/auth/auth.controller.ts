@@ -7,6 +7,7 @@ import {
   Request,
   HttpCode,
   HttpStatus,
+  ForbiddenException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -23,6 +24,22 @@ import { BearerGuard } from './guards/bearer.guard';
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  @Get('config')
+  @ApiOperation({ summary: 'Get auth configuration' })
+  getConfig() {
+    return this.authService.getAuthConfig();
+  }
+
+  @Post('guest')
+  @ApiOperation({ summary: 'Create a guest session' })
+  async guest() {
+    const config = this.authService.getAuthConfig();
+    if (config.requireAuthentication) {
+      throw new ForbiddenException('Guest sessions are disabled on this instance');
+    }
+    return this.authService.createGuestSession();
+  }
 
   @Post('signup')
   @ApiOperation({ summary: 'Create a new account' })

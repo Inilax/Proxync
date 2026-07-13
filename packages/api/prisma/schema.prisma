@@ -61,6 +61,7 @@ model Workspace {
   channels         Channel[]
   bandwidthUsages  BandwidthUsage[]
   inviteTokens     InviteToken[]
+  domains          Domain[]
 
   @@map("workspaces")
 }
@@ -110,18 +111,19 @@ model ApiKey {
 // ─── Tunnels ────────────────────────────────────────────────────
 
 model Tunnel {
-  id          String       @id @default(uuid())
-  workspaceId String
-  ownerId     String
-  localPort   Int
-  protocol    String       @default("http")
-  publicUrl   String       @unique
-  subdomain   String       @unique
-  region      String       @default("auto")
-  status      TunnelStatus @default(ACTIVE)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  closedAt    DateTime?
+  id           String       @id @default(uuid())
+  workspaceId  String
+  ownerId      String
+  localPort    Int
+  protocol     String       @default("http")
+  publicUrl    String       @unique
+  subdomain    String       @unique
+  region       String       @default("auto")
+  status       TunnelStatus @default(ACTIVE)
+  passwordHash String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  closedAt     DateTime?
 
   workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   owner           User             @relation(fields: [ownerId], references: [id])
@@ -253,4 +255,21 @@ model InviteToken {
   @@index([workspaceId])
   @@index([token])
   @@map("invite_tokens")
+}
+
+// ─── Custom Domains ─────────────────────────────────────────────
+
+model Domain {
+  id                String    @id @default(uuid())
+  workspaceId       String
+  name              String    @unique
+  verificationToken String
+  verified          Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("domains")
 }

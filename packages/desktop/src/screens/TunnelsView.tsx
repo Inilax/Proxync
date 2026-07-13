@@ -5,10 +5,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getToken } from '../lib/api';
 import { ChatPanel } from '../components/ChatPanel';
+import { RequestPlayground } from '../components/RequestPlayground';
 
 interface TunnelsViewProps {
   workspace: any;
-  user?: any;
 }
 
 // Common ports and their app names
@@ -46,18 +46,21 @@ function usePortScanner() {
   return ports;
 }
 
-export function TunnelsView({ workspace, user }: TunnelsViewProps) {
+export function TunnelsView({ workspace }: TunnelsViewProps) {
   const [tunnels, setTunnels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState<number | null>(null);
   const [activeTunnel, setActiveTunnel] = useState<any | null>(null);
-  const [copied, setCopied] = useState(false);
   const [requests, setRequests] = useState<any[]>([]);
   const [selectedRequest, setSelectedRequest] = useState<any | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   // Bug 3 fix: track per-request start times so we can compute real latency
   const requestStartTimes = useRef<Map<string, number>>(new Map());
   const detectedPorts = usePortScanner();
+  const [usePassword, setUsePassword] = useState(false);
+  const [password, setPassword] = useState('');
+  const [inspectorTab, setInspectorTab] = useState<'traffic' | 'playground'>('traffic');
+  const [playgroundPrefill, setPlaygroundPrefill] = useState<any | null>(null);
 
   useEffect(() => {
     if (activeTunnel) {
@@ -134,7 +137,9 @@ export function TunnelsView({ workspace, user }: TunnelsViewProps) {
   async function share(port: number) {
     setSharing(port);
     try {
-      const tunnel = await api.tunnels.create(workspace.id, port);
+      const tunnel = await api.tunnels.create(workspace.id, port, 'http', usePassword ? password : undefined);
+      setUsePassword(false);
+      setPassword('');
       
       const token = getToken();
       if (!token) throw new Error('Not authenticated');
@@ -178,121 +183,18 @@ export function TunnelsView({ workspace, user }: TunnelsViewProps) {
 
   function copyUrl(url: string) {
     navigator.clipboard.writeText(url);
-    setCopied(true);
     showToast('Link copied!', 'success');
-    setTimeout(() => setCopied(false), 2000);
   }
 
   const activeTunnels = tunnels.filter((t) => t.status === 'ACTIVE');
   const pastTunnels = tunnels.filter((t) => t.status !== 'ACTIVE');
 
   return (
-    <div style={{ display: 'flex', height: '100%', gap: 0, overflow: 'hidden' }}>
+    <div className="tunnels-view-container">
       {/* ── Main content ── */}
       <div style={{ flex: 1, overflow: 'hidden auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* Share Modal */}
-      {activeTunnel && (
-        <div className="modal-overlay" onClick={() => setActiveTunnel(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-              <div style={{
-                width: 36, height: 36, borderRadius: 10,
-                background: 'var(--green-dim)',
-                border: '1px solid rgba(34,197,94,0.3)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 18,
-              }}>⚡</div>
-              <div>
-                <div className="modal-title">Tunnel Live</div>
-                <div className="modal-subtitle">Your local port {activeTunnel.localPort} is now publicly accessible</div>
-              </div>
-            </div>
 
-            <div className="url-display">
-              <span className="url-text">{activeTunnel.publicUrl}</span>
-              {copied && <span className="copied-badge">✓ Copied</span>}
-            </div>
-
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                id="copy-tunnel-url"
-                className="btn btn-primary"
-                style={{ flex: 1 }}
-                onClick={() => copyUrl(activeTunnel.publicUrl)}
-              >
-                📋 Copy Link
-              </button>
-              <button
-                className="btn btn-danger"
-                onClick={() => closeTunnel(activeTunnel.id)}
-              >
-                Stop
-              </button>
-              <button
-                className="btn btn-ghost"
-                onClick={() => setActiveTunnel(null)}
-              >
-                Dismiss
-              </button>
-            </div>
-
-            <div style={{
-              marginTop: 16, padding: '10px 12px',
-              background: 'var(--bg-base)', borderRadius: 'var(--radius-md)',
-              fontSize: 12, color: 'var(--text-secondary)',
-            }}>
-              💡 Share this link with anyone — they can open it in any browser. No install required.
-            </div>
-
-            {requests.length > 0 && (
-              <div style={{ marginTop: 24 }}>
-                <div className="modal-title" style={{ fontSize: 14, marginBottom: 8 }}>Live Traffic</div>
-                <div style={{
-                  maxHeight: 200, overflowY: 'auto', 
-                  background: 'var(--bg-base)', borderRadius: 'var(--radius-md)',
-                  padding: 8, display: 'flex', flexDirection: 'column', gap: 4
-                }}>
-                  {requests.map(req => (
-                    <div 
-                      key={req.id} 
-                      onClick={async () => {
-                        try {
-                          const detail = await api.requests.get(workspace.id, activeTunnel.id, req.id);
-                          setSelectedRequest(detail);
-                        } catch (err) {
-                          showToast('Failed to load request details', 'error');
-                        }
-                      }}
-                      style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      fontSize: 12, padding: '6px 8px', borderRadius: 4,
-                      background: 'rgba(255,255,255,0.02)', cursor: 'pointer'
-                    }}>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <span style={{ 
-                          fontWeight: 600, 
-                          color: req.method === 'GET' ? 'var(--blue)' : req.method === 'POST' ? 'var(--green)' : 'var(--orange)' 
-                        }}>{req.method}</span>
-                        <span style={{ fontFamily: 'var(--font-mono)' }}>{req.path}</span>
-                      </div>
-                      <div style={{ display: 'flex', gap: 12, color: 'var(--text-muted)' }}>
-                        {req.status === 'pending' ? (
-                          <span className="spinner" style={{ width: 12, height: 12 }} />
-                        ) : (
-                          <>
-                            <span style={{ color: req.status >= 400 ? 'var(--red)' : 'var(--green-dim)' }}>{req.status}</span>
-                            <span>{req.durationMs}ms</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Inspector Modal */}
       {selectedRequest && activeTunnel && (
@@ -307,6 +209,22 @@ export function TunnelsView({ workspace, user }: TunnelsViewProps) {
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: 16 }}>{selectedRequest.path}</span>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
+                <button 
+                  className="btn btn-ghost" 
+                  style={{ padding: '6px 12px', fontSize: 12, border: '1px solid var(--border-subtle)' }}
+                  onClick={() => {
+                    setPlaygroundPrefill({
+                      method: selectedRequest.method,
+                      path: selectedRequest.path,
+                      headers: selectedRequest.headers,
+                      bodyPreview: selectedRequest.bodyPreview,
+                    });
+                    setInspectorTab('playground');
+                    setSelectedRequest(null);
+                  }}
+                >
+                  ⚡ Send to Playground
+                </button>
                 <button 
                   className="btn btn-primary" 
                   style={{ padding: '6px 12px', fontSize: 12 }}
@@ -366,19 +284,18 @@ export function TunnelsView({ workspace, user }: TunnelsViewProps) {
         </div>
       )}
 
-      {/* Detected Ports */}
-      <div>
+      {/* ── Bento Grid Dashboard ── */}
         <div className="page-header">
           <div>
-            <h1 className="page-title">Tunnels</h1>
-            <p className="page-subtitle">Share a running local server in one click</p>
+            <h1 className="page-title" style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em' }}>Tunnels</h1>
+            <p className="page-subtitle">Expose and share local development environments instantly</p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               id="toggle-chat"
               className={`btn btn-ghost ${chatOpen ? 'active' : ''}`}
               onClick={() => setChatOpen(o => !o)}
-              style={{ padding: '8px 14px', color: chatOpen ? 'var(--text-accent)' : undefined, borderColor: chatOpen ? 'var(--accent)' : undefined }}
+              style={{ padding: '8px 16px', color: chatOpen ? 'var(--text-accent)' : undefined, borderColor: chatOpen ? 'var(--accent)' : undefined }}
             >
               💬 Chat
             </button>
@@ -386,91 +303,259 @@ export function TunnelsView({ workspace, user }: TunnelsViewProps) {
               id="refresh-ports"
               className="btn btn-ghost"
               onClick={loadTunnels}
-              style={{ padding: '8px 14px' }}
+              style={{ padding: '8px 16px' }}
             >
               ↺ Refresh
             </button>
           </div>
         </div>
 
-        <div className="card">
-          <div className="card-title">Detected Local Servers</div>
-          {detectedPorts.length === 0 ? (
-            <div className="empty-state" style={{ padding: '24px 16px' }}>
-              <div className="empty-state-icon">🔍</div>
-              <p className="empty-state-title">No servers detected</p>
-              <p className="empty-state-desc">
-                Start a dev server (e.g. <code style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>npm run dev</code>) and it will appear here
-              </p>
-              <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)' }}>
-                Or manually enter a port:
-              </div>
+        <div className="bento-grid">
+          {/* Card 1: Share a Local Server */}
+          <div className="bento-card">
+            <div className="bento-card-title">
+              <span>⚡</span> Share a Local Server
+            </div>
+            <div className="bento-card-subtitle">
+              Expose any local HTTP port to a secure public URL.
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <ManualPortEntry onShare={share} sharing={sharing} />
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: 'var(--text-secondary)' }}>
+                  <input
+                    id="toggle-password"
+                    type="checkbox"
+                    checked={usePassword}
+                    onChange={(e) => setUsePassword(e.target.checked)}
+                  />
+                  🔒 Password Protection
+                </label>
+                {usePassword && (
+                  <input
+                    id="tunnel-password-input"
+                    type="password"
+                    className="form-input"
+                    placeholder="Access password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    style={{ width: 160, padding: '6px 12px', fontSize: 12, height: 'auto', marginBottom: 0 }}
+                  />
+                )}
+              </div>
             </div>
-          ) : (
-            <div className="port-list">
-              {detectedPorts.map((port) => (
-                <div key={port} className="port-item">
-                  <span className="port-badge">:{port}</span>
-                  <span className="port-label">
-                    {PORT_NAMES[port] ?? 'Local server'}
-                  </span>
-                  <div className="port-status" />
-                  <button
-                    id={`share-port-${port}`}
-                    className="btn btn-primary"
-                    style={{ width: 'auto', padding: '7px 16px', fontSize: 13 }}
-                    onClick={() => share(port)}
-                    disabled={sharing === port}
-                  >
-                    {sharing === port ? <span className="spinner" /> : '⚡ Share'}
-                  </button>
+          </div>
+
+          {/* Card 2: Detected Services */}
+          <div className="bento-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <div className="bento-card-title" style={{ marginBottom: 0 }}>
+                <span>🔍</span> Detected Services
+              </div>
+              <div className="pulse-indicator">
+                <span className="pulse-dot"></span>
+                <span>Auto Scanner</span>
+              </div>
+            </div>
+            <div className="bento-card-subtitle">
+              Automatically scanner for local development server ports.
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', maxHeight: 200 }}>
+              {detectedPorts.length === 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '16px 0', color: 'var(--text-muted)' }}>
+                  <span style={{ fontSize: 18, marginBottom: 6 }}>📡</span>
+                  <span style={{ fontSize: 11 }}>No dev servers detected on standard ports.</span>
                 </div>
-              ))}
+              ) : (
+                <div className="port-list" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {detectedPorts.map((port) => (
+                    <div key={port} className="port-item" style={{ margin: 0, padding: '10px 14px' }}>
+                      <span className="port-badge">:{port}</span>
+                      <span className="port-label" style={{ fontSize: 12 }}>
+                        {PORT_NAMES[port] ?? 'Local server'}
+                      </span>
+                      <div className="port-status" />
+                      <button
+                        id={`share-port-${port}`}
+                        className="btn btn-primary"
+                        style={{ padding: '4px 12px', fontSize: 12 }}
+                        onClick={() => share(port)}
+                        disabled={sharing === port}
+                      >
+                        {sharing === port ? <span className="spinner" /> : '⚡ Share'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </div>
+          </div>
 
-      {/* Active Tunnels */}
-      {activeTunnels.length > 0 && (
-        <div>
-          <div className="card-title" style={{ marginBottom: 12 }}>Active Tunnels</div>
-          <div className="tunnel-list">
-            {activeTunnels.map((t) => (
-              <TunnelCard
-                key={t.id}
-                tunnel={t}
-                onOpen={() => setActiveTunnel(t)}
-                onClose={() => closeTunnel(t.id)}
-              />
-            ))}
+          {/* Card 3: Active & Recent Tunnels */}
+          <div className="bento-card bento-full">
+            <div className="bento-card-title">
+              <span>🌐</span> Active & Recent Tunnels
+            </div>
+            <div className="bento-card-subtitle">
+              Manage your active tunnels and view public URL sharing metrics.
+            </div>
+
+            {loading ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
+                <div className="spinner" style={{ width: 24, height: 24 }} />
+              </div>
+            ) : tunnels.length === 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 0', color: 'var(--text-muted)' }}>
+                <span style={{ fontSize: 22, marginBottom: 8 }}>⚡</span>
+                <span style={{ fontSize: 11, fontWeight: 500 }}>No tunnels established yet. Expose a port to see it here!</span>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                {activeTunnels.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Active Tunnels</div>
+                    <div className="tunnel-list">
+                      {activeTunnels.map((t) => (
+                        <TunnelCard
+                          key={t.id}
+                          tunnel={t}
+                          onOpen={() => setActiveTunnel(t)}
+                          onClose={() => closeTunnel(t.id)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {pastTunnels.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Recent Tunnels</div>
+                    <div className="tunnel-list">
+                      {pastTunnels.slice(0, 5).map((t) => (
+                        <TunnelCard key={t.id} tunnel={t} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
-      )}
-
-      {/* Past Tunnels */}
-      {pastTunnels.length > 0 && (
-        <div>
-          <div className="card-title" style={{ marginBottom: 12 }}>Recent</div>
-          <div className="tunnel-list">
-            {pastTunnels.slice(0, 10).map((t) => (
-              <TunnelCard key={t.id} tunnel={t} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {loading && (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
-          <div className="spinner" style={{ width: 24, height: 24 }} />
-        </div>
-      )}
       </div>{/* end main content */}
+
+      {/* ── Right Panel: Active Tunnel Inspector & Request Playground ── */}
+      {activeTunnel && (
+        <div className="inspector-panel">
+          {/* Tunnel Header */}
+          <div className="inspector-header">
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: 'var(--green)', fontSize: 10 }}>●</span>
+                <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' }}>Tunnel Active</span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>:{activeTunnel.localPort}</span>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>
+                {activeTunnel.publicUrl}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: 12, border: '1px solid var(--border-subtle)' }} onClick={() => copyUrl(activeTunnel.publicUrl)}>
+                📋 Copy
+              </button>
+              <button className="btn btn-danger" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => closeTunnel(activeTunnel.id)}>
+                Stop
+              </button>
+              <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => setActiveTunnel(null)}>
+                ✕ Close
+              </button>
+            </div>
+          </div>
+
+          {/* Tab Switcher */}
+          <div className="inspector-tabs">
+            <button
+              onClick={() => setInspectorTab('traffic')}
+              className={`inspector-tab ${inspectorTab === 'traffic' ? 'active' : ''}`}
+            >
+              🚦 Traffic Log ({requests.length})
+            </button>
+            <button
+              onClick={() => setInspectorTab('playground')}
+              className={`inspector-tab ${inspectorTab === 'playground' ? 'active' : ''}`}
+            >
+              ⚡ Request Playground & AI Swagger
+            </button>
+          </div>
+
+          {/* Tab Content */}
+          <div className="inspector-content">
+            {inspectorTab === 'traffic' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                {requests.length === 0 ? (
+                  <div className="empty-state" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ fontSize: 24, marginBottom: 8 }}>📡</span>
+                    <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: 13 }}>Waiting for incoming HTTP requests on {activeTunnel.publicUrl}...</p>
+                  </div>
+                ) : (
+                  <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {requests.map(req => (
+                      <div
+                        key={req.id}
+                        onClick={async () => {
+                          try {
+                            const detail = await api.requests.get(workspace.id, activeTunnel.id, req.id);
+                            setSelectedRequest(detail);
+                          } catch (err) {
+                            showToast('Failed to load request details', 'error');
+                          }
+                        }}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          fontSize: 12, padding: '10px 12px', borderRadius: 6,
+                          background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+                          cursor: 'pointer', transition: 'all 0.15s'
+                        }}
+                        className="endpoint-item-hover"
+                      >
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                          <span style={{
+                            fontWeight: 600, minWidth: 50, display: 'inline-block',
+                            color: req.method === 'GET' ? 'var(--blue)' : req.method === 'POST' ? 'var(--green)' : 'var(--orange)'
+                          }}>{req.method}</span>
+                          <span style={{ fontFamily: 'var(--font-mono)' }}>{req.path}</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 12, color: 'var(--text-muted)' }}>
+                          {req.status === 'pending' ? (
+                            <span className="spinner" style={{ width: 12, height: 12 }} />
+                          ) : (
+                            <>
+                              <span style={{ color: req.status >= 400 ? 'var(--red)' : 'var(--green-dim)' }}>{req.status}</span>
+                              <span>{req.durationMs}ms</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <RequestPlayground
+                workspace={workspace}
+                activeTunnel={activeTunnel}
+                prefillRequest={playgroundPrefill}
+              />
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Chat Panel ── */}
       {chatOpen && (
-        <ChatPanel workspace={workspace} user={user} />
+        <ChatPanel workspace={workspace} />
       )}
     </div>
   );
@@ -527,26 +612,41 @@ function ManualPortEntry({ onShare, sharing }: { onShare: (p: number) => void; s
     if (n > 0 && n < 65536) onShare(n);
   }
   return (
-    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-      <input
-        id="manual-port"
-        className="form-input"
-        type="number"
-        placeholder="e.g. 5173"
-        value={port}
-        onChange={(e) => setPort(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && submit()}
-        style={{ width: 120, textAlign: 'center' }}
-      />
-      <button
-        id="manual-share-btn"
-        className="btn btn-primary"
-        style={{ width: 'auto', padding: '10px 16px' }}
-        onClick={submit}
-        disabled={!port || sharing !== null}
-      >
-        ⚡ Share
-      </button>
+    <div>
+      <div className="share-input-group">
+        <input
+          id="manual-port"
+          className="share-input"
+          type="number"
+          placeholder="Expose local port (e.g. 3000, 5173, 8080)"
+          value={port}
+          onChange={(e) => setPort(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && submit()}
+        />
+        <button
+          id="manual-share-btn"
+          className="btn btn-primary"
+          style={{ width: 'auto', padding: '8px 20px', borderRadius: '8px', fontSize: 13 }}
+          onClick={submit}
+          disabled={!port || sharing !== null}
+        >
+          {sharing !== null ? <span className="spinner" /> : '⚡ Share'}
+        </button>
+      </div>
+      
+      <div className="preset-ports-container">
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>PRESETS:</span>
+        {[3000, 5173, 8000, 8080].map((p) => (
+          <button
+            key={p}
+            className="preset-port-pill"
+            onClick={() => onShare(p)}
+            disabled={sharing !== null}
+          >
+            :{p}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

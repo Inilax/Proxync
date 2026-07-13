@@ -80,6 +80,45 @@ export class AuthService {
     return this.issueTokens(payload.sub, payload.email);
   }
 
+  getAuthConfig() {
+    const requireAuth = this.config.get<string>('REQUIRE_AUTHENTICATION') === 'true';
+    return { requireAuthentication: requireAuth };
+  }
+
+  async createGuestSession() {
+    const guestId = uuidv4();
+    const email = `guest_${guestId.substring(0, 8)}@proxync.local`;
+    const name = `Guest User`;
+
+    const user = await this.prisma.user.create({
+      data: {
+        id: guestId,
+        email,
+        name,
+        passwordHash: 'guest-disabled-hash',
+        memberships: {
+          create: {
+            role: 'OWNER',
+            workspace: {
+              create: {
+                name: 'Guest Workspace',
+                ownerId: guestId,
+                channels: {
+                  create: {
+                    name: 'general',
+                    type: 'TEXT',
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return this.issueTokens(user.id, user.email);
+  }
+
   async getMe(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
