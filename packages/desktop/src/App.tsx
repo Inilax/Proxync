@@ -197,6 +197,7 @@ export default function App() {
   const [domainDraft, setDomainDraft] = useState('');
   const [loadingDomains, setLoadingDomains] = useState(false);
   const [busyDomainId, setBusyDomainId] = useState<string | null>(null);
+  const [localIp, setLocalIp] = useState<string>('127.0.0.1');
 
   const activeWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null,
@@ -238,6 +239,12 @@ export default function App() {
   useEffect(() => {
     let mounted = true;
 
+    invoke<string>('get_local_ip')
+      .then((ip) => {
+        if (mounted) setLocalIp(ip);
+      })
+      .catch(() => undefined);
+
     ensureLocalWorkspace()
       .then(async (nextContext) => {
         if (!mounted) return;
@@ -252,12 +259,6 @@ export default function App() {
         setWorkspaces(hydrated.workspaces);
         setActiveWorkspaceId(hydrated.activeWorkspaceId);
 
-        try {
-          const existing = await api.tunnels.list(nextContext.workspace.id);
-          if (mounted) setTunnels(existing);
-        } catch {
-          if (mounted) setTunnels([]);
-        }
       })
       .catch((error: Error) => {
         if (!mounted) return;
@@ -397,6 +398,31 @@ export default function App() {
       .finally(() => setLoadingDomains(false));
   }, [activeWorkspace?.remoteWorkspaceId]);
 
+  useEffect(() => {
+    if (!activeWorkspace?.remoteWorkspaceId) {
+      setTunnels([]);
+      setActiveTunnel(null);
+      return;
+    }
+
+    api.tunnels
+      .list(activeWorkspace.remoteWorkspaceId)
+      .then((existing) => {
+        setTunnels(existing);
+        const active = existing.find((t) => t.status === 'ACTIVE');
+        if (active) {
+          setActiveTunnel(active);
+          setSelectedProcessId(`port-${active.localPort}`);
+        } else {
+          setActiveTunnel(null);
+        }
+      })
+      .catch(() => {
+        setTunnels([]);
+        setActiveTunnel(null);
+      });
+  }, [activeWorkspace?.remoteWorkspaceId]);
+
   async function discoverProcesses() {
     setDiscovering(true);
     try {
@@ -448,6 +474,54 @@ export default function App() {
     setActiveWorkspaceId(workspaceId);
     setMainView('process');
     setActiveTunnel(null);
+  }
+
+  async function deleteWorkspace(workspaceId: string) {
+    const ws = workspaces.find((w) => w.id === workspaceId);
+    if (!ws) return;
+
+    const confirmDelete = window.confirm(`Are you sure you want to completely delete and purge the workspace "${ws.name}"? This will terminate all active tunnels and delete all history.`);
+    if (!confirmDelete) return;
+
+    // 1. Terminate local tunnel if active
+    if (activeTunnel && activeWorkspaceId === workspaceId) {
+      try {
+        await stopTunnel(activeTunnel);
+      } catch {}
+    }
+
+    // 2. Call backend DELETE API if workspace is synced
+    if (ws.remoteWorkspaceId) {
+      try {
+        await api.workspaces.delete(ws.remoteWorkspaceId);
+      } catch (error: any) {
+        showToast(error instanceof Error ? error.message : 'Unable to delete workspace on remote API', 'error');
+      }
+    }
+
+    // 3. Remove workspace from state and localStorage
+    const remaining = workspaces.filter((w) => w.id !== workspaceId);
+    setWorkspaces(remaining);
+    localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify(remaining));
+
+    // 4. Handle active workspace change if deleting current workspace
+    if (activeWorkspaceId === workspaceId) {
+      if (remaining.length > 0) {
+        setActiveWorkspaceId(remaining[0].id);
+        localStorage.setItem(ACTIVE_WORKSPACE_KEY, remaining[0].id);
+      } else {
+        const newId = crypto.randomUUID();
+        const initial = createWorkspaceConfig('Local Project', undefined, appSettings.guardrails, appSettings.defaultProjectRootPath);
+        initial.id = newId;
+        const newWorkspaces = [initial];
+        setWorkspaces(newWorkspaces);
+        setActiveWorkspaceId(newId);
+        localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify(newWorkspaces));
+        localStorage.setItem(ACTIVE_WORKSPACE_KEY, newId);
+      }
+    }
+
+    showToast(`Workspace "${ws.name}" completely deleted and purged`, 'success');
   }
 
   function updateActiveWorkspace(mutator: (workspace: WorkspaceConfig) => WorkspaceConfig) {
@@ -814,6 +888,56 @@ export default function App() {
     }
   }
 
+  async function syncActiveWorkspace() {
+    if (!activeWorkspace) return;
+    try {
+      const remote = await api.workspaces.create(activeWorkspace.name);
+      updateActiveWorkspace((ws) => ({
+        ...ws,
+        remoteWorkspaceId: remote.id,
+      }));
+      showToast('Workspace synced to remote API!', 'success');
+    } catch (error: any) {
+      showToast(error instanceof Error ? error.message : 'Unable to sync workspace', 'error');
+    }
+  }
+
+  async function reconnectApi() {
+    setBootstrapError('');
+    try {
+      const nextContext = await ensureLocalWorkspace();
+      setContext(nextContext);
+      setBootstrapError('');
+      
+      const remoteWorkspaces = await api.workspaces.list();
+      setWorkspaces((current) => {
+        const updated = [...current];
+        for (const remote of remoteWorkspaces) {
+          const existingIdx = updated.findIndex(
+            (w) => w.remoteWorkspaceId === remote.id || w.name.toLowerCase() === remote.name.toLowerCase()
+          );
+          if (existingIdx !== -1) {
+            updated[existingIdx].remoteWorkspaceId = remote.id;
+          } else {
+            updated.push(
+              createWorkspaceConfig(
+                remote.name,
+                remote.id,
+                appSettings.guardrails,
+                appSettings.defaultProjectRootPath
+              )
+            );
+          }
+        }
+        return updated;
+      });
+      showToast('Successfully reconnected to API backend', 'success');
+    } catch (error: any) {
+      setBootstrapError(error.message);
+      showToast(`Reconnection failed: ${error.message}`, 'error');
+    }
+  }
+
   function selectProfile(profileId: string) {
     if (!activeWorkspace) return;
     updateActiveWorkspace((workspace) => ({
@@ -990,7 +1114,7 @@ export default function App() {
 
       <section className="workspace-shell">
         <header className="topbar">
-          <div className="session-pill">
+          <div className={activeTunnel ? 'session-pill active' : 'session-pill'}>
             <span className={activeTunnel ? 'live-ring active' : 'live-ring'} />
             {activeTunnel
               ? activeTunnel.publicUrl
@@ -1040,6 +1164,7 @@ export default function App() {
               onWorkspaceNameChange={setNewWorkspaceName}
               onCreateWorkspace={createWorkspace}
               onSelectWorkspace={selectWorkspace}
+              onDeleteWorkspace={deleteWorkspace}
             />
           )}
 
@@ -1061,6 +1186,8 @@ export default function App() {
               tunnel={activeTunnel}
               sharingPort={sharingPort}
               suggestions={starterSuggestions}
+              hasVerifiedDomain={domains.some((d) => d.verified)}
+              localIp={localIp}
               onDiscover={() => setDiscoverOpen(true)}
               onShare={shareProcess}
               onStop={stopTunnel}
@@ -1142,6 +1269,8 @@ export default function App() {
               onAddDomain={addDomain}
               onVerifyDomain={verifyDomain}
               onRemoveDomain={removeDomain}
+              onSyncWorkspace={syncActiveWorkspace}
+              onReconnectApi={reconnectApi}
             />
           )}
         </main>
@@ -1216,13 +1345,15 @@ function LobbyView({
   onWorkspaceNameChange,
   onCreateWorkspace,
   onSelectWorkspace,
+  onDeleteWorkspace,
 }: {
   workspaces: WorkspaceConfig[];
-  activeWorkspaceId: string;
+  activeWorkspaceId: string | null;
   newWorkspaceName: string;
   onWorkspaceNameChange: (value: string) => void;
   onCreateWorkspace: () => void;
-  onSelectWorkspace: (workspaceId: string) => void;
+  onSelectWorkspace: (id: string) => void;
+  onDeleteWorkspace: (id: string) => void;
 }) {
   return (
     <div className="lobby-view">
@@ -1282,12 +1413,26 @@ function LobbyView({
               <span>{workspace.guardrails.authMode} auth</span>
             </div>
             <p>{workspace.notes || 'No notes yet. This workspace is ready for project-specific context.'}</p>
-            <button
-              className="primary-command small"
-              onClick={() => onSelectWorkspace(workspace.id)}
-            >
-              Open workspace
-            </button>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+              <button
+                className="primary-command small"
+                onClick={() => onSelectWorkspace(workspace.id)}
+              >
+                Open workspace
+              </button>
+              <button
+                className="danger-command small"
+                style={{
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.2)',
+                  color: '#ff8b8b',
+                  cursor: 'pointer'
+                }}
+                onClick={() => onDeleteWorkspace(workspace.id)}
+              >
+                Delete
+              </button>
+            </div>
           </article>
         ))}
       </section>
@@ -1319,6 +1464,8 @@ function ProcessView({
   tunnel,
   sharingPort,
   suggestions,
+  hasVerifiedDomain,
+  localIp,
   onDiscover,
   onShare,
   onStop,
@@ -1331,6 +1478,8 @@ function ProcessView({
   tunnel: Tunnel | null;
   sharingPort: number | null;
   suggestions: SavedRequest[];
+  hasVerifiedDomain: boolean;
+  localIp: string;
   onDiscover: () => void;
   onShare: (process: ProcessCandidate) => void;
   onStop: (tunnel: Tunnel) => void;
@@ -1451,6 +1600,27 @@ function ProcessView({
 
       <section className="console-section share-section">
         <h2>Connection and sharing</h2>
+        {!hasVerifiedDomain && (
+          <div
+            style={{
+              background: 'rgba(245, 158, 11, 0.08)',
+              border: '1px solid rgba(245, 158, 11, 0.2)',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              color: 'var(--yellow)',
+              fontSize: '13px',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'start',
+              gap: '8px',
+            }}
+          >
+            <span style={{ fontSize: '16px', lineHeight: '1' }}>⚠️</span>
+            <div>
+              <strong>No custom domain connected.</strong> The default wildcard link will only work within this local network. For public internet visibility, you must add and verify a custom domain in Settings.
+            </div>
+          </div>
+        )}
         <div className={isActive ? 'share-box active' : 'share-box'}>
           <div>
             <strong>
@@ -1473,6 +1643,19 @@ function ProcessView({
               Copy
             </button>
           </div>
+          {localIp && localIp !== '127.0.0.1' && (
+            <div className="url-line">
+              <span>LAN</span>
+              <code>http://{localIp}:{processLike.port}</code>
+              <button
+                onClick={() =>
+                  onCopy(`http://${localIp}:${processLike.port}`, 'LAN address copied')
+                }
+              >
+                Copy
+              </button>
+            </div>
+          )}
           {(isActive || profile?.lastTunnelUrl) && (
             <div className="url-line">
               <span>{isActive ? 'Public' : 'Last URL'}</span>
@@ -1879,6 +2062,8 @@ function SettingsView({
   onAddDomain,
   onVerifyDomain,
   onRemoveDomain,
+  onSyncWorkspace,
+  onReconnectApi,
 }: {
   context: LocalWorkspaceContext | null;
   workspace: WorkspaceConfig | null;
@@ -1900,10 +2085,33 @@ function SettingsView({
   onAddDomain: () => void;
   onVerifyDomain: (domainId: string) => void;
   onRemoveDomain: (domainId: string) => void;
+  onSyncWorkspace: () => void;
+  onReconnectApi: () => void;
 }) {
   return (
     <div className="settings-view">
       <h1>Settings</h1>
+      {bootstrapError && (
+        <div style={{
+          background: 'rgba(239, 68, 68, 0.08)',
+          border: '1px solid rgba(239, 68, 68, 0.2)',
+          borderRadius: '8px',
+          padding: '12px 16px',
+          color: '#ff8b8b',
+          fontSize: '13px',
+          marginBottom: '16px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <div>
+            <strong>API Connection Offline.</strong> You are currently running in local-only fallback mode.
+          </div>
+          <button className="primary-command small" style={{ background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }} onClick={onReconnectApi}>
+            Reconnect
+          </button>
+        </div>
+      )}
       <div className="settings-grid">
         <InfoTile label="Workspace" value={workspace?.name ?? 'starting'} />
         <InfoTile
@@ -2033,9 +2241,16 @@ function SettingsView({
           </button>
         </div>
         {!workspace?.remoteWorkspaceId && (
-          <div className="settings-empty">
-            This workspace is not synced to a remote API workspace yet, so domains cannot
-            be registered from here.
+          <div className="settings-empty" style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'start' }}>
+            <div>
+              This workspace is not synced to a remote API workspace yet, so domains cannot
+              be registered from here.
+            </div>
+            {context && context.workspace.id !== 'local' && (
+              <button className="primary-command small" onClick={onSyncWorkspace}>
+                Sync workspace to remote API
+              </button>
+            )}
           </div>
         )}
         {loadingDomains ? (
