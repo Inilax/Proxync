@@ -145,6 +145,9 @@ export function DomainsSettings({ workspace }: DomainsSettingsProps) {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <span style={{ fontSize: 16 }}>🌐</span>
                       <strong style={{ color: 'var(--text-primary)', fontSize: 14 }}>{dom.name}</strong>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        {isExpanded ? '▲ Click to collapse' : '▼ Click to view DNS records'}
+                      </span>
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -166,10 +169,18 @@ export function DomainsSettings({ workspace }: DomainsSettingsProps) {
                   {/* Expanded Verification Details */}
                   {isExpanded && (
                     <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border-subtle)', background: 'rgba(0,0,0,0.1)' }}>
-                      {dom.verified ? (
+                       {dom.verified ? (
                         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                           <p style={{ color: 'var(--green)', fontWeight: 600, marginBottom: 8 }}>✓ Ownership Verified</p>
                           <p style={{ marginBottom: 12 }}>Traffic to <code>{dom.name}</code> will now route to your active workspace tunnels.</p>
+                          
+                          <div style={{ background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', padding: '12px', borderRadius: 8, marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text-primary)' }}>Traffic Configuration:</div>
+                            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                              Point <code>{dom.name}</code> to your deployed relay host with an <strong>A/AAAA</strong> or <strong>CNAME</strong> record.
+                            </div>
+                          </div>
+
                           <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.2)', padding: '10px 14px', borderRadius: 8, color: 'var(--yellow)' }}>
                             ⚠️ <strong>Developer Reminder:</strong> TXT records are loose assets. For cleanliness and hygiene, please remember to remove the TXT record from your DNS settings once you no longer need this custom domain.
                           </div>
@@ -189,6 +200,13 @@ export function DomainsSettings({ workspace }: DomainsSettingsProps) {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <span><strong>Value:</strong> <code>proxync-verification={dom.verificationToken}</code></span>
                               <button className="btn btn-ghost" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => copyToClipboard(`proxync-verification=${dom.verificationToken}`)}>Copy</button>
+                            </div>
+                          </div>
+
+                          <div style={{ background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', padding: '12px', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text-primary)' }}>Traffic Routing Record:</div>
+                            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                              Point <code>{dom.name}</code> to your deployed relay host with an <strong>A/AAAA</strong> or <strong>CNAME</strong> record.
                             </div>
                           </div>
 

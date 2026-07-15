@@ -52,12 +52,9 @@ export class DomainsService {
 
   async verify(userId: string, workspaceId: string, domainId: string) {
     const domain = await this.findOne(userId, workspaceId, domainId);
-    if (domain.verified) {
-      return domain;
-    }
 
-    // Auto-verify localtest.me domains in development mode for easy local testing
-    if (process.env.NODE_ENV === 'development' || domain.name.endsWith('localtest.me')) {
+    // Auto-verify localtest.me domains for easy local testing
+    if (domain.name.endsWith('localtest.me')) {
       return this.prisma.domain.update({
         where: { id: domainId },
         data: { verified: true },
@@ -67,19 +64,48 @@ export class DomainsService {
     const expectedRecord = `proxync-verification=${domain.verificationToken}`;
     const txtHost = `_proxync.${domain.name}`;
 
+    // 1. Verify Ownership TXT Record
     let txtRecords: string[][] = [];
     try {
       txtRecords = await dns.promises.resolveTxt(txtHost);
     } catch (err: any) {
       console.error(`DNS query failed for ${txtHost}:`, err.message);
-      throw new ForbiddenException(`TXT record for ${txtHost} not found or could not be resolved.`);
+      throw new ForbiddenException(`TXT verification record for ${txtHost} not found. Ensure you add a TXT record with value: ${expectedRecord}`);
     }
 
     const flatRecords = txtRecords.flat();
-    const verified = flatRecords.some(rec => rec.trim() === expectedRecord);
+    const txtVerified = flatRecords.some(rec => rec.trim() === expectedRecord);
 
-    if (!verified) {
+    if (!txtVerified) {
       throw new ForbiddenException(`TXT verification record found but does not match expected value: ${expectedRecord}`);
+    }
+
+    // 2. Verify Traffic Routing Record (CNAME or A pointing to relay server base domain)
+    const relayBase = process.env.RELAY_SUBDOMAIN_BASE || 'localtest.me';
+    let isConfigured = false;
+
+    try {
+      // Check A records for both domain and relayBase
+      const [domainIps, relayIps] = await Promise.all([
+        dns.promises.resolve4(domain.name).catch(() => [] as string[]),
+        dns.promises.resolve4(relayBase).catch(() => [] as string[]),
+      ]);
+
+      if (domainIps.length > 0 && relayIps.length > 0) {
+        isConfigured = domainIps.some(ip => relayIps.includes(ip));
+      }
+
+      // Check CNAME record as fallback
+      if (!isConfigured) {
+        const cnames = await dns.promises.resolveCname(domain.name).catch(() => [] as string[]);
+        isConfigured = cnames.some(cname => cname.endsWith(relayBase) || cname === relayBase);
+      }
+    } catch (err) {
+      // Ignore resolution errors and let the failure throw
+    }
+
+    if (!isConfigured) {
+      throw new ForbiddenException(`Ownership TXT record verified, but the domain does not point to your relay host (${relayBase}). Please configure an A record pointing to ${relayBase} or a CNAME record.`);
     }
 
     return this.prisma.domain.update({

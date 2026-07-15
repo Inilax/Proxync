@@ -82,7 +82,16 @@ export class TunnelsService implements OnModuleInit {
     const isDev = process.env.NODE_ENV !== 'production';
     const protocol = isDev ? 'http' : 'https';
     const portSuffix = isDev ? `:${process.env.PORT || 3000}` : '';
-    const publicUrl = `${protocol}://${subdomain}.${relayHost}${portSuffix}`;
+    
+    let publicUrl = `${protocol}://${subdomain}.${relayHost}${portSuffix}`;
+
+    const verifiedDomain = await this.prisma.domain.findFirst({
+      where: { workspaceId, verified: true },
+    });
+
+    if (verifiedDomain) {
+      publicUrl = `${protocol}://${verifiedDomain.name}${portSuffix}`;
+    }
 
     let passwordHash: string | null = null;
     if (dto.password) {
