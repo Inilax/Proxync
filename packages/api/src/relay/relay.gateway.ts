@@ -48,6 +48,16 @@ export class RelayGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     const redisUrl = this.config.get<string>('REDIS_URL') || 'redis://localhost:6379';
     this.redis = new Redis(redisUrl);
+
+    // Force close active connections when a workspace is purged
+    const { globalEvents } = require('../common/events');
+    globalEvents.on('workspace:deleted', (workspaceId: string) => {
+      try {
+        this.closeWorkspaceAgents(workspaceId);
+      } catch (err: any) {
+        this.logger.error(`Error closing workspace agents on event: ${err.message}`);
+      }
+    });
   }
 
   handleConnection(socket: WebSocket) {
@@ -77,6 +87,28 @@ export class RelayGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.workspaceMembers.delete(socketId);
       await this.redis.del(`presence:${member.workspaceId}:${member.userId}`);
       this.broadcastPresence(member.workspaceId);
+    }
+  }
+
+  closeWorkspaceAgents(workspaceId: string) {
+    this.logger.log(`Force closing all connections for workspace ${workspaceId}`);
+    for (const [subdomain, agent] of this.agents.entries()) {
+      if (agent.workspaceId === workspaceId) {
+        try {
+          agent.socket.close();
+        } catch {}
+        this.agents.delete(subdomain);
+        this.logger.log(`Purged agent socket for subdomain: ${subdomain}`);
+      }
+    }
+    for (const [socketId, member] of this.workspaceMembers.entries()) {
+      if (member.workspaceId === workspaceId) {
+        try {
+          member.socket.close();
+        } catch {}
+        this.workspaceMembers.delete(socketId);
+        this.logger.log(`Purged member socket for workspace: ${workspaceId}`);
+      }
     }
   }
 

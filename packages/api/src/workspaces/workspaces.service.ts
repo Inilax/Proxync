@@ -5,10 +5,13 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateWorkspaceDto, UpdateWorkspaceDto } from './dto/workspace.dto';
+import { globalEvents } from '../common/events';
 
 @Injectable()
 export class WorkspacesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+  ) {}
 
   async create(userId: string, dto: CreateWorkspaceDto) {
     return this.prisma.workspace.create({
@@ -69,11 +72,13 @@ export class WorkspacesService {
 
   async remove(userId: string, workspaceId: string) {
     await this.assertRole(userId, workspaceId, ['OWNER']);
-    await this.prisma.workspace.update({
+    // 1. Publish delete event to let RelayGateway close active agent sockets
+    globalEvents.emit('workspace:deleted', workspaceId);
+    // 2. Perform hard delete of workspace (cascades database deletes)
+    await this.prisma.workspace.delete({
       where: { id: workspaceId },
-      data: { deletedAt: new Date() },
     });
-    return { message: 'Workspace deleted' };
+    return { message: 'Workspace completely deleted and purged' };
   }
 
   async assertRole(
