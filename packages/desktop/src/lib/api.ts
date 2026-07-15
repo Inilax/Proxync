@@ -105,6 +105,8 @@ export const api = {
     create: (name: string) =>
       request<any>('/workspaces', { method: 'POST', body: { name } }),
     get: (id: string) => request<any>(`/workspaces/${id}`),
+    delete: (id: string) =>
+      request<any>(`/workspaces/${id}`, { method: 'DELETE' }),
   },
 
   domains: {
