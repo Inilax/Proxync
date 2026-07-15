@@ -101,6 +101,18 @@ pre,
   border-right: 1px solid var(--line);
   background: rgba(7, 16, 21, 0.92);
   backdrop-filter: blur(20px);
+  height: 100vh; /* Constrain height to viewport */
+  scrollbar-width: none; /* Hide scrollbar for Firefox */
+  -ms-overflow-style: none; /* Hide scrollbar for IE/Edge */
+}
+
+/* Hide scrollbar for Chrome, Safari, and Opera */
+.sidebar::-webkit-scrollbar {
+  display: none;
+}
+
+.sidebar > * {
+  flex-shrink: 0;
 }
 
 .brand-block {
@@ -383,15 +395,21 @@ pre,
   gap: 9px;
   max-width: 60vw;
   padding: 7px 14px;
-  border: 1px solid rgba(29, 215, 178, 0.34);
+  border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgba(5, 18, 17, 0.9);
-  color: var(--teal);
+  background: var(--bg-elevated);
+  color: var(--faint);
   font-size: 13px;
   font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.session-pill.active {
+  border: 1px solid rgba(29, 215, 178, 0.34);
+  background: rgba(5, 18, 17, 0.9);
+  color: var(--teal);
 }
 
 .window-actions {
