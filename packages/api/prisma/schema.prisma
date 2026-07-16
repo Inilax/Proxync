@@ -24,6 +24,7 @@ model User {
   messages       Message[]
   voiceParticipants VoiceParticipant[]
   refreshTokens  RefreshToken[]
+  domains        Domain[]
 
   @@map("users")
 }
@@ -61,7 +62,6 @@ model Workspace {
   channels         Channel[]
   bandwidthUsages  BandwidthUsage[]
   inviteTokens     InviteToken[]
-  domains          Domain[]
 
   @@map("workspaces")
 }
@@ -121,6 +121,7 @@ model Tunnel {
   region       String       @default("auto")
   status       TunnelStatus @default(ACTIVE)
   passwordHash String?
+  customDomain String?      @unique
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
   closedAt     DateTime?
@@ -261,15 +262,15 @@ model InviteToken {
 
 model Domain {
   id                String    @id @default(uuid())
-  workspaceId       String
+  userId            String
   name              String    @unique
   verificationToken String
   verified          Boolean   @default(false)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([workspaceId])
+  @@index([userId])
   @@map("domains")
 }

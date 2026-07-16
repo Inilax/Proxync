@@ -1,6 +1,5 @@
 import { Injectable, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { WorkspacesService } from '../workspaces/workspaces.service';
 import { CreateDomainDto } from './dto/domain.dto';
 import { randomBytes } from 'crypto';
 import * as dns from 'dns';
@@ -9,12 +8,9 @@ import * as dns from 'dns';
 export class DomainsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly workspacesService: WorkspacesService,
   ) {}
 
-  async create(userId: string, workspaceId: string, dto: CreateDomainDto) {
-    await this.workspacesService.assertRole(userId, workspaceId, ['OWNER', 'ADMIN']);
-
+  async create(userId: string, dto: CreateDomainDto) {
     const existing = await this.prisma.domain.findUnique({
       where: { name: dto.name },
     });
@@ -26,32 +22,30 @@ export class DomainsService {
 
     return this.prisma.domain.create({
       data: {
-        workspaceId,
+        userId,
         name: dto.name,
         verificationToken,
       },
     });
   }
 
-  async findAll(userId: string, workspaceId: string) {
-    await this.workspacesService.findOne(userId, workspaceId);
+  async findAll(userId: string) {
     return this.prisma.domain.findMany({
-      where: { workspaceId },
+      where: { userId },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async findOne(userId: string, workspaceId: string, domainId: string) {
-    await this.workspacesService.findOne(userId, workspaceId);
+  async findOne(userId: string, domainId: string) {
     const domain = await this.prisma.domain.findFirst({
-      where: { id: domainId, workspaceId },
+      where: { id: domainId, userId },
     });
     if (!domain) throw new NotFoundException('Domain not found');
     return domain;
   }
 
-  async verify(userId: string, workspaceId: string, domainId: string) {
-    const domain = await this.findOne(userId, workspaceId, domainId);
+  async verify(userId: string, domainId: string) {
+    const domain = await this.findOne(userId, domainId);
 
     // Auto-verify localtest.me domains for easy local testing
     if (domain.name.endsWith('localtest.me')) {
@@ -117,9 +111,8 @@ export class DomainsService {
     });
   }
 
-  async remove(userId: string, workspaceId: string, domainId: string) {
-    await this.workspacesService.assertRole(userId, workspaceId, ['OWNER', 'ADMIN']);
-    const domain = await this.findOne(userId, workspaceId, domainId);
+  async remove(userId: string, domainId: string) {
+    const domain = await this.findOne(userId, domainId);
 
     await this.prisma.domain.delete({
       where: { id: domain.id },
