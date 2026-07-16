@@ -1,0 +1,90 @@
+{
+  "name": "Proxync",
+  "version": "0.1.0",
+  "description": "Developer tunneling tool workspace studio",
+  "stack": {
+    "api": {
+      "framework": "NestJS (TypeScript)",
+      "database": "PostgreSQL 16 via Prisma ORM",
+      "caching_and_gateway": "Redis + ws package WebSockets"
+    },
+    "desktop": {
+      "framework": "Tauri v2 + React (TypeScript) + Vite",
+      "styling": "Vanilla CSS",
+      "system_commands": "Rust (Tauri commands)"
+    }
+  },
+  "ports": {
+    "api_control_plane": 3939,
+    "tauri_vite_dev": 1420,
+    "postgres_db": 5432,
+    "redis_cache": 6379
+  },
+  "database_models": {
+    "User": "Authentication, accounts, credentials (passwordHash), tokens, voice participants, message references",
+    "RefreshToken": "Secure JWT rotation credentials linked to User entities",
+    "Workspace": "Orchestrates memberships, invite tokens, channels, custom domains, and tunnels",
+    "Membership": "Controls role permissions (OWNER, ADMIN, MEMBER, VIEWER) for workspace access",
+    "ApiKey": "Exposes standard authorization credentials prefixed with 'opk_'",
+    "Tunnel": "Stores localPort, protocol, subdomain, region, status, and publicUrl for relay connections",
+    "RequestLog": "Stores request method, path, headers, durationMs, and captured body payloads",
+    "Channel": "Isolates TEXT or VOICE room contexts inside a workspace",
+    "Message": "Supports regular CHAT or yellow-card FEEDBACK message resolution inside text channels",
+    "VoiceParticipant": "Tracks active participants joined in voice rooms",
+    "BandwidthUsage": "Measures total bytesIn and bytesOut across tunnels for billing/limits check",
+    "InviteToken": "Generates invite tokens to register memberships inside a workspace",
+    "Domain": "Stores verificationToken and verified status for custom apex/subdomains"
+  },
+  "folder_structure": {
+    "packages/api": {
+      "description": "NestJS backend control-plane and tunneling API",
+      "subfolders": {
+        "prisma": "Database schema definitions, models configuration, and migrations setup",
+        "src/api-keys": "Management and bcrypt verification of opk_ API keys for workspace integrations",
+        "src/auth": "JWT authentication strategies, session token rotation, and route password hashing guards",
+        "src/channels": "Room creation and event gateways for TEXT and VOICE communication channels",
+        "src/common": "Decoupled global events dispatcher and general API configuration utils",
+        "src/domains": "Custom domain verification matching TXT tokens and DNS A/CNAME records status",
+        "src/health": "NestJS Terminus health check controller monitoring service status",
+        "src/members": "Workspace member invitations, user roles allocation, and workspace memberships CRUD",
+        "src/messages": "Coordinating textual chat messages and resolver tags inside TEXT channels",
+        "src/prisma": "Database Prisma client injection service wrapper to interact with PostgreSQL tables",
+        "src/relay": "The HTTP proxy gateway, TCP stream forwarder, and active agent WebSocket tunnels manager",
+        "src/requests": "Request inspector engine capturing requests metrics, duration, paths, headers, and logs",
+        "src/tunnels": "Tunnel state control panel creating and verifying subdomains for relays",
+        "src/workspaces": "Cascading deletion cleanups and multi-tenant workspaces configurations"
+      }
+    },
+    "packages/desktop": {
+      "description": "Vite + Tauri desktop client studio frontend",
+      "subfolders": {
+        "src/assets": "Global graphics, CSS variables design tokens, and branding elements",
+        "src/components": "Modular React widgets (ChatPanel, WorkspacePicker, DomainsSettings, WelcomeView)",
+        "src/lib": "Helper utilities, shared API request client configurations, and TypeScript type declarations",
+        "src/screens": "Workspace screen views (LobbyView, ApiKeysView, TunnelsView)",
+        "src-tauri/src": "Rust native backend coordinating local port scanner probes and WebSocket connection pipes",
+        "src-tauri/capabilities": "Security permission limit policies mapping desktop app file and network accesses"
+      }
+    }
+  },
+  "directory_map": {
+    "packages/api": {
+      "prisma/schema.prisma": "Data structure ground truth and relationship mapper",
+      "src/main.ts": "API server entrypoint, binds to port 3939 with Swagger documentation at /api",
+      "src/app.module.ts": "Orchestrates API modules and middleware mappings",
+      "src/common/events.ts": "Decoupled global Node EventEmitter broker to avoid NestJS module circular references",
+      "src/relay/relay.gateway.ts": "Coordinating WebSocket gateway that terminates agent sockets and handles traffic streams",
+      "src/relay/relay.middleware.ts": "Handles request routing and bandwidth quota checking",
+      "src/workspaces/workspaces.service.ts": "Handles workspace CRUD, triggers workspace:deleted pub/sub events on remove",
+      "src/domains/domains.service.ts": "Implements DNS TXT verification token checks and CNAME/A route verification",
+      "src/tunnels/tunnels.service.ts": "Manages tunnel creation, custom domain routes, and status checks"
+    },
+    "packages/desktop": {
+      "src-tauri/src/lib.rs": "Handles tokio-tungstenite WebSocket relays, parallel port scanners, and local IP querying",
+      "src/App.tsx": "Main frontend application shell and workspace orchestration",
+      "src/index.css": "Vanilla styling layout, variables, responsive rules, and onboarding styles",
+      "src/lib/api.ts": "Standard API endpoint mapping and access token lifecycle refresh interceptors",
+      "src/components/DomainsSettings.tsx": "Custom domain registrar controls featuring step-by-step DNS setup instructions"
+    }
+  }
+}

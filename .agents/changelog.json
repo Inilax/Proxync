@@ -1,0 +1,33 @@
+{
+  "logs": [
+    {
+      "timestamp": "2026-07-16T13:12:00+05:30",
+      "branchName": "main",
+      "modifiedFiles": [
+        "packages/api/src/main.ts",
+        "packages/api/src/tunnels/tunnels.service.ts",
+        "packages/api/.env",
+        "packages/desktop/src-tauri/src/lib.rs",
+        "packages/desktop/src/App.tsx",
+        "packages/desktop/src/components/ChatPanel.tsx",
+        "packages/desktop/src/lib/api.ts",
+        "packages/desktop/src/screens/ApiKeysView.tsx",
+        "packages/desktop/src/screens/TunnelsView.tsx",
+        "packages/desktop/src/index.css"
+      ],
+      "featureSummary": "Shifted API server to custom port 3939 to avoid local developer port conflicts; introduced workspace onboarding experience for zero-workspace startup; implemented cancel option for local LAN shares in offline modes; resolved NestJS module circular references via decoupled events broker; added active tunnel state hydration on startup; resolved sidebar layout overlapping via scrollbar overrides."
+    },
+    {
+      "timestamp": "2026-07-16T13:25:00+05:30",
+      "branchName": "feature/main-agents-and-env-config",
+      "modifiedFiles": [
+        ".agents/AGENTS.md",
+        ".agents/architecture.json",
+        ".agents/changelog.json",
+        ".env.example",
+        "packages/api/.env.example"
+      ],
+      "featureSummary": "Created workspace rules (AGENTS.md), system architecture recon map (architecture.json), and release logs (changelog.json); shifted .env.example from root to packages/api/ with updated default port 3939."
+    }
+  ]
+}
