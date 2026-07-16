@@ -85,6 +85,7 @@ Or just open an issue. Seriously, even "this button looks weird" is helpful.
 
 ### What's next
 
+- [ ] **CLI version** — `npx proxync` to tunnel, capture, and inspect from your terminal. No GUI needed.
 - [ ] Agentic debugger — an AI friend that watches your traffic and flags issues before you do
 - [ ] Voice rooms (WebRTC)
 - [ ] Browser-based tunnel viewer
