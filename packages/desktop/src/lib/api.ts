@@ -216,7 +216,7 @@ export interface LocalWorkspaceContext {
     name: string;
     email: string;
   };
-  workspace: {
+  workspace?: {
     id: string;
     name: string;
   };
@@ -227,16 +227,15 @@ export async function ensureLocalWorkspace(): Promise<LocalWorkspaceContext> {
     const user = await api.auth.me();
     let workspaces = await api.workspaces.list();
 
-    if (workspaces.length === 0) {
-      await api.workspaces.create('Local Project');
-      workspaces = await api.workspaces.list();
-    }
-
     const savedWorkspaceId = localStorage.getItem('proxync_workspace');
     const workspace =
       workspaces.find((item) => item.id === savedWorkspaceId) ?? workspaces[0];
 
-    localStorage.setItem('proxync_workspace', workspace.id);
+    if (workspace) {
+      localStorage.setItem('proxync_workspace', workspace.id);
+    } else {
+      localStorage.removeItem('proxync_workspace');
+    }
     return { user, workspace };
   }
 

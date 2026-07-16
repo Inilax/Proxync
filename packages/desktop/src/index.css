@@ -2039,3 +2039,51 @@ pre,
     gap: 12px;
   }
 }
+
+/* ==========================================
+   Onboarding Welcome Screen
+   ========================================== */
+.onboarding-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 60px 30px;
+  background: var(--panel);
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  max-width: 600px;
+  margin: 60px auto;
+  box-shadow: var(--shadow);
+}
+
+.onboarding-welcome .welcome-icon {
+  font-size: 52px;
+  margin-bottom: 24px;
+  animation: welcomeFloat 3s ease-in-out infinite;
+}
+
+.onboarding-welcome h2 {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 14px;
+}
+
+.onboarding-welcome p {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+  max-width: 460px;
+  margin: 0;
+}
+
+@keyframes welcomeFloat {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}

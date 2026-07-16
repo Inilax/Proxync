@@ -172,7 +172,7 @@ export default function App() {
   const [context, setContext] = useState<LocalWorkspaceContext | null>(null);
   const [bootstrapError, setBootstrapError] = useState('');
   const [workspaces, setWorkspaces] = useState<WorkspaceConfig[]>([]);
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState('');
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [processes, setProcesses] = useState<ProcessCandidate[]>([]);
   const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
@@ -252,28 +252,36 @@ export default function App() {
         setBootstrapError('');
 
         const hydrated = hydrateStoredWorkspaces(
-          nextContext.workspace,
+          nextContext.workspace ?? null,
           appSettings.guardrails,
           appSettings.defaultProjectRootPath,
         );
         setWorkspaces(hydrated.workspaces);
-        setActiveWorkspaceId(hydrated.activeWorkspaceId);
-
+        if (hydrated.workspaces.length === 0) {
+          setActiveWorkspaceId(null);
+          setMainView('lobby');
+        } else {
+          setActiveWorkspaceId(hydrated.activeWorkspaceId);
+        }
       })
       .catch((error: Error) => {
         if (!mounted) return;
         setBootstrapError(error.message);
         setContext({
           user: { id: 'local', name: 'Local Developer', email: 'local@proxync.dev' },
-          workspace: { id: 'local', name: 'Local Project' },
         });
         const fallback = hydrateStoredWorkspaces(
-          { id: 'local', name: 'Local Project' },
+          null,
           appSettings.guardrails,
           appSettings.defaultProjectRootPath,
         );
         setWorkspaces(fallback.workspaces);
-        setActiveWorkspaceId(fallback.activeWorkspaceId);
+        if (fallback.workspaces.length === 0) {
+          setActiveWorkspaceId(null);
+          setMainView('lobby');
+        } else {
+          setActiveWorkspaceId(fallback.activeWorkspaceId);
+        }
       });
 
     return () => {
@@ -286,7 +294,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (workspaces.length === 0 || !activeWorkspaceId) return;
+    if (workspaces.length === 0) {
+      localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify([]));
+      localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
+      return;
+    }
+    if (!activeWorkspaceId) return;
     localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify(workspaces));
     localStorage.setItem(ACTIVE_WORKSPACE_KEY, activeWorkspaceId);
   }, [workspaces, activeWorkspaceId]);
@@ -449,7 +462,7 @@ export default function App() {
     if (!name) return;
 
     let remoteWorkspaceId: string | undefined;
-    if (context && context.workspace.id !== 'local') {
+    if (context && context.workspace && context.workspace.id !== 'local') {
       try {
         const remote = await api.workspaces.create(name);
         remoteWorkspaceId = remote.id;
@@ -467,6 +480,7 @@ export default function App() {
     setWorkspaces((current) => [workspace, ...current]);
     setActiveWorkspaceId(workspace.id);
     setNewWorkspaceName('');
+    setMainView('welcome');
     showToast(`Workspace "${name}" created`, 'success');
   }
 
@@ -510,14 +524,10 @@ export default function App() {
         setActiveWorkspaceId(remaining[0].id);
         localStorage.setItem(ACTIVE_WORKSPACE_KEY, remaining[0].id);
       } else {
-        const newId = crypto.randomUUID();
-        const initial = createWorkspaceConfig('Local Project', undefined, appSettings.guardrails, appSettings.defaultProjectRootPath);
-        initial.id = newId;
-        const newWorkspaces = [initial];
-        setWorkspaces(newWorkspaces);
-        setActiveWorkspaceId(newId);
-        localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify(newWorkspaces));
-        localStorage.setItem(ACTIVE_WORKSPACE_KEY, newId);
+        setActiveWorkspaceId(null);
+        localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
+        localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify([]));
+        setMainView('lobby');
       }
     }
 
@@ -546,9 +556,10 @@ export default function App() {
       languageHint: detectLanguageLabel(process),
     }));
 
-    if (!activeWorkspace.remoteWorkspaceId || !context || context.workspace.id === 'local') {
+    if (!activeWorkspace.remoteWorkspaceId || !context || !context.workspace || context.workspace.id === 'local') {
       setSelectedProcessId(process.id);
       setMainView('process');
+      setSharingPort(process.port);
       showToast(
         'Saved this process configuration locally. Connect the API to create a public tunnel.',
         'info',
@@ -973,7 +984,7 @@ export default function App() {
 
         <div className="workspace-summary">
           <span className="workspace-summary-label">Active workspace</span>
-          <strong>{activeWorkspace?.name ?? 'Loading workspace'}</strong>
+          <strong>{activeWorkspace?.name ?? 'No active workspace'}</strong>
           <small>{activeWorkspace?.languageHint ?? 'Workspace lobby keeps project configs separate'}</small>
           <button className="sidebar-action secondary" onClick={() => setMainView('lobby')}>
             Open workspace lobby
@@ -989,43 +1000,53 @@ export default function App() {
           </button>
           <button
             className={mainView === 'welcome' ? 'active' : ''}
+            disabled={!activeWorkspace}
             onClick={() => setMainView('welcome')}
           >
             Overview
           </button>
           <button
             className={mainView === 'traffic' ? 'active' : ''}
+            disabled={!activeWorkspace}
             onClick={() => setMainView('traffic')}
           >
             Traffic
           </button>
           <button
             className={mainView === 'postman' ? 'active' : ''}
+            disabled={!activeWorkspace}
             onClick={() => setMainView('postman')}
           >
             Postman
           </button>
           <button
             className={mainView === 'swagger' ? 'active' : ''}
+            disabled={!activeWorkspace}
             onClick={() => setMainView('swagger')}
           >
             Swagger
           </button>
           <button
             className={mainView === 'observability' ? 'active' : ''}
+            disabled={!activeWorkspace}
             onClick={() => setMainView('observability')}
           >
             Observability
           </button>
           <button
             className={mainView === 'settings' ? 'active' : ''}
+            disabled={!activeWorkspace}
             onClick={() => setMainView('settings')}
           >
             Settings
           </button>
         </nav>
 
-        <button className="sidebar-action secondary" onClick={() => setDiscoverOpen(true)}>
+        <button
+          className="sidebar-action secondary"
+          disabled={!activeWorkspace}
+          onClick={() => setDiscoverOpen(true)}
+        >
           Discover process
         </button>
 
@@ -1107,20 +1128,22 @@ export default function App() {
         </div>
 
         <div className="local-card">
-          <span>{activeWorkspace?.name ?? context?.workspace.name ?? 'Starting workspace'}</span>
+          <span>{activeWorkspace?.name ?? context?.workspace?.name ?? 'No Workspace'}</span>
           <small>{bootstrapError ? 'API offline' : 'Ready'}</small>
         </div>
       </aside>
 
       <section className="workspace-shell">
         <header className="topbar">
-          <div className={activeTunnel ? 'session-pill active' : 'session-pill'}>
-            <span className={activeTunnel ? 'live-ring active' : 'live-ring'} />
+          <div className={(activeTunnel || sharingPort) ? 'session-pill active' : 'session-pill'}>
+            <span className={(activeTunnel || sharingPort) ? 'live-ring active' : 'live-ring'} />
             {activeTunnel
               ? activeTunnel.publicUrl
-              : activeWorkspace?.selectedProfileId
-                ? 'Saved share ready to rerun'
-                : 'No active tunnel'}
+              : sharingPort
+                ? `LAN share active :${sharingPort}`
+                : activeWorkspace?.selectedProfileId
+                  ? 'Saved share ready to rerun'
+                  : 'No active tunnel'}
           </div>
           <div className="window-actions">
             <button onClick={() => setPanelView(panelView === 'chat' ? null : 'chat')}>
@@ -1191,6 +1214,7 @@ export default function App() {
               onDiscover={() => setDiscoverOpen(true)}
               onShare={shareProcess}
               onStop={stopTunnel}
+              onStopLocalShare={() => setSharingPort(null)}
               onCopy={copyText}
               onImportStarterRequests={importStarterRequests}
             />
@@ -1388,54 +1412,62 @@ function LobbyView({
         </div>
       </section>
 
-      <section className="lobby-grid">
-        {workspaces.map((workspace) => (
-          <article
-            key={workspace.id}
-            className={
-              workspace.id === activeWorkspaceId
-                ? 'lobby-card active'
-                : 'lobby-card'
-            }
-          >
-            <div className="lobby-card-head">
-              <div>
-                <strong>{workspace.name}</strong>
-                <small>{workspace.languageHint}</small>
+      {workspaces.length === 0 ? (
+        <div className="onboarding-welcome">
+          <div className="welcome-icon">🚀</div>
+          <h2>Welcome to Proxync!</h2>
+          <p>Get started by creating your very first workspace above. Isolated workspaces keep your projects, shares, guardrails, and APIs organized.</p>
+        </div>
+      ) : (
+        <section className="lobby-grid">
+          {workspaces.map((workspace) => (
+            <article
+              key={workspace.id}
+              className={
+                workspace.id === activeWorkspaceId
+                  ? 'lobby-card active'
+                  : 'lobby-card'
+              }
+            >
+              <div className="lobby-card-head">
+                <div>
+                  <strong>{workspace.name}</strong>
+                  <small>{workspace.languageHint}</small>
+                </div>
+                <span className="badge neutral">
+                  {workspace.id === activeWorkspaceId ? 'Current' : 'Saved'}
+                </span>
               </div>
-              <span className="badge neutral">
-                {workspace.id === activeWorkspaceId ? 'Current' : 'Saved'}
-              </span>
-            </div>
-            <div className="lobby-card-meta">
-              <span>{workspace.profiles.length} saved shares</span>
-              <span>{workspace.savedRequests.length} requests</span>
-              <span>{workspace.guardrails.authMode} auth</span>
-            </div>
-            <p>{workspace.notes || 'No notes yet. This workspace is ready for project-specific context.'}</p>
-            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-              <button
-                className="primary-command small"
-                onClick={() => onSelectWorkspace(workspace.id)}
-              >
-                Open workspace
-              </button>
-              <button
-                className="danger-command small"
-                style={{
-                  background: 'rgba(239, 68, 68, 0.1)',
-                  border: '1px solid rgba(239, 68, 68, 0.2)',
-                  color: '#ff8b8b',
-                  cursor: 'pointer'
-                }}
-                onClick={() => onDeleteWorkspace(workspace.id)}
-              >
-                Delete
-              </button>
-            </div>
-          </article>
-        ))}
-      </section>
+              <div className="lobby-card-meta">
+                <span>{workspace.profiles.length} saved shares</span>
+                <span>{workspace.savedRequests.length} requests</span>
+                <span>{workspace.guardrails.authMode} auth</span>
+              </div>
+              <p>{workspace.notes || 'No notes yet. This workspace is ready for project-specific context.'}</p>
+              <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                <button
+                  className="primary-command small"
+                  onClick={() => onSelectWorkspace(workspace.id)}
+                >
+                  Open workspace
+                </button>
+                <button
+                  className="danger-command small"
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                    color: '#ff8b8b',
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => onDeleteWorkspace(workspace.id)}
+                >
+                  Delete
+                </button>
+              </div>
+            </article>
+          ))}
+        </section>
+      )}
     </div>
   );
 }
@@ -1469,6 +1501,7 @@ function ProcessView({
   onDiscover,
   onShare,
   onStop,
+  onStopLocalShare,
   onCopy,
   onImportStarterRequests,
 }: {
@@ -1483,6 +1516,7 @@ function ProcessView({
   onDiscover: () => void;
   onShare: (process: ProcessCandidate) => void;
   onStop: (tunnel: Tunnel) => void;
+  onStopLocalShare: () => void;
   onCopy: (value: string, message: string) => void;
   onImportStarterRequests: () => void;
 }) {
@@ -1530,13 +1564,16 @@ function ProcessView({
           <button className="danger-command" onClick={() => onStop(tunnel)}>
             Stop tunnel
           </button>
+        ) : sharingPort === processLike.port ? (
+          <button className="danger-command" onClick={onStopLocalShare}>
+            Stop sharing
+          </button>
         ) : process ? (
           <button
             className="primary-command small"
-            disabled={sharingPort === processLike.port}
             onClick={() => onShare(process)}
           >
-            {sharingPort === processLike.port ? 'Sharing...' : 'Share process'}
+            Share process
           </button>
         ) : (
           <button className="primary-command small" onClick={onDiscover}>
@@ -2246,7 +2283,7 @@ function SettingsView({
               This workspace is not synced to a remote API workspace yet, so domains cannot
               be registered from here.
             </div>
-            {context && context.workspace.id !== 'local' && (
+            {context && context.workspace && context.workspace.id !== 'local' && (
               <button className="primary-command small" onClick={onSyncWorkspace}>
                 Sync workspace to remote API
               </button>
@@ -2487,28 +2524,29 @@ async function readNativeProcesses(): Promise<ProcessCandidate[]> {
 }
 
 function hydrateStoredWorkspaces(
-  remoteWorkspace: { id: string; name: string },
+  remoteWorkspace: { id: string; name: string } | null,
   defaultGuardrails: Guardrails,
   defaultProjectRootPath: string,
 ) {
   const stored = localStorage.getItem(LOCAL_WORKSPACES_KEY);
-  const parsed = stored ? (JSON.parse(stored) as WorkspaceConfig[]) : [];
+  let parsed = stored ? (JSON.parse(stored) as WorkspaceConfig[]) : [];
 
-  if (parsed.length === 0) {
-    const initial = createWorkspaceConfig(
-      remoteWorkspace.name,
-      remoteWorkspace.id,
-      defaultGuardrails,
-      defaultProjectRootPath,
-    );
-    return {
-      workspaces: [initial],
-      activeWorkspaceId: initial.id,
-    };
+  if (remoteWorkspace) {
+    const exists = parsed.some((w) => w.remoteWorkspaceId === remoteWorkspace.id);
+    if (!exists) {
+      const initial = createWorkspaceConfig(
+        remoteWorkspace.name,
+        remoteWorkspace.id,
+        defaultGuardrails,
+        defaultProjectRootPath,
+      );
+      parsed = [initial, ...parsed];
+      localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify(parsed));
+    }
   }
 
   const activeWorkspaceId =
-    localStorage.getItem(ACTIVE_WORKSPACE_KEY) ?? parsed[0].id;
+    localStorage.getItem(ACTIVE_WORKSPACE_KEY) ?? (parsed.length > 0 ? parsed[0].id : null);
   return {
     workspaces: parsed,
     activeWorkspaceId,
