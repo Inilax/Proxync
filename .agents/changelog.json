@@ -40,6 +40,23 @@
         ".agents/changelog.json"
       ],
       "featureSummary": "Reordered and styled custom domains DNS configuration table to match Namesilo/GoDaddy layout; implemented public direct DNS resolver (1.1.1.1/8.8.8.8) to bypass local cached lookup delays; added explicit WAN (public tunnel) vs LAN (local server) share choices; fixed active tunnel state resetting upon re-entering workspaces from Lobby."
+    },
+    {
+      "timestamp": "2026-07-16T23:15:00+05:30",
+      "branchName": "feature/main-shared-domains-pool",
+      "modifiedFiles": [
+        "packages/api/prisma/schema.prisma",
+        "packages/api/src/domains/domains.controller.ts",
+        "packages/api/src/domains/domains.service.ts",
+        "packages/api/src/relay/relay.middleware.ts",
+        "packages/api/src/tunnels/dto/tunnel.dto.ts",
+        "packages/api/src/tunnels/tunnels.service.ts",
+        "packages/desktop/src-tauri/src/lib.rs",
+        "packages/desktop/src/App.tsx",
+        "packages/desktop/src/components/DomainsSettings.tsx",
+        "packages/desktop/src/lib/api.ts"
+      ],
+      "featureSummary": "Refactored custom domains relationship from workspace level to user level to enable sharing domains globally across workspaces; added customDomain unique reference to Tunnels; implemented DomainSelectDialog dropdown choice for exposing tunnels on random subdomains, custom domains, or public Localtunnel proxies; integrated Localtunnel client spawning in Rust layer routing through API port 3939 to support 100% traffic capturing/logging; added local WiFi LAN Tunnel resolver and premium helper select card styling with preferred subdomain selection support."
     }
   ]
 }
