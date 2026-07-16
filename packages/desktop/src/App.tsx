@@ -217,6 +217,7 @@ export default function App() {
   const [domainDraft, setDomainDraft] = useState('');
   const [loadingDomains, setLoadingDomains] = useState(false);
   const [busyDomainId, setBusyDomainId] = useState<string | null>(null);
+  const [sharingProcessCandidate, setSharingProcessCandidate] = useState<ProcessCandidate | null>(null);
   const [localIp, setLocalIp] = useState<string>('127.0.0.1');
 
   const activeWorkspace = useMemo(
@@ -425,7 +426,7 @@ export default function App() {
 
     setLoadingDomains(true);
     api.domains
-      .list(activeWorkspace.remoteWorkspaceId)
+      .list()
       .then((items) => setDomains(items))
       .catch(() => setDomains([]))
       .finally(() => setLoadingDomains(false));
@@ -565,7 +566,108 @@ export default function App() {
     );
   }
 
-  async function shareProcess(process: ProcessCandidate) {
+  function initiatePublicShare(process: ProcessCandidate) {
+    setSharingProcessCandidate(process);
+  }
+
+  async function shareProcessLocaltunnel(process: ProcessCandidate, customSubdomain?: string) {
+    if (!activeWorkspace) return;
+
+    const starterScan = buildStarterRequests(process);
+    setStarterSuggestions(starterScan);
+    setSavedRequests((current) => mergeRequests(current, starterScan));
+    updateActiveWorkspace((workspace) => ({
+      ...workspace,
+      profiles: upsertProfile(workspace.profiles, process, starterScan.length),
+      selectedProfileId: makeProfileId(process),
+      languageHint: detectLanguageLabel(process),
+    }));
+
+    if (!activeWorkspace.remoteWorkspaceId || !context || !context.workspace || context.workspace.id === 'local') {
+      setSelectedProcessId(process.id);
+      setMainView('process');
+      setSharingPort(process.port);
+      showToast(
+        'Saved this process configuration locally. Connect the API to create a public tunnel.',
+        'info',
+      );
+      return;
+    }
+
+    const token = getToken();
+    if (!token) {
+      showToast('Local session is not ready yet', 'error');
+      return;
+    }
+
+    setSharingPort(process.port);
+    try {
+      localStorage.setItem('proxync_workspace', activeWorkspace.remoteWorkspaceId);
+      // 1. Create a regular database registered tunnel on the backend
+      const tunnel = await api.tunnels.create(
+        activeWorkspace.remoteWorkspaceId,
+        process.port,
+        'http',
+        undefined,
+      );
+      const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
+      const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
+
+      // 2. Open our agent websocket connection to NestJS relay
+      await invoke('open_tunnel', {
+        tunnelId: tunnel.id,
+        localPort: process.port,
+        token,
+        workspaceId: activeWorkspace.remoteWorkspaceId,
+        relayUrl,
+      });
+
+      // 3. Spawn localtunnel pointing to our NestJS port (3939)
+      const suggestedSub = customSubdomain || `${activeWorkspace.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${process.port}`;
+      showToast('Starting localtunnel service...', 'info');
+      
+      const localtunnelUrl = await invoke<string>('open_localtunnel', {
+        tunnelId: tunnel.id,
+        localPort: 3939, // Route traffic to the local NestJS server port!
+        subdomain: suggestedSub,
+      });
+
+      // 4. Overwrite the publicUrl with the Localtunnel public address
+      const localtunnelBoundTunnel: Tunnel = {
+        ...tunnel,
+        publicUrl: localtunnelUrl,
+        subdomain: localtunnelUrl.replace('https://', '').replace('.localtunnel.me', ''),
+      };
+
+      setActiveTunnel(localtunnelBoundTunnel);
+      setTunnels((current) => [localtunnelBoundTunnel, ...current.filter((item) => item.id !== tunnel.id)]);
+      setSelectedProcessId(process.id);
+      setMainView('process');
+      setDiscoverOpen(false);
+      setRequests([]);
+
+      showToast(`Localtunnel is active! URL: ${localtunnelUrl}`, 'success');
+
+      updateActiveWorkspace((workspace) => ({
+        ...workspace,
+        profiles: workspace.profiles.map((p) =>
+          p.id === makeProfileId(process)
+            ? {
+                ...p,
+                lastSharedAt: new Date().toISOString(),
+                lastTunnelUrl: localtunnelUrl,
+              }
+            : p
+        ),
+      }));
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), 'error');
+    } finally {
+      setSharingPort(null);
+    }
+  }
+
+  async function shareProcess(process: ProcessCandidate, customDomain?: string) {
     if (!activeWorkspace) return;
 
     const starterScan = buildStarterRequests(process);
@@ -602,6 +704,8 @@ export default function App() {
         activeWorkspace.remoteWorkspaceId,
         process.port,
         'http',
+        undefined,
+        customDomain,
       );
       const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
       const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
@@ -656,10 +760,12 @@ export default function App() {
   }
 
   async function stopTunnel(tunnel: Tunnel) {
-    if (!activeWorkspace?.remoteWorkspaceId) return;
+    if (!activeWorkspace) return;
     try {
       await invoke('close_tunnel', { tunnelId: tunnel.id }).catch(() => undefined);
-      await api.tunnels.close(activeWorkspace.remoteWorkspaceId, tunnel.id);
+      if (!tunnel.id.startsWith('lt-') && activeWorkspace.remoteWorkspaceId) {
+        await api.tunnels.close(activeWorkspace.remoteWorkspaceId, tunnel.id);
+      }
       setTunnels((current) =>
         current.map((item) =>
           item.id === tunnel.id ? { ...item, status: 'CLOSED' } : item,
@@ -888,7 +994,6 @@ export default function App() {
     setBusyDomainId('new');
     try {
       const created = await api.domains.create(
-        activeWorkspace.remoteWorkspaceId,
         domainDraft.trim(),
       );
       setDomains((current) => [created, ...current]);
@@ -905,7 +1010,7 @@ export default function App() {
     if (!activeWorkspace?.remoteWorkspaceId) return;
     setBusyDomainId(domainId);
     try {
-      const updated = await api.domains.verify(activeWorkspace.remoteWorkspaceId, domainId);
+      const updated = await api.domains.verify(domainId);
       setDomains((current) =>
         current.map((domain) => (domain.id === domainId ? updated : domain)),
       );
@@ -921,7 +1026,7 @@ export default function App() {
     if (!activeWorkspace?.remoteWorkspaceId) return;
     setBusyDomainId(domainId);
     try {
-      await api.domains.delete(activeWorkspace.remoteWorkspaceId, domainId);
+      await api.domains.delete(domainId);
       setDomains((current) => current.filter((domain) => domain.id !== domainId));
       showToast('Domain removed', 'success');
     } catch (error) {
@@ -1170,7 +1275,7 @@ export default function App() {
           <div className={(activeTunnel || sharingPort) ? 'session-pill active' : 'session-pill'}>
             <span className={(activeTunnel || sharingPort) ? 'live-ring active' : 'live-ring'} />
             {activeTunnel
-              ? activeTunnel.publicUrl
+              ? `Public: ${activeTunnel.publicUrl} | LAN Tunnel: http://${localIp}:3939`
               : sharingPort
                 ? `LAN share active :${sharingPort}`
                 : activeWorkspace?.selectedProfileId
@@ -1244,7 +1349,7 @@ export default function App() {
               hasVerifiedDomain={domains.some((d) => d.verified)}
               localIp={localIp}
               onDiscover={() => setDiscoverOpen(true)}
-              onShare={shareProcess}
+              onShare={initiatePublicShare}
               onShareLocal={shareProcessLocal}
               onStop={stopTunnel}
               onStopLocalShare={() => setSharingPort(null)}
@@ -1342,8 +1447,24 @@ export default function App() {
           sharingPort={sharingPort}
           onClose={() => setDiscoverOpen(false)}
           onRefresh={discoverProcesses}
-          onShare={shareProcess}
+          onShare={initiatePublicShare}
           onShareLocal={shareProcessLocal}
+        />
+      )}
+
+      {sharingProcessCandidate && (
+        <DomainSelectDialog
+          process={sharingProcessCandidate}
+          domains={domains.filter((d) => d.verified)}
+          onClose={() => setSharingProcessCandidate(null)}
+          onConfirm={(selectedOption, ltSubdomain) => {
+            if (selectedOption === 'localtunnel') {
+              void shareProcessLocaltunnel(sharingProcessCandidate, ltSubdomain);
+            } else {
+              void shareProcess(sharingProcessCandidate, selectedOption === 'default' ? undefined : selectedOption);
+            }
+            setSharingProcessCandidate(null);
+          }}
         />
       )}
 
@@ -1739,20 +1860,39 @@ function ProcessView({
             </div>
           )}
           {isActive && tunnel && (
-            <div className="url-line">
-              <span>Public</span>
-              <code>{tunnel.publicUrl}</code>
-              <button
-                onClick={() =>
-                  onCopy(
-                    tunnel.publicUrl,
-                    'Share URL copied',
-                  )
-                }
-              >
-                Copy
-              </button>
-            </div>
+            <>
+              <div className="url-line">
+                <span>Public</span>
+                <code>{tunnel.publicUrl}</code>
+                <button
+                  onClick={() =>
+                    onCopy(
+                      tunnel.publicUrl,
+                      'Share URL copied',
+                    )
+                  }
+                >
+                  Copy
+                </button>
+              </div>
+              <div className="url-line">
+                <span>LAN Tunnel</span>
+                <code>http://{localIp}:3939</code>
+                <button
+                  onClick={() =>
+                    onCopy(
+                      `http://${localIp}:3939`,
+                      'LAN Tunnel URL copied',
+                    )
+                  }
+                >
+                  Copy
+                </button>
+              </div>
+              <div style={{ marginTop: '8px', padding: '10px 14px', borderRadius: 8, background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.2)', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                💡 <strong>Local Network Share:</strong> Colleagues on your same WiFi/network can access this active tunnel instantly at <code>http://{localIp}:3939</code>.
+              </div>
+            </>
           )}
         </div>
       </section>
@@ -2381,8 +2521,13 @@ function SettingsView({
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {!domain.verified && (
-                      <div style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.2)', padding: '10px 14px', borderRadius: 8, color: 'var(--text-secondary)', fontSize: 12 }}>
-                        💡 <strong>Registrar Tip:</strong> Namesilo/GoDaddy automatically suffixes your domain. Enter only the bold Host prefix into your registrar inputs.
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.2)', padding: '10px 14px', borderRadius: 8, color: 'var(--text-secondary)', fontSize: 12 }}>
+                          💡 <strong>Registrar Tip:</strong> Namesilo/GoDaddy automatically suffixes your domain. Enter only the bold Host prefix into your registrar inputs.
+                        </div>
+                        <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.2)', padding: '10px 14px', borderRadius: 8, color: 'var(--text-secondary)', fontSize: 12 }}>
+                          ⚠️ <strong>Local Relay Loopback Notice:</strong> The traffic configuration value below points to <code>{routingValue}</code> because your Proxync stack is currently running locally. This domain configuration will only work for local loopback testing on your machine. To expose your server to the actual public internet, select <strong>Localtunnel</strong> when starting the share!
+                        </div>
                       </div>
                     )}
                     <div style={{ overflowX: 'auto', border: '1px solid var(--border-subtle)', borderRadius: 8 }}>
@@ -2601,6 +2746,127 @@ function DiscoverDialog({
             </article>
           ))}
           {processes.length === 0 && <div className="traffic-empty">No processes found.</div>}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function DomainSelectDialog({
+  process,
+  domains,
+  onClose,
+  onConfirm,
+}: {
+  process: ProcessCandidate;
+  domains: any[];
+  onClose: () => void;
+  onConfirm: (customDomainOrOption: string, ltSubdomain?: string) => void;
+}) {
+  const [selectedDomain, setSelectedDomain] = useState<string>('default');
+  const [customSubdomain, setCustomSubdomain] = useState<string>('');
+
+  const getDescription = () => {
+    if (selectedDomain === 'default') {
+      return (
+        <span style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.5' }}>
+          🔌 <strong>Local Loopback:</strong> Exposes the server on a local subdomain (e.g., <code>*.localtest.me</code>). Useful for offline loopback testing on your own machine.
+        </span>
+      );
+    }
+    if (selectedDomain === 'localtunnel') {
+      return (
+        <span style={{ display: 'block', fontSize: '12px', color: 'var(--green)', lineHeight: '1.5' }}>
+          🌐 <strong>Localtunnel (Recommended):</strong> Generates a real, secure public HTTPS URL (e.g., <code>https://*.loca.lt</code>) instantly. Accessible from any phone or computer on the internet.
+        </span>
+      );
+    }
+    return (
+      <span style={{ display: 'block', fontSize: '12px', color: 'var(--blue)', lineHeight: '1.5' }}>
+        🏷️ <strong>Custom Domain:</strong> Routes traffic through your verified custom domain <code>{selectedDomain}</code>. Note: requires pointing your domain to the active relay.
+      </span>
+    );
+  };
+
+  return (
+    <div className="dialog-backdrop" style={{ backdropFilter: 'blur(8px)', background: 'rgba(5, 5, 8, 0.75)' }}>
+      <section className="discover-dialog" style={{ maxWidth: '440px', borderRadius: '12px', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5), 0 10px 10px -5px rgba(0,0,0,0.4)', border: '1px solid var(--border-subtle)' }}>
+        <header style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '16px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Expose public tunnel</h2>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px', margin: 0 }}>Select the domain target for <strong>{process.name}</strong> (Port {process.port}).</p>
+          </div>
+          <button 
+            onClick={onClose} 
+            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '20px', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}
+          >
+            &times;
+          </button>
+        </header>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
+          <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Sharing Target</label>
+          <select 
+            value={selectedDomain}
+            onChange={(e) => setSelectedDomain(e.target.value)}
+            style={{
+              width: '100%',
+              height: '44px',
+              padding: '0 12px',
+              borderRadius: '8px',
+              background: '#111218',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-subtle)',
+              outline: 'none',
+              fontSize: '14px',
+              cursor: 'pointer',
+              boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.2)'
+            }}
+          >
+            <option value="default">Default random subdomain (e.g. *.localtest.me)</option>
+            <option value="localtunnel">Localtunnel (Free Public HTTPS URL)</option>
+            {domains.map((d) => (
+              <option key={d.id} value={d.name}>{d.name}</option>
+            ))}
+          </select>
+
+          {selectedDomain === 'localtunnel' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
+              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Localtunnel Subdomain (Optional)</label>
+              <input
+                type="text"
+                placeholder="e.g. clueliq-demo-port-3000"
+                value={customSubdomain}
+                onChange={(e) => setCustomSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                style={{
+                  width: '100%',
+                  height: '38px',
+                  padding: '0 12px',
+                  borderRadius: '6px',
+                  background: '#1a1b23',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-subtle)',
+                  outline: 'none',
+                  fontSize: '13px'
+                }}
+              />
+            </div>
+          )}
+
+          <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px 16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', minHeight: '54px', display: 'flex', alignItems: 'center' }}>
+            {getDescription()}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid var(--border-subtle)', paddingTop: '16px' }}>
+          <button className="btn btn-ghost" onClick={onClose} style={{ padding: '8px 16px', borderRadius: '6px' }}>Cancel</button>
+          <button 
+            className="primary-command"
+            onClick={() => onConfirm(selectedDomain, selectedDomain === 'localtunnel' ? (customSubdomain || undefined) : undefined)}
+            style={{ padding: '8px 20px', borderRadius: '6px' }}
+          >
+            Go Live
+          </button>
         </div>
       </section>
     </div>

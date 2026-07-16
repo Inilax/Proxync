@@ -110,19 +110,19 @@ export const api = {
   },
 
   domains: {
-    list: (workspaceId: string) =>
-      request<any[]>(`/workspaces/${workspaceId}/domains`),
-    create: (workspaceId: string, name: string) =>
-      request<any>(`/workspaces/${workspaceId}/domains`, {
+    list: () =>
+      request<any[]>('/domains'),
+    create: (name: string) =>
+      request<any>('/domains', {
         method: 'POST',
         body: { name },
       }),
-    verify: (workspaceId: string, domainId: string) =>
-      request<any>(`/workspaces/${workspaceId}/domains/${domainId}/verify`, {
+    verify: (domainId: string) =>
+      request<any>(`/domains/${domainId}/verify`, {
         method: 'POST',
       }),
-    delete: (workspaceId: string, domainId: string) =>
-      request<any>(`/workspaces/${workspaceId}/domains/${domainId}`, {
+    delete: (domainId: string) =>
+      request<any>(`/domains/${domainId}`, {
         method: 'DELETE',
       }),
   },
@@ -130,10 +130,10 @@ export const api = {
   tunnels: {
     list: (workspaceId: string) =>
       request<any[]>(`/workspaces/${workspaceId}/tunnels`),
-    create: (workspaceId: string, localPort: number, protocol = 'http', password?: string) =>
+    create: (workspaceId: string, localPort: number, protocol = 'http', password?: string, customDomain?: string) =>
       request<any>(`/workspaces/${workspaceId}/tunnels`, {
         method: 'POST',
-        body: { localPort, protocol, password },
+        body: { localPort, protocol, password, customDomain },
       }),
     close: (workspaceId: string, tunnelId: string) =>
       request<any>(`/workspaces/${workspaceId}/tunnels/${tunnelId}`, {
