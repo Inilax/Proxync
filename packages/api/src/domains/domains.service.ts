@@ -64,10 +64,13 @@ export class DomainsService {
     const expectedRecord = `proxync-verification=${domain.verificationToken}`;
     const txtHost = `_proxync.${domain.name}`;
 
+    const resolver = new dns.promises.Resolver();
+    resolver.setServers(['1.1.1.1', '8.8.8.8']);
+
     // 1. Verify Ownership TXT Record
     let txtRecords: string[][] = [];
     try {
-      txtRecords = await dns.promises.resolveTxt(txtHost);
+      txtRecords = await resolver.resolveTxt(txtHost);
     } catch (err: any) {
       console.error(`DNS query failed for ${txtHost}:`, err.message);
       throw new ForbiddenException(`TXT verification record for ${txtHost} not found. Ensure you add a TXT record with value: ${expectedRecord}`);
@@ -87,8 +90,8 @@ export class DomainsService {
     try {
       // Check A records for both domain and relayBase
       const [domainIps, relayIps] = await Promise.all([
-        dns.promises.resolve4(domain.name).catch(() => [] as string[]),
-        dns.promises.resolve4(relayBase).catch(() => [] as string[]),
+        resolver.resolve4(domain.name).catch(() => [] as string[]),
+        resolver.resolve4(relayBase).catch(() => [] as string[]),
       ]);
 
       if (domainIps.length > 0 && relayIps.length > 0) {
@@ -97,7 +100,7 @@ export class DomainsService {
 
       // Check CNAME record as fallback
       if (!isConfigured) {
-        const cnames = await dns.promises.resolveCname(domain.name).catch(() => [] as string[]);
+        const cnames = await resolver.resolveCname(domain.name).catch(() => [] as string[]);
         isConfigured = cnames.some(cname => cname.endsWith(relayBase) || cname === relayBase);
       }
     } catch (err) {

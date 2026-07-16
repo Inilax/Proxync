@@ -28,6 +28,18 @@
         "packages/api/.env.example"
       ],
       "featureSummary": "Created workspace rules (AGENTS.md), system architecture recon map (architecture.json), and release logs (changelog.json); shifted .env.example from root to packages/api/ with updated default port 3939."
+    },
+    {
+      "timestamp": "2026-07-16T15:15:00+05:30",
+      "branchName": "feature/main-dns-table-and-local-shares-ui",
+      "modifiedFiles": [
+        "packages/api/src/domains/domains.service.ts",
+        "packages/desktop/src/App.tsx",
+        "packages/desktop/src/components/DomainsSettings.tsx",
+        "packages/desktop/src/index.css",
+        ".agents/changelog.json"
+      ],
+      "featureSummary": "Reordered and styled custom domains DNS configuration table to match Namesilo/GoDaddy layout; implemented public direct DNS resolver (1.1.1.1/8.8.8.8) to bypass local cached lookup delays; added explicit WAN (public tunnel) vs LAN (local server) share choices; fixed active tunnel state resetting upon re-entering workspaces from Lobby."
     }
   ]
 }

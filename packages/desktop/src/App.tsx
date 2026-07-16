@@ -168,6 +168,26 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   notes: '',
 };
 
+const getApexDomain = (domain: string) => {
+  const parts = domain.split('.');
+  if (parts.length <= 2) return domain;
+  const secondToLast = parts[parts.length - 2].toLowerCase();
+  const commonDoubleTlds = ['co', 'com', 'org', 'net', 'edu', 'gov', 'mil'];
+  if (parts.length > 3 && commonDoubleTlds.includes(secondToLast)) {
+    return parts.slice(-3).join('.');
+  }
+  return parts.slice(-2).join('.');
+};
+
+const getRelayBase = () => {
+  const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
+  const parsed = apiBase.replace(/^https?:\/\//, '').split(':')[0];
+  if (parsed === 'localhost' || parsed === '127.0.0.1') {
+    return 'localtest.me';
+  }
+  return parsed;
+};
+
 export default function App() {
   const [context, setContext] = useState<LocalWorkspaceContext | null>(null);
   const [bootstrapError, setBootstrapError] = useState('');
@@ -485,9 +505,11 @@ export default function App() {
   }
 
   function selectWorkspace(workspaceId: string) {
-    setActiveWorkspaceId(workspaceId);
+    if (activeWorkspaceId !== workspaceId) {
+      setActiveWorkspaceId(workspaceId);
+      setActiveTunnel(null);
+    }
     setMainView('process');
-    setActiveTunnel(null);
   }
 
   async function deleteWorkspace(workspaceId: string) {
@@ -621,6 +643,16 @@ export default function App() {
     } finally {
       setSharingPort(null);
     }
+  }
+
+  function shareProcessLocal(process: ProcessCandidate) {
+    setSelectedProcessId(process.id);
+    setMainView('process');
+    setSharingPort(process.port);
+    showToast(
+      `Exposed local share at http://localhost:${process.port} and http://${localIp}:${process.port}`,
+      'success',
+    );
   }
 
   async function stopTunnel(tunnel: Tunnel) {
@@ -1213,6 +1245,7 @@ export default function App() {
               localIp={localIp}
               onDiscover={() => setDiscoverOpen(true)}
               onShare={shareProcess}
+              onShareLocal={shareProcessLocal}
               onStop={stopTunnel}
               onStopLocalShare={() => setSharingPort(null)}
               onCopy={copyText}
@@ -1310,6 +1343,7 @@ export default function App() {
           onClose={() => setDiscoverOpen(false)}
           onRefresh={discoverProcesses}
           onShare={shareProcess}
+          onShareLocal={shareProcessLocal}
         />
       )}
 
@@ -1500,6 +1534,7 @@ function ProcessView({
   localIp,
   onDiscover,
   onShare,
+  onShareLocal,
   onStop,
   onStopLocalShare,
   onCopy,
@@ -1515,6 +1550,7 @@ function ProcessView({
   localIp: string;
   onDiscover: () => void;
   onShare: (process: ProcessCandidate) => void;
+  onShareLocal: (process: ProcessCandidate) => void;
   onStop: (tunnel: Tunnel) => void;
   onStopLocalShare: () => void;
   onCopy: (value: string, message: string) => void;
@@ -1569,12 +1605,21 @@ function ProcessView({
             Stop sharing
           </button>
         ) : process ? (
-          <button
-            className="primary-command small"
-            onClick={() => onShare(process)}
-          >
-            Share process
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              className="primary-command small"
+              onClick={() => onShareLocal(process)}
+              style={{ background: 'var(--blue-dim)', color: 'var(--blue)', border: '1px solid rgba(59,130,246,0.3)' }}
+            >
+              Share via Localhost/LAN
+            </button>
+            <button
+              className="primary-command small"
+              onClick={() => onShare(process)}
+            >
+              Share via Public Domain
+            </button>
+          </div>
         ) : (
           <button className="primary-command small" onClick={onDiscover}>
             Find running process
@@ -2298,33 +2343,115 @@ function SettingsView({
           </div>
         ) : (
           <div className="domain-list">
-            {(domains || []).map((domain) => (
-              <article key={domain.id} className="domain-card">
-                <div className="domain-card-head">
-                  <div>
-                    <strong>{domain.name}</strong>
-                    <small>{domain.verified ? 'Verified' : 'Pending verification'}</small>
+            {(domains || []).map((domain) => {
+              const apexDomain = getApexDomain(domain.name);
+              const isSub = domain.name !== apexDomain && domain.name.endsWith(`.${apexDomain}`);
+              
+              const fullTxtHost = `_proxync.${domain.name}`;
+              const relativeTxtHost = fullTxtHost.endsWith(`.${apexDomain}`) 
+                ? fullTxtHost.slice(0, -(apexDomain.length + 1)) 
+                : fullTxtHost;
+                
+              const relativeTrafficHost = domain.name === apexDomain
+                ? '@'
+                : isSub
+                  ? domain.name.slice(0, -(apexDomain.length + 1))
+                  : domain.name;
+
+              const routingValue = isSub || domain.name !== apexDomain ? getRelayBase() : '127.0.0.1';
+
+              const copyVal = (text: string) => {
+                navigator.clipboard.writeText(text);
+                showToast('Copied to clipboard!', 'success');
+              };
+
+              return (
+                <article key={domain.id} className="domain-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '20px' }}>
+                  <div className="domain-card-head" style={{ border: 'none', padding: 0 }}>
+                    <div>
+                      <strong style={{ fontSize: '15px' }}>{domain.name}</strong>
+                      <small style={{ display: 'block', color: domain.verified ? 'var(--green)' : 'var(--yellow)', marginTop: '4px', fontSize: '11px' }}>
+                        {domain.verified ? '✓ Ownership Verified' : '⚡ Pending verification'}
+                      </small>
+                    </div>
+                    <span className={domain.verified ? 'badge good' : 'badge neutral'}>
+                      {domain.verified ? 'Live' : 'Pending'}
+                    </span>
                   </div>
-                  <span className={domain.verified ? 'badge good' : 'badge neutral'}>
-                    {domain.verified ? 'Live' : 'Pending'}
-                  </span>
-                </div>
-                <div className="dns-records">
-                  <div className="dns-row">
-                    <span>TXT host</span>
-                    <code>_proxync.{domain.name}</code>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {!domain.verified && (
+                      <div style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.2)', padding: '10px 14px', borderRadius: 8, color: 'var(--text-secondary)', fontSize: 12 }}>
+                        💡 <strong>Registrar Tip:</strong> Namesilo/GoDaddy automatically suffixes your domain. Enter only the bold Host prefix into your registrar inputs.
+                      </div>
+                    )}
+                    <div style={{ overflowX: 'auto', border: '1px solid var(--border-subtle)', borderRadius: 8 }}>
+                      <table className="dns-table">
+                        <thead>
+                          <tr>
+                            <th>Host</th>
+                            <th>Type</th>
+                            <th>Value</th>
+                            <th>TTL</th>
+                            <th>Copy Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {/* 1. TXT Verification Record (Only needed if unverified) */}
+                          {!domain.verified && (
+                            <tr>
+                              <td>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                    <code style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>{relativeTxtHost}</code>
+                                    <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>.{apexDomain}</span>
+                                  </div>
+                                  <small style={{ fontSize: 10, color: 'var(--text-muted)' }}>Full: {fullTxtHost}</small>
+                                </div>
+                              </td>
+                              <td><span className="badge neutral" style={{ background: 'var(--blue-dim)', color: 'var(--blue)' }}>TXT</span></td>
+                              <td><code>proxync-verification={domain.verificationToken}</code></td>
+                              <td>30 min</td>
+                              <td>
+                                <div style={{ display: 'flex', gap: 6 }}>
+                                  <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => copyVal(relativeTxtHost)}>Copy Host</button>
+                                  <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => copyVal(`proxync-verification=${domain.verificationToken}`)}>Copy Value</button>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+
+                          {/* 2. Traffic Configuration Record */}
+                          <tr>
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                  <code style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>{relativeTrafficHost}</code>
+                                  {relativeTrafficHost !== '@' && (
+                                    <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>.{apexDomain}</span>
+                                  )}
+                                </div>
+                                <small style={{ fontSize: 10, color: 'var(--text-muted)' }}>Full: {domain.name}</small>
+                              </div>
+                            </td>
+                            <td>
+                              <span className="badge neutral" style={{ background: 'var(--teal-dim)', color: 'var(--teal)' }}>
+                                {isSub || domain.name !== apexDomain ? 'CNAME' : 'A'}
+                              </span>
+                            </td>
+                            <td><code>{routingValue}</code></td>
+                            <td>30 min</td>
+                            <td>
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => copyVal(relativeTrafficHost)}>Copy Host</button>
+                                <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => copyVal(routingValue)}>Copy Value</button>
+                              </div>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                  <div className="dns-row">
-                    <span>TXT value</span>
-                    <code>proxync-verification={domain.verificationToken}</code>
-                  </div>
-                  <div className="dns-row">
-                    <span>Traffic record</span>
-                    <code>
-                      Point {domain.name} to your deployed relay host with A/AAAA or CNAME.
-                    </code>
-                  </div>
-                </div>
                 <div className="domain-actions">
                   <button
                     onClick={() => onVerifyDomain(domain.id)}
@@ -2340,7 +2467,8 @@ function SettingsView({
                   </button>
                 </div>
               </article>
-            ))}
+            );
+          })}
           </div>
         )}
       </section>
@@ -2411,6 +2539,7 @@ function DiscoverDialog({
   onClose,
   onRefresh,
   onShare,
+  onShareLocal,
 }: {
   processes: ProcessCandidate[];
   discovering: boolean;
@@ -2418,6 +2547,7 @@ function DiscoverDialog({
   onClose: () => void;
   onRefresh: () => void;
   onShare: (process: ProcessCandidate) => void;
+  onShareLocal: (process: ProcessCandidate) => void;
 }) {
   return (
     <div className="dialog-backdrop">
@@ -2445,13 +2575,29 @@ function DiscoverDialog({
                 </span>
                 <small>{process.command ?? 'local process'}</small>
               </div>
-              <button
-                className="primary-command small"
-                disabled={sharingPort === process.port}
-                onClick={() => onShare(process)}
-              >
-                {sharingPort === process.port ? 'Sharing...' : 'Share'}
-              </button>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  className="primary-command small"
+                  style={{ background: 'var(--blue-dim)', color: 'var(--blue)', border: '1px solid rgba(59,130,246,0.3)', padding: '6px 12px' }}
+                  disabled={sharingPort === process.port}
+                  onClick={() => {
+                    onShareLocal(process);
+                    onClose();
+                  }}
+                >
+                  Local
+                </button>
+                <button
+                  className="primary-command small"
+                  disabled={sharingPort === process.port}
+                  onClick={() => {
+                    onShare(process);
+                    onClose();
+                  }}
+                >
+                  Public
+                </button>
+              </div>
             </article>
           ))}
           {processes.length === 0 && <div className="traffic-empty">No processes found.</div>}
