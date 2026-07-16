@@ -22,4 +22,9 @@ export class CreateTunnelDto {
   @IsOptional()
   @IsString()
   password?: string;
+
+  @ApiPropertyOptional({ example: 'apex.clueliq.com', description: 'Optional custom domain to bind to this tunnel' })
+  @IsOptional()
+  @IsString()
+  customDomain?: string;
 }

@@ -85,12 +85,21 @@ export class TunnelsService implements OnModuleInit {
     
     let publicUrl = `${protocol}://${subdomain}.${relayHost}${portSuffix}`;
 
-    const verifiedDomain = await this.prisma.domain.findFirst({
-      where: { workspaceId, verified: true },
-    });
+    if (dto.customDomain) {
+      const verifiedDomain = await this.prisma.domain.findFirst({
+        where: { name: dto.customDomain, userId: effectiveOwnerId, verified: true },
+      });
+      if (!verifiedDomain) {
+        throw new ForbiddenException(`Custom domain ${dto.customDomain} is not registered or verified under your account.`);
+      }
 
-    if (verifiedDomain) {
-      publicUrl = `${protocol}://${verifiedDomain.name}${portSuffix}`;
+      // Close any active tunnels currently bound to this custom domain
+      await this.prisma.tunnel.updateMany({
+        where: { customDomain: dto.customDomain, status: 'ACTIVE' },
+        data: { status: 'CLOSED', closedAt: new Date() },
+      });
+
+      publicUrl = `${protocol}://${dto.customDomain}${portSuffix}`;
     }
 
     let passwordHash: string | null = null;
@@ -109,6 +118,7 @@ export class TunnelsService implements OnModuleInit {
         region: dto.region ?? 'auto',
         status: 'ACTIVE',
         passwordHash,
+        customDomain: dto.customDomain || null,
       },
     });
 

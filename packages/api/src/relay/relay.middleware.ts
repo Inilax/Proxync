@@ -50,6 +50,8 @@ export class RelayMiddleware implements NestMiddleware {
     const baseDomain = this.config.get<string>('RELAY_SUBDOMAIN_BASE') || 'localtest.me';
     const domainWithoutPort = host.split(':')[0];
 
+    console.log(`[RelayMiddleware] Incoming: host=${host}, path=${req.path}, domainWithoutPort=${domainWithoutPort}`);
+
     let subdomain: string | null = null;
 
     // 2. Resolve subdomain either via wildcards or custom domains
@@ -59,25 +61,55 @@ export class RelayMiddleware implements NestMiddleware {
       !domainWithoutPort.startsWith('api.')
     ) {
       subdomain = domainWithoutPort.replace(`.${baseDomain}`, '');
+      console.log(`[RelayMiddleware] Resolved subdomain from wildcard: ${subdomain}`);
     } else {
-      // Check if domainWithoutPort matches a verified custom domain
-      const verifiedDomain = await this.prisma.domain.findFirst({
-        where: { name: domainWithoutPort, verified: true },
-        include: {
-          workspace: {
-            include: {
-              tunnels: {
-                where: { status: 'ACTIVE' },
-                orderBy: { createdAt: 'desc' },
-                take: 1,
-              },
-            },
-          },
-        },
+      // Check if domainWithoutPort matches an active tunnel's customDomain binding
+      const activeTunnel = await this.prisma.tunnel.findFirst({
+        where: { customDomain: domainWithoutPort, status: 'ACTIVE' },
       });
 
-      if (verifiedDomain && verifiedDomain.workspace.tunnels.length > 0) {
-        subdomain = verifiedDomain.workspace.tunnels[0].subdomain;
+      if (activeTunnel) {
+        subdomain = activeTunnel.subdomain;
+        console.log(`[RelayMiddleware] Resolved subdomain from customDomain match: ${subdomain}`);
+      }
+    }
+
+    // 2.5 Fallback for direct IP / localhost access (local network sharing)
+    if (!subdomain) {
+      const apiPrefixes = [
+        '/auth',
+        '/workspaces',
+        '/domains',
+        '/tunnels',
+        '/api-keys',
+        '/members',
+        '/requests',
+        '/channels',
+        '/messages',
+        '/health',
+        '/api',
+        '/socket.io',
+        '/relay',
+        '/verify-tunnel-password',
+      ];
+      const isApiRequest = apiPrefixes.some((prefix) => req.path.startsWith(prefix));
+
+      if (!isApiRequest) {
+        const allTunnels = await this.prisma.tunnel.findMany({});
+        console.log(`[RelayMiddleware] All Tunnels in DB:`, allTunnels.map(t => ({ id: t.id, subdomain: t.subdomain, status: t.status, customDomain: t.customDomain })));
+
+        const activeTunnel = await this.prisma.tunnel.findFirst({
+          where: { status: 'ACTIVE' },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (activeTunnel) {
+          subdomain = activeTunnel.subdomain;
+          console.log(`[RelayMiddleware] Resolved subdomain from active tunnel fallback: ${subdomain}`);
+        } else {
+          console.log(`[RelayMiddleware] Fallback activeTunnel lookup returned null`);
+        }
+      } else {
+        console.log(`[RelayMiddleware] Request bypassed relay because it matches API prefix`);
       }
     }
 

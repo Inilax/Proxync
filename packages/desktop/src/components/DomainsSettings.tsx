@@ -40,7 +40,7 @@ export function DomainsSettings({ workspace }: DomainsSettingsProps) {
 
   async function fetchDomains() {
     try {
-      const list = await api.domains.list(workspace.id);
+      const list = await api.domains.list();
       setDomains(list);
     } catch (err: any) {
       showToast(err.message ?? 'Failed to load domains', 'error');
@@ -53,7 +53,7 @@ export function DomainsSettings({ workspace }: DomainsSettingsProps) {
     setLoading(true);
 
     try {
-      const created = await api.domains.create(workspace.id, newDomain.trim());
+      const created = await api.domains.create(newDomain.trim());
       showToast('Domain registered! Please configure DNS to verify.', 'success');
       setNewDomain('');
       setExpandedId(created.id);
@@ -68,7 +68,7 @@ export function DomainsSettings({ workspace }: DomainsSettingsProps) {
   async function handleVerify(domainId: string) {
     setVerifyingId(domainId);
     try {
-      await api.domains.verify(workspace.id, domainId);
+      await api.domains.verify(domainId);
       showToast('Domain successfully verified!', 'success');
       fetchDomains();
     } catch (err: any) {
@@ -82,7 +82,7 @@ export function DomainsSettings({ workspace }: DomainsSettingsProps) {
     if (!confirm('Are you sure you want to delete this domain?')) return;
 
     try {
-      await api.domains.delete(workspace.id, domainId);
+      await api.domains.delete(domainId);
       showToast('Domain removed', 'success');
       fetchDomains();
     } catch (err: any) {
