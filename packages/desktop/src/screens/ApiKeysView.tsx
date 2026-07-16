@@ -237,7 +237,7 @@ export function ApiKeysView({ workspace }: ApiKeysViewProps) {
             fontFamily: 'var(--font-mono)', fontSize: 11,
             color: 'var(--text-secondary)', display: 'block', lineHeight: 1.8,
           }}>
-            curl -X POST http://localhost:3000/workspaces/{workspace.id}/tunnels \<br />
+            curl -X POST http://localhost:3939/workspaces/{workspace.id}/tunnels \<br />
             &nbsp;&nbsp;-H "Authorization: Bearer opk_…" \<br />
             &nbsp;&nbsp;-d {'{"localPort": 5173}'}
           </code>

@@ -1,7 +1,7 @@
 // Shared API client for the desktop app
 // Uses the Proxync control plane API
 
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3939';
 
 interface RequestOptions {
   method?: string;

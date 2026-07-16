@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { api, getToken } from '../lib/api';
 import { showToast } from '../lib/toast';
 
-const API_BASE = (import.meta.env.VITE_API_URL ?? 'http://localhost:3000') as string;
+const API_BASE = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
 const WS_URL = API_BASE.replace(/^http/, 'ws') + '/relay';
 
 interface ChatPanelProps {

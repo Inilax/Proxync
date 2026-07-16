@@ -120,7 +120,7 @@ struct HttpResponsePayload {
 #[tauri::command]
 async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u16, token: String, workspace_id: String, relay_url: Option<String>) -> Result<(), String> {
     // Use the provided relay URL or fall back to the default dev URL
-    let relay_ws_url = relay_url.unwrap_or_else(|| "ws://localhost:3000/relay".to_string());
+    let relay_ws_url = relay_url.unwrap_or_else(|| "ws://localhost:3939/relay".to_string());
     let relay_ws_url = relay_ws_url.as_str();
     
     let (ws_stream, _) = connect_async(relay_ws_url.to_string()).await.map_err(|e| e.to_string())?;

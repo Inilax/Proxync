@@ -145,7 +145,7 @@ export function TunnelsView({ workspace }: TunnelsViewProps) {
       if (!token) throw new Error('Not authenticated');
 
       // Derive the relay WS URL from the same base as the API
-      const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3000') as string;
+      const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
       const relayUrl = apiBase.replace(/^http/, 'ws') + '/relay';
 
       await invoke('open_tunnel', { 

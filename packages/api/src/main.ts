@@ -36,7 +36,7 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);
 
-  const port = process.env.PORT ?? 3000;
+  const port = process.env.PORT ?? 3939;
   await app.listen(port);
   console.log(`🚀 Proxync API running on http://localhost:${port}`);
   console.log(`📚 Swagger docs at http://localhost:${port}/api`);

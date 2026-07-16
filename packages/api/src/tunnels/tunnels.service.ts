@@ -81,7 +81,7 @@ export class TunnelsService implements OnModuleInit {
     const relayHost = process.env.RELAY_SUBDOMAIN_BASE ?? 'localtest.me';
     const isDev = process.env.NODE_ENV !== 'production';
     const protocol = isDev ? 'http' : 'https';
-    const portSuffix = isDev ? `:${process.env.PORT || 3000}` : '';
+    const portSuffix = isDev ? `:${process.env.PORT || 3939}` : '';
     
     let publicUrl = `${protocol}://${subdomain}.${relayHost}${portSuffix}`;
 

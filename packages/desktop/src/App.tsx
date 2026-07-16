@@ -570,7 +570,7 @@ export default function App() {
         process.port,
         'http',
       );
-      const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3000') as string;
+      const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
       const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
 
       await invoke('open_tunnel', {
@@ -1656,14 +1656,14 @@ function ProcessView({
               </button>
             </div>
           )}
-          {(isActive || profile?.lastTunnelUrl) && (
+          {isActive && tunnel && (
             <div className="url-line">
-              <span>{isActive ? 'Public' : 'Last URL'}</span>
-              <code>{isActive ? tunnel!.publicUrl : profile!.lastTunnelUrl!}</code>
+              <span>Public</span>
+              <code>{tunnel.publicUrl}</code>
               <button
                 onClick={() =>
                   onCopy(
-                    isActive ? tunnel!.publicUrl : profile!.lastTunnelUrl!,
+                    tunnel.publicUrl,
                     'Share URL copied',
                   )
                 }
