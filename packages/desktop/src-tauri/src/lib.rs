@@ -8,9 +8,11 @@ use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use reqwest::Client;
 use lazy_static::lazy_static;
 use base64::prelude::*;
+use tokio::io::AsyncBufReadExt;
 
 lazy_static! {
     static ref ACTIVE_TUNNELS: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>> = Arc::new(Mutex::new(HashMap::new()));
+    static ref LOCALTUNNEL_PROCESSES: Arc<Mutex<HashMap<String, tokio::process::Child>>> = Arc::new(Mutex::new(HashMap::new()));
 }
 
 #[tauri::command]
@@ -267,8 +269,84 @@ async fn close_tunnel(tunnel_id: String) -> Result<(), String> {
     let mut tunnels = ACTIVE_TUNNELS.lock().await;
     if let Some(handle) = tunnels.remove(&tunnel_id) {
         handle.abort();
+        return Ok(());
     }
-    Ok(())
+
+    let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
+    if let Some(mut child) = lt_procs.remove(&tunnel_id) {
+        let _ = child.kill().await;
+        return Ok(());
+    }
+
+    Err("Tunnel not found".to_string())
+}
+
+#[tauri::command]
+async fn open_localtunnel(
+    app: tauri::AppHandle,
+    tunnel_id: String,
+    local_port: u16,
+    subdomain: Option<String>
+) -> Result<String, String> {
+    let mut cmd = tokio::process::Command::new("cmd");
+    cmd.args(&["/C", "npx", "-y", "localtunnel", "--port", &local_port.to_string()]);
+    if let Some(sub) = subdomain {
+        let clean_sub = sub.replace(" ", "-").to_lowercase();
+        cmd.args(&["--subdomain", &clean_sub]);
+    }
+    cmd.stdout(std::process::Stdio::piped());
+    
+    let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn localtunnel: {}", e))?;
+    let stdout = child.stdout.take().ok_or("Failed to open localtunnel stdout".to_string())?;
+    
+    let mut reader = tokio::io::BufReader::new(stdout).lines();
+    
+    let timeout_duration = std::time::Duration::from_secs(10);
+    let read_url_task = async {
+        while let Some(line) = reader.next_line().await.unwrap_or(None) {
+            if line.contains("your url is:") {
+                let resolved = line.replace("your url is:", "").trim().to_string();
+                return Ok(resolved);
+            }
+        }
+        Err("Localtunnel exited without returning a URL".to_string())
+    };
+    
+    let url = match tokio::time::timeout(timeout_duration, read_url_task).await {
+        Ok(Ok(resolved_url)) => {
+            resolved_url
+        }
+        Ok(Err(e)) => return Err(e),
+        Err(_) => {
+            let _ = child.kill().await;
+            return Err("Timed out waiting for localtunnel URL".to_string());
+        }
+    };
+    
+    let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
+    lt_procs.insert(tunnel_id.clone(), child);
+    
+    let tunnel_id_clone = tunnel_id.clone();
+    let app_clone = app.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let mut has_child = true;
+        while has_child {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            let mut procs = LOCALTUNNEL_PROCESSES.lock().await;
+            if let Some(child_proc) = procs.get_mut(&tunnel_id_clone) {
+                if let Ok(Some(_)) = child_proc.try_wait() {
+                    procs.remove(&tunnel_id_clone);
+                    let _ = app_clone.emit("tunnel:auto-closed", serde_json::json!({ "tunnelId": tunnel_id_clone }));
+                    has_child = false;
+                }
+            } else {
+                has_child = false;
+            }
+        }
+    });
+    
+    Ok(url)
 }
 
 #[tauri::command]
@@ -334,6 +412,7 @@ pub fn run() {
             scan_processes,
             open_tunnel, 
             close_tunnel,
+            open_localtunnel,
             scan_directory,
             read_file_content,
             get_local_ip
