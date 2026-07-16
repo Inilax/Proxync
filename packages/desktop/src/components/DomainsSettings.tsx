@@ -6,6 +6,27 @@ interface DomainsSettingsProps {
   workspace: any;
 }
 
+const getApexDomain = (domain: string) => {
+  const parts = domain.split('.');
+  if (parts.length <= 2) return domain;
+  
+  const secondToLast = parts[parts.length - 2].toLowerCase();
+  const commonDoubleTlds = ['co', 'com', 'org', 'net', 'edu', 'gov', 'mil'];
+  if (parts.length > 3 && commonDoubleTlds.includes(secondToLast)) {
+    return parts.slice(-3).join('.');
+  }
+  return parts.slice(-2).join('.');
+};
+
+const getRelayBase = () => {
+  const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
+  const parsed = apiBase.replace(/^https?:\/\//, '').split(':')[0];
+  if (parsed === 'localhost' || parsed === '127.0.0.1') {
+    return 'localtest.me';
+  }
+  return parsed;
+};
+
 export function DomainsSettings({ workspace }: DomainsSettingsProps) {
   const [domains, setDomains] = useState<any[]>([]);
   const [newDomain, setNewDomain] = useState('');
@@ -121,6 +142,25 @@ export function DomainsSettings({ workspace }: DomainsSettingsProps) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {domains.map((dom) => {
               const isExpanded = expandedId === dom.id;
+              const apexDomain = getApexDomain(dom.name);
+              
+              // Determine if it is a subdomain relative to the apex domain
+              const isSub = dom.name !== apexDomain && dom.name.endsWith(`.${apexDomain}`);
+              
+              // Visual relative inputs for domain registrars (like GoDaddy/Namesilo suffix setups)
+              const fullTxtHost = `_proxync.${dom.name}`;
+              const relativeTxtHost = fullTxtHost.endsWith(`.${apexDomain}`) 
+                ? fullTxtHost.slice(0, -(apexDomain.length + 1)) 
+                : fullTxtHost;
+                
+              const relativeTrafficHost = dom.name === apexDomain
+                ? '@'
+                : isSub
+                  ? dom.name.slice(0, -(apexDomain.length + 1))
+                  : dom.name;
+
+              const routingValue = isSub || dom.name !== apexDomain ? getRelayBase() : '127.0.0.1';
+
               return (
                 <div
                   key={dom.id}
@@ -169,47 +209,91 @@ export function DomainsSettings({ workspace }: DomainsSettingsProps) {
                   {/* Expanded Verification Details */}
                   {isExpanded && (
                     <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border-subtle)', background: 'rgba(0,0,0,0.1)' }}>
-                       {dom.verified ? (
-                        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                          <p style={{ color: 'var(--green)', fontWeight: 600, marginBottom: 8 }}>✓ Ownership Verified</p>
-                          <p style={{ marginBottom: 12 }}>Traffic to <code>{dom.name}</code> will now route to your active workspace tunnels.</p>
-                          
-                          <div style={{ background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', padding: '12px', borderRadius: 8, marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text-primary)' }}>Traffic Configuration:</div>
-                            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                              Point <code>{dom.name}</code> to your deployed relay host with an <strong>A/AAAA</strong> or <strong>CNAME</strong> record.
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, fontSize: 13 }}>
+                        {dom.verified ? (
+                          <div style={{ color: 'var(--text-secondary)' }}>
+                            <p style={{ color: 'var(--green)', fontWeight: 600, margin: '0 0 4px' }}>✓ Ownership Verified</p>
+                            <p style={{ margin: 0 }}>Traffic to <code>{dom.name}</code> will now route to your active workspace tunnels.</p>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
+                              Configure the following DNS records in your domain registrar (GoDaddy, Namesilo, etc.) to verify ownership and start routing traffic:
+                            </p>
+                            <div style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.2)', padding: '8px 12px', borderRadius: 8, color: 'var(--text-secondary)', fontSize: 12 }}>
+                              💡 <strong>Registrar Tip:</strong> Registrars automatically append <code>.{apexDomain}</code> to the **Host** field. You only need to type the bold prefix value shown in the table below.
                             </div>
                           </div>
+                        )}
 
-                          <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.2)', padding: '10px 14px', borderRadius: 8, color: 'var(--yellow)' }}>
-                            ⚠️ <strong>Developer Reminder:</strong> TXT records are loose assets. For cleanliness and hygiene, please remember to remove the TXT record from your DNS settings once you no longer need this custom domain.
-                          </div>
+                        <div style={{ overflowX: 'auto', border: '1px solid var(--border-subtle)', borderRadius: 8 }}>
+                          <table className="dns-table">
+                            <thead>
+                              <tr>
+                                <th>Host</th>
+                                <th>Type</th>
+                                <th>Value</th>
+                                <th>TTL</th>
+                                <th>Copy Action</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {/* 1. TXT Verification Record (Only needed if unverified) */}
+                              {!dom.verified && (
+                                <tr>
+                                  <td>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                        <code style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>{relativeTxtHost}</code>
+                                        <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>.{apexDomain}</span>
+                                      </div>
+                                      <small style={{ fontSize: 10, color: 'var(--text-muted)' }}>Full: {fullTxtHost}</small>
+                                    </div>
+                                  </td>
+                                  <td><span className="badge neutral" style={{ background: 'var(--blue-dim)', color: 'var(--blue)' }}>TXT</span></td>
+                                  <td><code>proxync-verification={dom.verificationToken}</code></td>
+                                  <td>30 min</td>
+                                  <td>
+                                    <div style={{ display: 'flex', gap: 6 }}>
+                                      <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => copyToClipboard(relativeTxtHost)}>Copy Host</button>
+                                      <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => copyToClipboard(`proxync-verification=${dom.verificationToken}`)}>Copy Value</button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+
+                              {/* 2. Traffic Configuration Record */}
+                              <tr>
+                                <td>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                      <code style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>{relativeTrafficHost}</code>
+                                      {relativeTrafficHost !== '@' && (
+                                        <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>.{apexDomain}</span>
+                                      )}
+                                    </div>
+                                    <small style={{ fontSize: 10, color: 'var(--text-muted)' }}>Full: {dom.name}</small>
+                                  </div>
+                                </td>
+                                <td>
+                                  <span className="badge neutral" style={{ background: 'var(--teal-dim)', color: 'var(--teal)' }}>
+                                    {isSub || dom.name !== apexDomain ? 'CNAME' : 'A'}
+                                  </span>
+                                </td>
+                                <td><code>{routingValue}</code></td>
+                                <td>30 min</td>
+                                <td>
+                                  <div style={{ display: 'flex', gap: 6 }}>
+                                    <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => copyToClipboard(relativeTrafficHost)}>Copy Host</button>
+                                    <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => copyToClipboard(routingValue)}>Copy Value</button>
+                                  </div>
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
                         </div>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontSize: 13 }}>
-                          <p>To verify ownership, create the following DNS TXT record on your domain registrar:</p>
-                          
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--bg-base)', padding: 12, borderRadius: 8 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span><strong>Type:</strong> <code>TXT</code></span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span><strong>Host/Name:</strong> <code>_proxync.{dom.name}</code></span>
-                              <button className="btn btn-ghost" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => copyToClipboard(`_proxync.${dom.name}`)}>Copy</button>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span><strong>Value:</strong> <code>proxync-verification={dom.verificationToken}</code></span>
-                              <button className="btn btn-ghost" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => copyToClipboard(`proxync-verification=${dom.verificationToken}`)}>Copy</button>
-                            </div>
-                          </div>
 
-                          <div style={{ background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', padding: '12px', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text-primary)' }}>Traffic Routing Record:</div>
-                            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                              Point <code>{dom.name}</code> to your deployed relay host with an <strong>A/AAAA</strong> or <strong>CNAME</strong> record.
-                            </div>
-                          </div>
-
+                        {!dom.verified ? (
                           <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                             <button
                               className="btn btn-primary"
@@ -217,11 +301,15 @@ export function DomainsSettings({ workspace }: DomainsSettingsProps) {
                               onClick={() => handleVerify(dom.id)}
                               disabled={verifyingId === dom.id}
                             >
-                              {verifyingId === dom.id ? 'Checking...' : 'Verify DNS TXT Record'}
+                              {verifyingId === dom.id ? 'Checking...' : 'Verify DNS Records'}
                             </button>
                           </div>
-                        </div>
-                      )}
+                        ) : (
+                          <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.2)', padding: '10px 14px', borderRadius: 8, color: 'var(--yellow)', fontSize: 12 }}>
+                            ⚠️ <strong>Developer Hygiene Tip:</strong> The TXT record is only used for verification. Once verified, you can safely remove the `_proxync` TXT record from your registrar to keep your DNS zone clean.
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
