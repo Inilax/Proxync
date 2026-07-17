@@ -189,6 +189,7 @@ const getRelayBase = () => {
 };
 
 export default function App() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [context, setContext] = useState<LocalWorkspaceContext | null>(null);
   const [bootstrapError, setBootstrapError] = useState('');
   const [workspaces, setWorkspaces] = useState<WorkspaceConfig[]>([]);
@@ -1110,8 +1111,28 @@ export default function App() {
 
   return (
     <div className="mvp-shell">
-      <aside className="sidebar">
+      {sidebarOpen && (
+        <div 
+          className="sidebar-overlay" 
+          onClick={() => setSidebarOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 45,
+            backdropFilter: 'blur(4px)'
+          }}
+        />
+      )}
+      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="brand-block">
+          <button
+            className="sidebar-toggle-btn"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            aria-label="Toggle navigation menu"
+          >
+            ☰
+          </button>
           <div className="brand-mark">PX</div>
           <div>
             <div className="brand-name">Proxync</div>
@@ -1123,57 +1144,69 @@ export default function App() {
           <span className="workspace-summary-label">Active workspace</span>
           <strong>{activeWorkspace?.name ?? 'No active workspace'}</strong>
           <small>{activeWorkspace?.languageHint ?? 'Workspace lobby keeps project configs separate'}</small>
-          <button className="sidebar-action secondary" onClick={() => setMainView('lobby')}>
+          <button className="sidebar-action secondary" onClick={() => { setMainView('lobby'); setSidebarOpen(false); }}>
             Open workspace lobby
           </button>
+        </div>
+
+        {/* Tunnel Status Pill – moved from removed topbar */}
+        <div className={(activeTunnel || sharingPort) ? 'sidebar-tunnel-status active' : 'sidebar-tunnel-status'}>
+          <span className={(activeTunnel || sharingPort) ? 'live-ring active' : 'live-ring'} />
+          <span className="sidebar-tunnel-text">
+            {activeTunnel
+              ? `🌐 ${activeTunnel.publicUrl}`
+              : sharingPort
+                ? `LAN :${sharingPort}`
+                : 'No active tunnel'}
+          </span>
         </div>
 
         <nav className="sidebar-nav" aria-label="Primary">
           <button
             className={mainView === 'lobby' ? 'active' : ''}
-            onClick={() => setMainView('lobby')}
+            onClick={() => { setMainView('lobby'); setSidebarOpen(false); }}
           >
             Workspace lobby
           </button>
           <button
             className={mainView === 'welcome' ? 'active' : ''}
             disabled={!activeWorkspace}
-            onClick={() => setMainView('welcome')}
+            onClick={() => { setMainView('welcome'); setSidebarOpen(false); }}
           >
             Overview
           </button>
           <button
             className={mainView === 'traffic' ? 'active' : ''}
             disabled={!activeWorkspace}
-            onClick={() => setMainView('traffic')}
+            onClick={() => { setMainView('traffic'); setSidebarOpen(false); }}
           >
             Traffic
           </button>
           <button
             className={mainView === 'postman' ? 'active' : ''}
             disabled={!activeWorkspace}
-            onClick={() => setMainView('postman')}
+            onClick={() => { setMainView('postman'); setSidebarOpen(false); }}
           >
             Postman
           </button>
           <button
             className={mainView === 'swagger' ? 'active' : ''}
             disabled={!activeWorkspace}
-            onClick={() => setMainView('swagger')}
+            onClick={() => { setMainView('swagger'); setSidebarOpen(false); }}
           >
             Swagger
           </button>
           <button
             className={mainView === 'observability' ? 'active' : ''}
             disabled={!activeWorkspace}
-            onClick={() => setMainView('observability')}
+            onClick={() => { setMainView('observability'); setSidebarOpen(false); }}
           >
             Observability
           </button>
           <button
             className={mainView === 'settings' ? 'active' : ''}
             disabled={!activeWorkspace}
-            onClick={() => setMainView('settings')}
+            onClick={() => { setMainView('settings'); setSidebarOpen(false); }}
           >
             Settings
           </button>
@@ -1182,7 +1215,7 @@ export default function App() {
         <button
           className="sidebar-action secondary"
           disabled={!activeWorkspace}
-          onClick={() => setDiscoverOpen(true)}
+          onClick={() => { setDiscoverOpen(true); setSidebarOpen(false); }}
         >
           Discover process
         </button>
@@ -1209,6 +1242,7 @@ export default function App() {
                   onClick={() => {
                     setSelectedProcessId(process.id);
                     setMainView('process');
+                    setSidebarOpen(false);
                   }}
                 >
                   <span className="status-dot" />
@@ -1234,7 +1268,7 @@ export default function App() {
                       ? 'workspace-row active'
                       : 'workspace-row'
                   }
-                  onClick={() => selectProfile(profile.id)}
+                  onClick={() => { selectProfile(profile.id); setSidebarOpen(false); }}
                 >
                   <strong>{profile.processName}</strong>
                   <small>
@@ -1252,13 +1286,13 @@ export default function App() {
           <div className="sidebar-section-title">Companions</div>
           <button
             className="panel-button"
-            onClick={() => setPanelView(panelView === 'chat' ? null : 'chat')}
+            onClick={() => { setPanelView(panelView === 'chat' ? null : 'chat'); setSidebarOpen(false); }}
           >
             Chat panel
           </button>
           <button
             className="panel-button"
-            onClick={() => setPanelView(panelView === 'voice' ? null : 'voice')}
+            onClick={() => { setPanelView(panelView === 'voice' ? null : 'voice'); setSidebarOpen(false); }}
           >
             Voice room
           </button>
@@ -1271,48 +1305,27 @@ export default function App() {
       </aside>
 
       <section className="workspace-shell">
-        <header className="topbar">
-          <div className={(activeTunnel || sharingPort) ? 'session-pill active' : 'session-pill'}>
-            <span className={(activeTunnel || sharingPort) ? 'live-ring active' : 'live-ring'} />
-            {activeTunnel
-              ? `Public: ${activeTunnel.publicUrl} | LAN Tunnel: http://${localIp}:3939`
-              : sharingPort
-                ? `LAN share active :${sharingPort}`
-                : activeWorkspace?.selectedProfileId
-                  ? 'Saved share ready to rerun'
-                  : 'No active tunnel'}
-          </div>
-          <div className="window-actions">
-            <button onClick={() => setPanelView(panelView === 'chat' ? null : 'chat')}>
-              Chat
-            </button>
-            <button onClick={() => setPanelView(panelView === 'voice' ? null : 'voice')}>
-              Voice
-            </button>
-          </div>
-        </header>
-
-        <div className="tab-strip">
-          {(
-            [
-              'lobby',
-              'welcome',
-              'process',
-              'traffic',
-              'postman',
-              'swagger',
-              'observability',
-              'settings',
-            ] as MainView[]
-          ).map((view) => (
-            <button
-              key={view}
-              className={mainView === view ? 'tab active' : 'tab'}
-              onClick={() => setMainView(view)}
-            >
-              {tabLabel(view)}
-            </button>
-          ))}
+        {/* Mobile-only nav bar — only visible on screens ≤ 820px where sidebar is a drawer */}
+        <div className="mobile-nav-bar">
+          <button
+            className="sidebar-toggle-btn"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            aria-label="Toggle navigation menu"
+          >
+            ☰
+          </button>
+          <span className="mobile-nav-title">
+            {mainView === 'lobby' ? 'Workspace Lobby'
+              : mainView === 'welcome' ? 'Overview'
+              : mainView === 'traffic' ? 'Traffic'
+              : mainView === 'postman' ? 'Postman'
+              : mainView === 'swagger' ? 'Swagger'
+              : mainView === 'observability' ? 'Observability'
+              : mainView === 'settings' ? 'Settings'
+              : mainView === 'process' ? 'Process'
+              : 'Proxync'}
+          </span>
+          <div className={(activeTunnel || sharingPort) ? 'live-ring active' : 'live-ring'} style={{ flexShrink: 0 }} />
         </div>
 
         <main className="content-stage">
@@ -1534,6 +1547,81 @@ function LobbyView({
   onSelectWorkspace: (id: string) => void;
   onDeleteWorkspace: (id: string) => void;
 }) {
+  const [onboardingStep, setOnboardingStep] = useState(1);
+
+  if (workspaces.length === 0) {
+    return (
+      <div className="lobby-view" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', padding: '12px' }}>
+        {onboardingStep === 1 ? (
+          <div className="onboarding-welcome" style={{ margin: 0, width: '100%', maxWidth: '540px' }}>
+            <div className="welcome-icon">🚀</div>
+            <h2>Welcome to Proxync!</h2>
+            <p style={{ marginBottom: '24px' }}>
+              Isolated workspaces keep your projects, shares, guardrails, and APIs organized. Make one workspace per repository or service context.
+            </p>
+            <button 
+              className="primary-command" 
+              onClick={() => setOnboardingStep(2)}
+              style={{ width: '100%', padding: '12px 24px', fontSize: '13px' }}
+            >
+              Get Started →
+            </button>
+          </div>
+        ) : (
+          <div className="onboarding-welcome" style={{ margin: 0, width: '100%', maxWidth: '540px' }}>
+            <div className="welcome-icon">🏗️</div>
+            <h2>Name your first workspace</h2>
+            <p style={{ marginBottom: '20px' }}>
+              Usually, this matches your repository or project name (e.g. <code>my-react-app</code>).
+            </p>
+            <div className="workspace-create" style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <input
+                value={newWorkspaceName}
+                onChange={(event) => onWorkspaceNameChange(event.target.value)}
+                placeholder="e.g. ecommerce-api"
+                aria-label="New workspace"
+                style={{
+                  width: '100%',
+                  height: '44px',
+                  padding: '0 14px',
+                  fontSize: '13px',
+                  borderRadius: '8px',
+                  background: 'rgba(4, 10, 14, 0.86)',
+                  border: '1px solid var(--line)',
+                  color: 'var(--text)',
+                  outline: 'none'
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newWorkspaceName.trim()) {
+                    onCreateWorkspace();
+                  }
+                }}
+                autoFocus
+              />
+              <div style={{ display: 'flex', gap: '10px', width: '100%', marginTop: '4px' }}>
+                <button 
+                  className="sidebar-action secondary" 
+                  onClick={() => setOnboardingStep(1)}
+                  style={{ flex: 1, padding: '12px', height: 'auto', fontWeight: 'bold' }}
+                >
+                  ← Back
+                </button>
+                <button 
+                  className="sidebar-action" 
+                  onClick={onCreateWorkspace}
+                  disabled={!newWorkspaceName.trim()}
+                  style={{ flex: 2, padding: '12px', height: 'auto', fontWeight: 'bold' }}
+                >
+                  Create Workspace
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="lobby-view">
       <div className="page-heading">
@@ -1567,62 +1655,54 @@ function LobbyView({
         </div>
       </section>
 
-      {workspaces.length === 0 ? (
-        <div className="onboarding-welcome">
-          <div className="welcome-icon">🚀</div>
-          <h2>Welcome to Proxync!</h2>
-          <p>Get started by creating your very first workspace above. Isolated workspaces keep your projects, shares, guardrails, and APIs organized.</p>
-        </div>
-      ) : (
-        <section className="lobby-grid">
-          {workspaces.map((workspace) => (
-            <article
-              key={workspace.id}
-              className={
-                workspace.id === activeWorkspaceId
-                  ? 'lobby-card active'
-                  : 'lobby-card'
-              }
-            >
-              <div className="lobby-card-head">
-                <div>
-                  <strong>{workspace.name}</strong>
-                  <small>{workspace.languageHint}</small>
-                </div>
-                <span className="badge neutral">
-                  {workspace.id === activeWorkspaceId ? 'Current' : 'Saved'}
-                </span>
+      <section className="lobby-grid">
+        {workspaces.map((workspace) => (
+          <article
+            key={workspace.id}
+            className={
+              workspace.id === activeWorkspaceId
+                ? 'lobby-card active'
+                : 'lobby-card'
+            }
+          >
+            <div className="lobby-card-head">
+              <div>
+                <strong>{workspace.name}</strong>
+                <small>{workspace.languageHint}</small>
               </div>
-              <div className="lobby-card-meta">
-                <span>{workspace.profiles.length} saved shares</span>
-                <span>{workspace.savedRequests.length} requests</span>
-                <span>{workspace.guardrails.authMode} auth</span>
-              </div>
-              <p>{workspace.notes || 'No notes yet. This workspace is ready for project-specific context.'}</p>
-              <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                <button
-                  className="primary-command small"
-                  onClick={() => onSelectWorkspace(workspace.id)}
-                >
-                  Open workspace
-                </button>
-                <button
-                  className="danger-command small"
-                  style={{
-                    background: 'rgba(239, 68, 68, 0.1)',
-                    border: '1px solid rgba(239, 68, 68, 0.2)',
-                    color: '#ff8b8b',
-                    cursor: 'pointer'
-                  }}
-                  onClick={() => onDeleteWorkspace(workspace.id)}
-                >
-                  Delete
-                </button>
-              </div>
-            </article>
-          ))}
-        </section>
-      )}
+              <span className="badge neutral">
+                {workspace.id === activeWorkspaceId ? 'Current' : 'Saved'}
+              </span>
+            </div>
+            <div className="lobby-card-meta">
+              <span>{workspace.profiles.length} saved shares</span>
+              <span>{workspace.savedRequests.length} requests</span>
+              <span>{workspace.guardrails.authMode} auth</span>
+            </div>
+            <p>{workspace.notes || 'No notes yet. This workspace is ready for project-specific context.'}</p>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+              <button
+                className="primary-command small"
+                onClick={() => onSelectWorkspace(workspace.id)}
+              >
+                Open workspace
+              </button>
+              <button
+                className="danger-command small"
+                style={{
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.2)',
+                  color: '#ff8b8b',
+                  cursor: 'pointer'
+                }}
+                onClick={() => onDeleteWorkspace(workspace.id)}
+              >
+                Delete
+              </button>
+            </div>
+          </article>
+        ))}
+      </section>
     </div>
   );
 }
@@ -3258,16 +3338,3 @@ function formatDate(value: string) {
   return new Date(value).toLocaleString();
 }
 
-function tabLabel(view: MainView) {
-  const labels: Record<MainView, string> = {
-    lobby: 'Lobby',
-    welcome: 'Welcome',
-    process: 'Process',
-    traffic: 'Traffic',
-    postman: 'Postman',
-    swagger: 'Swagger',
-    observability: 'Observability',
-    settings: 'Settings',
-  };
-  return labels[view];
-}

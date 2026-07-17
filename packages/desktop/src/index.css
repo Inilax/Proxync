@@ -372,8 +372,8 @@ pre,
 }
 
 .workspace-shell {
-  display: grid;
-  grid-template-rows: 50px 46px minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
   height: 100%;
@@ -381,35 +381,37 @@ pre,
 }
 
 .topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 18px;
-  border-bottom: 1px solid var(--line);
-  -webkit-app-region: drag;
+  display: none;
 }
 
-.session-pill {
-  display: inline-flex;
+/* Sidebar tunnel status pill */
+.sidebar-tunnel-status {
+  display: flex;
   align-items: center;
   gap: 9px;
-  max-width: 60vw;
-  padding: 7px 14px;
+  padding: 9px 13px;
   border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--bg-elevated);
+  border-radius: 10px;
+  background: var(--panel);
   color: var(--faint);
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.sidebar-tunnel-status.active {
+  border-color: rgba(29, 215, 178, 0.34);
+  background: rgba(5, 18, 17, 0.9);
+  color: var(--teal);
+}
+
+.sidebar-tunnel-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.session-pill.active {
-  border: 1px solid rgba(29, 215, 178, 0.34);
-  background: rgba(5, 18, 17, 0.9);
-  color: var(--teal);
+  flex: 1;
+  min-width: 0;
 }
 
 .window-actions {
@@ -430,31 +432,73 @@ pre,
   color: var(--text);
 }
 
+/* Tab strip removed — navigation now lives entirely in the sidebar */
 .tab-strip {
-  display: flex;
-  align-items: end;
-  border-bottom: 1px solid var(--line);
-  background: rgba(10, 18, 24, 0.76);
+  display: none;
 }
 
 .tab {
-  height: 100%;
-  min-width: 118px;
-  padding: 0 16px;
-  border: 0;
-  border-right: 1px solid var(--line);
-  background: transparent;
-  color: var(--muted);
-  font-weight: 700;
+  display: none;
 }
 
-.tab.active {
-  background: rgba(18, 29, 37, 0.92);
+
+/* Mobile navigation bar — hidden on desktop, visible on narrow screens */
+.mobile-nav-bar {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  height: 48px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(7, 16, 21, 0.96);
+  backdrop-filter: blur(20px);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.mobile-nav-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 700;
   color: var(--text);
-  box-shadow: inset 0 -2px 0 var(--teal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sidebar toggle — hidden by default on desktop (sidebar always visible) */
+.sidebar-toggle-btn {
+  display: none;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 16px;
+  width: 36px;
+  height: 36px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.sidebar-toggle-btn:hover {
+  background: rgba(29, 215, 178, 0.1);
+  border-color: rgba(29, 215, 178, 0.24);
+  color: var(--teal);
+}
+
+/* Sidebar brand-block toggle — always hidden on desktop,
+   shown inside sidebar only on mobile (≤820px) */
+.brand-block .sidebar-toggle-btn {
+  display: none;
 }
 
 .content-stage {
+  flex: 1 1 0;
+  min-height: 0;
   min-width: 0;
   overflow: auto;
   padding: 28px;
@@ -1368,15 +1412,48 @@ pre,
   }
 }
 
+
 @media (max-width: 820px) {
+  /* Show the mobile top bar */
+  .mobile-nav-bar {
+    display: flex;
+  }
+
+  /* Show the hamburger button inside mobile-nav-bar */
+  .sidebar-toggle-btn {
+    display: inline-flex;
+  }
+
+  /* Full-width layout: sidebar is hidden by default as overlay */
   .mvp-shell {
     grid-template-columns: 1fr;
   }
 
+  /* Sidebar becomes a fixed slide-in drawer */
   .sidebar {
-    display: none;
+    display: flex;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(280px, 85vw);
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease-in-out;
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.4);
+    height: 100%;
   }
 
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  /* Show the hamburger inside the sidebar brand block on mobile too */
+  .brand-block .sidebar-toggle-btn {
+    display: inline-flex;
+  }
+
+  /* Compress traffic table columns */
   .traffic-head,
   .traffic-row {
     grid-template-columns: 80px minmax(0, 1fr) 80px;
@@ -1389,6 +1466,7 @@ pre,
     display: none;
   }
 
+  /* Single column layout for grids */
   .metric-row,
   .observability-grid,
   .status-grid,
@@ -1412,6 +1490,79 @@ pre,
     left: 12px;
     right: 12px;
     width: auto;
+  }
+
+  /* Reduce content padding on mobile */
+  .content-stage {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .tunnels-view-container {
+    position: relative;
+  }
+  .inspector-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.4);
+    border-left: 1px solid var(--line);
+    width: 380px;
+    min-width: 0;
+  }
+  .chat-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.4);
+    border-left: 1px solid var(--line);
+    width: 340px;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .inspector-panel,
+  .chat-panel {
+    width: 100% !important;
+    left: 0 !important;
+    right: 0 !important;
+  }
+  
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  
+  .process-list,
+  .workspace-list,
+  .chat-messages,
+  .discovery-list {
+    scrollbar-width: thin;
+  }
+}
+
+@media (max-width: 640px) {
+  .lobby-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .onboarding-welcome {
+    padding: 30px 16px !important;
+    margin: 20px auto !important;
+  }
+  .onboarding-welcome h2 {
+    font-size: 18px !important;
+  }
+  .onboarding-welcome p {
+    font-size: 12px !important;
   }
 }
 
