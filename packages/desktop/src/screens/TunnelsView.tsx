@@ -555,7 +555,7 @@ export function TunnelsView({ workspace }: TunnelsViewProps) {
 
       {/* ── Chat Panel ── */}
       {chatOpen && (
-        <ChatPanel workspace={workspace} />
+        <ChatPanel workspace={workspace} onClose={() => setChatOpen(false)} />
       )}
     </div>
   );

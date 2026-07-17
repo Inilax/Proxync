@@ -40,6 +40,7 @@ export function RequestPlayground({ workspace, activeTunnel, prefillRequest }: R
   const [scanning, setScanning] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [endpoints, setEndpoints] = useState<DiscoveredEndpoint[]>([]);
+  const [subTab, setSubTab] = useState<'client' | 'scanner'>('client');
 
   // Prefill handler (e.g. from TunnelsView)
   useEffect(() => {
@@ -257,251 +258,268 @@ ${fileContents.join('\n\n')}
   };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, height: '100%', overflow: 'hidden' }}>
-      
-      {/* LEFT: REST Request Playground */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', paddingRight: 8 }}>
-        <div className="card" style={{ flexShrink: 0 }}>
-          <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span>⚡</span> HTTP Request Playground
-          </h3>
-          
-          {/* Method & URL */}
-          <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
-            <select
-              value={method}
-              onChange={(e) => setMethod(e.target.value)}
-              className="form-input"
-              style={{ width: 110, padding: 8 }}
-            >
-              {['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'].map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="/api/v1/resource"
-              value={path}
-              onChange={(e) => setPath(e.target.value)}
-              style={{ flex: 1 }}
-            />
-            <button
-              onClick={handleSendRequest}
-              disabled={loading || !activeTunnel}
-              className="btn btn-primary"
-              style={{ width: 'auto', padding: '0 24px' }}
-            >
-              {loading ? <span className="spinner" /> : 'Send'}
-            </button>
-          </div>
-
-          {!activeTunnel && (
-            <div style={{ fontSize: 12, color: 'var(--yellow)', marginBottom: 12 }}>
-              ⚠️ Please share a local port to generate an active tunnel before executing requests.
-            </div>
-          )}
-
-          {/* Headers list */}
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>Headers</span>
-              <button className="btn btn-ghost" style={{ padding: '2px 8px', fontSize: 11 }} onClick={addHeaderRow}>+ Add Header</button>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {headers.map((h, i) => (
-                <div key={i} style={{ display: 'flex', gap: 8 }}>
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="Key"
-                    value={h.key}
-                    onChange={(e) => updateHeaderRow(i, e.target.value, h.value)}
-                    style={{ fontSize: 12, padding: 6 }}
-                  />
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="Value"
-                    value={h.value}
-                    onChange={(e) => updateHeaderRow(i, h.key, e.target.value)}
-                    style={{ fontSize: 12, padding: 6 }}
-                  />
-                  <button className="btn btn-ghost" style={{ padding: '0 8px' }} onClick={() => deleteHeaderRow(i)}>✕</button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Request Body */}
-          <div>
-            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Body (JSON/Text)</span>
-            <textarea
-              className="form-input"
-              rows={4}
-              placeholder='{"key": "value"}'
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              style={{ fontFamily: 'var(--font-mono)', fontSize: 12, resize: 'vertical' }}
-            />
-          </div>
-        </div>
-
-        {/* Response Panel */}
-        <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 250 }}>
-          <h3 className="card-title">Response</h3>
-          {!response ? (
-            <div className="empty-state" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontSize: 24, marginBottom: 8 }}>📤</span>
-              <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: 13 }}>Send a request to see the response output</p>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1, overflowY: 'auto' }}>
-              <div style={{ display: 'flex', gap: 16, fontSize: 13, borderBottom: '1px solid var(--border-subtle)', paddingBottom: 8 }}>
-                <div>Status: <strong style={{ color: response.status >= 400 ? 'var(--red)' : 'var(--green)' }}>{response.status}</strong></div>
-                <div>Time: <strong style={{ color: 'var(--text-secondary)' }}>{response.duration}ms</strong></div>
-              </div>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>HEADERS</div>
-                  <div style={{ background: 'var(--bg-elevated)', padding: 8, borderRadius: 6, fontSize: 11, fontFamily: 'var(--font-mono)', maxHeight: 100, overflowY: 'auto' }}>
-                    {Object.entries(response.headers).map(([k, v]) => (
-                      <div key={k}><span style={{ color: 'var(--blue)' }}>{k}</span>: {String(v)}</div>
-                    ))}
-                  </div>
-                </div>
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>BODY</div>
-                  <pre style={{
-                    flex: 1, background: 'var(--bg-elevated)', padding: 12, borderRadius: 6,
-                    fontSize: 12, fontFamily: 'var(--font-mono)', overflow: 'auto',
-                    margin: 0, whiteSpace: 'pre-wrap', minHeight: 120
-                  }}>
-                    {response.body || '[Empty Response]'}
-                  </pre>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', gap: 12 }}>
+      {/* Subtab Strip */}
+      <div className="inspector-tabs" style={{ background: 'rgba(10, 18, 24, 0.4)', borderRadius: 6, padding: 2, display: 'flex', gap: 4, flexShrink: 0 }}>
+        <button
+          onClick={() => setSubTab('client')}
+          className={`inspector-tab ${subTab === 'client' ? 'active' : ''}`}
+          style={{ padding: '6px 12px', fontSize: 11, borderBottom: 'none', borderRadius: 4, flex: 1 }}
+        >
+          🔌 REST Client
+        </button>
+        <button
+          onClick={() => setSubTab('scanner')}
+          className={`inspector-tab ${subTab === 'scanner' ? 'active' : ''}`}
+          style={{ padding: '6px 12px', fontSize: 11, borderBottom: 'none', borderRadius: 4, flex: 1 }}
+        >
+          🤖 AI Endpoint Scanner
+        </button>
       </div>
 
-      {/* RIGHT: AI Swagger Spec Discovery */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', paddingRight: 8 }}>
-        
-        {/* Local Folder Scanner Settings */}
-        <div className="card">
-          <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span>🤖</span> AI Endpoint Scanner
-          </h3>
-          
-          {/* API Key */}
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
-              OpenRouter API Key (Supports free models, e.g. Gemini 2.5 Flash Free)
-            </label>
-            <input
-              type="password"
-              className="form-input"
-              placeholder="Paste openrouter api key..."
-              value={openRouterKey}
-              onChange={(e) => handleSaveApiKey(e.target.value)}
-              style={{ fontSize: 12, padding: 8 }}
-            />
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
-              Get a free API key at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>openrouter.ai</a>
-            </div>
-          </div>
-
-          {/* Directory Path */}
-          <div style={{ display: 'flex', gap: 10 }}>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="Absolute path to backend project folder (e.g. C:\dev\my-app)"
-              value={projectPath}
-              onChange={(e) => setProjectPath(e.target.value)}
-              style={{ flex: 1, fontSize: 12 }}
-            />
-            <button
-              onClick={handleScanDirectory}
-              disabled={scanning || !projectPath}
-              className="btn btn-ghost"
-              style={{ width: 'auto', padding: '0 16px' }}
-            >
-              {scanning ? 'Scanning...' : 'Scan Folder'}
-            </button>
-          </div>
-        </div>
-
-        {/* Scanned Files List */}
-        {scannedFiles.length > 0 && (
-          <div className="card" style={{ maxHeight: 200, overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <h4 style={{ margin: 0, fontSize: 12, fontWeight: 600 }}>Discovered Source Files ({scannedFiles.length})</h4>
-              <button
-                className="btn btn-primary"
-                style={{ width: 'auto', padding: '4px 10px', fontSize: 11 }}
-                onClick={handleGenerateSwagger}
-                disabled={generating}
+      {subTab === 'client' ? (
+        /* LEFT: REST Request Playground */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', paddingRight: 4, flex: 1 }}>
+          <div className="card" style={{ flexShrink: 0 }}>
+            <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>⚡</span> HTTP Request Playground
+            </h3>
+            
+            {/* Method & URL */}
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              <select
+                value={method}
+                onChange={(e) => setMethod(e.target.value)}
+                className="form-input"
+                style={{ width: 110, padding: 8 }}
               >
-                {generating ? 'Processing files with AI...' : 'Generate API Spec'}
+                {['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'].map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="/api/v1/resource"
+                value={path}
+                onChange={(e) => setPath(e.target.value)}
+                style={{ flex: 1 }}
+              />
+              <button
+                onClick={handleSendRequest}
+                disabled={loading || !activeTunnel}
+                className="btn btn-primary"
+                style={{ width: 'auto', padding: '0 24px' }}
+              >
+                {loading ? <span className="spinner" /> : 'Send'}
               </button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {scannedFiles.map((file) => (
-                <label key={file} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, cursor: 'pointer', padding: '4px 6px', background: 'rgba(255,255,255,0.01)', borderRadius: 4 }}>
-                  <input
-                    type="checkbox"
-                    checked={!!selectedFiles[file]}
-                    onChange={(e) => setSelectedFiles({ ...selectedFiles, [file]: e.target.checked })}
-                  />
-                  <code>{file}</code>
-                </label>
-              ))}
+            {!activeTunnel && (
+              <div style={{ fontSize: 12, color: 'var(--yellow)', marginBottom: 12 }}>
+                ⚠️ Please share a local port to generate an active tunnel before executing requests.
+              </div>
+            )}
+
+            {/* Headers list */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>Headers</span>
+                <button className="btn btn-ghost" style={{ padding: '2px 8px', fontSize: 11 }} onClick={addHeaderRow}>+ Add Header</button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {headers.map((h, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Key"
+                      value={h.key}
+                      onChange={(e) => updateHeaderRow(i, e.target.value, h.value)}
+                      style={{ fontSize: 12, padding: 6 }}
+                    />
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Value"
+                      value={h.value}
+                      onChange={(e) => updateHeaderRow(i, h.key, e.target.value)}
+                      style={{ fontSize: 12, padding: 6 }}
+                    />
+                    <button className="btn btn-ghost" style={{ padding: '0 8px' }} onClick={() => deleteHeaderRow(i)}>✕</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Request Body */}
+            <div>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Body (JSON/Text)</span>
+              <textarea
+                className="form-input"
+                rows={4}
+                placeholder='{"key": "value"}'
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                style={{ fontFamily: 'var(--font-mono)', fontSize: 12, resize: 'vertical' }}
+              />
             </div>
           </div>
-        )}
 
-        {/* Discovered Endpoints List */}
-        <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <h3 className="card-title">Discovered API endpoints</h3>
-          {endpoints.length === 0 ? (
-            <div className="empty-state" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontSize: 24, marginBottom: 8 }}>🔍</span>
-              <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: 13 }}>Scan files above to auto-generate Swagger paths</p>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto', flex: 1 }}>
-              {endpoints.map((ep, idx) => (
-                <div
-                  key={idx}
-                  onClick={() => handleSelectEndpoint(ep)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10, padding: 10,
-                    background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
-                    borderRadius: 8, cursor: 'pointer', transition: 'all 0.15s'
-                  }}
-                  className="endpoint-item-hover"
-                >
-                  <span className={`tunnel-status-badge`} style={{
-                    minWidth: 54, textAlign: 'center', fontSize: 10,
-                    background: ep.method === 'GET' ? 'var(--blue-dim)' : ep.method === 'POST' ? 'var(--green-dim)' : 'var(--orange-dim)',
-                    color: ep.method === 'GET' ? 'var(--blue)' : ep.method === 'POST' ? 'var(--green)' : 'var(--orange)'
-                  }}>{ep.method}</span>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <code style={{ fontSize: 12, fontWeight: 600 }}>{ep.path}</code>
-                    {ep.summary && <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{ep.summary}</span>}
+          {/* Response Panel */}
+          <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 250 }}>
+            <h3 className="card-title">Response</h3>
+            {!response ? (
+              <div className="empty-state" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: 24, marginBottom: 8 }}>📤</span>
+                <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: 13 }}>Send a request to see the response output</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: 1, overflowY: 'auto' }}>
+                <div style={{ display: 'flex', gap: 16, fontSize: 13, borderBottom: '1px solid var(--border-subtle)', paddingBottom: 8 }}>
+                  <div>Status: <strong style={{ color: response.status >= 400 ? 'var(--red)' : 'var(--green)' }}>{response.status}</strong></div>
+                  <div>Time: <strong style={{ color: 'var(--text-secondary)' }}>{response.duration}ms</strong></div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>HEADERS</div>
+                    <div style={{ background: 'var(--bg-elevated)', padding: 8, borderRadius: 6, fontSize: 11, fontFamily: 'var(--font-mono)', maxHeight: 100, overflowY: 'auto' }}>
+                      {Object.entries(response.headers).map(([k, v]) => (
+                        <div key={k}><span style={{ color: 'var(--blue)' }}>{k}</span>: {String(v)}</div>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>BODY</div>
+                    <pre style={{
+                      flex: 1, background: 'var(--bg-elevated)', padding: 12, borderRadius: 6,
+                      fontSize: 12, fontFamily: 'var(--font-mono)', overflow: 'auto',
+                      margin: 0, whiteSpace: 'pre-wrap', minHeight: 120
+                    }}>
+                      {response.body || '[Empty Response]'}
+                    </pre>
                   </div>
                 </div>
-              ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* RIGHT: AI Swagger Spec Discovery */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', paddingRight: 4, flex: 1 }}>
+          
+          {/* Local Folder Scanner Settings */}
+          <div className="card">
+            <h3 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>🤖</span> AI Endpoint Scanner
+            </h3>
+            
+            {/* API Key */}
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+                OpenRouter API Key (Supports free models, e.g. Gemini 2.5 Flash Free)
+              </label>
+              <input
+                type="password"
+                className="form-input"
+                placeholder="Paste openrouter api key..."
+                value={openRouterKey}
+                onChange={(e) => handleSaveApiKey(e.target.value)}
+                style={{ fontSize: 12, padding: 8 }}
+              />
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+                Get a free API key at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>openrouter.ai</a>
+              </div>
+            </div>
+
+            {/* Directory Path */}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Absolute path to backend project folder (e.g. C:\dev\my-app)"
+                value={projectPath}
+                onChange={(e) => setProjectPath(e.target.value)}
+                style={{ flex: 1, fontSize: 12 }}
+              />
+              <button
+                onClick={handleScanDirectory}
+                disabled={scanning || !projectPath}
+                className="btn btn-ghost"
+                style={{ width: 'auto', padding: '0 16px' }}
+              >
+                {scanning ? 'Scanning...' : 'Scan Folder'}
+              </button>
+            </div>
+          </div>
+
+          {/* Scanned Files List */}
+          {scannedFiles.length > 0 && (
+            <div className="card" style={{ maxHeight: 200, overflowY: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <h4 style={{ margin: 0, fontSize: 12, fontWeight: 600 }}>Discovered Source Files ({scannedFiles.length})</h4>
+                <button
+                  className="btn btn-primary"
+                  style={{ width: 'auto', padding: '4px 10px', fontSize: 11 }}
+                  onClick={handleGenerateSwagger}
+                  disabled={generating}
+                >
+                  {generating ? 'Processing files with AI...' : 'Generate API Spec'}
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {scannedFiles.map((file) => (
+                  <label key={file} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, cursor: 'pointer', padding: '4px 6px', background: 'rgba(255,255,255,0.01)', borderRadius: 4 }}>
+                    <input
+                      type="checkbox"
+                      checked={!!selectedFiles[file]}
+                      onChange={(e) => setSelectedFiles({ ...selectedFiles, [file]: e.target.checked })}
+                    />
+                    <code>{file}</code>
+                  </label>
+                ))}
+              </div>
             </div>
           )}
+
+          {/* Discovered Endpoints List */}
+          <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <h3 className="card-title">Discovered API endpoints</h3>
+            {endpoints.length === 0 ? (
+              <div className="empty-state" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: 24, marginBottom: 8 }}>🔍</span>
+                <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: 13 }}>Scan files above to auto-generate Swagger paths</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto', flex: 1 }}>
+                {endpoints.map((ep, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => handleSelectEndpoint(ep)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: 10,
+                      background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+                      borderRadius: 8, cursor: 'pointer', transition: 'all 0.15s'
+                    }}
+                    className="endpoint-item-hover"
+                  >
+                    <span className={`tunnel-status-badge`} style={{
+                      minWidth: 54, textAlign: 'center', fontSize: 10,
+                      background: ep.method === 'GET' ? 'var(--blue-dim)' : ep.method === 'POST' ? 'var(--green-dim)' : 'var(--orange-dim)',
+                      color: ep.method === 'GET' ? 'var(--blue)' : ep.method === 'POST' ? 'var(--green)' : 'var(--orange)'
+                    }}>{ep.method}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <code style={{ fontSize: 12, fontWeight: 600 }}>{ep.path}</code>
+                      {ep.summary && <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{ep.summary}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-
-      </div>
-
+      )}
     </div>
   );
 }

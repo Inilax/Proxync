@@ -57,6 +57,19 @@
         "packages/desktop/src/lib/api.ts"
       ],
       "featureSummary": "Refactored custom domains relationship from workspace level to user level to enable sharing domains globally across workspaces; added customDomain unique reference to Tunnels; implemented DomainSelectDialog dropdown choice for exposing tunnels on random subdomains, custom domains, or public Localtunnel proxies; integrated Localtunnel client spawning in Rust layer routing through API port 3939 to support 100% traffic capturing/logging; added local WiFi LAN Tunnel resolver and premium helper select card styling with preferred subdomain selection support."
+    },
+    {
+      "timestamp": "2026-07-17T21:24:00+05:30",
+      "branchName": "feature/main-responsive-ui-cleanup",
+      "modifiedFiles": [
+        "packages/desktop/src/App.tsx",
+        "packages/desktop/src/components/ChatPanel.tsx",
+        "packages/desktop/src/components/RequestPlayground.tsx",
+        "packages/desktop/src/screens/TunnelsView.tsx",
+        "packages/desktop/src/index.css",
+        ".agents/changelog.json"
+      ],
+      "featureSummary": "Removed duplicate top navbar and tab-strip navigation bars — all navigation now lives exclusively in the sidebar, eliminating the dual-nav confusion. Added a compact 48px mobile-nav-bar (hamburger + current view label) that only appears on screens ≤820px where the sidebar becomes a slide-in overlay drawer. Fixed full-screen layout breakage caused by grid display:none row collapse — workspace-shell converted from CSS grid to flexbox column so content fills 100% height on all screen sizes. Added tunnel status pill inside the sidebar replacing the removed topbar session pill. Redesigned RequestPlayground with sub-tab switcher (REST Client / AI Endpoint Scanner) to prevent input squashing inside narrow inspector panels. Added onClose callback to ChatPanel with dismiss button in header. Implemented 2-step onboarding wizard in LobbyView when no workspaces exist (welcome step → workspace name input step). Added responsive CSS breakpoints for inspector/chat panel overlays at ≤1200px and full-width at ≤768px. Sidebar now auto-closes when any nav item is clicked on mobile."
     }
   ]
 }

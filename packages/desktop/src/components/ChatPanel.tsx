@@ -7,6 +7,7 @@ const WS_URL = API_BASE.replace(/^http/, 'ws') + '/relay';
 
 interface ChatPanelProps {
   workspace: any;
+  onClose?: () => void;
 }
 
 interface Message {
@@ -24,7 +25,7 @@ interface PresenceMember {
   name: string;
 }
 
-export function ChatPanel({ workspace }: ChatPanelProps) {
+export function ChatPanel({ workspace, onClose }: ChatPanelProps) {
   const [channels, setChannels] = useState<any[]>([]);
   const [activeChannel, setActiveChannel] = useState<any | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -178,24 +179,44 @@ export function ChatPanel({ workspace }: ChatPanelProps) {
             # {activeChannel?.name ?? 'general'}
           </span>
         </div>
-        {/* Presence avatars */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          {presence.slice(0, 5).map(m => (
-            <div
-              key={m.userId}
-              className="presence-avatar"
-              title={m.name}
+        {/* Presence avatars and close button */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {presence.slice(0, 5).map(m => (
+              <div
+                key={m.userId}
+                className="presence-avatar"
+                title={m.name}
+              >
+                {initials(m.name)}
+              </div>
+            ))}
+            {presence.length > 5 && (
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>+{presence.length - 5}</span>
+            )}
+            {presence.length > 0 && (
+              <span style={{ fontSize: 11, color: 'var(--green)', marginLeft: 4 }}>
+                {presence.length} online
+              </span>
+            )}
+          </div>
+          {onClose && (
+            <button
+              onClick={onClose}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--muted)',
+                fontSize: '16px',
+                cursor: 'pointer',
+                padding: '4px',
+                marginLeft: '8px',
+                lineHeight: 1
+              }}
+              title="Close chat"
             >
-              {initials(m.name)}
-            </div>
-          ))}
-          {presence.length > 5 && (
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>+{presence.length - 5}</span>
-          )}
-          {presence.length > 0 && (
-            <span style={{ fontSize: 11, color: 'var(--green)', marginLeft: 4 }}>
-              {presence.length} online
-            </span>
+              ✕
+            </button>
           )}
         </div>
       </div>
