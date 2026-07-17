@@ -70,6 +70,28 @@
         ".agents/changelog.json"
       ],
       "featureSummary": "Removed duplicate top navbar and tab-strip navigation bars — all navigation now lives exclusively in the sidebar, eliminating the dual-nav confusion. Added a compact 48px mobile-nav-bar (hamburger + current view label) that only appears on screens ≤820px where the sidebar becomes a slide-in overlay drawer. Fixed full-screen layout breakage caused by grid display:none row collapse — workspace-shell converted from CSS grid to flexbox column so content fills 100% height on all screen sizes. Added tunnel status pill inside the sidebar replacing the removed topbar session pill. Redesigned RequestPlayground with sub-tab switcher (REST Client / AI Endpoint Scanner) to prevent input squashing inside narrow inspector panels. Added onClose callback to ChatPanel with dismiss button in header. Implemented 2-step onboarding wizard in LobbyView when no workspaces exist (welcome step → workspace name input step). Added responsive CSS breakpoints for inspector/chat panel overlays at ≤1200px and full-width at ≤768px. Sidebar now auto-closes when any nav item is clicked on mobile."
+    },
+    {
+      "timestamp": "2026-07-17T23:55:00+05:30",
+      "branchName": "feature/main-cloudflare-refactor",
+      "modifiedFiles": [
+        "packages/api/src/tunnels/tunnels.service.ts",
+        "packages/desktop/src-tauri/src/lib.rs",
+        "packages/desktop/src/App.tsx",
+        "packages/desktop/src/components/CompanionPanel.tsx",
+        "packages/desktop/src/components/DiscoverDialog.tsx",
+        "packages/desktop/src/components/DomainSelectDialog.tsx",
+        "packages/desktop/src/components/RequestDetailDialog.tsx",
+        "packages/desktop/src/lib/types.ts",
+        "packages/desktop/src/screens/LobbyView.tsx",
+        "packages/desktop/src/screens/ObservabilityView.tsx",
+        "packages/desktop/src/screens/PostmanView.tsx",
+        "packages/desktop/src/screens/ProcessView.tsx",
+        "packages/desktop/src/screens/SettingsView.tsx",
+        "packages/desktop/src/screens/SwaggerView.tsx",
+        "packages/desktop/src/screens/TrafficView.tsx"
+      ],
+      "featureSummary": "Integrated Cloudflare Tunnel support using npx cloudflared quick tunnels with automatic trycloudflare URL parsing; built premium visual antenna latency signal bars displaying ping times to Local loopback, Cloudflare edge, and Localtunnel endpoints; refactored App.tsx monolith into independent views (LobbyView, ProcessView, TrafficView, PostmanView, SwaggerView, ObservabilityView, SettingsView) and dialog components; resolved workspaces state hydration race condition by loading local state synchronously on mount; added seamless silent workspace auto-registration during public domain sharing; added permanent Control Plane Connection section inside Settings with reconnect actions; bypassed guest user active tunnel count limits for offline/local MVP mode."
     }
   ]
 }
