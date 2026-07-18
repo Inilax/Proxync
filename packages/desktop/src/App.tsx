@@ -61,7 +61,7 @@ const DEFAULT_REQUEST: SavedRequest = {
 
 const DEFAULT_APP_SETTINGS: AppSettings = {
   guardrails: { ...DEFAULT_GUARDRAILS },
-  defaultProjectRootPath: '', relayDeploymentHint: '', notes: '',
+  defaultProjectRootPath: '', notes: '',
 };
 
 const LOCAL_WORKSPACES_KEY = 'proxync_local_workspaces_v1';
@@ -297,10 +297,10 @@ export default function App() {
 
   /* ── Action handlers ── */
 
-  async function discoverProcesses() {
+  async function discoverProcesses(bypassCache: boolean = false) {
     setDiscovering(true);
     try {
-      const discovered = await readNativeProcesses();
+      const discovered = await readNativeProcesses(bypassCache);
       setProcesses(discovered);
       if (!selectedProcessId && discovered[0]) setSelectedProcessId(discovered[0].id);
       showToast(discovered.length > 0 ? `Discovered ${discovered.length} local process${discovered.length === 1 ? '' : 'es'}` : 'No local development ports found', discovered.length > 0 ? 'success' : 'info');
@@ -559,12 +559,12 @@ export default function App() {
       const inferredLanguage = inferLanguageFromFiles(files);
       updateActiveWorkspace((ws) => ({ ...ws, scannedFiles: files, languageHint: inferredLanguage }));
       showToast(`Scanned ${files.length} files. Language hint updated to ${inferredLanguage}.`, 'success');
+      void discoverProcesses(true);
     } catch (error) { showToast(error instanceof Error ? error.message : 'Project scan failed', 'error'); }
     finally { setScanningProject(false); }
   }
 
   function updateAppNotes(notes: string) { setAppSettings((current) => ({ ...current, notes })); }
-  function updateRelayHint(relayDeploymentHint: string) { setAppSettings((current) => ({ ...current, relayDeploymentHint })); }
 
   async function addDomain() {
     if (!activeWorkspace?.remoteWorkspaceId) { showToast('Select a synced workspace before adding a domain', 'info'); return; }
@@ -712,7 +712,7 @@ export default function App() {
         <div className="sidebar-section">
           <div className="sidebar-section-title">
             Live processes
-            <button onClick={discoverProcesses} disabled={discovering}>
+            <button onClick={() => { void discoverProcesses(true); }} disabled={discovering}>
               {Icons.refresh} {discovering ? 'Scanning' : 'Rescan'}
             </button>
           </div>
@@ -787,7 +787,7 @@ export default function App() {
             <LobbyView workspaces={workspaces} activeWorkspaceId={activeWorkspaceId} newWorkspaceName={newWorkspaceName} onWorkspaceNameChange={setNewWorkspaceName} onCreateWorkspace={createWorkspace} onSelectWorkspace={selectWorkspace} onDeleteWorkspace={deleteWorkspace} />
           )}
           {mainView === 'welcome' && (
-            <WelcomeView workspace={activeWorkspace} processCount={processes.length} tunnelCount={tunnels.filter((t) => t.status === 'ACTIVE').length} requestCount={requests.length} onDiscover={() => setDiscoverOpen(true)} />
+            <WelcomeView workspace={activeWorkspace} processCount={processes.length} tunnelCount={tunnels.filter((t) => t.status === 'ACTIVE').length} requestCount={requests.length} onDiscover={() => setDiscoverOpen(true)} onUpdateNotes={updateWorkspaceNotes} />
           )}
           {mainView === 'process' && (
             <ProcessView workspace={activeWorkspace} process={selectedProcess} profile={selectedProfile} tunnel={activeTunnel} sharingPort={sharingPort} suggestions={starterSuggestions} hasVerifiedDomain={domains.some((d) => d.verified)} localIp={localIp} onDiscover={() => setDiscoverOpen(true)} onShare={initiatePublicShare} onShareLocal={shareProcessLocal} onStop={stopTunnel} onStopLocalShare={() => setSharingPort(null)} onCopy={copyText} onImportStarterRequests={importStarterRequests} />
@@ -805,7 +805,7 @@ export default function App() {
             <ObservabilityView workspace={activeWorkspace} process={selectedProcess} tunnel={activeTunnel} requestCount={requests.length} />
           )}
           {mainView === 'settings' && (
-            <SettingsView context={context} workspace={activeWorkspace} appSettings={appSettings} domains={domains} domainDraft={domainDraft} loadingDomains={loadingDomains} busyDomainId={busyDomainId} bootstrapError={bootstrapError} activeTunnel={activeTunnel} scanningProject={scanningProject} onUpdateGuardrails={updateGuardrails} onUpdateNotes={updateWorkspaceNotes} onUpdateAppNotes={updateAppNotes} onUpdateRelayHint={updateRelayHint} onUpdateProjectRootPath={updateProjectRootPath} onScanProjectFolder={scanProjectFolder} onDomainDraftChange={setDomainDraft} onAddDomain={addDomain} onVerifyDomain={verifyDomain} onRemoveDomain={removeDomain} onSyncWorkspace={syncActiveWorkspace} onReconnectApi={reconnectApi} />
+            <SettingsView context={context} workspace={activeWorkspace} appSettings={appSettings} domains={domains} domainDraft={domainDraft} loadingDomains={loadingDomains} busyDomainId={busyDomainId} bootstrapError={bootstrapError} activeTunnel={activeTunnel} scanningProject={scanningProject} onUpdateGuardrails={updateGuardrails} onUpdateAppNotes={updateAppNotes} onUpdateProjectRootPath={updateProjectRootPath} onScanProjectFolder={scanProjectFolder} onDomainDraftChange={setDomainDraft} onAddDomain={addDomain} onVerifyDomain={verifyDomain} onRemoveDomain={removeDomain} onSyncWorkspace={syncActiveWorkspace} onReconnectApi={reconnectApi} />
           )}
         </main>
       </section>
@@ -843,9 +843,9 @@ export default function App() {
    UTILITY FUNCTIONS (preserved from original)
    ══════════════════════════════════════════════ */
 
-async function readNativeProcesses(): Promise<ProcessCandidate[]> {
+async function readNativeProcesses(bypassCache: boolean = false): Promise<ProcessCandidate[]> {
   try {
-    const nativeProcesses = await invoke<ProcessCandidate[]>('scan_processes');
+    const nativeProcesses = await invoke<ProcessCandidate[]>('scan_processes', { bypassCache });
     if (nativeProcesses.length > 0) return nativeProcesses;
   } catch { /* fall back */ }
   const ports = await invoke<number[]>('scan_ports').catch(() => []);
@@ -888,7 +888,7 @@ function loadAppSettings(): AppSettings {
     return {
       guardrails: { ...DEFAULT_GUARDRAILS, ...(parsed.guardrails ?? {}) },
       defaultProjectRootPath: parsed.defaultProjectRootPath ?? '',
-      relayDeploymentHint: parsed.relayDeploymentHint ?? '', notes: parsed.notes ?? '',
+      notes: parsed.notes ?? '',
     };
   } catch { return { ...DEFAULT_APP_SETTINGS, guardrails: { ...DEFAULT_GUARDRAILS } }; }
 }

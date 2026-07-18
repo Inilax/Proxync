@@ -19,9 +19,7 @@ export function SettingsView({
   activeTunnel,
   scanningProject,
   onUpdateGuardrails,
-  onUpdateNotes,
   onUpdateAppNotes,
-  onUpdateRelayHint,
   onUpdateProjectRootPath,
   onScanProjectFolder,
   onDomainDraftChange,
@@ -42,9 +40,7 @@ export function SettingsView({
   activeTunnel: Tunnel | null;
   scanningProject: boolean;
   onUpdateGuardrails: (patch: Partial<Guardrails>) => void;
-  onUpdateNotes: (notes: string) => void;
   onUpdateAppNotes: (notes: string) => void;
-  onUpdateRelayHint: (relayDeploymentHint: string) => void;
   onUpdateProjectRootPath: (projectRootPath: string) => void;
   onScanProjectFolder: () => void;
   onDomainDraftChange: (value: string) => void;
@@ -386,26 +382,6 @@ export function SettingsView({
           value={appSettings.notes}
           onChange={(event) => onUpdateAppNotes(event.target.value)}
           placeholder="Keep app-wide relay or deployment notes here."
-        />
-      </section>
-
-      <section className="console-section settings-section">
-        <h2>Workspace notes</h2>
-        <textarea
-          className="form-textarea"
-          value={workspace?.notes ?? ''}
-          onChange={(event) => onUpdateNotes(event.target.value)}
-          placeholder="Keep project-specific notes, handoff context, or testing reminders here."
-        />
-      </section>
-
-      <section className="console-section settings-section">
-        <h2>Relay deployment hint</h2>
-        <textarea
-          className="form-textarea"
-          value={appSettings.relayDeploymentHint}
-          onChange={(event) => onUpdateRelayHint(event.target.value)}
-          placeholder="Example: relay.example.com behind wildcard TLS and public DNS."
         />
       </section>
     </div>

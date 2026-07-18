@@ -98,7 +98,6 @@ export interface WorkspaceConfig {
 export interface AppSettings {
   guardrails: Guardrails;
   defaultProjectRootPath: string;
-  relayDeploymentHint: string;
   notes: string;
 }
 
