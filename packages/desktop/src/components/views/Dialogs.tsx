@@ -3,7 +3,7 @@
  * DiscoverDialog, DomainSelectDialog, RequestDetailDialog
  * with animated backdrop and slide-up animations.
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { ProcessCandidate, RequestLog } from './SharedComponents';
 import { Icons } from './SharedComponents';
 
@@ -85,6 +85,48 @@ export function DiscoverDialog({
 
 /* ────────────────── Domain Select Dialog ────────────────── */
 
+export function SignalBars({ latency }: { latency: number }) {
+  let activeBars = 0;
+  let barColor = 'var(--muted)';
+  
+  if (latency < 50) {
+    activeBars = 4;
+    barColor = '#10B981'; // Green
+  } else if (latency < 150) {
+    activeBars = 3;
+    barColor = '#34D399'; // Teal/Light Green
+  } else if (latency < 300) {
+    activeBars = 2;
+    barColor = '#F5B04A'; // Amber/Orange
+  } else if (latency < Infinity) {
+    activeBars = 1;
+    barColor = '#FF7180'; // Red
+  }
+
+  return (
+    <div 
+      style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: '14px', width: '18px' }} 
+      title={latency === Infinity ? 'Unreachable' : `${Math.round(latency)}ms`}
+    >
+      {[1, 2, 3, 4].map((bar) => {
+        const isActive = bar <= activeBars;
+        return (
+          <div
+            key={bar}
+            style={{
+              width: '3px',
+              height: `${bar * 25}%`,
+              background: isActive ? barColor : 'rgba(255,255,255,0.15)',
+              borderRadius: '1px',
+              transition: 'background 0.3s ease'
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 export function DomainSelectDialog({
   process,
   domains,
@@ -98,6 +140,58 @@ export function DomainSelectDialog({
 }) {
   const [selectedDomain, setSelectedDomain] = useState<string>('default');
   const [customSubdomain, setCustomSubdomain] = useState<string>('');
+  const [latencies, setLatencies] = useState<Record<string, number>>({
+    default: Infinity,
+    cloudflare: Infinity,
+    localtunnel: Infinity,
+  });
+
+  useEffect(() => {
+    let active = true;
+
+    const ping = async (url: string): Promise<number> => {
+      const start = performance.now();
+      try {
+        await fetch(url, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
+        return performance.now() - start;
+      } catch (e) {
+        try {
+          await fetch(url, { method: 'GET', mode: 'no-cors', cache: 'no-store' });
+          return performance.now() - start;
+        } catch (err) {
+          return Infinity;
+        }
+      }
+    };
+
+    const measureAll = async () => {
+      const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
+      const endpoints = {
+        default: `${apiBase.replace(/\/$/, '')}/health`,
+        cloudflare: 'https://1.1.1.1/cdn-cgi/trace',
+        localtunnel: 'https://loca.lt',
+      };
+
+      const results = await Promise.all([
+        ping(endpoints.default),
+        ping(endpoints.cloudflare),
+        ping(endpoints.localtunnel),
+      ]);
+
+      if (active) {
+        setLatencies({
+          default: results[0],
+          cloudflare: results[1],
+          localtunnel: results[2],
+        });
+      }
+    };
+
+    void measureAll();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const getDescription = () => {
     if (selectedDomain === 'default') {
@@ -107,10 +201,17 @@ export function DomainSelectDialog({
         </span>
       );
     }
+    if (selectedDomain === 'cloudflare') {
+      return (
+        <span className="domain-desc accent">
+          ☁️ <strong>Cloudflare Tunnel (Highly Recommended):</strong> Generates a high-performance public HTTPS URL (e.g., <code>https://*.trycloudflare.com</code>) routed through Cloudflare's secure edge.
+        </span>
+      );
+    }
     if (selectedDomain === 'localtunnel') {
       return (
         <span className="domain-desc accent">
-          🌐 <strong>Localtunnel (Recommended):</strong> Generates a real, secure public HTTPS URL (e.g., <code>https://*.loca.lt</code>) instantly. Accessible from any phone or computer on the internet.
+          🌐 <strong>Localtunnel:</strong> Generates a real, secure public HTTPS URL (e.g., <code>https://*.loca.lt</code>) instantly. Accessible from any phone or computer on the internet.
         </span>
       );
     }
@@ -120,6 +221,37 @@ export function DomainSelectDialog({
       </span>
     );
   };
+
+  const options = [
+    {
+      id: 'default',
+      title: 'Default Relay Subdomain',
+      desc: 'Expose server on default localtest.me tunnel',
+      icon: '🔌',
+      latency: latencies.default,
+    },
+    {
+      id: 'cloudflare',
+      title: 'Cloudflare Tunnel',
+      desc: 'Secure TryCloudflare tunnel at Cloudflare\'s edge',
+      icon: '☁️',
+      latency: latencies.cloudflare,
+    },
+    {
+      id: 'localtunnel',
+      title: 'Localtunnel',
+      desc: 'Free public HTTPS URL via localtunnel.me proxy',
+      icon: '🌐',
+      latency: latencies.localtunnel,
+    },
+    ...domains.map((d) => ({
+      id: d.name,
+      title: `Custom Domain (${d.name})`,
+      desc: 'Route traffic through your own verified apex/subdomain',
+      icon: '🏷️',
+      latency: latencies.default,
+    })),
+  ];
 
   return (
     <div className="dialog-backdrop glass" onClick={onClose}>
@@ -134,21 +266,49 @@ export function DomainSelectDialog({
 
         <div className="dialog-body">
           <label className="field-label">Sharing Target</label>
-          <select
-            className="form-select"
-            value={selectedDomain}
-            onChange={(e) => setSelectedDomain(e.target.value)}
-          >
-            <option value="default">Default random subdomain (e.g. *.localtest.me)</option>
-            <option value="cloudflare">Cloudflare Tunnel (Highly Recommended)</option>
-            <option value="localtunnel">Localtunnel (Free Public HTTPS URL)</option>
-            {domains.map((d) => (
-              <option key={d.id} value={d.name}>{d.name}</option>
-            ))}
-          </select>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '260px', overflowY: 'auto', paddingRight: '4px', marginBottom: '4px' }}>
+            {options.map((opt) => {
+              const isSelected = selectedDomain === opt.id;
+              const hasMeasured = opt.latency !== Infinity;
+              
+              return (
+                <div
+                  key={opt.id}
+                  onClick={() => setSelectedDomain(opt.id)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    background: isSelected ? 'var(--teal-dim)' : 'var(--surface-2)',
+                    border: isSelected ? '1px solid var(--teal)' : '1px solid var(--line)',
+                    cursor: 'pointer',
+                    transition: 'all var(--dur-fast) var(--ease)',
+                    boxShadow: isSelected ? '0 0 12px var(--teal-dim)' : 'none',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
+                    <span style={{ fontSize: '18px', minWidth: '24px', textAlign: 'center' }}>{opt.icon}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, textAlign: 'left' }}>
+                      <strong style={{ fontSize: '12px', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{opt.title}</strong>
+                      <span style={{ fontSize: '11px', color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{opt.desc}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '12px' }}>
+                    <span style={{ fontSize: '10px', color: hasMeasured ? 'var(--text-secondary)' : 'var(--faint)' }}>
+                      {hasMeasured ? `${Math.round(opt.latency)} ms` : 'pinging...'}
+                    </span>
+                    <SignalBars latency={opt.latency} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
 
           {selectedDomain === 'localtunnel' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
               <label className="field-label">Localtunnel Subdomain (Optional)</label>
               <input
                 className="form-input"
