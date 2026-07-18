@@ -266,19 +266,25 @@ async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u16, 
 
 #[tauri::command]
 async fn close_tunnel(tunnel_id: String) -> Result<(), String> {
+    let mut found = false;
+
     let mut tunnels = ACTIVE_TUNNELS.lock().await;
     if let Some(handle) = tunnels.remove(&tunnel_id) {
         handle.abort();
-        return Ok(());
+        found = true;
     }
 
     let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
     if let Some(mut child) = lt_procs.remove(&tunnel_id) {
         let _ = child.kill().await;
-        return Ok(());
+        found = true;
     }
 
-    Err("Tunnel not found".to_string())
+    if found {
+        Ok(())
+    } else {
+        Err("Tunnel not found".to_string())
+    }
 }
 
 #[tauri::command]
@@ -320,6 +326,81 @@ async fn open_localtunnel(
         Err(_) => {
             let _ = child.kill().await;
             return Err("Timed out waiting for localtunnel URL".to_string());
+        }
+    };
+    
+    let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
+    lt_procs.insert(tunnel_id.clone(), child);
+    
+    let tunnel_id_clone = tunnel_id.clone();
+    let app_clone = app.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let mut has_child = true;
+        while has_child {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            let mut procs = LOCALTUNNEL_PROCESSES.lock().await;
+            if let Some(child_proc) = procs.get_mut(&tunnel_id_clone) {
+                if let Ok(Some(_)) = child_proc.try_wait() {
+                    procs.remove(&tunnel_id_clone);
+                    let _ = app_clone.emit("tunnel:auto-closed", serde_json::json!({ "tunnelId": tunnel_id_clone }));
+                    has_child = false;
+                }
+            } else {
+                has_child = false;
+            }
+        }
+    });
+    
+    Ok(url)
+}
+
+#[tauri::command]
+async fn open_cloudflare_tunnel(
+    app: tauri::AppHandle,
+    tunnel_id: String,
+    local_port: u16,
+) -> Result<String, String> {
+    let mut cmd = tokio::process::Command::new("cmd");
+    cmd.args(&["/C", "npx", "-y", "--package=cloudflared", "cloudflared", "tunnel", "--url", &format!("http://127.0.0.1:{}", local_port)]);
+    cmd.stderr(std::process::Stdio::piped());
+    
+    let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn cloudflared: {}", e))?;
+    let stderr = child.stderr.take().ok_or("Failed to open cloudflared stderr".to_string())?;
+    
+    let mut reader = tokio::io::BufReader::new(stderr).lines();
+    
+    let timeout_duration = std::time::Duration::from_secs(20);
+    let read_url_task = async {
+        while let Some(line) = reader.next_line().await.unwrap_or(None) {
+            if line.contains(".trycloudflare.com") {
+                if let Some(start_idx) = line.find("https://") {
+                    let rest = &line[start_idx..];
+                    let url = rest.split_whitespace()
+                        .next()
+                        .unwrap_or("")
+                        .trim_matches(|c| c == '|' || c == ' ' || c == '\r' || c == '\n')
+                        .to_string();
+                    if !url.is_empty() {
+                        return Ok(url);
+                    }
+                }
+            }
+        }
+        Err("cloudflared exited or timed out without returning a URL".to_string())
+    };
+    
+    let url = match tokio::time::timeout(timeout_duration, read_url_task).await {
+        Ok(Ok(resolved_url)) => {
+            resolved_url
+        }
+        Ok(Err(e)) => {
+            let _ = child.kill().await;
+            return Err(e);
+        }
+        Err(_) => {
+            let _ = child.kill().await;
+            return Err("Timed out waiting for trycloudflare URL".to_string());
         }
     };
     
@@ -413,6 +494,7 @@ pub fn run() {
             open_tunnel, 
             close_tunnel,
             open_localtunnel,
+            open_cloudflare_tunnel,
             scan_directory,
             read_file_content,
             get_local_ip

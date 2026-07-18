@@ -68,14 +68,7 @@ export class TunnelsService implements OnModuleInit {
       select: { email: true },
     });
 
-    if (workspaceOwner?.email?.endsWith('@proxync.local')) {
-      const activeTunnelsCount = await this.prisma.tunnel.count({
-        where: { workspaceId, status: 'ACTIVE' },
-      });
-      if (activeTunnelsCount >= 1) {
-        throw new ForbiddenException('Guest workspaces are limited to 1 active tunnel at a time.');
-      }
-    }
+
 
     const subdomain = this.generateSubdomain();
     const relayHost = process.env.RELAY_SUBDOMAIN_BASE ?? 'localtest.me';

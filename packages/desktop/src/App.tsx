@@ -9,123 +9,32 @@ import {
   getToken,
   type LocalWorkspaceContext,
 } from './lib/api';
-
-type MainView =
-  | 'lobby'
-  | 'welcome'
-  | 'process'
-  | 'traffic'
-  | 'postman'
-  | 'swagger'
-  | 'observability'
-  | 'settings';
-type SwaggerPanel = 'preview' | 'json';
-type PanelView = 'chat' | 'voice' | null;
-
-interface ProcessCandidate {
-  id: string;
-  name: string;
-  port: number;
-  pid?: number;
-  command?: string;
-  directory?: string;
-  executable?: string;
-  framework?: string;
-  access: 'ready' | 'limited' | 'unknown';
-  uptime?: string;
-}
-
-interface Tunnel {
-  id: string;
-  publicUrl: string;
-  localPort: number;
-  status: string;
-  subdomain?: string;
-  createdAt?: string;
-}
-
-interface RequestLog {
-  id: string;
-  method: string;
-  path: string;
-  status?: number | string;
-  durationMs?: number | null;
-  headers?: Record<string, string>;
-  bodyPreview?: string;
-  responseHeaders?: Record<string, string>;
-  capturedAt?: string;
-}
-
-interface SavedRequest {
-  id: string;
-  name: string;
-  method: string;
-  path: string;
-  headers: Record<string, string>;
-  body: string;
-  source: 'manual' | 'starter-scan' | 'captured';
-}
-
-interface PostmanResponse {
-  status: number;
-  duration: number;
-  headers: Record<string, string>;
-  body: string;
-}
-
-interface Guardrails {
-  authMode: 'guest' | 'shared-secret' | 'workspace-only';
-  piiRedaction: boolean;
-  captureBodies: boolean;
-  autoUpdateSwagger: boolean;
-  rateLimit: string;
-}
-
-interface ProcessProfile {
-  id: string;
-  processName: string;
-  port: number;
-  framework: string;
-  languageHint: string;
-  command: string;
-  directory: string;
-  executable: string;
-  lastSharedAt?: string;
-  lastTunnelUrl?: string;
-  starterRequestCount: number;
-}
-
-interface WorkspaceConfig {
-  id: string;
-  name: string;
-  remoteWorkspaceId?: string;
-  profiles: ProcessProfile[];
-  savedRequests: SavedRequest[];
-  capturedRequests: RequestLog[];
-  guardrails: Guardrails;
-  languageHint: string;
-  selectedProfileId?: string;
-  lastSwaggerGeneratedAt?: string;
-  projectRootPath: string;
-  scannedFiles: string[];
-  notes: string;
-}
-
-interface AppSettings {
-  guardrails: Guardrails;
-  defaultProjectRootPath: string;
-  relayDeploymentHint: string;
-  notes: string;
-}
-
-interface DomainRecord {
-  id: string;
-  name: string;
-  verificationToken: string;
-  verified: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
+import type {
+  MainView,
+  SwaggerPanel,
+  PanelView,
+  ProcessCandidate,
+  Tunnel,
+  RequestLog,
+  SavedRequest,
+  PostmanResponse,
+  Guardrails,
+  ProcessProfile,
+  WorkspaceConfig,
+  AppSettings,
+  DomainRecord,
+} from './lib/types';
+import { WelcomeView, LobbyView } from './screens/LobbyView';
+import { ProcessView } from './screens/ProcessView';
+import { TrafficView } from './screens/TrafficView';
+import { PostmanView } from './screens/PostmanView';
+import { SwaggerView } from './screens/SwaggerView';
+import { ObservabilityView } from './screens/ObservabilityView';
+import { SettingsView } from './screens/SettingsView';
+import { CompanionPanel } from './components/CompanionPanel';
+import { DiscoverDialog } from './components/DiscoverDialog';
+import { DomainSelectDialog } from './components/DomainSelectDialog';
+import { RequestDetailDialog } from './components/RequestDetailDialog';
 
 const LOCAL_WORKSPACES_KEY = 'proxync_local_workspaces_v1';
 const ACTIVE_WORKSPACE_KEY = 'proxync_local_active_workspace_v1';
@@ -168,32 +77,19 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   notes: '',
 };
 
-const getApexDomain = (domain: string) => {
-  const parts = domain.split('.');
-  if (parts.length <= 2) return domain;
-  const secondToLast = parts[parts.length - 2].toLowerCase();
-  const commonDoubleTlds = ['co', 'com', 'org', 'net', 'edu', 'gov', 'mil'];
-  if (parts.length > 3 && commonDoubleTlds.includes(secondToLast)) {
-    return parts.slice(-3).join('.');
-  }
-  return parts.slice(-2).join('.');
-};
-
-const getRelayBase = () => {
-  const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
-  const parsed = apiBase.replace(/^https?:\/\//, '').split(':')[0];
-  if (parsed === 'localhost' || parsed === '127.0.0.1') {
-    return 'localtest.me';
-  }
-  return parsed;
-};
-
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [context, setContext] = useState<LocalWorkspaceContext | null>(null);
   const [bootstrapError, setBootstrapError] = useState('');
-  const [workspaces, setWorkspaces] = useState<WorkspaceConfig[]>([]);
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
+  const [workspaces, setWorkspaces] = useState<WorkspaceConfig[]>(() => {
+    const stored = localStorage.getItem(LOCAL_WORKSPACES_KEY);
+    return stored ? (JSON.parse(stored) as WorkspaceConfig[]) : [];
+  });
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(() => {
+    const stored = localStorage.getItem(LOCAL_WORKSPACES_KEY);
+    const parsed = stored ? (JSON.parse(stored) as WorkspaceConfig[]) : [];
+    return localStorage.getItem(ACTIVE_WORKSPACE_KEY) ?? (parsed.length > 0 ? parsed[0].id : null);
+  });
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [processes, setProcesses] = useState<ProcessCandidate[]>([]);
   const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
@@ -204,7 +100,11 @@ export default function App() {
   const [savedRequests, setSavedRequests] = useState<SavedRequest[]>([]);
   const [draftRequest, setDraftRequest] = useState<SavedRequest>(DEFAULT_REQUEST);
   const [postmanResponse, setPostmanResponse] = useState<PostmanResponse | null>(null);
-  const [mainView, setMainView] = useState<MainView>('welcome');
+  const [mainView, setMainView] = useState<MainView>(() => {
+    const stored = localStorage.getItem(LOCAL_WORKSPACES_KEY);
+    const parsed = stored ? (JSON.parse(stored) as WorkspaceConfig[]) : [];
+    return parsed.length === 0 ? 'lobby' : 'welcome';
+  });
   const [swaggerPanel, setSwaggerPanel] = useState<SwaggerPanel>('preview');
   const [panelView, setPanelView] = useState<PanelView>(null);
   const [discoverOpen, setDiscoverOpen] = useState(false);
@@ -272,19 +172,6 @@ export default function App() {
         if (!mounted) return;
         setContext(nextContext);
         setBootstrapError('');
-
-        const hydrated = hydrateStoredWorkspaces(
-          nextContext.workspace ?? null,
-          appSettings.guardrails,
-          appSettings.defaultProjectRootPath,
-        );
-        setWorkspaces(hydrated.workspaces);
-        if (hydrated.workspaces.length === 0) {
-          setActiveWorkspaceId(null);
-          setMainView('lobby');
-        } else {
-          setActiveWorkspaceId(hydrated.activeWorkspaceId);
-        }
       })
       .catch((error: Error) => {
         if (!mounted) return;
@@ -292,18 +179,6 @@ export default function App() {
         setContext({
           user: { id: 'local', name: 'Local Developer', email: 'local@proxync.dev' },
         });
-        const fallback = hydrateStoredWorkspaces(
-          null,
-          appSettings.guardrails,
-          appSettings.defaultProjectRootPath,
-        );
-        setWorkspaces(fallback.workspaces);
-        if (fallback.workspaces.length === 0) {
-          setActiveWorkspaceId(null);
-          setMainView('lobby');
-        } else {
-          setActiveWorkspaceId(fallback.activeWorkspaceId);
-        }
       });
 
     return () => {
@@ -484,7 +359,7 @@ export default function App() {
     if (!name) return;
 
     let remoteWorkspaceId: string | undefined;
-    if (context && context.workspace && context.workspace.id !== 'local') {
+    if (context && context.user && context.user.id !== 'local') {
       try {
         const remote = await api.workspaces.create(name);
         remoteWorkspaceId = remote.id;
@@ -567,6 +442,46 @@ export default function App() {
     );
   }
 
+  async function ensureSyncedWorkspace(workspace: WorkspaceConfig): Promise<string | null> {
+    console.log('[ensureSyncedWorkspace] Input workspace:', workspace);
+    console.log('[ensureSyncedWorkspace] Current context:', context);
+    
+    if (!context || !context.user || context.user.id === 'local') {
+      showToast('Running in local-only fallback mode. Reconnect the API in Settings.', 'error');
+      return null;
+    }
+
+    try {
+      showToast('Connecting to remote workspaces list...', 'info');
+      const remoteWorkspaces = await api.workspaces.list();
+      console.log('[ensureSyncedWorkspace] Remote workspaces:', remoteWorkspaces);
+      
+      const exists = workspace.remoteWorkspaceId && remoteWorkspaces.some((w) => w.id === workspace.remoteWorkspaceId);
+      console.log('[ensureSyncedWorkspace] Workspace exists on remote:', exists);
+      
+      if (exists && workspace.remoteWorkspaceId) {
+        return workspace.remoteWorkspaceId;
+      }
+
+      showToast(`Syncing workspace "${workspace.name}" with remote API...`, 'info');
+      const remote = await api.workspaces.create(workspace.name);
+      console.log('[ensureSyncedWorkspace] Workspace created remote:', remote);
+      
+      setWorkspaces((current) =>
+        current.map((w) =>
+          w.id === workspace.id ? { ...w, remoteWorkspaceId: remote.id } : w,
+        ),
+      );
+      
+      return remote.id;
+    } catch (error: any) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error('[ensureSyncedWorkspace] Sync error:', error);
+      showToast(`Workspace sync failed: ${msg}`, 'error');
+      return null;
+    }
+  }
+
   function initiatePublicShare(process: ProcessCandidate) {
     setSharingProcessCandidate(process);
   }
@@ -584,14 +499,10 @@ export default function App() {
       languageHint: detectLanguageLabel(process),
     }));
 
-    if (!activeWorkspace.remoteWorkspaceId || !context || !context.workspace || context.workspace.id === 'local') {
+    const remoteId = await ensureSyncedWorkspace(activeWorkspace);
+    if (!remoteId) {
       setSelectedProcessId(process.id);
       setMainView('process');
-      setSharingPort(process.port);
-      showToast(
-        'Saved this process configuration locally. Connect the API to create a public tunnel.',
-        'info',
-      );
       return;
     }
 
@@ -603,10 +514,10 @@ export default function App() {
 
     setSharingPort(process.port);
     try {
-      localStorage.setItem('proxync_workspace', activeWorkspace.remoteWorkspaceId);
+      localStorage.setItem('proxync_workspace', remoteId);
       // 1. Create a regular database registered tunnel on the backend
       const tunnel = await api.tunnels.create(
-        activeWorkspace.remoteWorkspaceId,
+        remoteId,
         process.port,
         'http',
         undefined,
@@ -619,7 +530,7 @@ export default function App() {
         tunnelId: tunnel.id,
         localPort: process.port,
         token,
-        workspaceId: activeWorkspace.remoteWorkspaceId,
+        workspaceId: remoteId,
         relayUrl,
       });
 
@@ -668,6 +579,97 @@ export default function App() {
     }
   }
 
+  async function shareProcessCloudflare(process: ProcessCandidate) {
+    if (!activeWorkspace) return;
+
+    const starterScan = buildStarterRequests(process);
+    setStarterSuggestions(starterScan);
+    setSavedRequests((current) => mergeRequests(current, starterScan));
+    updateActiveWorkspace((workspace) => ({
+      ...workspace,
+      profiles: upsertProfile(workspace.profiles, process, starterScan.length),
+      selectedProfileId: makeProfileId(process),
+      languageHint: detectLanguageLabel(process),
+    }));
+
+    const remoteId = await ensureSyncedWorkspace(activeWorkspace);
+    if (!remoteId) {
+      setSelectedProcessId(process.id);
+      setMainView('process');
+      return;
+    }
+
+    const token = getToken();
+    if (!token) {
+      showToast('Local session is not ready yet', 'error');
+      return;
+    }
+
+    setSharingPort(process.port);
+    try {
+      localStorage.setItem('proxync_workspace', remoteId);
+      // 1. Create a regular database registered tunnel on the backend
+      const tunnel = await api.tunnels.create(
+        remoteId,
+        process.port,
+        'http',
+        undefined,
+      );
+      const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
+      const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
+
+      // 2. Open our agent websocket connection to NestJS relay
+      await invoke('open_tunnel', {
+        tunnelId: tunnel.id,
+        localPort: process.port,
+        token,
+        workspaceId: remoteId,
+        relayUrl,
+      });
+
+      // 3. Spawn cloudflared pointing to our NestJS port (3939)
+      showToast('Starting Cloudflare Tunnel service...', 'info');
+      
+      const cfTunnelUrl = await invoke<string>('open_cloudflare_tunnel', {
+        tunnelId: tunnel.id,
+        localPort: 3939,
+      });
+
+      // 4. Overwrite the publicUrl with the Cloudflare public address
+      const cloudflareBoundTunnel: Tunnel = {
+        ...tunnel,
+        publicUrl: cfTunnelUrl,
+        subdomain: cfTunnelUrl.replace('https://', '').replace('.trycloudflare.com', ''),
+      };
+
+      setActiveTunnel(cloudflareBoundTunnel);
+      setTunnels((current) => [cloudflareBoundTunnel, ...current.filter((item) => item.id !== tunnel.id)]);
+      setSelectedProcessId(process.id);
+      setMainView('process');
+      setDiscoverOpen(false);
+      setRequests([]);
+
+      showToast(`Cloudflare Tunnel is active! URL: ${cfTunnelUrl}`, 'success');
+
+      updateActiveWorkspace((workspace) => ({
+        ...workspace,
+        profiles: workspace.profiles.map((p) =>
+          p.id === makeProfileId(process)
+            ? {
+                ...p,
+                lastSharedAt: new Date().toISOString(),
+                lastTunnelUrl: cfTunnelUrl,
+              }
+            : p
+        ),
+      }));
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), 'error');
+    } finally {
+      setSharingPort(null);
+    }
+  }
+
   async function shareProcess(process: ProcessCandidate, customDomain?: string) {
     if (!activeWorkspace) return;
 
@@ -681,14 +683,10 @@ export default function App() {
       languageHint: detectLanguageLabel(process),
     }));
 
-    if (!activeWorkspace.remoteWorkspaceId || !context || !context.workspace || context.workspace.id === 'local') {
+    const remoteId = await ensureSyncedWorkspace(activeWorkspace);
+    if (!remoteId) {
       setSelectedProcessId(process.id);
       setMainView('process');
-      setSharingPort(process.port);
-      showToast(
-        'Saved this process configuration locally. Connect the API to create a public tunnel.',
-        'info',
-      );
       return;
     }
 
@@ -700,9 +698,9 @@ export default function App() {
 
     setSharingPort(process.port);
     try {
-      localStorage.setItem('proxync_workspace', activeWorkspace.remoteWorkspaceId);
+      localStorage.setItem('proxync_workspace', remoteId);
       const tunnel = await api.tunnels.create(
-        activeWorkspace.remoteWorkspaceId,
+        remoteId,
         process.port,
         'http',
         undefined,
@@ -715,7 +713,7 @@ export default function App() {
         tunnelId: tunnel.id,
         localPort: process.port,
         token,
-        workspaceId: activeWorkspace.remoteWorkspaceId,
+        workspaceId: remoteId,
         relayUrl,
       });
 
@@ -1361,6 +1359,7 @@ export default function App() {
               suggestions={starterSuggestions}
               hasVerifiedDomain={domains.some((d) => d.verified)}
               localIp={localIp}
+              bootstrapError={bootstrapError}
               onDiscover={() => setDiscoverOpen(true)}
               onShare={initiatePublicShare}
               onShareLocal={shareProcessLocal}
@@ -1473,6 +1472,8 @@ export default function App() {
           onConfirm={(selectedOption, ltSubdomain) => {
             if (selectedOption === 'localtunnel') {
               void shareProcessLocaltunnel(sharingProcessCandidate, ltSubdomain);
+            } else if (selectedOption === 'cloudflare') {
+              void shareProcessCloudflare(sharingProcessCandidate);
             } else {
               void shareProcess(sharingProcessCandidate, selectedOption === 'default' ? undefined : selectedOption);
             }
@@ -1495,1503 +1496,7 @@ export default function App() {
   );
 }
 
-function WelcomeView({
-  workspace,
-  processCount,
-  tunnelCount,
-  requestCount,
-  onDiscover,
-}: {
-  workspace: WorkspaceConfig | null;
-  processCount: number;
-  tunnelCount: number;
-  requestCount: number;
-  onDiscover: () => void;
-}) {
-  return (
-    <div className="welcome-view">
-      <div className="terminal-orb">PX</div>
-      <h1>Keep each project isolated, share faster, and let contracts evolve with the code.</h1>
-      <p>
-        Every workspace stores its own process profile, guardrails, captured traffic,
-        Postman collection, and generated Swagger. When the project changes, the
-        contract updates with it.
-      </p>
-      <button className="primary-command" onClick={onDiscover}>
-        Discover running processes
-      </button>
-      <div className="metric-row">
-        <Metric label="Workspace" value={workspace?.name ?? 'No active'} emphasis />
-        <Metric label="Live processes" value={String(processCount)} />
-        <Metric label="Active tunnels" value={String(tunnelCount)} />
-        <Metric label="Captured requests" value={String(requestCount)} />
-      </div>
-    </div>
-  );
-}
-
-function LobbyView({
-  workspaces,
-  activeWorkspaceId,
-  newWorkspaceName,
-  onWorkspaceNameChange,
-  onCreateWorkspace,
-  onSelectWorkspace,
-  onDeleteWorkspace,
-}: {
-  workspaces: WorkspaceConfig[];
-  activeWorkspaceId: string | null;
-  newWorkspaceName: string;
-  onWorkspaceNameChange: (value: string) => void;
-  onCreateWorkspace: () => void;
-  onSelectWorkspace: (id: string) => void;
-  onDeleteWorkspace: (id: string) => void;
-}) {
-  const [onboardingStep, setOnboardingStep] = useState(1);
-
-  if (workspaces.length === 0) {
-    return (
-      <div className="lobby-view" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', padding: '12px' }}>
-        {onboardingStep === 1 ? (
-          <div className="onboarding-welcome" style={{ margin: 0, width: '100%', maxWidth: '540px' }}>
-            <div className="welcome-icon">🚀</div>
-            <h2>Welcome to Proxync!</h2>
-            <p style={{ marginBottom: '24px' }}>
-              Isolated workspaces keep your projects, shares, guardrails, and APIs organized. Make one workspace per repository or service context.
-            </p>
-            <button 
-              className="primary-command" 
-              onClick={() => setOnboardingStep(2)}
-              style={{ width: '100%', padding: '12px 24px', fontSize: '13px' }}
-            >
-              Get Started →
-            </button>
-          </div>
-        ) : (
-          <div className="onboarding-welcome" style={{ margin: 0, width: '100%', maxWidth: '540px' }}>
-            <div className="welcome-icon">🏗️</div>
-            <h2>Name your first workspace</h2>
-            <p style={{ marginBottom: '20px' }}>
-              Usually, this matches your repository or project name (e.g. <code>my-react-app</code>).
-            </p>
-            <div className="workspace-create" style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <input
-                value={newWorkspaceName}
-                onChange={(event) => onWorkspaceNameChange(event.target.value)}
-                placeholder="e.g. ecommerce-api"
-                aria-label="New workspace"
-                style={{
-                  width: '100%',
-                  height: '44px',
-                  padding: '0 14px',
-                  fontSize: '13px',
-                  borderRadius: '8px',
-                  background: 'rgba(4, 10, 14, 0.86)',
-                  border: '1px solid var(--line)',
-                  color: 'var(--text)',
-                  outline: 'none'
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && newWorkspaceName.trim()) {
-                    onCreateWorkspace();
-                  }
-                }}
-                autoFocus
-              />
-              <div style={{ display: 'flex', gap: '10px', width: '100%', marginTop: '4px' }}>
-                <button 
-                  className="sidebar-action secondary" 
-                  onClick={() => setOnboardingStep(1)}
-                  style={{ flex: 1, padding: '12px', height: 'auto', fontWeight: 'bold' }}
-                >
-                  ← Back
-                </button>
-                <button 
-                  className="sidebar-action" 
-                  onClick={onCreateWorkspace}
-                  disabled={!newWorkspaceName.trim()}
-                  style={{ flex: 2, padding: '12px', height: 'auto', fontWeight: 'bold' }}
-                >
-                  Create Workspace
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="lobby-view">
-      <div className="page-heading">
-        <div>
-          <h1>Workspace lobby</h1>
-          <p>
-            Keep each project isolated here. Every workspace carries its own saved
-            share profile, guardrails, Postman collection, Swagger contract, and notes.
-          </p>
-        </div>
-      </div>
-
-      <section className="console-section lobby-create">
-        <div>
-          <h2>Create a workspace</h2>
-          <p>
-            Make one workspace per project so you can come back to the same setup
-            later without mixing configs.
-          </p>
-        </div>
-        <div className="workspace-create">
-          <input
-            value={newWorkspaceName}
-            onChange={(event) => onWorkspaceNameChange(event.target.value)}
-            placeholder="New workspace"
-            aria-label="New workspace"
-          />
-          <button className="sidebar-action" onClick={onCreateWorkspace}>
-            Create
-          </button>
-        </div>
-      </section>
-
-      <section className="lobby-grid">
-        {workspaces.map((workspace) => (
-          <article
-            key={workspace.id}
-            className={
-              workspace.id === activeWorkspaceId
-                ? 'lobby-card active'
-                : 'lobby-card'
-            }
-          >
-            <div className="lobby-card-head">
-              <div>
-                <strong>{workspace.name}</strong>
-                <small>{workspace.languageHint}</small>
-              </div>
-              <span className="badge neutral">
-                {workspace.id === activeWorkspaceId ? 'Current' : 'Saved'}
-              </span>
-            </div>
-            <div className="lobby-card-meta">
-              <span>{workspace.profiles.length} saved shares</span>
-              <span>{workspace.savedRequests.length} requests</span>
-              <span>{workspace.guardrails.authMode} auth</span>
-            </div>
-            <p>{workspace.notes || 'No notes yet. This workspace is ready for project-specific context.'}</p>
-            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-              <button
-                className="primary-command small"
-                onClick={() => onSelectWorkspace(workspace.id)}
-              >
-                Open workspace
-              </button>
-              <button
-                className="danger-command small"
-                style={{
-                  background: 'rgba(239, 68, 68, 0.1)',
-                  border: '1px solid rgba(239, 68, 68, 0.2)',
-                  color: '#ff8b8b',
-                  cursor: 'pointer'
-                }}
-                onClick={() => onDeleteWorkspace(workspace.id)}
-              >
-                Delete
-              </button>
-            </div>
-          </article>
-        ))}
-      </section>
-    </div>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  emphasis,
-}: {
-  label: string;
-  value: string;
-  emphasis?: boolean;
-}) {
-  return (
-    <div className={emphasis ? 'metric-card emphasis' : 'metric-card'}>
-      <strong>{value}</strong>
-      <span>{label}</span>
-    </div>
-  );
-}
-
-function ProcessView({
-  workspace,
-  process,
-  profile,
-  tunnel,
-  sharingPort,
-  suggestions,
-  hasVerifiedDomain,
-  localIp,
-  onDiscover,
-  onShare,
-  onShareLocal,
-  onStop,
-  onStopLocalShare,
-  onCopy,
-  onImportStarterRequests,
-}: {
-  workspace: WorkspaceConfig | null;
-  process: ProcessCandidate | null;
-  profile: ProcessProfile | null;
-  tunnel: Tunnel | null;
-  sharingPort: number | null;
-  suggestions: SavedRequest[];
-  hasVerifiedDomain: boolean;
-  localIp: string;
-  onDiscover: () => void;
-  onShare: (process: ProcessCandidate) => void;
-  onShareLocal: (process: ProcessCandidate) => void;
-  onStop: (tunnel: Tunnel) => void;
-  onStopLocalShare: () => void;
-  onCopy: (value: string, message: string) => void;
-  onImportStarterRequests: () => void;
-}) {
-  if (!process && !profile) {
-    return (
-      <div className="empty-stage">
-        <h2>No process selected</h2>
-        <p>Scan localhost and choose a running server to create your first saved share.</p>
-        <button className="primary-command" onClick={onDiscover}>
-          Discover processes
-        </button>
-      </div>
-    );
-  }
-
-  const processLike = process ?? {
-    id: profile!.id,
-    name: profile!.processName,
-    port: profile!.port,
-    command: profile!.command,
-    directory: profile!.directory,
-    executable: profile!.executable,
-    framework: profile!.framework,
-    access: 'unknown' as const,
-    uptime: profile?.lastSharedAt ? 'saved configuration' : 'saved',
-  };
-
-  const isActive = tunnel?.localPort === processLike.port && tunnel.status === 'ACTIVE';
-
-  return (
-    <div className="process-view">
-      <div className="page-heading">
-        <div>
-          <h1>{processLike.name}</h1>
-          <div className="badge-row">
-            <span className="badge good">
-              {process ? 'Running locally' : 'Saved profile'}
-            </span>
-            <span className="badge neutral">Port {processLike.port}</span>
-            <span className="badge neutral">{processLike.framework ?? 'HTTP'}</span>
-            <span className="badge neutral">{workspace?.languageHint ?? 'Unknown language'}</span>
-          </div>
-        </div>
-        {isActive && tunnel ? (
-          <button className="danger-command" onClick={() => onStop(tunnel)}>
-            Stop tunnel
-          </button>
-        ) : sharingPort === processLike.port ? (
-          <button className="danger-command" onClick={onStopLocalShare}>
-            Stop sharing
-          </button>
-        ) : process ? (
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              className="primary-command small"
-              onClick={() => onShareLocal(process)}
-              style={{ background: 'var(--blue-dim)', color: 'var(--blue)', border: '1px solid rgba(59,130,246,0.3)' }}
-            >
-              Share via Localhost/LAN
-            </button>
-            <button
-              className="primary-command small"
-              onClick={() => onShare(process)}
-            >
-              Share via Public Domain
-            </button>
-          </div>
-        ) : (
-          <button className="primary-command small" onClick={onDiscover}>
-            Find running process
-          </button>
-        )}
-      </div>
-
-      {suggestions.length > 0 && (
-        <section className="console-section starter-section">
-          <div className="starter-copy">
-            <h2>Starter request scan</h2>
-            <p>
-              Proxync guessed likely endpoints for this app and prepared them for the
-              Postman workspace. Test them, keep the winners, and the Swagger contract
-              will update from what turns out to be real.
-            </p>
-          </div>
-          <div className="starter-actions">
-            <span>{suggestions.length} starter requests ready</span>
-            <button className="primary-command small" onClick={onImportStarterRequests}>
-              Import into Postman
-            </button>
-          </div>
-        </section>
-      )}
-
-      <section className="console-section">
-        <h2>Process status</h2>
-        <div className="status-grid">
-          <InfoTile label="Status" value={process ? 'Running' : 'Awaiting rerun'} />
-          <InfoTile label="Uptime" value={processLike.uptime ?? 'unknown'} />
-          <InfoTile label="PID" value={process?.pid?.toString() ?? 'saved only'} />
-          <InfoTile label="Port" value={processLike.port.toString()} />
-        </div>
-      </section>
-
-      <section className="console-section">
-        <h2>Workspace configuration</h2>
-        <div className="detail-grid">
-          <InfoTile label="Guardrail auth" value={workspace?.guardrails.authMode ?? 'guest'} />
-          <InfoTile
-            label="Swagger mode"
-            value={workspace?.guardrails.autoUpdateSwagger ? 'auto-updating' : 'manual'}
-          />
-          <InfoTile
-            label="Profile saved"
-            value={profile?.lastSharedAt ? formatDate(profile.lastSharedAt) : 'this session'}
-          />
-        </div>
-      </section>
-
-      <section className="console-section">
-        <h2>Process details</h2>
-        <div className="detail-grid">
-          <InfoTile label="Command" value={processLike.command ?? processLike.name} monospace />
-          <InfoTile label="Directory" value={processLike.directory ?? 'unknown'} monospace />
-          <InfoTile label="Executable" value={processLike.executable ?? 'unknown'} monospace />
-        </div>
-      </section>
-
-      <section className="console-section share-section">
-        <h2>Connection and sharing</h2>
-        {!hasVerifiedDomain && (
-          <div
-            style={{
-              background: 'rgba(245, 158, 11, 0.08)',
-              border: '1px solid rgba(245, 158, 11, 0.2)',
-              borderRadius: '8px',
-              padding: '12px 16px',
-              color: 'var(--yellow)',
-              fontSize: '13px',
-              marginBottom: '16px',
-              display: 'flex',
-              alignItems: 'start',
-              gap: '8px',
-            }}
-          >
-            <span style={{ fontSize: '16px', lineHeight: '1' }}>⚠️</span>
-            <div>
-              <strong>No custom domain connected.</strong> The default wildcard link will only work within this local network. For public internet visibility, you must add and verify a custom domain in Settings.
-            </div>
-          </div>
-        )}
-        <div className={isActive ? 'share-box active' : 'share-box'}>
-          <div>
-            <strong>
-              {isActive ? 'You are hosting this process' : 'Workspace is ready to reuse this share'}
-            </strong>
-            <p>
-              {isActive
-                ? 'Traffic capture, starter Postman requests, and workspace-specific Swagger are active now.'
-                : 'The share configuration is saved with this workspace. Start the local process and rerun share when you need the link again.'}
-            </p>
-          </div>
-          <div className="url-line">
-            <span>Local</span>
-            <code>http://localhost:{processLike.port}</code>
-            <button
-              onClick={() =>
-                onCopy(`http://localhost:${processLike.port}`, 'Local address copied')
-              }
-            >
-              Copy
-            </button>
-          </div>
-          {localIp && localIp !== '127.0.0.1' && (
-            <div className="url-line">
-              <span>LAN</span>
-              <code>http://{localIp}:{processLike.port}</code>
-              <button
-                onClick={() =>
-                  onCopy(`http://${localIp}:${processLike.port}`, 'LAN address copied')
-                }
-              >
-                Copy
-              </button>
-            </div>
-          )}
-          {isActive && tunnel && (
-            <>
-              <div className="url-line">
-                <span>Public</span>
-                <code>{tunnel.publicUrl}</code>
-                <button
-                  onClick={() =>
-                    onCopy(
-                      tunnel.publicUrl,
-                      'Share URL copied',
-                    )
-                  }
-                >
-                  Copy
-                </button>
-              </div>
-              <div className="url-line">
-                <span>LAN Tunnel</span>
-                <code>http://{localIp}:3939</code>
-                <button
-                  onClick={() =>
-                    onCopy(
-                      `http://${localIp}:3939`,
-                      'LAN Tunnel URL copied',
-                    )
-                  }
-                >
-                  Copy
-                </button>
-              </div>
-              <div style={{ marginTop: '8px', padding: '10px 14px', borderRadius: 8, background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.2)', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                💡 <strong>Local Network Share:</strong> Colleagues on your same WiFi/network can access this active tunnel instantly at <code>http://{localIp}:3939</code>.
-              </div>
-            </>
-          )}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function InfoTile({
-  label,
-  value,
-  monospace,
-}: {
-  label: string;
-  value: string;
-  monospace?: boolean;
-}) {
-  return (
-    <div className="info-tile">
-      <span>{label}</span>
-      <strong className={monospace ? 'mono' : ''}>{value}</strong>
-    </div>
-  );
-}
-
-function TrafficView({
-  requests,
-  activeTunnel,
-  onOpen,
-  onSendToPostman,
-}: {
-  requests: RequestLog[];
-  activeTunnel: Tunnel | null;
-  onOpen: (request: RequestLog) => void;
-  onSendToPostman: (request: RequestLog) => void;
-}) {
-  return (
-    <div className="traffic-view">
-      <div className="page-heading">
-        <div>
-          <h1>Traffic</h1>
-          <p>
-            {activeTunnel
-              ? `Listening on ${activeTunnel.publicUrl}`
-              : 'Start a tunnel to capture live requests.'}
-          </p>
-        </div>
-      </div>
-      <div className="traffic-table">
-        <div className="traffic-head">
-          <span>Method</span>
-          <span>Path</span>
-          <span>Status</span>
-          <span>Time</span>
-          <span>Action</span>
-        </div>
-        {requests.length === 0 ? (
-          <div className="traffic-empty">No requests captured yet.</div>
-        ) : (
-          requests.map((request) => (
-            <button className="traffic-row" key={request.id} onClick={() => onOpen(request)}>
-              <span className={`method ${request.method.toLowerCase()}`}>{request.method}</span>
-              <code>{request.path}</code>
-              <span>{request.status ?? 'pending'}</span>
-              <span>{request.durationMs ? `${request.durationMs}ms` : '-'}</span>
-              <span
-                className="inline-action"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onSendToPostman(request);
-                }}
-              >
-                Send to Postman
-              </span>
-            </button>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function PostmanView({
-  draft,
-  savedRequests,
-  response,
-  sending,
-  starterSuggestions,
-  activeTunnel,
-  onDraftChange,
-  onHeaderTextChange,
-  onRun,
-  onSave,
-  onLoad,
-  onImportStarterRequests,
-}: {
-  draft: SavedRequest;
-  savedRequests: SavedRequest[];
-  response: PostmanResponse | null;
-  sending: boolean;
-  starterSuggestions: SavedRequest[];
-  activeTunnel: Tunnel | null;
-  onDraftChange: (request: SavedRequest) => void;
-  onHeaderTextChange: (value: string) => void;
-  onRun: () => void;
-  onSave: () => void;
-  onLoad: (request: SavedRequest) => void;
-  onImportStarterRequests: () => void;
-}) {
-  return (
-    <div className="postman-view">
-      <div className="collection-rail">
-        <h2>Collection</h2>
-        {savedRequests.map((request) => (
-          <button key={request.id} onClick={() => onLoad(request)}>
-            <span className={`method ${request.method.toLowerCase()}`}>{request.method}</span>
-            <span>
-              {request.name}
-              <small>{request.source}</small>
-            </span>
-          </button>
-        ))}
-      </div>
-
-      <div className="request-builder">
-        {starterSuggestions.length > 0 && (
-          <div className="import-banner">
-            <div>
-              <strong>Starter scan available</strong>
-              <p>
-                Likely endpoints were inferred from the project shape. Import them and
-                test what sticks.
-              </p>
-            </div>
-            <button onClick={onImportStarterRequests}>Import scan</button>
-          </div>
-        )}
-
-        <div className="request-name-row">
-          <input
-            value={draft.name}
-            onChange={(event) => onDraftChange({ ...draft, name: event.target.value })}
-            aria-label="Request name"
-          />
-          <button onClick={onSave}>Save</button>
-        </div>
-        <div className="url-builder">
-          <select
-            value={draft.method}
-            onChange={(event) => onDraftChange({ ...draft, method: event.target.value })}
-            aria-label="HTTP method"
-          >
-            {['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'].map((method) => (
-              <option key={method}>{method}</option>
-            ))}
-          </select>
-          <input
-            value={draft.path}
-            onChange={(event) => onDraftChange({ ...draft, path: event.target.value })}
-            placeholder={activeTunnel ? '/api/users' : 'https://example.com/api'}
-            aria-label="Request URL or path"
-          />
-          <button className="primary-command small" onClick={onRun} disabled={sending}>
-            {sending ? 'Sending...' : 'Send'}
-          </button>
-        </div>
-        <div className="builder-grid">
-          <label>
-            Headers
-            <textarea
-              value={formatHeaders(draft.headers)}
-              onChange={(event) => onHeaderTextChange(event.target.value)}
-              spellCheck={false}
-            />
-          </label>
-          <label>
-            Body
-            <textarea
-              value={draft.body}
-              onChange={(event) => onDraftChange({ ...draft, body: event.target.value })}
-              spellCheck={false}
-            />
-          </label>
-        </div>
-      </div>
-
-      <div className="response-pane">
-        <h2>Response</h2>
-        {response ? (
-          <>
-            <div className="response-meta">
-              <span>Status {response.status}</span>
-              <span>{response.duration}ms</span>
-            </div>
-            <pre>{response.body || '[empty response]'}</pre>
-          </>
-        ) : (
-          <div className="traffic-empty">Send a request to see the response.</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function SwaggerView({
-  document,
-  swaggerPanel,
-  workspace,
-  languageHint,
-  onChangePanel,
-  onCopy,
-}: {
-  document: Record<string, unknown>;
-  swaggerPanel: SwaggerPanel;
-  workspace: WorkspaceConfig | null;
-  languageHint: string;
-  onChangePanel: (panel: SwaggerPanel) => void;
-  onCopy: () => void;
-}) {
-  const endpointPreview = buildEndpointPreview(document);
-
-  return (
-    <div className="swagger-view">
-      <div className="page-heading">
-        <div>
-          <h1>Swagger</h1>
-          <p>
-            {languageHint} project detected. This contract updates from saved requests,
-            captured traffic, and workspace guardrails.
-          </p>
-        </div>
-        <div className="action-cluster">
-          <button
-            className={swaggerPanel === 'preview' ? 'subtab active' : 'subtab'}
-            onClick={() => onChangePanel('preview')}
-          >
-            Preview
-          </button>
-          <button
-            className={swaggerPanel === 'json' ? 'subtab active' : 'subtab'}
-            onClick={() => onChangePanel('json')}
-          >
-            JSON
-          </button>
-          <button className="primary-command small" onClick={onCopy}>
-            Copy JSON
-          </button>
-        </div>
-      </div>
-
-      {swaggerPanel === 'preview' ? (
-        <div className="swagger-preview">
-          <section className="swagger-summary">
-            <InfoTile label="Language hint" value={languageHint} />
-            <InfoTile
-              label="Auto update"
-              value={workspace?.guardrails.autoUpdateSwagger ? 'enabled' : 'manual'}
-            />
-            <InfoTile
-              label="Generated"
-              value={
-                workspace?.lastSwaggerGeneratedAt
-                  ? formatDate(workspace.lastSwaggerGeneratedAt)
-                  : 'just now'
-              }
-            />
-          </section>
-
-          <section className="swagger-endpoints">
-            {endpointPreview.length === 0 ? (
-              <div className="traffic-empty">Capture or save requests to generate endpoints.</div>
-            ) : (
-              endpointPreview.map((endpoint) => (
-                <article key={`${endpoint.method}-${endpoint.path}`} className="endpoint-card">
-                  <div className="endpoint-header">
-                    <span className={`method ${endpoint.method.toLowerCase()}`}>
-                      {endpoint.method}
-                    </span>
-                    <code>{endpoint.path}</code>
-                  </div>
-                  <p>{endpoint.summary}</p>
-                  <small>{endpoint.responseLabel}</small>
-                </article>
-              ))
-            )}
-          </section>
-        </div>
-      ) : (
-        <pre className="openapi-preview">{JSON.stringify(document, null, 2)}</pre>
-      )}
-    </div>
-  );
-}
-
-function ObservabilityView({
-  workspace,
-  process,
-  tunnel,
-  requestCount,
-}: {
-  workspace: WorkspaceConfig | null;
-  process: ProcessCandidate | null;
-  tunnel: Tunnel | null;
-  requestCount: number;
-}) {
-  const cards = [
-    {
-      label: 'Environment health',
-      value: tunnel ? 'Healthy' : 'Waiting for tunnel',
-      note: 'Static mock for now',
-    },
-    {
-      label: 'Synthetic journeys',
-      value: '4 passing / 1 flaky',
-      note: 'Checkout, onboarding, auth, dashboards, uploads',
-    },
-    {
-      label: 'Request load',
-      value: `${requestCount} captured`,
-      note: 'Useful once we wire real telemetry',
-    },
-    {
-      label: 'Workspace posture',
-      value: workspace?.guardrails.piiRedaction ? 'Redaction enabled' : 'Open capture',
-      note: process?.framework ?? 'No process selected',
-    },
-  ];
-
-  return (
-    <div className="observability-view">
-      <div className="page-heading">
-        <div>
-          <h1>Observability</h1>
-          <p>
-            A static environment dashboard for now. This is where live health,
-            performance, and scenario testing will land next.
-          </p>
-        </div>
-      </div>
-
-      <div className="observability-grid">
-        {cards.map((card) => (
-          <article key={card.label} className="metric-card observability-card">
-            <strong>{card.value}</strong>
-            <span>{card.label}</span>
-            <small>{card.note}</small>
-          </article>
-        ))}
-      </div>
-
-      <section className="console-section">
-        <h2>Scenario queue</h2>
-        <div className="scenario-list">
-          <div>
-            <strong>Landing page smoke</strong>
-            <span>Ensures main route returns content and key assets.</span>
-          </div>
-          <div>
-            <strong>API contract drift</strong>
-            <span>Compares generated OpenAPI against last saved workspace snapshot.</span>
-          </div>
-          <div>
-            <strong>Rate-limit pressure</strong>
-            <span>Future synthetic traffic test based on the workspace guardrails.</span>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function SettingsView({
-  context,
-  workspace,
-  appSettings,
-  domains,
-  domainDraft,
-  loadingDomains,
-  busyDomainId,
-  bootstrapError,
-  activeTunnel,
-  scanningProject,
-  onUpdateGuardrails,
-  onUpdateNotes,
-  onUpdateAppNotes,
-  onUpdateRelayHint,
-  onUpdateProjectRootPath,
-  onScanProjectFolder,
-  onDomainDraftChange,
-  onAddDomain,
-  onVerifyDomain,
-  onRemoveDomain,
-  onSyncWorkspace,
-  onReconnectApi,
-}: {
-  context: LocalWorkspaceContext | null;
-  workspace: WorkspaceConfig | null;
-  appSettings: AppSettings;
-  domains: DomainRecord[];
-  domainDraft: string;
-  loadingDomains: boolean;
-  busyDomainId: string | null;
-  bootstrapError: string;
-  activeTunnel: Tunnel | null;
-  scanningProject: boolean;
-  onUpdateGuardrails: (patch: Partial<Guardrails>) => void;
-  onUpdateNotes: (notes: string) => void;
-  onUpdateAppNotes: (notes: string) => void;
-  onUpdateRelayHint: (relayDeploymentHint: string) => void;
-  onUpdateProjectRootPath: (projectRootPath: string) => void;
-  onScanProjectFolder: () => void;
-  onDomainDraftChange: (value: string) => void;
-  onAddDomain: () => void;
-  onVerifyDomain: (domainId: string) => void;
-  onRemoveDomain: (domainId: string) => void;
-  onSyncWorkspace: () => void;
-  onReconnectApi: () => void;
-}) {
-  return (
-    <div className="settings-view">
-      <h1>Settings</h1>
-      {bootstrapError && (
-        <div style={{
-          background: 'rgba(239, 68, 68, 0.08)',
-          border: '1px solid rgba(239, 68, 68, 0.2)',
-          borderRadius: '8px',
-          padding: '12px 16px',
-          color: '#ff8b8b',
-          fontSize: '13px',
-          marginBottom: '16px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}>
-          <div>
-            <strong>API Connection Offline.</strong> You are currently running in local-only fallback mode.
-          </div>
-          <button className="primary-command small" style={{ background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }} onClick={onReconnectApi}>
-            Reconnect
-          </button>
-        </div>
-      )}
-      <div className="settings-grid">
-        <InfoTile label="Workspace" value={workspace?.name ?? 'starting'} />
-        <InfoTile
-          label="User mode"
-          value={context?.user?.email?.endsWith('@proxync.local') ? 'guest relay session' : 'local'}
-        />
-        <InfoTile label="Remote workspace" value={workspace?.remoteWorkspaceId ?? 'not synced'} monospace />
-        <InfoTile label="Relay state" value={bootstrapError || 'connected'} />
-        <InfoTile label="Active tunnel" value={activeTunnel?.publicUrl ?? 'none'} monospace />
-      </div>
-
-      <section className="console-section settings-section">
-        <h2>Project scan</h2>
-        <div className="settings-form">
-          <label>
-            Project root
-            <input
-              value={workspace?.projectRootPath ?? appSettings.defaultProjectRootPath}
-              onChange={(event) => onUpdateProjectRootPath(event.target.value)}
-              placeholder="E:\\path\\to\\project"
-            />
-          </label>
-          <div className="project-scan-row">
-            <button
-              className="primary-command small"
-              onClick={onScanProjectFolder}
-              disabled={scanningProject}
-            >
-              {scanningProject ? 'Scanning...' : 'Scan project folder'}
-            </button>
-            <span>
-              {workspace?.scannedFiles?.length ?? 0} files indexed
-            </span>
-          </div>
-        </div>
-      </section>
-
-      <section className="console-section settings-section">
-        <h2>Guardrails</h2>
-        <div className="settings-form">
-          <label>
-            Auth mode
-            <select
-              value={appSettings.guardrails.authMode}
-              onChange={(event) =>
-                onUpdateGuardrails({
-                  authMode: event.target.value as Guardrails['authMode'],
-                })
-              }
-            >
-              <option value="guest">Guest</option>
-              <option value="shared-secret">Shared secret</option>
-              <option value="workspace-only">Workspace only</option>
-            </select>
-          </label>
-          <label>
-            Rate limit
-            <input
-              value={appSettings.guardrails.rateLimit}
-              onChange={(event) =>
-                onUpdateGuardrails({
-                  rateLimit: event.target.value,
-                })
-              }
-            />
-          </label>
-          <label className="toggle-row">
-            <input
-              type="checkbox"
-              checked={appSettings.guardrails.piiRedaction}
-              onChange={(event) =>
-                onUpdateGuardrails({
-                  piiRedaction: event.target.checked,
-                })
-              }
-            />
-            Redact sensitive values from captured traffic
-          </label>
-          <label className="toggle-row">
-            <input
-              type="checkbox"
-              checked={appSettings.guardrails.captureBodies}
-              onChange={(event) =>
-                onUpdateGuardrails({
-                  captureBodies: event.target.checked,
-                })
-              }
-            />
-            Capture request and response bodies
-          </label>
-          <label className="toggle-row">
-            <input
-              type="checkbox"
-              checked={appSettings.guardrails.autoUpdateSwagger}
-              onChange={(event) =>
-                onUpdateGuardrails({
-                  autoUpdateSwagger: event.target.checked,
-                })
-              }
-            />
-            Auto-update Swagger when requests or saved tests change
-          </label>
-        </div>
-      </section>
-
-      <section className="console-section settings-section">
-        <h2>Custom domains</h2>
-        <div className="domain-intro">
-          <p>
-            Domains are registered against the currently selected synced workspace. Add
-            the DNS records below, then click verify. For real public testing, your API
-            relay must be deployed on the internet and the custom domain must point to it.
-          </p>
-        </div>
-        <div className="domain-add-row">
-          <input
-            value={domainDraft}
-            onChange={(event) => onDomainDraftChange(event.target.value)}
-            placeholder="demo.example.com"
-          />
-          <button
-            className="primary-command small"
-            onClick={onAddDomain}
-            disabled={busyDomainId === 'new' || !workspace?.remoteWorkspaceId}
-          >
-            {busyDomainId === 'new' ? 'Adding...' : 'Add domain'}
-          </button>
-        </div>
-        {!workspace?.remoteWorkspaceId && (
-          <div className="settings-empty" style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'start' }}>
-            <div>
-              This workspace is not synced to a remote API workspace yet, so domains cannot
-              be registered from here.
-            </div>
-            {context && context.workspace && context.workspace.id !== 'local' && (
-              <button className="primary-command small" onClick={onSyncWorkspace}>
-                Sync workspace to remote API
-              </button>
-            )}
-          </div>
-        )}
-        {loadingDomains ? (
-          <div className="settings-empty">Loading domains...</div>
-        ) : (domains || []).length === 0 ? (
-          <div className="settings-empty">
-            No domains added yet. Start with a subdomain or apex domain you control.
-          </div>
-        ) : (
-          <div className="domain-list">
-            {(domains || []).map((domain) => {
-              const apexDomain = getApexDomain(domain.name);
-              const isSub = domain.name !== apexDomain && domain.name.endsWith(`.${apexDomain}`);
-              
-              const fullTxtHost = `_proxync.${domain.name}`;
-              const relativeTxtHost = fullTxtHost.endsWith(`.${apexDomain}`) 
-                ? fullTxtHost.slice(0, -(apexDomain.length + 1)) 
-                : fullTxtHost;
-                
-              const relativeTrafficHost = domain.name === apexDomain
-                ? '@'
-                : isSub
-                  ? domain.name.slice(0, -(apexDomain.length + 1))
-                  : domain.name;
-
-              const routingValue = isSub || domain.name !== apexDomain ? getRelayBase() : '127.0.0.1';
-
-              const copyVal = (text: string) => {
-                navigator.clipboard.writeText(text);
-                showToast('Copied to clipboard!', 'success');
-              };
-
-              return (
-                <article key={domain.id} className="domain-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '20px' }}>
-                  <div className="domain-card-head" style={{ border: 'none', padding: 0 }}>
-                    <div>
-                      <strong style={{ fontSize: '15px' }}>{domain.name}</strong>
-                      <small style={{ display: 'block', color: domain.verified ? 'var(--green)' : 'var(--yellow)', marginTop: '4px', fontSize: '11px' }}>
-                        {domain.verified ? '✓ Ownership Verified' : '⚡ Pending verification'}
-                      </small>
-                    </div>
-                    <span className={domain.verified ? 'badge good' : 'badge neutral'}>
-                      {domain.verified ? 'Live' : 'Pending'}
-                    </span>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {!domain.verified && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <div style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.2)', padding: '10px 14px', borderRadius: 8, color: 'var(--text-secondary)', fontSize: 12 }}>
-                          💡 <strong>Registrar Tip:</strong> Namesilo/GoDaddy automatically suffixes your domain. Enter only the bold Host prefix into your registrar inputs.
-                        </div>
-                        <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.2)', padding: '10px 14px', borderRadius: 8, color: 'var(--text-secondary)', fontSize: 12 }}>
-                          ⚠️ <strong>Local Relay Loopback Notice:</strong> The traffic configuration value below points to <code>{routingValue}</code> because your Proxync stack is currently running locally. This domain configuration will only work for local loopback testing on your machine. To expose your server to the actual public internet, select <strong>Localtunnel</strong> when starting the share!
-                        </div>
-                      </div>
-                    )}
-                    <div style={{ overflowX: 'auto', border: '1px solid var(--border-subtle)', borderRadius: 8 }}>
-                      <table className="dns-table">
-                        <thead>
-                          <tr>
-                            <th>Host</th>
-                            <th>Type</th>
-                            <th>Value</th>
-                            <th>TTL</th>
-                            <th>Copy Action</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {/* 1. TXT Verification Record (Only needed if unverified) */}
-                          {!domain.verified && (
-                            <tr>
-                              <td>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                    <code style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>{relativeTxtHost}</code>
-                                    <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>.{apexDomain}</span>
-                                  </div>
-                                  <small style={{ fontSize: 10, color: 'var(--text-muted)' }}>Full: {fullTxtHost}</small>
-                                </div>
-                              </td>
-                              <td><span className="badge neutral" style={{ background: 'var(--blue-dim)', color: 'var(--blue)' }}>TXT</span></td>
-                              <td><code>proxync-verification={domain.verificationToken}</code></td>
-                              <td>30 min</td>
-                              <td>
-                                <div style={{ display: 'flex', gap: 6 }}>
-                                  <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => copyVal(relativeTxtHost)}>Copy Host</button>
-                                  <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => copyVal(`proxync-verification=${domain.verificationToken}`)}>Copy Value</button>
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-
-                          {/* 2. Traffic Configuration Record */}
-                          <tr>
-                            <td>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                  <code style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>{relativeTrafficHost}</code>
-                                  {relativeTrafficHost !== '@' && (
-                                    <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>.{apexDomain}</span>
-                                  )}
-                                </div>
-                                <small style={{ fontSize: 10, color: 'var(--text-muted)' }}>Full: {domain.name}</small>
-                              </div>
-                            </td>
-                            <td>
-                              <span className="badge neutral" style={{ background: 'var(--teal-dim)', color: 'var(--teal)' }}>
-                                {isSub || domain.name !== apexDomain ? 'CNAME' : 'A'}
-                              </span>
-                            </td>
-                            <td><code>{routingValue}</code></td>
-                            <td>30 min</td>
-                            <td>
-                              <div style={{ display: 'flex', gap: 6 }}>
-                                <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => copyVal(relativeTrafficHost)}>Copy Host</button>
-                                <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 11 }} onClick={() => copyVal(routingValue)}>Copy Value</button>
-                              </div>
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                <div className="domain-actions">
-                  <button
-                    onClick={() => onVerifyDomain(domain.id)}
-                    disabled={busyDomainId === domain.id}
-                  >
-                    {busyDomainId === domain.id ? 'Working...' : 'Verify'}
-                  </button>
-                  <button
-                    onClick={() => onRemoveDomain(domain.id)}
-                    disabled={busyDomainId === domain.id}
-                  >
-                    Remove
-                  </button>
-                </div>
-              </article>
-            );
-          })}
-          </div>
-        )}
-      </section>
-
-      <section className="console-section settings-section">
-        <h2>Global notes</h2>
-        <textarea
-          value={appSettings.notes}
-          onChange={(event) => onUpdateAppNotes(event.target.value)}
-          placeholder="Keep app-wide relay or deployment notes here."
-        />
-      </section>
-
-      <section className="console-section settings-section">
-        <h2>Workspace notes</h2>
-        <textarea
-          value={workspace?.notes ?? ''}
-          onChange={(event) => onUpdateNotes(event.target.value)}
-          placeholder="Keep project-specific notes, handoff context, or testing reminders here."
-        />
-      </section>
-
-      <section className="console-section settings-section">
-        <h2>Relay deployment hint</h2>
-        <textarea
-          value={appSettings.relayDeploymentHint}
-          onChange={(event) => onUpdateRelayHint(event.target.value)}
-          placeholder="Example: relay.example.com behind wildcard TLS and public DNS."
-        />
-      </section>
-    </div>
-  );
-}
-
-function CompanionPanel({
-  panel,
-  onClose,
-}: {
-  panel: Exclude<PanelView, null>;
-  onClose: () => void;
-}) {
-  return (
-    <aside className="companion-panel">
-      <header>
-        <strong>{panel === 'chat' ? 'General chat' : 'Voice room'}</strong>
-        <button onClick={onClose}>Close</button>
-      </header>
-      {panel === 'chat' ? (
-        <div className="companion-empty">
-          Workspace chat will attach to the selected project profile in the next
-          collaboration pass.
-        </div>
-      ) : (
-        <div className="voice-box">
-          <button>Mute</button>
-          <button>Deafen</button>
-          <p>No participants yet.</p>
-        </div>
-      )}
-    </aside>
-  );
-}
-
-function DiscoverDialog({
-  processes,
-  discovering,
-  sharingPort,
-  onClose,
-  onRefresh,
-  onShare,
-  onShareLocal,
-}: {
-  processes: ProcessCandidate[];
-  discovering: boolean;
-  sharingPort: number | null;
-  onClose: () => void;
-  onRefresh: () => void;
-  onShare: (process: ProcessCandidate) => void;
-  onShareLocal: (process: ProcessCandidate) => void;
-}) {
-  return (
-    <div className="dialog-backdrop">
-      <section className="discover-dialog">
-        <header>
-          <div>
-            <h2>Discover processes</h2>
-            <p>Find and share running local development servers.</p>
-          </div>
-          <button onClick={onClose}>Close</button>
-        </header>
-        <div className="scan-toolbar">
-          <button className="scan-chip active">Localhost</button>
-          <button className="scan-chip" onClick={onRefresh} disabled={discovering}>
-            {discovering ? 'Scanning...' : 'Full scan'}
-          </button>
-        </div>
-        <div className="discovery-list">
-          {processes.map((process) => (
-            <article key={process.id} className="discovery-row">
-              <div>
-                <strong>{process.name}</strong>
-                <span>
-                  Port {process.port} | {process.framework ?? 'HTTP service'}
-                </span>
-                <small>{process.command ?? 'local process'}</small>
-              </div>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <button
-                  className="primary-command small"
-                  style={{ background: 'var(--blue-dim)', color: 'var(--blue)', border: '1px solid rgba(59,130,246,0.3)', padding: '6px 12px' }}
-                  disabled={sharingPort === process.port}
-                  onClick={() => {
-                    onShareLocal(process);
-                    onClose();
-                  }}
-                >
-                  Local
-                </button>
-                <button
-                  className="primary-command small"
-                  disabled={sharingPort === process.port}
-                  onClick={() => {
-                    onShare(process);
-                    onClose();
-                  }}
-                >
-                  Public
-                </button>
-              </div>
-            </article>
-          ))}
-          {processes.length === 0 && <div className="traffic-empty">No processes found.</div>}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function DomainSelectDialog({
-  process,
-  domains,
-  onClose,
-  onConfirm,
-}: {
-  process: ProcessCandidate;
-  domains: any[];
-  onClose: () => void;
-  onConfirm: (customDomainOrOption: string, ltSubdomain?: string) => void;
-}) {
-  const [selectedDomain, setSelectedDomain] = useState<string>('default');
-  const [customSubdomain, setCustomSubdomain] = useState<string>('');
-
-  const getDescription = () => {
-    if (selectedDomain === 'default') {
-      return (
-        <span style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.5' }}>
-          🔌 <strong>Local Loopback:</strong> Exposes the server on a local subdomain (e.g., <code>*.localtest.me</code>). Useful for offline loopback testing on your own machine.
-        </span>
-      );
-    }
-    if (selectedDomain === 'localtunnel') {
-      return (
-        <span style={{ display: 'block', fontSize: '12px', color: 'var(--green)', lineHeight: '1.5' }}>
-          🌐 <strong>Localtunnel (Recommended):</strong> Generates a real, secure public HTTPS URL (e.g., <code>https://*.loca.lt</code>) instantly. Accessible from any phone or computer on the internet.
-        </span>
-      );
-    }
-    return (
-      <span style={{ display: 'block', fontSize: '12px', color: 'var(--blue)', lineHeight: '1.5' }}>
-        🏷️ <strong>Custom Domain:</strong> Routes traffic through your verified custom domain <code>{selectedDomain}</code>. Note: requires pointing your domain to the active relay.
-      </span>
-    );
-  };
-
-  return (
-    <div className="dialog-backdrop" style={{ backdropFilter: 'blur(8px)', background: 'rgba(5, 5, 8, 0.75)' }}>
-      <section className="discover-dialog" style={{ maxWidth: '440px', borderRadius: '12px', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5), 0 10px 10px -5px rgba(0,0,0,0.4)', border: '1px solid var(--border-subtle)' }}>
-        <header style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '16px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Expose public tunnel</h2>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px', margin: 0 }}>Select the domain target for <strong>{process.name}</strong> (Port {process.port}).</p>
-          </div>
-          <button 
-            onClick={onClose} 
-            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '20px', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}
-          >
-            &times;
-          </button>
-        </header>
-        
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
-          <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Sharing Target</label>
-          <select 
-            value={selectedDomain}
-            onChange={(e) => setSelectedDomain(e.target.value)}
-            style={{
-              width: '100%',
-              height: '44px',
-              padding: '0 12px',
-              borderRadius: '8px',
-              background: '#111218',
-              color: 'var(--text-primary)',
-              border: '1px solid var(--border-subtle)',
-              outline: 'none',
-              fontSize: '14px',
-              cursor: 'pointer',
-              boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.2)'
-            }}
-          >
-            <option value="default">Default random subdomain (e.g. *.localtest.me)</option>
-            <option value="localtunnel">Localtunnel (Free Public HTTPS URL)</option>
-            {domains.map((d) => (
-              <option key={d.id} value={d.name}>{d.name}</option>
-            ))}
-          </select>
-
-          {selectedDomain === 'localtunnel' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
-              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Localtunnel Subdomain (Optional)</label>
-              <input
-                type="text"
-                placeholder="e.g. clueliq-demo-port-3000"
-                value={customSubdomain}
-                onChange={(e) => setCustomSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                style={{
-                  width: '100%',
-                  height: '38px',
-                  padding: '0 12px',
-                  borderRadius: '6px',
-                  background: '#1a1b23',
-                  color: 'var(--text-primary)',
-                  border: '1px solid var(--border-subtle)',
-                  outline: 'none',
-                  fontSize: '13px'
-                }}
-              />
-            </div>
-          )}
-
-          <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px 16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', minHeight: '54px', display: 'flex', alignItems: 'center' }}>
-            {getDescription()}
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid var(--border-subtle)', paddingTop: '16px' }}>
-          <button className="btn btn-ghost" onClick={onClose} style={{ padding: '8px 16px', borderRadius: '6px' }}>Cancel</button>
-          <button 
-            className="primary-command"
-            onClick={() => onConfirm(selectedDomain, selectedDomain === 'localtunnel' ? (customSubdomain || undefined) : undefined)}
-            style={{ padding: '8px 20px', borderRadius: '6px' }}
-          >
-            Go Live
-          </button>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function RequestDetailDialog({
-  request,
-  onClose,
-  onReplay,
-  onSendToPostman,
-}: {
-  request: RequestLog;
-  onClose: () => void;
-  onReplay: (request: RequestLog) => void;
-  onSendToPostman: (request: RequestLog) => void;
-}) {
-  return (
-    <div className="dialog-backdrop">
-      <section className="request-dialog">
-        <header>
-          <div>
-            <h2>
-              {request.method} {request.path}
-            </h2>
-            <p>
-              Status {request.status ?? 'pending'} | {request.durationMs ?? '-'}ms
-            </p>
-          </div>
-          <button onClick={onClose}>Close</button>
-        </header>
-        <div className="dialog-actions">
-          <button onClick={() => onSendToPostman(request)}>Send to Postman</button>
-          <button onClick={() => onReplay(request)}>Replay</button>
-        </div>
-        <h3>Request headers</h3>
-        <pre>{JSON.stringify(request.headers ?? {}, null, 2)}</pre>
-        <h3>Body</h3>
-        <pre>{request.bodyPreview || '[empty body]'}</pre>
-        <h3>Response headers</h3>
-        <pre>{JSON.stringify(request.responseHeaders ?? {}, null, 2)}</pre>
-      </section>
-    </div>
-  );
-}
+// Extracted sub-views and dialogs are imported from their respective screens/components files.
 
 async function readNativeProcesses(): Promise<ProcessCandidate[]> {
   try {
@@ -3015,35 +1520,7 @@ async function readNativeProcesses(): Promise<ProcessCandidate[]> {
   }));
 }
 
-function hydrateStoredWorkspaces(
-  remoteWorkspace: { id: string; name: string } | null,
-  defaultGuardrails: Guardrails,
-  defaultProjectRootPath: string,
-) {
-  const stored = localStorage.getItem(LOCAL_WORKSPACES_KEY);
-  let parsed = stored ? (JSON.parse(stored) as WorkspaceConfig[]) : [];
 
-  if (remoteWorkspace) {
-    const exists = parsed.some((w) => w.remoteWorkspaceId === remoteWorkspace.id);
-    if (!exists) {
-      const initial = createWorkspaceConfig(
-        remoteWorkspace.name,
-        remoteWorkspace.id,
-        defaultGuardrails,
-        defaultProjectRootPath,
-      );
-      parsed = [initial, ...parsed];
-      localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify(parsed));
-    }
-  }
-
-  const activeWorkspaceId =
-    localStorage.getItem(ACTIVE_WORKSPACE_KEY) ?? (parsed.length > 0 ? parsed[0].id : null);
-  return {
-    workspaces: parsed,
-    activeWorkspaceId,
-  };
-}
 
 function createWorkspaceConfig(
   name: string,
@@ -3275,25 +1752,6 @@ function buildOpenApi(
   };
 }
 
-function buildEndpointPreview(document: Record<string, unknown>) {
-  const paths = (document.paths ?? {}) as Record<string, Record<string, unknown>>;
-  return Object.entries(paths).flatMap(([path, methods]) =>
-    Object.entries(methods).map(([method, value]) => {
-      const descriptor = value as {
-        summary?: string;
-        responses?: Record<string, unknown>;
-      };
-      return {
-        method: method.toUpperCase(),
-        path,
-        summary: descriptor.summary ?? 'Generated endpoint',
-        responseLabel: descriptor.responses
-          ? `${Object.keys(descriptor.responses).join(', ')} responses`
-          : 'No response metadata',
-      };
-    }),
-  );
-}
 
 function normalizePath(path: string) {
   if (!path) return '/';
@@ -3319,11 +1777,6 @@ function parseHeaderText(value: string): Record<string, string> {
   );
 }
 
-function formatHeaders(headers: Record<string, string>) {
-  return Object.entries(headers)
-    .map(([key, value]) => `${key}: ${value}`)
-    .join('\n');
-}
 
 function decodeResponseBody(value: string | undefined) {
   if (!value) return '';
@@ -3334,7 +1787,4 @@ function decodeResponseBody(value: string | undefined) {
   }
 }
 
-function formatDate(value: string) {
-  return new Date(value).toLocaleString();
-}
 
