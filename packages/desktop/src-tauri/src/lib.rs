@@ -13,6 +13,7 @@ use tokio::io::AsyncBufReadExt;
 lazy_static! {
     static ref ACTIVE_TUNNELS: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>> = Arc::new(Mutex::new(HashMap::new()));
     static ref LOCALTUNNEL_PROCESSES: Arc<Mutex<HashMap<String, tokio::process::Child>>> = Arc::new(Mutex::new(HashMap::new()));
+    static ref RECON_PROCESS_CACHE: Arc<Mutex<HashMap<u16, ProcessCandidate>>> = Arc::new(Mutex::new(HashMap::new()));
 }
 
 #[tauri::command]
@@ -34,7 +35,7 @@ async fn scan_ports() -> Result<Vec<u16>, String> {
     Ok(active)
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct ProcessCandidate {
     id: String,
     name: String,
@@ -48,10 +49,120 @@ struct ProcessCandidate {
     uptime: Option<String>,
 }
 
+fn get_pid_for_port(port: u16) -> Option<u32> {
+    let output = std::process::Command::new("netstat")
+        .args(&["-ano"])
+        .output()
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    
+    for line in stdout.lines() {
+        if line.contains("LISTENING") {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 5 {
+                let local_addr = parts[1];
+                if local_addr.ends_with(&format!(":{}", port)) {
+                    if let Some(pid_str) = parts.last() {
+                        if let Ok(pid) = pid_str.parse::<u32>() {
+                            return Some(pid);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn get_process_info(pid: u32) -> Option<(Option<String>, Option<String>, Option<String>)> {
+    let ps_cmd = format!(
+        "Get-CimInstance Win32_Process -Filter 'ProcessId = {}' | Select-Object -Property Name, ExecutablePath, CommandLine | ConvertTo-Json",
+        pid
+    );
+    let output = std::process::Command::new("powershell")
+        .args(&["-Command", &ps_cmd])
+        .output()
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    
+    let val: serde_json::Value = serde_json::from_str(&stdout).ok()?;
+    
+    let name = val.get("Name").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let exec_path = val.get("ExecutablePath").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let cmd_line = val.get("CommandLine").and_then(|v| v.as_str()).map(|s| s.to_string());
+    
+    Some((name, exec_path, cmd_line))
+}
+
+fn is_absolute_win_path(s: &str) -> bool {
+    let mut chars = s.chars();
+    let first = chars.next();
+    let second = chars.next();
+    let third = chars.next();
+    
+    first.map(|c| c.is_ascii_alphabetic()).unwrap_or(false)
+        && second == Some(':')
+        && third == Some('\\')
+}
+
+fn resolve_directory(exec_path: &Option<String>, cmd_line: &Option<String>) -> String {
+    if let Some(cmd) = cmd_line {
+        let mut best_dir = None;
+        for word in cmd.split_whitespace() {
+            let clean_word = word.trim_matches('"').trim_matches('\'');
+            if is_absolute_win_path(clean_word) {
+                let path = std::path::Path::new(clean_word);
+                if path.exists() {
+                    let dir = if path.is_dir() {
+                        Some(path.to_path_buf())
+                    } else {
+                        path.parent().map(|p| p.to_path_buf())
+                    };
+                    
+                    if let Some(d) = dir {
+                        let dir_str = d.to_string_lossy().to_string();
+                        if !dir_str.contains("nodejs") && !dir_str.contains("npm") && !dir_str.contains("AppData") {
+                            if let Some(node_modules_idx) = dir_str.find("\\node_modules") {
+                                best_dir = Some(dir_str[..node_modules_idx].to_string());
+                            } else {
+                                best_dir = Some(dir_str);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(bd) = best_dir {
+            return bd;
+        }
+    }
+    
+    if let Some(exec) = exec_path {
+        if let Some(parent) = std::path::Path::new(exec).parent() {
+            return parent.to_string_lossy().to_string();
+        }
+    }
+    
+    "unknown".to_string()
+}
+
 #[tauri::command]
-async fn scan_processes() -> Result<Vec<ProcessCandidate>, String> {
+async fn scan_processes(bypass_cache: bool) -> Result<Vec<ProcessCandidate>, String> {
     let ports = scan_ports().await?;
-    Ok(ports.into_iter().map(|port| {
+    let mut candidates = Vec::new();
+    
+    let mut cache = RECON_PROCESS_CACHE.lock().await;
+    cache.retain(|port, _| ports.contains(port));
+    
+    for port in ports {
+        if !bypass_cache {
+            if let Some(cached) = cache.get(&port) {
+                candidates.push(cached.clone());
+                continue;
+            }
+        }
+        
         let framework = match port {
             3000 | 3001 => "Node app",
             4000 => "GraphQL service",
@@ -64,7 +175,7 @@ async fn scan_processes() -> Result<Vec<ProcessCandidate>, String> {
             _ => "Development server",
         };
 
-        ProcessCandidate {
+        let mut candidate = ProcessCandidate {
             id: format!("port-{}", port),
             name: framework.to_string(),
             port,
@@ -75,8 +186,26 @@ async fn scan_processes() -> Result<Vec<ProcessCandidate>, String> {
             framework: Some(framework.to_string()),
             access: "ready".to_string(),
             uptime: Some("live".to_string()),
+        };
+
+        if let Some(pid) = get_pid_for_port(port) {
+            candidate.pid = Some(pid);
+            if let Some((name, exec_path, cmd_line)) = get_process_info(pid) {
+                if let Some(n) = name {
+                    candidate.name = n;
+                }
+                if let Some(ref exec) = exec_path {
+                    candidate.executable = Some(exec.clone());
+                }
+                candidate.directory = Some(resolve_directory(&exec_path, &cmd_line));
+            }
         }
-    }).collect())
+
+        cache.insert(port, candidate.clone());
+        candidates.push(candidate);
+    }
+    
+    Ok(candidates)
 }
 
 #[derive(Deserialize, Serialize)]

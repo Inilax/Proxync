@@ -11,12 +11,14 @@ export function WelcomeView({
   tunnelCount,
   requestCount,
   onDiscover,
+  onUpdateNotes,
 }: {
   workspace: WorkspaceConfig | null;
   processCount: number;
   tunnelCount: number;
   requestCount: number;
   onDiscover: () => void;
+  onUpdateNotes: (notes: string) => void;
 }) {
   return (
     <div className="welcome-view fade-in">
@@ -42,6 +44,19 @@ export function WelcomeView({
         <Metric label="Active tunnels" value={String(tunnelCount)} />
         <Metric label="Captured requests" value={String(requestCount)} />
       </div>
+
+      {workspace && (
+        <section className="console-section" style={{ width: '100%', maxWidth: '800px', marginTop: '24px', textAlign: 'left' }}>
+          <h2 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Workspace notes</h2>
+          <textarea
+            className="form-textarea"
+            value={workspace.notes ?? ''}
+            onChange={(event) => onUpdateNotes(event.target.value)}
+            placeholder="Keep project-specific notes, handoff context, or testing reminders here."
+            style={{ minHeight: '120px' }}
+          />
+        </section>
+      )}
     </div>
   );
 }
