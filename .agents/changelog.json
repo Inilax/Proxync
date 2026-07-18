@@ -92,6 +92,27 @@
         "packages/desktop/src/screens/TrafficView.tsx"
       ],
       "featureSummary": "Integrated Cloudflare Tunnel support using npx cloudflared quick tunnels with automatic trycloudflare URL parsing; built premium visual antenna latency signal bars displaying ping times to Local loopback, Cloudflare edge, and Localtunnel endpoints; refactored App.tsx monolith into independent views (LobbyView, ProcessView, TrafficView, PostmanView, SwaggerView, ObservabilityView, SettingsView) and dialog components; resolved workspaces state hydration race condition by loading local state synchronously on mount; added seamless silent workspace auto-registration during public domain sharing; added permanent Control Plane Connection section inside Settings with reconnect actions; bypassed guest user active tunnel count limits for offline/local MVP mode."
+    },
+    {
+      "timestamp": "2026-07-18T12:28:00+05:30",
+      "branchName": "feature/main-modular-ui-redesign",
+      "modifiedFiles": [
+        "packages/desktop/src/App.tsx",
+        "packages/desktop/src/index.css",
+        "packages/desktop/src/components/views/Dialogs.tsx",
+        "packages/desktop/src/components/views/LobbyView.tsx",
+        "packages/desktop/src/components/views/ObservabilityView.tsx",
+        "packages/desktop/src/components/views/PostmanView.tsx",
+        "packages/desktop/src/components/views/ProcessView.tsx",
+        "packages/desktop/src/components/views/SettingsView.tsx",
+        "packages/desktop/src/components/views/SharedComponents.tsx",
+        "packages/desktop/src/components/views/SwaggerView.tsx",
+        "packages/desktop/src/components/views/TrafficView.tsx",
+        "packages/desktop/src/components/views/WelcomeView.tsx",
+        "package-lock.json",
+        ".agents/changelog.json"
+      ],
+      "featureSummary": "Redesigned the desktop UI/UX completely with a premium glassmorphism theme and modular structure, refactoring App.tsx into independent views under components/views; successfully merged with upstream branch changes, preserving Cloudflare tunnel support, state hydration logic, and Control Plane connection options; resolved all merge conflicts and validated TypeScript compilation."
     }
   ]
 }
