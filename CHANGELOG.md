@@ -2,6 +2,16 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [feature/main-standalone-mode] - 2026-07-19 (Cleanup & Branding)
+- **Feature Summary**: Updated workspace brand logo to Proxync Graphite Gateway SVG, replacing the old PNG assets. Removed deprecated `docs/assets` folder. Re-wrote `README.md` to reflect local-first standalone desktop architecture and simplify workspace startup commands. Untracked `.agents` directory in git to respect gitignore specifications.
+- **Modified/Deleted Files**:
+  - `README.md`
+  - `CHANGELOG.md`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/index.css`
+  - `packages/desktop/public/logo.svg` (added)
+  - `docs/assets` (deleted)
+
 ## [feature/main-standalone-mode] - 2026-07-19
 - **Feature Summary**: Migrated application to 100% offline, standalone, local-first mode. Removed NestJS API backend (`packages/api`), postgres/redis configurations, and `docker-compose.yml`. Implemented Rust state serialization commands saving configurations directly to `AppData/Roaming/Proxync/data.json`. Created a local TCP proxy in Rust that intercepts HTTP traffic and emits request/response logs directly to the frontend via Tauri events. Removed all references to Guardrails, Observability views, and Companion chat/voice panels from frontend state and views. Configured Tauri build settings to output a portable single executable, verified clean builds, and updated gitignore settings.
 - **Modified/Deleted Files**:
