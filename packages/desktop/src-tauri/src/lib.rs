@@ -14,6 +14,7 @@ lazy_static! {
     static ref ACTIVE_TUNNELS: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>> = Arc::new(Mutex::new(HashMap::new()));
     static ref LOCALTUNNEL_PROCESSES: Arc<Mutex<HashMap<String, tokio::process::Child>>> = Arc::new(Mutex::new(HashMap::new()));
     static ref RECON_PROCESS_CACHE: Arc<Mutex<HashMap<u16, ProcessCandidate>>> = Arc::new(Mutex::new(HashMap::new()));
+    static ref PROXY_HANDLE: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>> = Arc::new(Mutex::new(None));
 }
 
 #[tauri::command]
@@ -409,6 +410,12 @@ async fn close_tunnel(tunnel_id: String) -> Result<(), String> {
         found = true;
     }
 
+    let mut proxy_lock = PROXY_HANDLE.lock().await;
+    if let Some(handle) = proxy_lock.take() {
+        handle.abort();
+        found = true;
+    }
+
     if found {
         Ok(())
     } else {
@@ -613,6 +620,152 @@ async fn get_local_ip() -> Result<String, String> {
     Ok(local_addr.ip().to_string())
 }
 
+fn get_data_filepath() -> std::path::PathBuf {
+    let mut dir = if let Ok(appdata) = std::env::var("APPDATA") {
+        std::path::PathBuf::from(appdata)
+    } else if let Ok(home) = std::env::var("HOME") {
+        std::path::PathBuf::from(home).join(".config")
+    } else {
+        std::env::current_dir().unwrap_or_default()
+    };
+    dir.push("Proxync");
+    let _ = std::fs::create_dir_all(&dir);
+    dir.push("data.json");
+    dir
+}
+
+#[tauri::command]
+async fn save_app_state(state: String) -> Result<(), String> {
+    let filepath = get_data_filepath();
+    std::fs::write(&filepath, state).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn load_app_state() -> Result<String, String> {
+    let filepath = get_data_filepath();
+    if !filepath.exists() {
+        return Ok("{}".to_string());
+    }
+    std::fs::read_to_string(&filepath).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, String> {
+    use tokio::net::TcpListener;
+    use tokio::net::TcpStream;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let mut handle_lock = PROXY_HANDLE.lock().await;
+    if let Some(handle) = handle_lock.take() {
+        handle.abort();
+    }
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.map_err(|e| e.to_string())?;
+    let proxy_port = listener.local_addr().map_err(|e| e.to_string())?.port();
+
+    let handle = tokio::spawn(async move {
+        while let Ok((mut client_stream, _)) = listener.accept().await {
+            let app_clone = app.clone();
+            tokio::spawn(async move {
+                let mut client_buf = vec![0u8; 16384];
+                let n = match client_stream.read(&mut client_buf).await {
+                    Ok(read_bytes) if read_bytes > 0 => read_bytes,
+                    _ => return,
+                };
+
+                let mut method = "GET".to_string();
+                let mut path = "/".to_string();
+                let mut headers = HashMap::new();
+                let req_id = format!("req-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
+
+                let request_string = String::from_utf8_lossy(&client_buf[..n]);
+                let mut lines = request_string.lines();
+                if let Some(req_line) = lines.next() {
+                    let parts: Vec<&str> = req_line.split_whitespace().collect();
+                    if parts.len() >= 2 {
+                        method = parts[0].to_string();
+                        path = parts[1].to_string();
+                    }
+                }
+
+                for line in lines {
+                    if line.is_empty() {
+                        break;
+                    }
+                    if let Some(pos) = line.find(':') {
+                        let key = line[..pos].trim().to_string();
+                        let val = line[pos + 1..].trim().to_string();
+                        headers.insert(key, val);
+                    }
+                }
+
+                let req_meta = serde_json::json!({
+                    "id": req_id,
+                    "method": method,
+                    "path": path,
+                    "headers": headers,
+                    "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()
+                });
+                let _ = app_clone.emit("request:log", req_meta);
+
+                let mut target_stream = match TcpStream::connect(format!("127.0.0.1:{}", local_port)).await {
+                    Ok(stream) => stream,
+                    Err(_) => return,
+                };
+
+                if target_stream.write_all(&client_buf[..n]).await.is_err() {
+                    return;
+                }
+
+                let (mut client_read, mut client_write) = client_stream.into_split();
+                let (mut target_read, mut target_write) = target_stream.into_split();
+
+                tokio::spawn(async move {
+                    let _ = tokio::io::copy(&mut client_read, &mut target_write).await;
+                });
+
+                let app_clone2 = app_clone.clone();
+                let req_id_clone = req_id.clone();
+                tokio::spawn(async move {
+                    let mut target_buf = vec![0u8; 16384];
+                    let mut status: u16 = 200;
+                    match target_read.read(&mut target_buf).await {
+                        Ok(read_bytes) if read_bytes > 0 => {
+                            let response_string = String::from_utf8_lossy(&target_buf[..read_bytes]);
+                            let mut lines = response_string.lines();
+                            if let Some(status_line) = lines.next() {
+                                let parts: Vec<&str> = status_line.split_whitespace().collect();
+                                if parts.len() >= 2 {
+                                    if let Ok(code) = parts[1].parse::<u16>() {
+                                        status = code;
+                                    }
+                                }
+                            }
+
+                            let res_meta = serde_json::json!({
+                                "requestId": req_id_clone,
+                                "status": status,
+                                "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()
+                            });
+                            let _ = app_clone2.emit("request:log:response", res_meta);
+
+                            if client_write.write_all(&target_buf[..read_bytes]).await.is_err() {
+                                return;
+                            }
+                        }
+                        _ => return,
+                    }
+
+                    let _ = tokio::io::copy(&mut target_read, &mut client_write).await;
+                });
+            });
+        }
+    });
+
+    *handle_lock = Some(handle);
+    Ok(proxy_port)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -626,7 +779,10 @@ pub fn run() {
             open_cloudflare_tunnel,
             scan_directory,
             read_file_content,
-            get_local_ip
+            get_local_ip,
+            save_app_state,
+            load_app_state,
+            start_proxy
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

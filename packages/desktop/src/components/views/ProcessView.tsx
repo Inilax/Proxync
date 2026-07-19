@@ -145,11 +145,7 @@ export function ProcessView({
       <section className="console-section">
         <h2>Workspace configuration</h2>
         <div className="detail-grid">
-          <InfoTile label="Guardrail auth" value={workspace?.guardrails.authMode ?? 'guest'} />
-          <InfoTile
-            label="Swagger mode"
-            value={workspace?.guardrails.autoUpdateSwagger ? 'auto-updating' : 'manual'}
-          />
+          <InfoTile label="Language hint" value={workspace?.languageHint ?? 'inferred'} />
           <InfoTile
             label="Profile saved"
             value={profile?.lastSharedAt ? formatDate(profile.lastSharedAt) : 'this session'}

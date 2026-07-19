@@ -4,13 +4,11 @@
   "version": "0.0.1",
   "description": "Proxync — instant tunnel + collaboration workspace",
   "workspaces": [
-    "packages/*"
+    "packages/desktop"
   ],
   "scripts": {
-    "dev:api": "npm run dev --workspace=packages/api",
-    "dev:desktop": "npm run tauri:dev --workspace=packages/desktop",
-    "build:api": "npm run build --workspace=packages/api",
-    "test:api": "npm run test --workspace=packages/api"
+    "dev": "npm run dev --workspace=packages/desktop",
+    "build": "npm run build --workspace=packages/desktop"
   },
   "engines": {
     "node": ">=20.0.0",

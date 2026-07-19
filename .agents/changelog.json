@@ -126,6 +126,28 @@
         "packages/desktop/src/App.tsx"
       ],
       "featureSummary": "Implemented dynamic process directory and executable path lookup on Windows using native netstat parsing and WMI/CIM queries with a high-performance local process cache in Rust to prevent OS overhead; shifted Workspace Notes input from SettingsView to WelcomeView; removed obsolete relayDeploymentHint settings from AppSettings."
+    },
+    {
+      "timestamp": "2026-07-19T19:42:00+05:30",
+      "branchName": "feature/main-standalone-mode",
+      "modifiedFiles": [
+        "packages/desktop/src-tauri/src/lib.rs",
+        "packages/desktop/src-tauri/tauri.conf.json",
+        "packages/desktop/src/App.tsx",
+        "packages/desktop/src/components/views/SettingsView.tsx",
+        "packages/desktop/src/components/views/LobbyView.tsx",
+        "packages/desktop/src/components/views/ProcessView.tsx",
+        "packages/desktop/src/components/views/SwaggerView.tsx",
+        "packages/desktop/src/components/views/Dialogs.tsx",
+        "packages/desktop/src/components/views/SharedComponents.tsx",
+        "packages/desktop/src/lib/api.ts",
+        "packages/desktop/src/lib/types.ts",
+        ".gitignore",
+        "package.json",
+        "docker-compose.yml",
+        "packages/desktop/src/components/views/ObservabilityView.tsx"
+      ],
+      "featureSummary": "Migrated application to 100% offline, standalone, local-first mode. Removed NestJS API backend (packages/api), postgres/redis configurations, and docker-compose.yml. Implemented Rust state serialization commands saving configurations directly to AppData/Roaming/Proxync/data.json. Created a local TCP proxy in Rust that intercepts HTTP traffic and emits request/response logs directly to the frontend via Tauri events. Removed all references to Guardrails, Observability views, and Companion chat/voice panels from frontend state and views. Configured Tauri build settings to output a portable single executable, verified clean builds, and updated gitignore settings."
     }
   ]
 }

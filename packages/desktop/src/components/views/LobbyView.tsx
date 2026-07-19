@@ -149,7 +149,6 @@ export function LobbyView({
             <div className="lobby-card-meta">
               <span>{workspace.profiles.length} saved shares</span>
               <span>{workspace.savedRequests.length} requests</span>
-              <span>{workspace.guardrails.authMode} auth</span>
             </div>
             <p>{workspace.notes || 'No notes yet. This workspace is ready for project-specific context.'}</p>
             <div className="lobby-card-actions">
