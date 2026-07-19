@@ -1,0 +1,128 @@
+name: Prepare Release
+
+# Run this manually from the "Actions" tab in GitHub when develop is ready.
+# It tests develop, bumps the version, and opens a PR into main.
+# Stakeholders review/approve that PR on GitHub -- merging it triggers
+# release.yml, which builds the Windows installer, tags the release,
+# creates the permanent release-vX.Y.Z branch, and publishes the GitHub Release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Explicit version e.g. 1.4.0 (leave blank to auto-bump patch, e.g. 1.2.3 -> 1.2.4)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  # Path to the Tauri app inside the monorepo
+  PKG_DIR: packages/desktop
+
+jobs:
+  prepare-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "${{ env.PKG_DIR }}/src-tauri -> target"
+
+      # Assumes npm workspaces with a single lockfile at the repo root.
+      # If packages/desktop has its own lockfile instead, change this to:
+      #   run: npm ci
+      #   working-directory: ${{ env.PKG_DIR }}
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run frontend tests
+        working-directory: ${{ env.PKG_DIR }}
+        run: npm test --if-present
+
+      - name: Run Rust tests
+        shell: bash
+        run: |
+          cd "${PKG_DIR}/src-tauri"
+          cargo test
+
+      - name: Sanity build (debug, fast)
+        working-directory: ${{ env.PKG_DIR }}
+        run: npm run tauri build -- --debug
+
+      - name: Determine new version
+        id: version
+        shell: bash
+        run: |
+          if [[ -n "${{ github.event.inputs.version }}" ]]; then
+            NEW_VERSION="${{ github.event.inputs.version }}"
+          else
+            LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1 || true)
+            [[ -z "$LAST_TAG" ]] && LAST_TAG="v0.0.0"
+            CURRENT="${LAST_TAG#v}"
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+            NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+          fi
+          echo "New version: $NEW_VERSION"
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Bump version in project files
+        shell: bash
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.version }}"
+
+          (cd "${PKG_DIR}" && npm version "$NEW_VERSION" --no-git-tag-version --allow-same-version)
+
+          node - "$NEW_VERSION" "$PKG_DIR" <<'EOF'
+          const fs = require('fs');
+          const path = require('path');
+          const v = process.argv[2];
+          const pkgDir = process.argv[3];
+          const p = path.join(pkgDir, 'src-tauri', 'tauri.conf.json');
+          const c = JSON.parse(fs.readFileSync(p, 'utf8'));
+          if (c.version !== undefined) { c.version = v; }
+          else { c.package = c.package || {}; c.package.version = v; }
+          fs.writeFileSync(p, JSON.stringify(c, null, 2) + '\n');
+          EOF
+
+          sed -i.bak -E "0,/^version = \".*\"/s//version = \"${NEW_VERSION}\"/" "${PKG_DIR}/src-tauri/Cargo.toml"
+          rm -f "${PKG_DIR}/src-tauri/Cargo.toml.bak"
+
+      - name: Open release pull request into main
+        uses: peter-evans/create-pull-request@v6
+        with:
+          # Transient staging branch just for this PR (safe to auto-delete on merge).
+          # The permanent release-vX.Y.Z snapshot branch is created separately
+          # by release.yml once this PR is merged.
+          branch: release-staging/v${{ steps.version.outputs.version }}
+          base: main
+          title: "Release v${{ steps.version.outputs.version }}"
+          commit-message: "chore(release): bump version to ${{ steps.version.outputs.version }}"
+          labels: release
+          body: |
+            Automated release PR for **v${{ steps.version.outputs.version }}**.
+
+            - All tests and a sanity build passed on `develop`.
+            - Merging this PR into `main` will automatically:
+              - tag the release
+              - create the permanent `release-v${{ steps.version.outputs.version }}` branch
+              - build the Windows installer and publish the GitHub Release
+
+            Please review and approve to proceed.
