@@ -23,7 +23,7 @@ export function WelcomeView({
   return (
     <div className="welcome-view fade-in">
       <div className="terminal-orb">
-        <span className="orb-text">PX</span>
+        <img className="orb-text" src="/logo.svg" alt="Proxync Logo" style={{ width: '48px', height: '48px' }} />
         <div className="orb-ring" />
       </div>
       <h1>Keep each project isolated, share faster, and let contracts evolve with the code.</h1>

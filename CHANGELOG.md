@@ -3,12 +3,13 @@
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
 ## [feature/main-standalone-mode] - 2026-07-19 (Cleanup & Branding)
-- **Feature Summary**: Updated workspace brand logo to Proxync Graphite Gateway SVG, replacing the old PNG assets. Removed deprecated `docs/assets` folder. Re-wrote `README.md` to reflect local-first standalone desktop architecture and simplify workspace startup commands. Untracked `.agents` directory in git to respect gitignore specifications.
+- **Feature Summary**: Updated workspace brand logo to Proxync Graphite Gateway SVG, replacing the old PNG assets. Removed deprecated `docs/assets` folder. Re-wrote `README.md` to reflect local-first standalone desktop architecture and simplify workspace startup commands. Untracked `.agents` directory in git to respect gitignore specifications. Replaced terminal-orb PX text with logo image in WelcomeView.
 - **Modified/Deleted Files**:
   - `README.md`
   - `CHANGELOG.md`
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/index.css`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
   - `packages/desktop/public/logo.svg` (added)
   - `docs/assets` (deleted)
 

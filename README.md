@@ -12,7 +12,8 @@
   <a href="https://github.com/Inilax/Proxync/stargazers"><img src="https://img.shields.io/github/stars/Inilax/Proxync?style=flat" alt="Stars" /></a>&nbsp;
   <a href="https://github.com/Inilax/Proxync/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Inilax/Proxync?style=flat" alt="License" /></a>&nbsp;
   <a href="https://github.com/Inilax/Proxync/issues"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat" alt="PRs Welcome" /></a>&nbsp;
-  <a href="https://github.com/Inilax/Proxync/graphs/contributors"><img src="https://img.shields.io/github/contributors/Inilax/Proxync?style=flat" alt="Contributors" /></a>
+  <a href="https://github.com/Inilax/Proxync/graphs/contributors"><img src="https://img.shields.io/github/contributors/Inilax/Proxync?style=flat" alt="Contributors" /></a>&nbsp;
+  <a href="https://discord.gg/cu682ak5A"><img src="https://img.shields.io/badge/Community-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord" /></a>
 </p>
 
 ---
