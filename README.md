@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="docs/assets/logo.png" alt="Proxync" width="64" />
+  <img src="packages/desktop/public/logo.svg" alt="Proxync" width="120" />
 </p>
 
 <h1 align="center">Proxync</h1>
 
 <p align="center">
-  Tunnel your localhost to the world. Capture every request. Debug together.
+  Tunnel your localhost to the world. Capture every request. Standalone, local-first developer studio.
 </p>
 
 <p align="center">
@@ -19,45 +19,36 @@
 
 ---
 
-Proxync is a desktop app that sits next to your running server. You click a button, and suddenly your `localhost:3000` is available on a public URL — with every request flowing through it logged, inspectable, and replayable. It's like ngrok, Postman, and Swagger UI had a baby, and that baby could also group-chat.
+Proxync is a standalone, local-first desktop application that sits next to your running server. You click a button, and suddenly your `localhost:3000` is available on a public URL — with every request flowing through it logged, inspectable, and replayable. It's like ngrok, Postman, and Swagger UI had a baby, running entirely on your machine.
 
 ### Why this exists
 
-We got tired of switching between five tabs to debug a single webhook. The tunnel in one window. Postman in another. Swagger open somewhere. Slack for "hey can you hit that endpoint again?". Proxync puts all of that in one place.
+We got tired of switching between five tabs to debug a single webhook. The tunnel in one window. Postman in another. Swagger open somewhere. Proxync puts all of that in one place, running completely offline with local file-based state serialization.
 
 ### What you get
 
-- **One-click tunneling** — LAN, [Localtunnel](https://theboroer.github.io/localtunnel-www/) (free public HTTPS), or your own custom domain. Pick one, click Go Live.
+- **One-click tunneling** — Direct Cloudflare Tunnels (free public HTTPS) or Localtunnel. Pick one, click Go Live.
+- **Local Intercepting TCP Proxy** — Runs a lightweight Rust-based interceptor locally that captures and logs request and response headers dynamically.
 - **Live traffic inspector** — Every request and response captured in real-time. Headers, body, timing, status — the works.
 - **Auto-generated Swagger docs** — We watch your traffic and build an OpenAPI spec from it. No YAML required.
 - **Built-in request runner** — Basically Postman, but inside the app. Replay captured requests, tweak them, save collections.
-- **Team chat** — Text channels with presence indicators and screenshot sharing. No more "check Slack".
-- **Custom domains** — Register `api.yourcompany.com`, verify via DNS, bind it to your tunnel. Your own mini Vercel for dev.
+- **Custom domains** — Map custom domains directly to your local tunnel with registrar tips and instant verification.
 
 ### The stack
 
-The desktop app is [Tauri 2](https://v2.tauri.app/) (Rust backend, React + TypeScript frontend). The API gateway is [NestJS](https://nestjs.com/) with [Prisma](https://www.prisma.io/) + PostgreSQL and Redis for pub/sub. Everything talks over WebSockets.
+The application is built on [Tauri v2](https://v2.tauri.app/) (Rust backend, React + TypeScript frontend). It runs entirely offline and standalone, saving state locally in your system's AppData or configuration folder (`AppData/Roaming/Proxync/data.json` on Windows or `~/.config/Proxync/data.json` on macOS/Linux) with zero external API dependencies.
 
 ### Get it running
 
-You need Node ≥ 20, Docker (for Postgres + Redis), and the Rust toolchain.
+You need Node ≥ 20 and the Rust toolchain.
 
 ```bash
+# Clone the repository
 git clone https://github.com/Inilax/Proxync.git
 cd proxync
 npm install
 
-# spin up postgres + redis
-docker-compose up -d
-
-# configure and seed the database
-cp packages/api/.env.example packages/api/.env
-cd packages/api && npx prisma db push
-
-# start the api (runs on :3939)
-npm run dev
-
-# in another terminal — start the desktop app
+# Start the desktop app in development mode
 cd packages/desktop
 npm run tauri dev
 ```
@@ -70,33 +61,30 @@ We'd genuinely love that. Here's the gist:
 
 1. Fork it
 2. Branch off: `git checkout -b feature/main-your-thing`
-3. Make sure it compiles: `cd packages/api && npm run build` and `cd packages/desktop && npm run build`
+3. Make sure it compiles: `npm run build`
 4. Open a PR
 
-If you're looking for context on the codebase, check [`.agents/architecture.json`](.agents/architecture.json) — it's a map of every module, model, and file in the project. The [`CHANGELOG.md`](CHANGELOG.md) tracks what's been built and what's next.
+The [`CHANGELOG.md`](CHANGELOG.md) tracks what's been built and what's next.
 
 A few ground rules:
-- Read `prisma/schema.prisma` before touching the data layer
-- Don't block the Tauri main thread — `tokio::spawn` is your friend
-- Avoid `redis.keys()` in hot paths
-- If your controller uses `@UseGuards(BearerGuard)`, import `AuthModule`
-
-Or just open an issue. Seriously, even "this button looks weird" is helpful.
+- Don't block the Tauri main thread — `tokio::spawn` is your friend for asynchronous background operations.
+- Keep all local app state serialization non-blocking and thread-safe.
+- Ensure spawned child processes (like `cloudflared` or `localtunnel`) are correctly monitored and terminated on close to prevent orphan processes.
 
 ### What's next
 
-- [ ] **CLI version** — `npx proxync` to tunnel, capture, and inspect from your terminal. No GUI needed.
-- [ ] Agentic debugger — an AI friend that watches your traffic and flags issues before you do
-- [ ] Voice rooms (WebRTC)
-- [ ] Browser-based tunnel viewer
-- [ ] OS notifications for incoming requests
-- [ ] Plugin system for custom middleware
-- [ ] Rate limiting dashboards
+- [ ] **Offline-First SQLite Migration** — Transition local state storage to SQLite for advanced queries and large log payloads.
+- [ ] **CLI Companion** — Run `npx proxync` to start tunnels and stream logs directly to your terminal.
+- [ ] **Local Network Share** — Expose a web-based dashboard viewer for other devices on your local network (LAN).
+- [ ] **AI-Powered Traffic Debugger** — A local agent that automatically flags slow endpoints, common header issues, and schema mismatches.
+- [ ] **HAR & Postman Collection Export** — Download captured requests in industry-standard formats.
+- [ ] **Native OS Notifications** for incoming webhooks or tunnel state transitions.
+- [ ] **Request/Response Interception & Mocking** — Tweak responses on the fly before they hit your localhost.
 
 ---
 
 <p align="center">
-  <img src="docs/assets/logo.png" alt="Proxync" width="28" />
+  <img src="packages/desktop/public/logo.svg" alt="Proxync" width="36" />
 </p>
 
 <p align="center">

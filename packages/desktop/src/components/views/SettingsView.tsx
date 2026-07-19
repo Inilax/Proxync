@@ -1,24 +1,18 @@
 /**
- * SettingsView.tsx — Redesigned settings screen
- * Grouped settings with toggle switches and domain management.
+ * SettingsView.tsx — Standalone local settings screen
  */
-import type { WorkspaceConfig, AppSettings, DomainRecord, Guardrails, Tunnel } from './SharedComponents';
+import type { WorkspaceConfig, AppSettings, DomainRecord, Tunnel } from './SharedComponents';
 import { InfoTile } from './SharedComponents';
 import { showToast } from '../../lib/toast';
-import type { LocalWorkspaceContext } from '../../lib/api';
 
 export function SettingsView({
-  context,
   workspace,
   appSettings,
   domains,
   domainDraft,
-  loadingDomains,
   busyDomainId,
-  bootstrapError,
   activeTunnel,
   scanningProject,
-  onUpdateGuardrails,
   onUpdateAppNotes,
   onUpdateProjectRootPath,
   onScanProjectFolder,
@@ -26,20 +20,14 @@ export function SettingsView({
   onAddDomain,
   onVerifyDomain,
   onRemoveDomain,
-  onSyncWorkspace,
-  onReconnectApi,
 }: {
-  context: LocalWorkspaceContext | null;
   workspace: WorkspaceConfig | null;
   appSettings: AppSettings;
   domains: DomainRecord[];
   domainDraft: string;
-  loadingDomains: boolean;
   busyDomainId: string | null;
-  bootstrapError: string;
   activeTunnel: Tunnel | null;
   scanningProject: boolean;
-  onUpdateGuardrails: (patch: Partial<Guardrails>) => void;
   onUpdateAppNotes: (notes: string) => void;
   onUpdateProjectRootPath: (projectRootPath: string) => void;
   onScanProjectFolder: () => void;
@@ -47,8 +35,6 @@ export function SettingsView({
   onAddDomain: () => void;
   onVerifyDomain: (domainId: string) => void;
   onRemoveDomain: (domainId: string) => void;
-  onSyncWorkspace: () => void;
-  onReconnectApi: () => void;
 }) {
   const getApexDomain = (domain: string) => {
     const parts = domain.split('.');
@@ -61,36 +47,15 @@ export function SettingsView({
     return parts.slice(-2).join('.');
   };
 
-  const getRelayBase = () => {
-    const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
-    const parsed = apiBase.replace(/^https?:\/\//, '').split(':')[0];
-    if (parsed === 'localhost' || parsed === '127.0.0.1') {
-      return 'localtest.me';
-    }
-    return parsed;
-  };
+
 
   return (
     <div className="settings-view fade-in">
       <h1>Settings</h1>
-      {bootstrapError && (
-        <div className="notice-banner error" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <strong>API Connection Offline.</strong> You are currently running in local-only fallback mode.
-          </div>
-          <button className="btn-danger compact" onClick={onReconnectApi}>
-            Reconnect
-          </button>
-        </div>
-      )}
+      
       <div className="settings-grid">
         <InfoTile label="Workspace" value={workspace?.name ?? 'starting'} />
-        <InfoTile
-          label="User mode"
-          value={context?.user?.email?.endsWith('@proxync.local') ? 'guest relay session' : 'local'}
-        />
-        <InfoTile label="Remote workspace" value={workspace?.remoteWorkspaceId ?? 'not synced'} monospace />
-        <InfoTile label="Relay state" value={bootstrapError || 'connected'} />
+        <InfoTile label="Mode" value="Standalone (Local-First)" />
         <InfoTile label="Active tunnel" value={activeTunnel?.publicUrl ?? 'none'} monospace />
       </div>
 
@@ -122,91 +87,11 @@ export function SettingsView({
       </section>
 
       <section className="console-section settings-section">
-        <h2>Guardrails</h2>
-        <div className="settings-form">
-          <label>
-            Auth mode
-            <select
-              className="form-select"
-              value={appSettings.guardrails.authMode}
-              onChange={(event) =>
-                onUpdateGuardrails({
-                  authMode: event.target.value as Guardrails['authMode'],
-                })
-              }
-            >
-              <option value="guest">Guest</option>
-              <option value="shared-secret">Shared secret</option>
-              <option value="workspace-only">Workspace only</option>
-            </select>
-          </label>
-          <label>
-            Rate limit
-            <input
-              className="form-input"
-              value={appSettings.guardrails.rateLimit}
-              onChange={(event) =>
-                onUpdateGuardrails({
-                  rateLimit: event.target.value,
-                })
-              }
-            />
-          </label>
-          <label className="toggle-row">
-            <div className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={appSettings.guardrails.piiRedaction}
-                onChange={(event) =>
-                  onUpdateGuardrails({
-                    piiRedaction: event.target.checked,
-                  })
-                }
-              />
-              <span className="toggle-slider" />
-            </div>
-            Redact sensitive values from captured traffic
-          </label>
-          <label className="toggle-row">
-            <div className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={appSettings.guardrails.captureBodies}
-                onChange={(event) =>
-                  onUpdateGuardrails({
-                    captureBodies: event.target.checked,
-                  })
-                }
-              />
-              <span className="toggle-slider" />
-            </div>
-            Capture request and response bodies
-          </label>
-          <label className="toggle-row">
-            <div className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={appSettings.guardrails.autoUpdateSwagger}
-                onChange={(event) =>
-                  onUpdateGuardrails({
-                    autoUpdateSwagger: event.target.checked,
-                  })
-                }
-              />
-              <span className="toggle-slider" />
-            </div>
-            Auto-update Swagger when requests or saved tests change
-          </label>
-        </div>
-      </section>
-
-      <section className="console-section settings-section">
         <h2>Custom domains</h2>
         <div className="domain-intro">
           <p>
-            Domains are registered against the currently selected synced workspace. Add
-            the DNS records below, then click verify. For real public testing, your API
-            relay must be deployed on the internet and the custom domain must point to it.
+            Configure custom domains to use with public tunnels. Add the DNS records below, 
+            then verify ownership locally.
           </p>
         </div>
         <div className="domain-add-row">
@@ -219,29 +104,15 @@ export function SettingsView({
           <button
             className="btn-primary compact"
             onClick={onAddDomain}
-            disabled={busyDomainId === 'new' || !workspace?.remoteWorkspaceId}
+            disabled={busyDomainId === 'new'}
           >
             {busyDomainId === 'new' ? 'Adding...' : 'Add domain'}
           </button>
         </div>
-        {!workspace?.remoteWorkspaceId && (
-          <div className="settings-empty" style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'start' }}>
-            <div>
-              This workspace is not synced to a remote API workspace yet, so domains cannot
-              be registered from here.
-            </div>
-            {context && context.workspace && context.workspace.id !== 'local' && (
-              <button className="btn-primary compact" onClick={onSyncWorkspace}>
-                Sync workspace to remote API
-              </button>
-            )}
-          </div>
-        )}
-        {loadingDomains ? (
-          <div className="settings-empty">Loading domains...</div>
-        ) : (domains || []).length === 0 ? (
+
+        {(domains || []).length === 0 ? (
           <div className="settings-empty">
-            No domains added yet. Start with a subdomain or apex domain you control.
+            No domains added yet. Start by adding a domain you control.
           </div>
         ) : (
           <div className="domain-list">
@@ -257,7 +128,7 @@ export function SettingsView({
                 : isSub
                   ? domain.name.slice(0, -(apexDomain.length + 1))
                   : domain.name;
-              const routingValue = isSub || domain.name !== apexDomain ? getRelayBase() : '127.0.0.1';
+              const routingValue = '127.0.0.1';
               const copyVal = (text: string) => {
                 navigator.clipboard.writeText(text);
                 showToast('Copied to clipboard!', 'success');
@@ -282,9 +153,6 @@ export function SettingsView({
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <div className="notice-banner info">
                           💡 <strong>Registrar Tip:</strong> Namesilo/GoDaddy automatically suffixes your domain. Enter only the bold Host prefix into your registrar inputs.
-                        </div>
-                        <div className="notice-banner warning">
-                          ⚠️ <strong>Local Relay Loopback Notice:</strong> The traffic configuration value below points to <code>{routingValue}</code> because your Proxync stack is currently running locally. This domain configuration will only work for local loopback testing on your machine. To expose your server to the actual public internet, select <strong>Localtunnel</strong> when starting the share!
                         </div>
                       </div>
                     )}

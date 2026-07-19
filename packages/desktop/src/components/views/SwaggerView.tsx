@@ -56,10 +56,6 @@ export function SwaggerView({
           <section className="swagger-summary">
             <InfoTile label="Language hint" value={languageHint} />
             <InfoTile
-              label="Auto update"
-              value={workspace?.guardrails.autoUpdateSwagger ? 'enabled' : 'manual'}
-            />
-            <InfoTile
               label="Generated"
               value={
                 workspace?.lastSwaggerGeneratedAt

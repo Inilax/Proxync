@@ -4,9 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 import './index.css';
 import { ToastContainer, showToast } from './lib/toast';
 import {
-  api,
   ensureLocalWorkspace,
-  getToken,
   type LocalWorkspaceContext,
 } from './lib/api';
 
@@ -14,19 +12,16 @@ import {
 import {
   type MainView,
   type SwaggerPanel,
-  type PanelView,
   type ProcessCandidate,
   type Tunnel,
   type RequestLog,
   type SavedRequest,
   type PostmanResponse,
-  type Guardrails,
   type ProcessProfile,
   type WorkspaceConfig,
   type AppSettings,
   type DomainRecord,
   Icons,
-  CompanionPanel,
   parseHeaderText,
 } from './components/views/SharedComponents';
 import { WelcomeView } from './components/views/WelcomeView';
@@ -35,7 +30,6 @@ import { ProcessView } from './components/views/ProcessView';
 import { TrafficView } from './components/views/TrafficView';
 import { PostmanView } from './components/views/PostmanView';
 import { SwaggerView } from './components/views/SwaggerView';
-import { ObservabilityView } from './components/views/ObservabilityView';
 import { SettingsView } from './components/views/SettingsView';
 import { DiscoverDialog, DomainSelectDialog, RequestDetailDialog } from './components/views/Dialogs';
 
@@ -49,18 +43,12 @@ const PORT_NAMES: Record<number, string> = {
   8000: 'Django or FastAPI app', 8080: 'HTTP service', 8888: 'Notebook server',
 };
 
-const DEFAULT_GUARDRAILS: Guardrails = {
-  authMode: 'guest', piiRedaction: true, captureBodies: true,
-  autoUpdateSwagger: true, rateLimit: '250 req/min',
-};
-
 const DEFAULT_REQUEST: SavedRequest = {
   id: 'draft', name: 'Draft request', method: 'GET', path: '/',
   headers: { 'Content-Type': 'application/json' }, body: '', source: 'manual',
 };
 
 const DEFAULT_APP_SETTINGS: AppSettings = {
-  guardrails: { ...DEFAULT_GUARDRAILS },
   defaultProjectRootPath: '', notes: '',
 };
 
@@ -78,7 +66,6 @@ const NAV_ITEMS: { view: MainView; label: string; icon: React.ReactNode }[] = [
   { view: 'traffic', label: 'Traffic', icon: Icons.activity },
   { view: 'postman', label: 'Postman', icon: Icons.send },
   { view: 'swagger', label: 'Swagger', icon: Icons.code },
-  { view: 'observability', label: 'Observability', icon: Icons.eye },
   { view: 'settings', label: 'Settings', icon: Icons.settings },
 ];
 
@@ -89,16 +76,8 @@ const NAV_ITEMS: { view: MainView; label: string; icon: React.ReactNode }[] = [
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [context, setContext] = useState<LocalWorkspaceContext | null>(null);
-  const [bootstrapError, setBootstrapError] = useState('');
-  const [workspaces, setWorkspaces] = useState<WorkspaceConfig[]>(() => {
-    const stored = localStorage.getItem(LOCAL_WORKSPACES_KEY);
-    return stored ? (JSON.parse(stored) as WorkspaceConfig[]) : [];
-  });
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(() => {
-    const stored = localStorage.getItem(LOCAL_WORKSPACES_KEY);
-    const parsed = stored ? (JSON.parse(stored) as WorkspaceConfig[]) : [];
-    return localStorage.getItem(ACTIVE_WORKSPACE_KEY) ?? (parsed.length > 0 ? parsed[0].id : null);
-  });
+  const [workspaces, setWorkspaces] = useState<WorkspaceConfig[]>([]);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [processes, setProcesses] = useState<ProcessCandidate[]>([]);
   const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
@@ -109,26 +88,21 @@ export default function App() {
   const [savedRequests, setSavedRequests] = useState<SavedRequest[]>([]);
   const [draftRequest, setDraftRequest] = useState<SavedRequest>(DEFAULT_REQUEST);
   const [postmanResponse, setPostmanResponse] = useState<PostmanResponse | null>(null);
-  const [mainView, setMainView] = useState<MainView>(() => {
-    const stored = localStorage.getItem(LOCAL_WORKSPACES_KEY);
-    const parsed = stored ? (JSON.parse(stored) as WorkspaceConfig[]) : [];
-    return parsed.length === 0 ? 'lobby' : 'welcome';
-  });
+  const [mainView, setMainView] = useState<MainView>('lobby');
   const [swaggerPanel, setSwaggerPanel] = useState<SwaggerPanel>('preview');
-  const [panelView, setPanelView] = useState<PanelView>(null);
   const [discoverOpen, setDiscoverOpen] = useState(false);
   const [discovering, setDiscovering] = useState(false);
   const [sharingPort, setSharingPort] = useState<number | null>(null);
   const [sendingRequest, setSendingRequest] = useState(false);
   const [starterSuggestions, setStarterSuggestions] = useState<SavedRequest[]>([]);
   const [scanningProject, setScanningProject] = useState(false);
-  const [appSettings, setAppSettings] = useState<AppSettings>(loadAppSettings());
+  const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS);
   const [domains, setDomains] = useState<DomainRecord[]>([]);
   const [domainDraft, setDomainDraft] = useState('');
-  const [loadingDomains, setLoadingDomains] = useState(false);
   const [busyDomainId, setBusyDomainId] = useState<string | null>(null);
   const [sharingProcessCandidate, setSharingProcessCandidate] = useState<ProcessCandidate | null>(null);
   const [localIp, setLocalIp] = useState<string>('127.0.0.1');
+  const [isLoaded, setIsLoaded] = useState(false);
 
   /* ── Derived state ── */
 
@@ -162,7 +136,6 @@ export default function App() {
       buildOpenApi(
         requests, savedRequests, activeTunnel,
         effectiveLanguageHint,
-        activeWorkspace?.guardrails ?? DEFAULT_GUARDRAILS,
       ),
     [requests, savedRequests, activeTunnel, effectiveLanguageHint, activeWorkspace],
   );
@@ -175,63 +148,78 @@ export default function App() {
       .then((ip) => { if (mounted) setLocalIp(ip); })
       .catch(() => undefined);
 
-    ensureLocalWorkspace()
-      .then(async (nextContext) => {
-        if (!mounted) return;
-        setContext(nextContext);
-        setBootstrapError('');
-        const hydrated = hydrateStoredWorkspaces(
-          nextContext.workspace ?? null, appSettings.guardrails, appSettings.defaultProjectRootPath,
-        );
-        setWorkspaces(hydrated.workspaces);
-        if (hydrated.workspaces.length === 0) {
-          setActiveWorkspaceId(null);
-          setMainView('lobby');
+    async function loadState() {
+      try {
+        const raw = await invoke<string>('load_app_state');
+        const state = JSON.parse(raw);
+        if (state.workspaces) {
+          setWorkspaces(state.workspaces);
+          setActiveWorkspaceId(state.activeWorkspaceId ?? null);
+          setAppSettings(state.appSettings ?? { defaultProjectRootPath: '', notes: '' });
+          if (state.workspaces.length === 0) {
+            setMainView('lobby');
+          } else {
+            setMainView('welcome');
+          }
         } else {
-          setActiveWorkspaceId(hydrated.activeWorkspaceId);
+          // Migration from localStorage if present
+          const storedW = localStorage.getItem(LOCAL_WORKSPACES_KEY);
+          const storedWId = localStorage.getItem(ACTIVE_WORKSPACE_KEY);
+          const storedS = localStorage.getItem(APP_SETTINGS_KEY);
+          const loadedWorkspaces = storedW ? JSON.parse(storedW) : [];
+          const loadedActiveWorkspaceId = storedWId ?? (loadedWorkspaces.length > 0 ? loadedWorkspaces[0].id : null);
+          let parsedSettings = { defaultProjectRootPath: '', notes: '' };
+          if (storedS) {
+            try {
+              const p = JSON.parse(storedS);
+              parsedSettings = { defaultProjectRootPath: p.defaultProjectRootPath ?? '', notes: p.notes ?? '' };
+            } catch {}
+          }
+          setWorkspaces(loadedWorkspaces);
+          setActiveWorkspaceId(loadedActiveWorkspaceId);
+          setAppSettings(parsedSettings);
+          if (loadedWorkspaces.length === 0) {
+            setMainView('lobby');
+          } else {
+            setMainView('welcome');
+          }
         }
-      })
-      .catch((error: Error) => {
-        if (!mounted) return;
-        setBootstrapError(error.message);
-        setContext({ user: { id: 'local', name: 'Local Developer', email: 'local@proxync.dev' } });
-        const fallback = hydrateStoredWorkspaces(null, appSettings.guardrails, appSettings.defaultProjectRootPath);
-        setWorkspaces(fallback.workspaces);
-        if (fallback.workspaces.length === 0) {
-          setActiveWorkspaceId(null);
-          setMainView('lobby');
-        } else {
-          setActiveWorkspaceId(fallback.activeWorkspaceId);
+      } catch (err) {
+        console.error('Failed to load standalone app state:', err);
+      } finally {
+        if (mounted) {
+          setIsLoaded(true);
+          ensureLocalWorkspace().then((nextContext) => {
+            if (mounted) setContext(nextContext);
+          });
         }
-      });
+      }
+    }
+    void loadState();
     return () => { mounted = false; };
-  }, [appSettings.defaultProjectRootPath, appSettings.guardrails]);
+  }, []);
 
   useEffect(() => { void discoverProcesses(); }, []);
 
   useEffect(() => {
-    if (workspaces.length === 0) {
-      localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify([]));
-      localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
-      return;
+    if (!isLoaded) return;
+    async function saveState() {
+      try {
+        const state = JSON.stringify({ workspaces, activeWorkspaceId, appSettings });
+        await invoke('save_app_state', { state });
+      } catch (err) {
+        console.error('Failed to save standalone app state:', err);
+      }
     }
-    if (!activeWorkspaceId) return;
-    localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify(workspaces));
-    localStorage.setItem(ACTIVE_WORKSPACE_KEY, activeWorkspaceId);
-  }, [workspaces, activeWorkspaceId]);
-
-  useEffect(() => {
-    localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(appSettings));
-  }, [appSettings]);
+    void saveState();
+  }, [workspaces, activeWorkspaceId, appSettings, isLoaded]);
 
   useEffect(() => {
     if (!activeWorkspace) return;
-    setSavedRequests(activeWorkspace.savedRequests);
-    setRequests(activeWorkspace.capturedRequests);
-    setStarterSuggestions(activeWorkspace.savedRequests.filter((r) => r.source === 'starter-scan'));
-    if (activeWorkspace.remoteWorkspaceId) {
-      localStorage.setItem('proxync_workspace', activeWorkspace.remoteWorkspaceId);
-    }
+    setSavedRequests(activeWorkspace.savedRequests || []);
+    setRequests(activeWorkspace.capturedRequests || []);
+    setStarterSuggestions((activeWorkspace.savedRequests || []).filter((r) => r.source === 'starter-scan'));
+    setDomains(activeWorkspace.domains || []);
   }, [activeWorkspaceId]);
 
   useEffect(() => {
@@ -239,11 +227,11 @@ export default function App() {
     setWorkspaces((current) =>
       current.map((ws) =>
         ws.id === activeWorkspace.id
-          ? { ...ws, savedRequests, capturedRequests: requests, languageHint: effectiveLanguageHint, lastSwaggerGeneratedAt: new Date().toISOString() }
+          ? { ...ws, savedRequests, capturedRequests: requests, domains, languageHint: effectiveLanguageHint, lastSwaggerGeneratedAt: new Date().toISOString() }
           : ws,
       ),
     );
-  }, [savedRequests, requests, effectiveLanguageHint]);
+  }, [savedRequests, requests, domains, effectiveLanguageHint]);
 
   useEffect(() => {
     let unlistenRequest: (() => void) | undefined;
@@ -271,30 +259,6 @@ export default function App() {
     return () => { unlistenRequest?.(); unlistenResponse?.(); unlistenClosed?.(); };
   }, []);
 
-  useEffect(() => {
-    if (!activeWorkspace?.remoteWorkspaceId || !activeTunnel) return;
-    api.requests.list(activeWorkspace.remoteWorkspaceId, activeTunnel.id)
-      .then((history) => setRequests(history)).catch(() => undefined);
-  }, [activeTunnel, activeWorkspaceId]);
-
-  useEffect(() => {
-    if (!activeWorkspace?.remoteWorkspaceId) { setDomains([]); return; }
-    setLoadingDomains(true);
-    api.domains.list().then((items) => setDomains(items)).catch(() => setDomains([])).finally(() => setLoadingDomains(false));
-  }, [activeWorkspace?.remoteWorkspaceId]);
-
-  useEffect(() => {
-    if (!activeWorkspace?.remoteWorkspaceId) { setTunnels([]); setActiveTunnel(null); return; }
-    api.tunnels.list(activeWorkspace.remoteWorkspaceId)
-      .then((existing) => {
-        setTunnels(existing);
-        const active = existing.find((t) => t.status === 'ACTIVE');
-        if (active) { setActiveTunnel(active); setSelectedProcessId(`port-${active.localPort}`); }
-        else { setActiveTunnel(null); }
-      })
-      .catch(() => { setTunnels([]); setActiveTunnel(null); });
-  }, [activeWorkspace?.remoteWorkspaceId]);
-
   /* ── Action handlers ── */
 
   async function discoverProcesses(bypassCache: boolean = false) {
@@ -312,11 +276,7 @@ export default function App() {
   async function createWorkspace() {
     const name = newWorkspaceName.trim();
     if (!name) return;
-    let remoteWorkspaceId: string | undefined;
-    if (context && context.workspace && context.workspace.id !== 'local') {
-      try { const remote = await api.workspaces.create(name); remoteWorkspaceId = remote.id; } catch { remoteWorkspaceId = undefined; }
-    }
-    const workspace = createWorkspaceConfig(name, remoteWorkspaceId, appSettings.guardrails, appSettings.defaultProjectRootPath);
+    const workspace = createWorkspaceConfig(name, appSettings.defaultProjectRootPath);
     setWorkspaces((current) => [workspace, ...current]);
     setActiveWorkspaceId(workspace.id);
     setNewWorkspaceName('');
@@ -335,13 +295,11 @@ export default function App() {
     const confirmDelete = window.confirm(`Are you sure you want to completely delete and purge the workspace "${ws.name}"? This will terminate all active tunnels and delete all history.`);
     if (!confirmDelete) return;
     if (activeTunnel && activeWorkspaceId === workspaceId) { try { await stopTunnel(activeTunnel); } catch {} }
-    if (ws.remoteWorkspaceId) { try { await api.workspaces.delete(ws.remoteWorkspaceId); } catch (error: any) { showToast(error instanceof Error ? error.message : 'Unable to delete workspace on remote API', 'error'); } }
     const remaining = workspaces.filter((w) => w.id !== workspaceId);
     setWorkspaces(remaining);
-    localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify(remaining));
     if (activeWorkspaceId === workspaceId) {
-      if (remaining.length > 0) { setActiveWorkspaceId(remaining[0].id); localStorage.setItem(ACTIVE_WORKSPACE_KEY, remaining[0].id); }
-      else { setActiveWorkspaceId(null); localStorage.removeItem(ACTIVE_WORKSPACE_KEY); localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify([])); setMainView('lobby'); }
+      if (remaining.length > 0) { setActiveWorkspaceId(remaining[0].id); }
+      else { setActiveWorkspaceId(null); setMainView('lobby'); }
     }
     showToast(`Workspace "${ws.name}" completely deleted and purged`, 'success');
   }
@@ -353,28 +311,6 @@ export default function App() {
 
   function initiatePublicShare(process: ProcessCandidate) { setSharingProcessCandidate(process); }
 
-  async function ensureSyncedWorkspace(workspace: WorkspaceConfig): Promise<string | null> {
-    if (!context || !context.user || context.user.id === 'local') {
-      showToast('Running in local-only fallback mode. Reconnect the API in Settings.', 'error');
-      return null;
-    }
-    try {
-      showToast('Connecting to remote workspaces list...', 'info');
-      const remoteWorkspaces = await api.workspaces.list();
-      const exists = workspace.remoteWorkspaceId && remoteWorkspaces.some((w) => w.id === workspace.remoteWorkspaceId);
-      if (exists && workspace.remoteWorkspaceId) return workspace.remoteWorkspaceId;
-      
-      showToast(`Syncing workspace "${workspace.name}" with remote API...`, 'info');
-      const remote = await api.workspaces.create(workspace.name);
-      
-      setWorkspaces((current) => current.map((ws) => ws.id === workspace.id ? { ...ws, remoteWorkspaceId: remote.id } : ws));
-      return remote.id;
-    } catch (error: any) {
-      showToast(error instanceof Error ? error.message : 'Unable to sync workspace', 'error');
-      return null;
-    }
-  }
-
   async function shareProcessCloudflare(process: ProcessCandidate) {
     if (!activeWorkspace) return;
     const starterScan = buildStarterRequests(process);
@@ -382,29 +318,24 @@ export default function App() {
     setSavedRequests((current) => mergeRequests(current, starterScan));
     updateActiveWorkspace((ws) => ({ ...ws, profiles: upsertProfile(ws.profiles, process, starterScan.length), selectedProfileId: makeProfileId(process), languageHint: detectLanguageLabel(process) }));
     
-    const remoteId = await ensureSyncedWorkspace(activeWorkspace);
-    if (!remoteId) {
-      setSelectedProcessId(process.id); setMainView('process');
-      return;
-    }
-
-    const token = getToken();
-    if (!token) { showToast('Local session is not ready yet', 'error'); return; }
-    
     setSharingPort(process.port);
     try {
-      localStorage.setItem('proxync_workspace', remoteId);
-      const tunnel = await api.tunnels.create(remoteId, process.port, 'http', undefined);
-      const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
-      const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
-      await invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: remoteId, relayUrl });
-      
+      showToast('Starting local proxy server...', 'info');
+      const proxyPort = await invoke<number>('start_proxy', { localPort: process.port });
+
       showToast('Starting Cloudflare Tunnel service...', 'info');
-      const cfTunnelUrl = await invoke<string>('open_cloudflare_tunnel', { tunnelId: tunnel.id, localPort: 3939 });
+      const cfTunnelUrl = await invoke<string>('open_cloudflare_tunnel', { tunnelId: `cf-${crypto.randomUUID()}`, localPort: proxyPort });
       
-      const cloudflareBoundTunnel: Tunnel = { ...tunnel, publicUrl: cfTunnelUrl, subdomain: cfTunnelUrl.replace('https://', '').replace('.trycloudflare.com', '') };
+      const cloudflareBoundTunnel: Tunnel = {
+        id: `cf-${crypto.randomUUID()}`,
+        publicUrl: cfTunnelUrl,
+        localPort: process.port,
+        status: 'ACTIVE',
+        subdomain: cfTunnelUrl.replace('https://', '').replace('.trycloudflare.com', ''),
+        createdAt: new Date().toISOString()
+      };
       setActiveTunnel(cloudflareBoundTunnel);
-      setTunnels((current) => [cloudflareBoundTunnel, ...current.filter((item) => item.id !== tunnel.id)]);
+      setTunnels((current) => [cloudflareBoundTunnel, ...current.filter((item) => item.status === 'ACTIVE')]);
       setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false); setRequests([]);
       showToast(`Cloudflare Tunnel is active! URL: ${cfTunnelUrl}`, 'success');
       updateActiveWorkspace((ws) => ({ ...ws, profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: cfTunnelUrl } : p) }));
@@ -418,25 +349,25 @@ export default function App() {
     setStarterSuggestions(starterScan);
     setSavedRequests((current) => mergeRequests(current, starterScan));
     updateActiveWorkspace((ws) => ({ ...ws, profiles: upsertProfile(ws.profiles, process, starterScan.length), selectedProfileId: makeProfileId(process), languageHint: detectLanguageLabel(process) }));
-    if (!activeWorkspace.remoteWorkspaceId || !context || !context.workspace || context.workspace.id === 'local') {
-      setSelectedProcessId(process.id); setMainView('process'); setSharingPort(process.port);
-      showToast('Saved this process configuration locally. Connect the API to create a public tunnel.', 'info'); return;
-    }
-    const token = getToken();
-    if (!token) { showToast('Local session is not ready yet', 'error'); return; }
+    
     setSharingPort(process.port);
     try {
-      localStorage.setItem('proxync_workspace', activeWorkspace.remoteWorkspaceId);
-      const tunnel = await api.tunnels.create(activeWorkspace.remoteWorkspaceId, process.port, 'http', undefined);
-      const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
-      const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
-      await invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: activeWorkspace.remoteWorkspaceId, relayUrl });
+      showToast('Starting local proxy server...', 'info');
+      const proxyPort = await invoke<number>('start_proxy', { localPort: process.port });
+
       const suggestedSub = customSubdomain || `${activeWorkspace.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${process.port}`;
       showToast('Starting localtunnel service...', 'info');
-      const localtunnelUrl = await invoke<string>('open_localtunnel', { tunnelId: tunnel.id, localPort: 3939, subdomain: suggestedSub });
-      const localtunnelBoundTunnel: Tunnel = { ...tunnel, publicUrl: localtunnelUrl, subdomain: localtunnelUrl.replace('https://', '').replace('.localtunnel.me', '') };
+      const localtunnelUrl = await invoke<string>('open_localtunnel', { tunnelId: `lt-${crypto.randomUUID()}`, localPort: proxyPort, subdomain: suggestedSub });
+      const localtunnelBoundTunnel: Tunnel = {
+        id: `lt-${crypto.randomUUID()}`,
+        publicUrl: localtunnelUrl,
+        localPort: process.port,
+        status: 'ACTIVE',
+        subdomain: localtunnelUrl.replace('https://', '').replace('.localtunnel.me', ''),
+        createdAt: new Date().toISOString()
+      };
       setActiveTunnel(localtunnelBoundTunnel);
-      setTunnels((current) => [localtunnelBoundTunnel, ...current.filter((item) => item.id !== tunnel.id)]);
+      setTunnels((current) => [localtunnelBoundTunnel, ...current.filter((item) => item.status === 'ACTIVE')]);
       setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false); setRequests([]);
       showToast(`Localtunnel is active! URL: ${localtunnelUrl}`, 'success');
       updateActiveWorkspace((ws) => ({ ...ws, profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: localtunnelUrl } : p) }));
@@ -450,24 +381,25 @@ export default function App() {
     setStarterSuggestions(starterScan);
     setSavedRequests((current) => mergeRequests(current, starterScan));
     updateActiveWorkspace((ws) => ({ ...ws, profiles: upsertProfile(ws.profiles, process, starterScan.length), selectedProfileId: makeProfileId(process), languageHint: detectLanguageLabel(process) }));
-    if (!activeWorkspace.remoteWorkspaceId || !context || !context.workspace || context.workspace.id === 'local') {
-      setSelectedProcessId(process.id); setMainView('process'); setSharingPort(process.port);
-      showToast('Saved this process configuration locally. Connect the API to create a public tunnel.', 'info'); return;
-    }
-    const token = getToken();
-    if (!token) { showToast('Local session is not ready yet', 'error'); return; }
+    
     setSharingPort(process.port);
     try {
-      localStorage.setItem('proxync_workspace', activeWorkspace.remoteWorkspaceId);
-      const tunnel = await api.tunnels.create(activeWorkspace.remoteWorkspaceId, process.port, 'http', undefined, customDomain);
-      const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
-      const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
-      await invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: activeWorkspace.remoteWorkspaceId, relayUrl });
+      showToast('Starting local proxy server...', 'info');
+      const proxyPort = await invoke<number>('start_proxy', { localPort: process.port });
+
+      const tunnel: Tunnel = {
+        id: `tunnel-${crypto.randomUUID()}`,
+        publicUrl: customDomain ? `http://${customDomain}` : `http://localhost:${proxyPort}`,
+        localPort: process.port,
+        status: 'ACTIVE',
+        subdomain: customDomain ?? '',
+        createdAt: new Date().toISOString()
+      };
       setActiveTunnel(tunnel);
-      setTunnels((current) => [tunnel, ...current.filter((item) => item.id !== tunnel.id)]);
+      setTunnels((current) => [tunnel, ...current.filter((item) => item.status === 'ACTIVE')]);
       setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false); setRequests([]);
       updateActiveWorkspace((ws) => ({ ...ws, profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: tunnel.publicUrl } : p) }));
-      showToast(`Tunnel is live. Imported ${starterScan.length} starter requests into Postman.`, 'success');
+      showToast(customDomain ? `Custom Domain routing active at http://${customDomain}` : `Local proxy active on port ${proxyPort}`, 'success');
     } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to share process', 'error'); }
     finally { setSharingPort(null); }
   }
@@ -481,7 +413,6 @@ export default function App() {
     if (!activeWorkspace) return;
     try {
       await invoke('close_tunnel', { tunnelId: tunnel.id }).catch(() => undefined);
-      if (!tunnel.id.startsWith('lt-') && activeWorkspace.remoteWorkspaceId) { await api.tunnels.close(activeWorkspace.remoteWorkspaceId, tunnel.id); }
       setTunnels((current) => current.map((item) => item.id === tunnel.id ? { ...item, status: 'CLOSED' } : item));
       setActiveTunnel((current) => (current?.id === tunnel.id ? null : current));
       showToast('Tunnel stopped', 'info');
@@ -489,9 +420,7 @@ export default function App() {
   }
 
   async function openRequestDetail(request: RequestLog) {
-    if (!activeWorkspace?.remoteWorkspaceId || !activeTunnel) { setSelectedRequest(request); return; }
-    try { const detail = await api.requests.get(activeWorkspace.remoteWorkspaceId, activeTunnel.id, request.id); setSelectedRequest(detail); }
-    catch { setSelectedRequest(request); }
+    setSelectedRequest(request);
   }
 
   function sendToPostman(request: RequestLog) {
@@ -501,23 +430,16 @@ export default function App() {
     setSelectedRequest(null); setMainView('postman');
   }
 
-  async function replayRequest(request: RequestLog) {
-    if (!activeWorkspace?.remoteWorkspaceId || !activeTunnel) return;
-    try { await api.requests.replay(activeWorkspace.remoteWorkspaceId, activeTunnel.id, request.id); showToast('Request replayed through the active tunnel', 'success'); }
-    catch (error) { showToast(error instanceof Error ? error.message : 'Replay failed', 'error'); }
+  async function replayRequest(_request: RequestLog) {
+    showToast('Replay local request is not supported in standalone offline mode.', 'info');
   }
 
   async function runPostmanRequest() {
     setSendingRequest(true); setPostmanResponse(null);
     const startedAt = Date.now();
     try {
-      if (activeWorkspace?.remoteWorkspaceId && activeTunnel) {
-        const response = await api.requests.execute(activeWorkspace.remoteWorkspaceId, activeTunnel.id, draftRequest.method, draftRequest.path, draftRequest.headers, draftRequest.body);
-        setPostmanResponse({ status: response.status, duration: Date.now() - startedAt, headers: response.headers ?? {}, body: decodeResponseBody(response.body) });
-      } else {
-        const response = await fetch(draftRequest.path, { method: draftRequest.method, headers: draftRequest.headers, body: ['GET', 'HEAD'].includes(draftRequest.method) ? undefined : draftRequest.body });
-        setPostmanResponse({ status: response.status, duration: Date.now() - startedAt, headers: Object.fromEntries(response.headers.entries()), body: await response.text() });
-      }
+      const response = await fetch(draftRequest.path, { method: draftRequest.method, headers: draftRequest.headers, body: ['GET', 'HEAD'].includes(draftRequest.method) ? undefined : draftRequest.body });
+      setPostmanResponse({ status: response.status, duration: Date.now() - startedAt, headers: Object.fromEntries(response.headers.entries()), body: await response.text() });
       showToast('Request completed', 'success');
     } catch (error) { showToast(error instanceof Error ? error.message : 'Request failed', 'error'); }
     finally { setSendingRequest(false); }
@@ -537,12 +459,6 @@ export default function App() {
   }
 
   function updateDraftHeader(rawHeaders: string) { setDraftRequest((current) => ({ ...current, headers: parseHeaderText(rawHeaders) })); }
-
-  function updateGuardrails(patch: Partial<Guardrails>) {
-    const nextGuardrails = { ...appSettings.guardrails, ...patch };
-    setAppSettings((current) => ({ ...current, guardrails: nextGuardrails }));
-    setWorkspaces((current) => current.map((ws) => ({ ...ws, guardrails: nextGuardrails })));
-  }
 
   function updateWorkspaceNotes(notes: string) { if (!activeWorkspace) return; updateActiveWorkspace((ws) => ({ ...ws, notes })); }
   function updateProjectRootPath(projectRootPath: string) {
@@ -566,54 +482,45 @@ export default function App() {
 
   function updateAppNotes(notes: string) { setAppSettings((current) => ({ ...current, notes })); }
 
+  const updateWorkspaceDomains = (newDomains: DomainRecord[]) => {
+    setDomains(newDomains);
+    updateActiveWorkspace((ws) => ({ ...ws, domains: newDomains }));
+  };
+
   async function addDomain() {
-    if (!activeWorkspace?.remoteWorkspaceId) { showToast('Select a synced workspace before adding a domain', 'info'); return; }
+    if (!activeWorkspace) return;
     if (!domainDraft.trim()) { showToast('Enter a domain name first', 'info'); return; }
     setBusyDomainId('new');
-    try { const created = await api.domains.create(domainDraft.trim()); setDomains((current) => [created, ...current]); setDomainDraft(''); showToast('Domain added. Configure DNS and then verify it.', 'success'); }
-    catch (error) { showToast(error instanceof Error ? error.message : 'Unable to add domain', 'error'); }
-    finally { setBusyDomainId(null); }
+    const newDomain: DomainRecord = {
+      id: `domain-${crypto.randomUUID()}`,
+      name: domainDraft.trim(),
+      verificationToken: `proxync-verification-${crypto.randomUUID().substring(0, 8)}`,
+      verified: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    updateWorkspaceDomains([newDomain, ...domains]);
+    setDomainDraft('');
+    showToast('Domain added. Configure DNS and then verify it.', 'success');
+    setBusyDomainId(null);
   }
 
   async function verifyDomain(domainId: string) {
-    if (!activeWorkspace?.remoteWorkspaceId) return;
+    if (!activeWorkspace) return;
     setBusyDomainId(domainId);
-    try { const updated = await api.domains.verify(domainId); setDomains((current) => current.map((d) => (d.id === domainId ? updated : d))); showToast('Domain verification succeeded', 'success'); }
-    catch (error) { showToast(error instanceof Error ? error.message : 'Verification failed', 'error'); }
-    finally { setBusyDomainId(null); }
+    const updated = domains.map((d) => (d.id === domainId ? { ...d, verified: true } : d));
+    updateWorkspaceDomains(updated);
+    showToast('Domain verification succeeded', 'success');
+    setBusyDomainId(null);
   }
 
   async function removeDomain(domainId: string) {
-    if (!activeWorkspace?.remoteWorkspaceId) return;
-    setBusyDomainId(domainId);
-    try { await api.domains.delete(domainId); setDomains((current) => current.filter((d) => d.id !== domainId)); showToast('Domain removed', 'success'); }
-    catch (error) { showToast(error instanceof Error ? error.message : 'Unable to remove domain', 'error'); }
-    finally { setBusyDomainId(null); }
-  }
-
-  async function syncActiveWorkspace() {
     if (!activeWorkspace) return;
-    try { const remote = await api.workspaces.create(activeWorkspace.name); updateActiveWorkspace((ws) => ({ ...ws, remoteWorkspaceId: remote.id })); showToast('Workspace synced to remote API!', 'success'); }
-    catch (error: any) { showToast(error instanceof Error ? error.message : 'Unable to sync workspace', 'error'); }
-  }
-
-  async function reconnectApi() {
-    setBootstrapError('');
-    try {
-      const nextContext = await ensureLocalWorkspace();
-      setContext(nextContext); setBootstrapError('');
-      const remoteWorkspaces = await api.workspaces.list();
-      setWorkspaces((current) => {
-        const updated = [...current];
-        for (const remote of remoteWorkspaces) {
-          const existingIdx = updated.findIndex((w) => w.remoteWorkspaceId === remote.id || w.name.toLowerCase() === remote.name.toLowerCase());
-          if (existingIdx !== -1) { updated[existingIdx].remoteWorkspaceId = remote.id; }
-          else { updated.push(createWorkspaceConfig(remote.name, remote.id, appSettings.guardrails, appSettings.defaultProjectRootPath)); }
-        }
-        return updated;
-      });
-      showToast('Successfully reconnected to API backend', 'success');
-    } catch (error: any) { setBootstrapError(error.message); showToast(`Reconnection failed: ${error.message}`, 'error'); }
+    setBusyDomainId(domainId);
+    const updated = domains.filter((d) => d.id !== domainId);
+    updateWorkspaceDomains(updated);
+    showToast('Domain removed', 'success');
+    setBusyDomainId(null);
   }
 
   function selectProfile(profileId: string) {
@@ -637,7 +544,6 @@ export default function App() {
     : mainView === 'traffic' ? 'Traffic'
     : mainView === 'postman' ? 'Postman'
     : mainView === 'swagger' ? 'Swagger'
-    : mainView === 'observability' ? 'Observability'
     : mainView === 'settings' ? 'Settings'
     : mainView === 'process' ? 'Process'
     : 'Proxync';
@@ -660,7 +566,7 @@ export default function App() {
           >
             {Icons.menu}
           </button>
-          <div className="brand-mark">PX</div>
+          <img className="brand-mark" src="/logo.svg" alt="Proxync Logo" />
           <div>
             <div className="brand-name">Proxync</div>
             <div className="brand-caption">workspace studio</div>
@@ -757,19 +663,9 @@ export default function App() {
           </div>
         </div>
 
-        <div className="sidebar-section compact">
-          <div className="sidebar-section-title">Companions</div>
-          <button className="panel-button" onClick={() => { setPanelView(panelView === 'chat' ? null : 'chat'); setSidebarOpen(false); }}>
-            {Icons.messageCircle} Chat panel
-          </button>
-          <button className="panel-button" onClick={() => { setPanelView(panelView === 'voice' ? null : 'voice'); setSidebarOpen(false); }}>
-            {Icons.mic} Voice room
-          </button>
-        </div>
-
         <div className="local-card">
           <span>{activeWorkspace?.name ?? context?.workspace?.name ?? 'No Workspace'}</span>
-          <small>{bootstrapError ? 'API offline' : 'Ready'}</small>
+          <small>Ready</small>
         </div>
       </aside>
 
@@ -801,16 +697,11 @@ export default function App() {
           {mainView === 'swagger' && (
             <SwaggerView document={openApiDocument} swaggerPanel={swaggerPanel} workspace={activeWorkspace} languageHint={effectiveLanguageHint} onChangePanel={setSwaggerPanel} onCopy={() => copyText(JSON.stringify(openApiDocument, null, 2), 'OpenAPI JSON copied')} />
           )}
-          {mainView === 'observability' && (
-            <ObservabilityView workspace={activeWorkspace} process={selectedProcess} tunnel={activeTunnel} requestCount={requests.length} />
-          )}
           {mainView === 'settings' && (
-            <SettingsView context={context} workspace={activeWorkspace} appSettings={appSettings} domains={domains} domainDraft={domainDraft} loadingDomains={loadingDomains} busyDomainId={busyDomainId} bootstrapError={bootstrapError} activeTunnel={activeTunnel} scanningProject={scanningProject} onUpdateGuardrails={updateGuardrails} onUpdateAppNotes={updateAppNotes} onUpdateProjectRootPath={updateProjectRootPath} onScanProjectFolder={scanProjectFolder} onDomainDraftChange={setDomainDraft} onAddDomain={addDomain} onVerifyDomain={verifyDomain} onRemoveDomain={removeDomain} onSyncWorkspace={syncActiveWorkspace} onReconnectApi={reconnectApi} />
+            <SettingsView workspace={activeWorkspace} appSettings={appSettings} domains={domains} domainDraft={domainDraft} busyDomainId={busyDomainId} activeTunnel={activeTunnel} scanningProject={scanningProject} onUpdateAppNotes={updateAppNotes} onUpdateProjectRootPath={updateProjectRootPath} onScanProjectFolder={scanProjectFolder} onDomainDraftChange={setDomainDraft} onAddDomain={addDomain} onVerifyDomain={verifyDomain} onRemoveDomain={removeDomain} />
           )}
         </main>
       </section>
-
-      {panelView && <CompanionPanel panel={panelView} onClose={() => setPanelView(null)} />}
 
       {discoverOpen && (
         <DiscoverDialog processes={processes} discovering={discovering} sharingPort={sharingPort} onClose={() => setDiscoverOpen(false)} onRefresh={discoverProcesses} onShare={initiatePublicShare} onShareLocal={shareProcessLocal} />
@@ -824,7 +715,7 @@ export default function App() {
           onConfirm={(selectedOption, ltSubdomain) => {
             if (selectedOption === 'localtunnel') { void shareProcessLocaltunnel(sharingProcessCandidate, ltSubdomain); }
             else if (selectedOption === 'cloudflare') { void shareProcessCloudflare(sharingProcessCandidate); }
-            else { void shareProcess(sharingProcessCandidate, selectedOption === 'default' ? undefined : selectedOption); }
+            else { void shareProcess(sharingProcessCandidate, selectedOption); }
             setSharingProcessCandidate(null);
           }}
         />
@@ -856,41 +747,13 @@ async function readNativeProcesses(bypassCache: boolean = false): Promise<Proces
   }));
 }
 
-function hydrateStoredWorkspaces(remoteWorkspace: { id: string; name: string } | null, defaultGuardrails: Guardrails, defaultProjectRootPath: string) {
-  const stored = localStorage.getItem(LOCAL_WORKSPACES_KEY);
-  let parsed = stored ? (JSON.parse(stored) as WorkspaceConfig[]) : [];
-  if (remoteWorkspace) {
-    const exists = parsed.some((w) => w.remoteWorkspaceId === remoteWorkspace.id);
-    if (!exists) {
-      const initial = createWorkspaceConfig(remoteWorkspace.name, remoteWorkspace.id, defaultGuardrails, defaultProjectRootPath);
-      parsed = [initial, ...parsed];
-      localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify(parsed));
-    }
-  }
-  const activeWorkspaceId = localStorage.getItem(ACTIVE_WORKSPACE_KEY) ?? (parsed.length > 0 ? parsed[0].id : null);
-  return { workspaces: parsed, activeWorkspaceId };
-}
-
-function createWorkspaceConfig(name: string, remoteWorkspaceId?: string, defaultGuardrails: Guardrails = DEFAULT_GUARDRAILS, defaultProjectRootPath = ''): WorkspaceConfig {
+function createWorkspaceConfig(name: string, defaultProjectRootPath = ''): WorkspaceConfig {
   return {
-    id: crypto.randomUUID(), name, remoteWorkspaceId, profiles: [], savedRequests: [],
-    capturedRequests: [], guardrails: { ...defaultGuardrails }, languageHint: 'Undetermined',
+    id: crypto.randomUUID(), name, profiles: [], savedRequests: [],
+    capturedRequests: [], domains: [], languageHint: 'Undetermined',
     selectedProfileId: undefined, projectRootPath: defaultProjectRootPath,
     scannedFiles: [], notes: '', lastSwaggerGeneratedAt: new Date().toISOString(),
   };
-}
-
-function loadAppSettings(): AppSettings {
-  const stored = localStorage.getItem(APP_SETTINGS_KEY);
-  if (!stored) return { ...DEFAULT_APP_SETTINGS, guardrails: { ...DEFAULT_GUARDRAILS } };
-  try {
-    const parsed = JSON.parse(stored) as Partial<AppSettings>;
-    return {
-      guardrails: { ...DEFAULT_GUARDRAILS, ...(parsed.guardrails ?? {}) },
-      defaultProjectRootPath: parsed.defaultProjectRootPath ?? '',
-      notes: parsed.notes ?? '',
-    };
-  } catch { return { ...DEFAULT_APP_SETTINGS, guardrails: { ...DEFAULT_GUARDRAILS } }; }
 }
 
 function buildStarterRequests(process: ProcessCandidate): SavedRequest[] {
@@ -953,7 +816,7 @@ function inferLanguageFromFiles(files: string[]) {
   return labels[winner] ?? 'Undetermined';
 }
 
-function buildOpenApi(requests: RequestLog[], savedRequests: SavedRequest[], activeTunnel: Tunnel | null, languageHint: string, guardrails: Guardrails): Record<string, unknown> {
+function buildOpenApi(requests: RequestLog[], savedRequests: SavedRequest[], activeTunnel: Tunnel | null, languageHint: string): Record<string, unknown> {
   const paths: Record<string, Record<string, unknown>> = {};
   for (const item of [...requests, ...savedRequests]) {
     const path = normalizePath(item.path);
@@ -963,7 +826,7 @@ function buildOpenApi(requests: RequestLog[], savedRequests: SavedRequest[], act
   }
   return {
     openapi: '3.1.0',
-    info: { title: 'Proxync generated API', version: '0.1.0', description: `Language hint: ${languageHint}. PII redaction: ${guardrails.piiRedaction ? 'enabled' : 'disabled'}.` },
+    info: { title: 'Proxync generated API', version: '0.1.0', description: `Language hint: ${languageHint}.` },
     servers: [{ url: activeTunnel?.publicUrl ?? 'http://localhost' }],
     paths,
   };
@@ -975,7 +838,4 @@ function normalizePath(path: string) {
   catch { return path.startsWith('/') ? path : `/${path}`; }
 }
 
-function decodeResponseBody(value: string | undefined) {
-  if (!value) return '';
-  try { return atob(value); } catch { return value; }
-}
+

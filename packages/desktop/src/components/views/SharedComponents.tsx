@@ -57,12 +57,13 @@ export interface PostmanResponse {
   body: string;
 }
 
-export interface Guardrails {
-  authMode: 'guest' | 'shared-secret' | 'workspace-only';
-  piiRedaction: boolean;
-  captureBodies: boolean;
-  autoUpdateSwagger: boolean;
-  rateLimit: string;
+export interface DomainRecord {
+  id: string;
+  name: string;
+  verificationToken: string;
+  verified: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ProcessProfile {
@@ -86,7 +87,7 @@ export interface WorkspaceConfig {
   profiles: ProcessProfile[];
   savedRequests: SavedRequest[];
   capturedRequests: RequestLog[];
-  guardrails: Guardrails;
+  domains: DomainRecord[];
   languageHint: string;
   selectedProfileId?: string;
   lastSwaggerGeneratedAt?: string;
@@ -96,18 +97,8 @@ export interface WorkspaceConfig {
 }
 
 export interface AppSettings {
-  guardrails: Guardrails;
   defaultProjectRootPath: string;
   notes: string;
-}
-
-export interface DomainRecord {
-  id: string;
-  name: string;
-  verificationToken: string;
-  verified: boolean;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export type MainView =
@@ -117,11 +108,10 @@ export type MainView =
   | 'traffic'
   | 'postman'
   | 'swagger'
-  | 'observability'
   | 'settings';
 
 export type SwaggerPanel = 'preview' | 'json';
-export type PanelView = 'chat' | 'voice' | null;
+export type PanelView = null; // Companions removed
 
 /* ────────────────── SVG Icons ────────────────── */
 
@@ -283,36 +273,7 @@ export function InfoTile({
   );
 }
 
-/* ────────────────── Companion Panel ────────────────── */
-
-export function CompanionPanel({
-  panel,
-  onClose,
-}: {
-  panel: Exclude<PanelView, null>;
-  onClose: () => void;
-}) {
-  return (
-    <aside className="companion-panel">
-      <header>
-        <strong>{panel === 'chat' ? 'General chat' : 'Voice room'}</strong>
-        <button onClick={onClose} className="icon-btn">{Icons.x}</button>
-      </header>
-      {panel === 'chat' ? (
-        <div className="companion-empty">
-          Workspace chat will attach to the selected project profile in the next
-          collaboration pass.
-        </div>
-      ) : (
-        <div className="voice-box">
-          <button>Mute</button>
-          <button>Deafen</button>
-          <p>No participants yet.</p>
-        </div>
-      )}
-    </aside>
-  );
-}
+/* CompanionPanel removed */
 
 /* ────────────────── Utility Functions ────────────────── */
 

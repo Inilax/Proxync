@@ -138,10 +138,9 @@ export function DomainSelectDialog({
   onClose: () => void;
   onConfirm: (customDomainOrOption: string, ltSubdomain?: string) => void;
 }) {
-  const [selectedDomain, setSelectedDomain] = useState<string>('default');
+  const [selectedDomain, setSelectedDomain] = useState<string>('cloudflare');
   const [customSubdomain, setCustomSubdomain] = useState<string>('');
   const [latencies, setLatencies] = useState<Record<string, number>>({
-    default: Infinity,
     cloudflare: Infinity,
     localtunnel: Infinity,
   });
@@ -165,24 +164,20 @@ export function DomainSelectDialog({
     };
 
     const measureAll = async () => {
-      const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
       const endpoints = {
-        default: `${apiBase.replace(/\/$/, '')}/health`,
         cloudflare: 'https://1.1.1.1/cdn-cgi/trace',
         localtunnel: 'https://loca.lt',
       };
 
       const results = await Promise.all([
-        ping(endpoints.default),
         ping(endpoints.cloudflare),
         ping(endpoints.localtunnel),
       ]);
 
       if (active) {
         setLatencies({
-          default: results[0],
-          cloudflare: results[1],
-          localtunnel: results[2],
+          cloudflare: results[0],
+          localtunnel: results[1],
         });
       }
     };
@@ -194,13 +189,6 @@ export function DomainSelectDialog({
   }, []);
 
   const getDescription = () => {
-    if (selectedDomain === 'default') {
-      return (
-        <span className="domain-desc">
-          🔌 <strong>Local Loopback:</strong> Exposes the server on a local subdomain (e.g., <code>*.localtest.me</code>). Useful for offline loopback testing on your own machine.
-        </span>
-      );
-    }
     if (selectedDomain === 'cloudflare') {
       return (
         <span className="domain-desc accent">
@@ -224,13 +212,6 @@ export function DomainSelectDialog({
 
   const options = [
     {
-      id: 'default',
-      title: 'Default Relay Subdomain',
-      desc: 'Expose server on default localtest.me tunnel',
-      icon: '🔌',
-      latency: latencies.default,
-    },
-    {
       id: 'cloudflare',
       title: 'Cloudflare Tunnel',
       desc: 'Secure TryCloudflare tunnel at Cloudflare\'s edge',
@@ -249,7 +230,7 @@ export function DomainSelectDialog({
       title: `Custom Domain (${d.name})`,
       desc: 'Route traffic through your own verified apex/subdomain',
       icon: '🏷️',
-      latency: latencies.default,
+      latency: Infinity,
     })),
   ];
 
