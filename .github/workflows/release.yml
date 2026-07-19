@@ -1,0 +1,166 @@
+name: Release
+
+# Fires whenever a release PR (opened by prepare-release.yml) is merged into main.
+# Reads the version already bumped in package.json, tags it if new, creates
+# a permanent release-vX.Y.Z branch, then builds the Windows installer and
+# publishes the GitHub Release.
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+env:
+  # Path to the Tauri app inside the monorepo
+  PKG_DIR: packages/desktop
+
+jobs:
+  tag-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version & check if tag is new
+        id: tag
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./${PKG_DIR}/package.json').version")
+          TAG="v$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create tag and permanent release branch
+        if: steps.tag.outputs.exists == 'false'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git tag -a "${{ steps.tag.outputs.tag }}" -m "Release ${{ steps.tag.outputs.tag }}"
+          git push origin "${{ steps.tag.outputs.tag }}"
+
+          # Permanent snapshot branch holding this release's code -- never
+          # deleted, useful later for hotfixing this exact version without
+          # branching off a newer main.
+          git branch "release-${{ steps.tag.outputs.tag }}"
+          git push origin "release-${{ steps.tag.outputs.tag }}"
+
+      - name: Setup Node
+        if: steps.tag.outputs.exists == 'false'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Setup Rust
+        if: steps.tag.outputs.exists == 'false'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        if: steps.tag.outputs.exists == 'false'
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "${{ env.PKG_DIR }}/src-tauri -> target"
+
+      - name: Install frontend dependencies
+        if: steps.tag.outputs.exists == 'false'
+        run: npm ci
+
+      - name: Run tests (safety net)
+        if: steps.tag.outputs.exists == 'false'
+        shell: bash
+        run: |
+          (cd "${PKG_DIR}" && npm test --if-present)
+          (cd "${PKG_DIR}/src-tauri" && cargo test)
+
+      - name: Extract release notes from CHANGELOG.md
+        id: changelog
+        if: steps.tag.outputs.exists == 'false'
+        shell: bash
+        run: |
+          node - <<'EOF'
+          const fs = require('fs');
+          const { execSync } = require('child_process');
+
+          try {
+            // Get all tags sorted by version, newest first
+            const tags = execSync("git tag -l 'v*' --sort=-v:refname", { encoding: 'utf8' })
+              .split('\n')
+              .map(t => t.trim())
+              .filter(Boolean);
+
+            const currentTag = tags[0];
+            const previousTag = tags[1];
+
+            console.log(`Current tag: ${currentTag}`);
+            console.log(`Previous tag: ${previousTag || 'None'}`);
+
+            let oldFirstHeading = '';
+            if (previousTag) {
+              try {
+                const oldContent = execSync(`git show ${previousTag}:CHANGELOG.md`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+                const oldLines = oldContent.split(/\r?\n/);
+                for (const line of oldLines) {
+                  if (line.trim().startsWith('## ')) {
+                    oldFirstHeading = line.trim();
+                    break;
+                  }
+                }
+              } catch (e) {
+                console.log("Could not read CHANGELOG.md from previous tag. Using full changelog.");
+              }
+            }
+
+            const currentContent = fs.readFileSync('CHANGELOG.md', 'utf8');
+            const currentLines = currentContent.split(/\r?\n/);
+
+            let newNotes = [];
+            let started = false;
+
+            for (const line of currentLines) {
+              const trimmed = line.trim();
+              if (trimmed.startsWith('## ')) {
+                if (oldFirstHeading && trimmed === oldFirstHeading) {
+                  break;
+                }
+                started = true;
+              }
+              if (started) {
+                newNotes.push(line);
+              }
+            }
+
+            const notesText = newNotes.join('\n').trim();
+            console.log("Extracted Release Notes:\n", notesText);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `body<<EOF\n${notesText}\nEOF\n`);
+          } catch (error) {
+            console.error("Failed to extract release notes:", error);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `body<<EOF\nSee CHANGELOG.md for details.\nEOF\n`);
+          }
+          EOF
+
+      - name: Build app and publish GitHub Release
+        if: steps.tag.outputs.exists == 'false'
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: ${{ env.PKG_DIR }}
+          tagName: ${{ steps.tag.outputs.tag }}
+          releaseName: "${{ steps.tag.outputs.tag }}"
+          releaseBody: ${{ steps.changelog.outputs.body }}
+          # Set to true if you want to review/edit before publishing,
+          # false to publish immediately and fully automatically.
+          releaseDraft: true
+          prerelease: false
