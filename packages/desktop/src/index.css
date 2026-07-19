@@ -332,12 +332,9 @@ code, pre, .mono {
   padding: 8px 8px 14px;
 }
 .brand-mark {
-  display: grid; place-items: center;
+  display: block;
   width: 36px; height: 36px;
-  border: 1px solid rgba(29, 215, 178, 0.25);
   border-radius: 10px;
-  background: linear-gradient(135deg, rgba(29, 215, 178, 0.12), rgba(110, 168, 255, 0.06));
-  color: var(--teal); font-weight: 800; font-size: 13px;
 }
 .brand-name { font-size: 15px; font-weight: 800; letter-spacing: -0.3px; }
 .brand-caption { color: var(--faint); font-size: 11px; }

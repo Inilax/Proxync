@@ -566,7 +566,7 @@ export default function App() {
           >
             {Icons.menu}
           </button>
-          <div className="brand-mark">PX</div>
+          <img className="brand-mark" src="/logo.svg" alt="Proxync Logo" />
           <div>
             <div className="brand-name">Proxync</div>
             <div className="brand-caption">workspace studio</div>
