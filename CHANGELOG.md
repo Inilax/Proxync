@@ -2,6 +2,19 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [v0.1.3] - 2026-07-21 (Vulnerability Patch & Release Branding)
+- **Feature Summary**: Updated desktop package name from generic `desktop` to `proxync`, set author to `Inilax`, and added project description across package.json, Cargo.toml, and tauri.conf.json. Configured NSIS installerIcon under bundle.windows in tauri.conf.json to display custom Proxync ico branding during setup. Patched glib dependency to >= 0.20.12 in Cargo.lock to resolve Dependabot memory unsoundness advisory #4. Updated workspace architecture recon map (.agents) and bumped version to v0.1.3 across all workspace config files.
+- **Modified Files**:
+  - `package.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/src/main.rs`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `.agents/architecture.json`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
 ## [feature/main-standalone-mode] - 2026-07-19 (Cleanup & Branding)
 - **Feature Summary**: Updated workspace brand logo to Proxync Graphite Gateway SVG, replacing the old PNG assets. Removed deprecated `docs/assets` folder. Re-wrote `README.md` to reflect local-first standalone desktop architecture and simplify workspace startup commands. Untracked `.agents` directory in git to respect gitignore specifications. Replaced terminal-orb PX text with logo image in WelcomeView.
 - **Modified/Deleted Files**:
