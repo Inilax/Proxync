@@ -2812,7 +2812,7 @@ dependencies = [
 
 [[package]]
 name = "proxync"
-version = "0.1.2"
+version = "0.1.5"
 dependencies = [
  "base64 0.22.1",
  "futures-util",
