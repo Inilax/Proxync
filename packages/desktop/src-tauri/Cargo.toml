@@ -1,6 +1,6 @@
 [package]
 name = "proxync"
-version = "0.1.5"
+version = "0.1.6"
 description = "Developer Tunneling Workspace Studio"
 authors = ["Inilax"]
 edition = "2021"
