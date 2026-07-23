@@ -94,50 +94,82 @@ jobs:
           const { execSync } = require('child_process');
 
           try {
-            // Get all tags sorted by version, newest first
-            const tags = execSync("git tag -l 'v*' --sort=-v:refname", { encoding: 'utf8' })
-              .split('\n')
-              .map(t => t.trim())
-              .filter(Boolean);
-
-            const currentTag = tags[0];
-            const previousTag = tags[1];
-
-            console.log(`Current tag: ${currentTag}`);
-            console.log(`Previous tag: ${previousTag || 'None'}`);
-
-            let oldFirstHeading = '';
-            if (previousTag) {
+            const currentContent = fs.readFileSync('CHANGELOG.md', 'utf8');
+            let oldContent = '';
+            
+            try {
+              // Try reading old CHANGELOG.md from the previous commit (HEAD~1)
+              oldContent = execSync('git show HEAD~1:CHANGELOG.md', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+              console.log("Read old CHANGELOG.md from HEAD~1");
+            } catch (e) {
+              console.log("Could not read CHANGELOG.md from HEAD~1. Trying previous tag...");
               try {
-                const oldContent = execSync(`git show ${previousTag}:CHANGELOG.md`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
-                const oldLines = oldContent.split(/\r?\n/);
-                for (const line of oldLines) {
-                  if (line.trim().startsWith('## ')) {
-                    oldFirstHeading = line.trim();
-                    break;
-                  }
+                const tags = execSync("git tag -l 'v*' --sort=-v:refname", { encoding: 'utf8' })
+                  .split('\n')
+                  .map(t => t.trim())
+                  .filter(Boolean);
+                const previousTag = tags[1]; // tags[0] is current tag created in step 43
+                if (previousTag) {
+                  oldContent = execSync(`git show ${previousTag}:CHANGELOG.md`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+                  console.log(`Read old CHANGELOG.md from previous tag: ${previousTag}`);
                 }
-              } catch (e) {
-                console.log("Could not read CHANGELOG.md from previous tag. Using full changelog.");
+              } catch (tagErr) {
+                console.log("Could not read CHANGELOG.md from previous tag:", tagErr.message);
               }
             }
 
-            const currentContent = fs.readFileSync('CHANGELOG.md', 'utf8');
             const currentLines = currentContent.split(/\r?\n/);
-
             let newNotes = [];
-            let started = false;
 
-            for (const line of currentLines) {
-              const trimmed = line.trim();
-              if (trimmed.startsWith('## ')) {
-                if (oldFirstHeading && trimmed === oldFirstHeading) {
+            if (oldContent) {
+              const oldLines = oldContent.split(/\r?\n/);
+              let oldFirstHeading = '';
+              for (const line of oldLines) {
+                if (line.trim().startsWith('## ')) {
+                  oldFirstHeading = line.trim();
                   break;
                 }
-                started = true;
               }
-              if (started) {
-                newNotes.push(line);
+
+              console.log(`Old first heading to match: "${oldFirstHeading}"`);
+
+              let anchorIndex = -1;
+              if (oldFirstHeading) {
+                for (let i = 0; i < currentLines.length; i++) {
+                  if (currentLines[i].trim() === oldFirstHeading) {
+                    anchorIndex = i;
+                    break;
+                  }
+                }
+              }
+
+              console.log(`Anchor index: ${anchorIndex}`);
+
+              if (anchorIndex !== -1) {
+                let started = false;
+                for (let i = 0; i < anchorIndex; i++) {
+                  const line = currentLines[i];
+                  if (line.trim().startsWith('## ')) {
+                    started = true;
+                  }
+                  if (started) {
+                    newNotes.push(line);
+                  }
+                }
+              }
+            }
+
+            // Fallback: If comparison failed or no anchor was found, extract from first heading to the end
+            if (newNotes.length === 0) {
+              console.log("No new notes found via comparison. Using full CHANGELOG.md from first heading.");
+              let started = false;
+              for (const line of currentLines) {
+                if (line.trim().startsWith('## ')) {
+                  started = true;
+                }
+                if (started) {
+                  newNotes.push(line);
+                }
               }
             }
 
