@@ -2,6 +2,21 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [v0.1.6] - 2026-07-23 (Installer UI Panel Fix & Version Bump)
+- **Feature Summary**: Fixed blank setup screen in NSIS installer by generating and configuring custom BMP images (`nsis-sidebar.bmp` and `nsis-header.bmp`) for the welcome page sidebar and header. Bumped version to `0.1.6` across root `package.json`, `packages/desktop/package.json`, `tauri.conf.json`, `Cargo.toml`, and `.agents/architecture.json`, and updated `package-lock.json` and `Cargo.lock` accordingly.
+- **Modified Files**:
+  - `package.json`
+  - `package-lock.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/src-tauri/icons/nsis-header.bmp`
+  - `packages/desktop/src-tauri/icons/nsis-sidebar.bmp`
+  - `.agents/architecture.json`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
 ## [v0.1.3] - 2026-07-21 (Vulnerability Patch & Release Branding)
 - **Feature Summary**: Updated desktop package name from generic `desktop` to `proxync`, set author to `Inilax`, and added project description across package.json, Cargo.toml, and tauri.conf.json. Configured NSIS installerIcon under bundle.windows in tauri.conf.json to display custom Proxync ico branding during setup. Patched glib dependency to >= 0.20.12 in Cargo.lock to resolve Dependabot memory unsoundness advisory #4. Updated workspace architecture recon map (.agents) and bumped version to v0.1.3 across all workspace config files.
 - **Modified Files**:
