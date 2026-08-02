@@ -2,6 +2,19 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [v0.1.8] - 2026-08-02 (PostCSS Security Patch & Version Bump)
+- **Feature Summary**: Patched Dependabot security vulnerability by upgrading `postcss` from `8.5.16` to `8.5.25` and `nanoid` from `3.3.15` to `3.3.16` in `package-lock.json`. Bumped version to `0.1.8` across root `package.json`, `packages/desktop/package.json`, `tauri.conf.json`, `Cargo.toml`, and `.agents/architecture.json`.
+- **Modified Files**:
+  - `package.json`
+  - `package-lock.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `.agents/architecture.json`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
 ## [v0.1.7] - 2026-08-01 (React Router CVE Patch & Version Bump)
 - **Feature Summary**: Patched Dependabot security vulnerability (CVE-2026-22030 / GHSA-h5cw-625j-3rxh) by upgrading `react-router` to `^8.3.0` (>= 8.3.0) and removing the unused legacy `react-router-dom` dependency. Bumped version to `0.1.7` across root `package.json`, `packages/desktop/package.json`, `tauri.conf.json`, `Cargo.toml`, and `.agents/architecture.json`, and updated `package-lock.json` and `Cargo.lock` accordingly.
 - **Modified Files**:
