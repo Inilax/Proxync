@@ -2,10 +2,16 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
-## [feature/main-fix-postcss-vulnerability] - 2026-08-01 (PostCSS Security Patch)
-- **Feature Summary**: Patched Dependabot security vulnerability by upgrading `postcss` from `8.5.16` to `8.5.25` and `nanoid` from `3.3.15` to `3.3.16` in `package-lock.json`.
+## [v0.1.8] - 2026-08-02 (PostCSS Security Patch & Version Bump)
+- **Feature Summary**: Patched Dependabot security vulnerability by upgrading `postcss` from `8.5.16` to `8.5.25` and `nanoid` from `3.3.15` to `3.3.16` in `package-lock.json`. Bumped version to `0.1.8` across root `package.json`, `packages/desktop/package.json`, `tauri.conf.json`, `Cargo.toml`, and `.agents/architecture.json`.
 - **Modified Files**:
+  - `package.json`
   - `package-lock.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `.agents/architecture.json`
   - `.agents/changelog.json`
   - `CHANGELOG.md`
 
