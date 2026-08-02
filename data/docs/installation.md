@@ -25,7 +25,7 @@ Everything else — workspaces, traffic inspection on the local proxy, Postman r
 
 ## Install the packaged build
 
-The official distribution is the NSIS installer `Proxync_0.1.7_x64-setup.exe` (an MSI variant is also produced).
+The official distribution is the NSIS installer `Proxync_0.1.8_x64-setup.exe` (an MSI variant is also produced).
 
 1. Download the installer from the [GitHub Releases](https://github.com/Inilax/Proxync/releases) page.
 2. Run the installer and follow the setup wizard.

@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui";
 import { LogoMark } from "@/components/logo";
 import { DOWNLOAD_URL, GITHUB_URL } from "@/lib/links";
+import { useLatestRelease } from "@/lib/releases";
 
 const NAV_LINKS = [
   { href: "#features", label: "Features" },
@@ -28,6 +29,7 @@ function isRouteHref(href: string) {
 }
 
 export function Navbar() {
+  const release = useLatestRelease();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<string | null>(null);
@@ -121,7 +123,7 @@ export function Navbar() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <Button href={DOWNLOAD_URL} variant="primary" size="sm" target="_blank" rel="noopener noreferrer">
+          <Button href={release.downloadUrl} variant="primary" size="sm" target="_blank" rel="noopener noreferrer">
             <Download className="h-3.5 w-3.5" />
             Download
           </Button>
@@ -180,7 +182,7 @@ export function Navbar() {
               </nav>
               <div className="mt-3 border-t border-outline-variant/30 pt-3">
                 <Button
-                  href={DOWNLOAD_URL}
+                  href={release.downloadUrl}
                   variant="primary"
                   size="md"
                   className="w-full"

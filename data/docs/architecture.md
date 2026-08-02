@@ -28,7 +28,7 @@ description: How Proxync is structured — Tauri shell, Rust backend, React fron
 
 ## Stack
 
-- **Desktop shell:** Tauri v2, product name `Proxync`, identifier `com.proxync.app`, version `0.1.7`.
+- **Desktop shell:** Tauri v2, product name `Proxync`, identifier `com.proxync.app`, version `0.1.8`.
 - **Frontend:** React 19 + TypeScript, built with Vite 7, styled with vanilla CSS (glassmorphism theme).
 - **Backend:** Rust (edition 2021), with Tokio, Tokio-Tungstenite, Reqwest, Serde, and Lazy-Static shared state.
 - **Package:** an npm workspace (`packages/desktop`). The Rust crate is named `proxync` with library target `proxync_lib` to avoid the Windows binary/library name collision.

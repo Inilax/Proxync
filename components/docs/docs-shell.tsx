@@ -9,6 +9,7 @@ import { Button } from "@/components/ui";
 import { LogoMark } from "@/components/logo";
 import { DOCS_NAV } from "@/lib/docs-nav";
 import { DOWNLOAD_URL, GITHUB_URL } from "@/lib/links";
+import { useLatestRelease } from "@/lib/releases";
 
 function isActive(pathname: string, href: string): boolean {
   return pathname === href;
@@ -57,6 +58,8 @@ function DocsHeader({
   onMenuClick: () => void;
   menuOpen: boolean;
 }) {
+  const release = useLatestRelease();
+
   return (
     <header className="sticky top-0 z-40 border-b border-outline-variant/20 bg-surface/90 backdrop-blur">
       <div className="mx-auto flex h-16 w-full max-w-[90rem] items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -99,7 +102,7 @@ function DocsHeader({
             GitHub
             <ArrowUpRight className="h-3.5 w-3.5" />
           </a>
-          <Button href={DOWNLOAD_URL} variant="primary" size="sm" target="_blank" rel="noopener noreferrer">
+          <Button href={release.downloadUrl} variant="primary" size="sm" target="_blank" rel="noopener noreferrer">
             <Download className="h-3.5 w-3.5" />
             Download
           </Button>

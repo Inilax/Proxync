@@ -21,6 +21,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLatestRelease } from "@/lib/releases";
 import { LogoMark } from "./logo";
 import { LatencyReadout } from "./latency";
 
@@ -826,6 +827,7 @@ function Sidebar({
 /* ─────────────────────────── App mockup ─────────────────────────── */
 
 export function AppMockup() {
+  const release = useLatestRelease();
   const [active, setActive] = useState<ViewId>("traffic");
 
   return (
@@ -849,7 +851,7 @@ export function AppMockup() {
           <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 font-mono text-[11px] text-on-surface-muted">
             Proxync — Developer Tunneling Workspace Studio
           </div>
-          <div className="font-mono text-[11px] text-on-surface-muted">v0.1.7</div>
+          <div className="font-mono text-[11px] text-on-surface-muted">{release.tagName}</div>
         </div>
 
         <div className="flex">
