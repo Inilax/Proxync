@@ -1,10 +1,14 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { openUrl } from "@tauri-apps/plugin-opener";
 import './index.css';
 import { ToastContainer, showToast } from './lib/toast';
 import {
+  api,
   ensureLocalWorkspace,
+  getToken,
   type LocalWorkspaceContext,
 } from './lib/api';
 
@@ -12,16 +16,18 @@ import {
 import {
   type MainView,
   type SwaggerPanel,
+  type PanelView,
   type ProcessCandidate,
   type Tunnel,
   type RequestLog,
   type SavedRequest,
   type PostmanResponse,
+  type Guardrails,
   type ProcessProfile,
   type WorkspaceConfig,
   type AppSettings,
   type DomainRecord,
-  Icons,
+  CompanionPanel,
   parseHeaderText,
 } from './components/views/SharedComponents';
 import { WelcomeView } from './components/views/WelcomeView';
@@ -30,8 +36,10 @@ import { ProcessView } from './components/views/ProcessView';
 import { TrafficView } from './components/views/TrafficView';
 import { PostmanView } from './components/views/PostmanView';
 import { SwaggerView } from './components/views/SwaggerView';
+import { ObservabilityView } from './components/views/ObservabilityView';
 import { SettingsView } from './components/views/SettingsView';
-import { DiscoverDialog, DomainSelectDialog, RequestDetailDialog } from './components/views/Dialogs';
+import { DocsView } from './components/views/DocsView';
+import { DiscoverDialog, DomainSelectDialog, RequestDetailDialog, ConfirmDeleteDialog } from './components/views/Dialogs';
 
 /* ══════════════════════════════════════════════
    CONSTANTS
@@ -43,13 +51,20 @@ const PORT_NAMES: Record<number, string> = {
   8000: 'Django or FastAPI app', 8080: 'HTTP service', 8888: 'Notebook server',
 };
 
+const DEFAULT_GUARDRAILS: Guardrails = {
+  authMode: 'guest', piiRedaction: true, captureBodies: true,
+  autoUpdateSwagger: true, rateLimit: '250 req/min',
+};
+
 const DEFAULT_REQUEST: SavedRequest = {
   id: 'draft', name: 'Draft request', method: 'GET', path: '/',
   headers: { 'Content-Type': 'application/json' }, body: '', source: 'manual',
 };
 
 const DEFAULT_APP_SETTINGS: AppSettings = {
+  guardrails: { ...DEFAULT_GUARDRAILS },
   defaultProjectRootPath: '', notes: '',
+  theme: 'slate',
 };
 
 const LOCAL_WORKSPACES_KEY = 'proxync_local_workspaces_v1';
@@ -60,13 +75,16 @@ const APP_SETTINGS_KEY = 'proxync_app_settings_v1';
    NAV CONFIG
    ══════════════════════════════════════════════ */
 
-const NAV_ITEMS: { view: MainView; label: string; icon: React.ReactNode }[] = [
-  { view: 'lobby', label: 'Lobby', icon: Icons.grid },
-  { view: 'welcome', label: 'Overview', icon: Icons.home },
-  { view: 'traffic', label: 'Traffic', icon: Icons.activity },
-  { view: 'postman', label: 'Postman', icon: Icons.send },
-  { view: 'swagger', label: 'Swagger', icon: Icons.code },
-  { view: 'settings', label: 'Settings', icon: Icons.settings },
+const NAV_ITEMS: { view: MainView; label: string; icon: string }[] = [
+  { view: 'welcome', label: 'Explore', icon: 'explore' },
+  { view: 'lobby', label: 'Workspaces', icon: 'hub' },
+  { view: 'process', label: 'Tunnels', icon: 'lan' },
+  { view: 'traffic', label: 'Traffic', icon: 'terminal' },
+  { view: 'postman', label: 'Postman', icon: 'send' },
+  { view: 'swagger', label: 'Swagger', icon: 'api' },
+  { view: 'docs', label: 'Docs', icon: 'menu_book' },
+  { view: 'observability', label: 'Observability', icon: 'insights' },
+  { view: 'settings', label: 'Settings', icon: 'settings' },
 ];
 
 /* ══════════════════════════════════════════════
@@ -74,10 +92,18 @@ const NAV_ITEMS: { view: MainView; label: string; icon: React.ReactNode }[] = [
    ══════════════════════════════════════════════ */
 
 export default function App() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [context, setContext] = useState<LocalWorkspaceContext | null>(null);
-  const [workspaces, setWorkspaces] = useState<WorkspaceConfig[]>([]);
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
+  const [bootstrapError, setBootstrapError] = useState('');
+  const [workspaces, setWorkspaces] = useState<WorkspaceConfig[]>(() => {
+    const stored = localStorage.getItem(LOCAL_WORKSPACES_KEY);
+    return stored ? (JSON.parse(stored) as WorkspaceConfig[]) : [];
+  });
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(() => {
+    const stored = localStorage.getItem(LOCAL_WORKSPACES_KEY);
+    const parsed = stored ? (JSON.parse(stored) as WorkspaceConfig[]) : [];
+    return localStorage.getItem(ACTIVE_WORKSPACE_KEY) ?? (parsed.length > 0 ? parsed[0].id : null);
+  });
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [processes, setProcesses] = useState<ProcessCandidate[]>([]);
   const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
@@ -88,21 +114,62 @@ export default function App() {
   const [savedRequests, setSavedRequests] = useState<SavedRequest[]>([]);
   const [draftRequest, setDraftRequest] = useState<SavedRequest>(DEFAULT_REQUEST);
   const [postmanResponse, setPostmanResponse] = useState<PostmanResponse | null>(null);
-  const [mainView, setMainView] = useState<MainView>('lobby');
+  const [mainView, setMainView] = useState<MainView>(() => {
+    const stored = localStorage.getItem(LOCAL_WORKSPACES_KEY);
+    const parsed = stored ? (JSON.parse(stored) as WorkspaceConfig[]) : [];
+    return parsed.length === 0 ? 'lobby' : 'welcome';
+  });
   const [swaggerPanel, setSwaggerPanel] = useState<SwaggerPanel>('preview');
+  const [panelView, setPanelView] = useState<PanelView>(null);
   const [discoverOpen, setDiscoverOpen] = useState(false);
+  const [authDialogOpen, setAuthDialogOpen] = useState(false);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [terminalHeight, setTerminalHeight] = useState(180);
+  const [isResizing, setIsResizing] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger'>('general');
+
+  const startResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  }, []);
+
+  const doResize = useCallback((e: MouseEvent) => {
+    if (!isResizing) return;
+    const newHeight = window.innerHeight - e.clientY - 24;
+    if (newHeight >= 60 && newHeight <= window.innerHeight * 0.8) {
+      setTerminalHeight(newHeight);
+    }
+  }, [isResizing]);
+
+  const stopResize = useCallback(() => {
+    setIsResizing(false);
+  }, []);
+
+  useEffect(() => {
+    if (isResizing) {
+      window.addEventListener('mousemove', doResize);
+      window.addEventListener('mouseup', stopResize);
+    } else {
+      window.removeEventListener('mousemove', doResize);
+      window.removeEventListener('mouseup', stopResize);
+    }
+    return () => {
+      window.removeEventListener('mousemove', doResize);
+      window.removeEventListener('mouseup', stopResize);
+    };
+  }, [isResizing, doResize, stopResize]);
   const [discovering, setDiscovering] = useState(false);
   const [sharingPort, setSharingPort] = useState<number | null>(null);
   const [sendingRequest, setSendingRequest] = useState(false);
   const [starterSuggestions, setStarterSuggestions] = useState<SavedRequest[]>([]);
   const [scanningProject, setScanningProject] = useState(false);
-  const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS);
+  const [appSettings, setAppSettings] = useState<AppSettings>(loadAppSettings());
   const [domains, setDomains] = useState<DomainRecord[]>([]);
   const [domainDraft, setDomainDraft] = useState('');
+  const [loadingDomains, setLoadingDomains] = useState(false);
   const [busyDomainId, setBusyDomainId] = useState<string | null>(null);
   const [sharingProcessCandidate, setSharingProcessCandidate] = useState<ProcessCandidate | null>(null);
   const [localIp, setLocalIp] = useState<string>('127.0.0.1');
-  const [isLoaded, setIsLoaded] = useState(false);
 
   /* ── Derived state ── */
 
@@ -136,9 +203,12 @@ export default function App() {
       buildOpenApi(
         requests, savedRequests, activeTunnel,
         effectiveLanguageHint,
+        activeWorkspace?.guardrails ?? DEFAULT_GUARDRAILS,
       ),
     [requests, savedRequests, activeTunnel, effectiveLanguageHint, activeWorkspace],
   );
+
+
 
   /* ── Effects ── */
 
@@ -148,78 +218,73 @@ export default function App() {
       .then((ip) => { if (mounted) setLocalIp(ip); })
       .catch(() => undefined);
 
-    async function loadState() {
-      try {
-        const raw = await invoke<string>('load_app_state');
-        const state = JSON.parse(raw);
-        if (state.workspaces) {
-          setWorkspaces(state.workspaces);
-          setActiveWorkspaceId(state.activeWorkspaceId ?? null);
-          setAppSettings(state.appSettings ?? { defaultProjectRootPath: '', notes: '' });
-          if (state.workspaces.length === 0) {
-            setMainView('lobby');
-          } else {
-            setMainView('welcome');
-          }
+    ensureLocalWorkspace()
+      .then(async (nextContext) => {
+        if (!mounted) return;
+        setContext(nextContext);
+        setBootstrapError('');
+        const hydrated = hydrateStoredWorkspaces(
+          nextContext.workspace ?? null, appSettings.guardrails, appSettings.defaultProjectRootPath,
+        );
+        setWorkspaces(hydrated.workspaces);
+        if (hydrated.workspaces.length === 0) {
+          setActiveWorkspaceId(null);
+          setMainView('lobby');
         } else {
-          // Migration from localStorage if present
-          const storedW = localStorage.getItem(LOCAL_WORKSPACES_KEY);
-          const storedWId = localStorage.getItem(ACTIVE_WORKSPACE_KEY);
-          const storedS = localStorage.getItem(APP_SETTINGS_KEY);
-          const loadedWorkspaces = storedW ? JSON.parse(storedW) : [];
-          const loadedActiveWorkspaceId = storedWId ?? (loadedWorkspaces.length > 0 ? loadedWorkspaces[0].id : null);
-          let parsedSettings = { defaultProjectRootPath: '', notes: '' };
-          if (storedS) {
-            try {
-              const p = JSON.parse(storedS);
-              parsedSettings = { defaultProjectRootPath: p.defaultProjectRootPath ?? '', notes: p.notes ?? '' };
-            } catch {}
-          }
-          setWorkspaces(loadedWorkspaces);
-          setActiveWorkspaceId(loadedActiveWorkspaceId);
-          setAppSettings(parsedSettings);
-          if (loadedWorkspaces.length === 0) {
-            setMainView('lobby');
-          } else {
-            setMainView('welcome');
-          }
+          setActiveWorkspaceId(hydrated.activeWorkspaceId);
         }
-      } catch (err) {
-        console.error('Failed to load standalone app state:', err);
-      } finally {
-        if (mounted) {
-          setIsLoaded(true);
-          ensureLocalWorkspace().then((nextContext) => {
-            if (mounted) setContext(nextContext);
-          });
+      })
+      .catch((error: Error) => {
+        if (!mounted) return;
+        setBootstrapError(error.message);
+        setContext({ user: { id: 'local', name: 'Local Developer', email: 'local@proxync.dev' } });
+        const fallback = hydrateStoredWorkspaces(null, appSettings.guardrails, appSettings.defaultProjectRootPath);
+        setWorkspaces(fallback.workspaces);
+        if (fallback.workspaces.length === 0) {
+          setActiveWorkspaceId(null);
+          setMainView('lobby');
+        } else {
+          setActiveWorkspaceId(fallback.activeWorkspaceId);
         }
-      }
-    }
-    void loadState();
+      });
     return () => { mounted = false; };
-  }, []);
+  }, [appSettings.defaultProjectRootPath, appSettings.guardrails]);
 
   useEffect(() => { void discoverProcesses(); }, []);
 
   useEffect(() => {
-    if (!isLoaded) return;
-    async function saveState() {
-      try {
-        const state = JSON.stringify({ workspaces, activeWorkspaceId, appSettings });
-        await invoke('save_app_state', { state });
-      } catch (err) {
-        console.error('Failed to save standalone app state:', err);
-      }
+    if (workspaces.length === 0) {
+      localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify([]));
+      localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
+      return;
     }
-    void saveState();
-  }, [workspaces, activeWorkspaceId, appSettings, isLoaded]);
+    if (!activeWorkspaceId) return;
+    localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify(workspaces));
+    localStorage.setItem(ACTIVE_WORKSPACE_KEY, activeWorkspaceId);
+  }, [workspaces, activeWorkspaceId]);
+
+  useEffect(() => {
+    localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(appSettings));
+  }, [appSettings]);
+
+  useEffect(() => {
+    const theme = appSettings.theme ?? 'slate';
+    document.body.classList.forEach((cls) => {
+      if (cls.startsWith('theme-')) {
+        document.body.classList.remove(cls);
+      }
+    });
+    document.body.classList.add(`theme-${theme}`);
+  }, [appSettings.theme]);
 
   useEffect(() => {
     if (!activeWorkspace) return;
-    setSavedRequests(activeWorkspace.savedRequests || []);
-    setRequests(activeWorkspace.capturedRequests || []);
-    setStarterSuggestions((activeWorkspace.savedRequests || []).filter((r) => r.source === 'starter-scan'));
-    setDomains(activeWorkspace.domains || []);
+    setSavedRequests(activeWorkspace.savedRequests);
+    setRequests(activeWorkspace.capturedRequests);
+    setStarterSuggestions(activeWorkspace.savedRequests.filter((r) => r.source === 'starter-scan'));
+    if (activeWorkspace.remoteWorkspaceId) {
+      localStorage.setItem('proxync_workspace', activeWorkspace.remoteWorkspaceId);
+    }
   }, [activeWorkspaceId]);
 
   useEffect(() => {
@@ -227,26 +292,53 @@ export default function App() {
     setWorkspaces((current) =>
       current.map((ws) =>
         ws.id === activeWorkspace.id
-          ? { ...ws, savedRequests, capturedRequests: requests, domains, languageHint: effectiveLanguageHint, lastSwaggerGeneratedAt: new Date().toISOString() }
+          ? { ...ws, savedRequests, capturedRequests: requests, languageHint: effectiveLanguageHint, lastSwaggerGeneratedAt: new Date().toISOString() }
           : ws,
       ),
     );
-  }, [savedRequests, requests, domains, effectiveLanguageHint]);
+  }, [savedRequests, requests, effectiveLanguageHint]);
 
   useEffect(() => {
     let unlistenRequest: (() => void) | undefined;
     let unlistenResponse: (() => void) | undefined;
     let unlistenClosed: (() => void) | undefined;
     async function bindEvents() {
-      unlistenRequest = await listen<RequestLog>('request:log', (event) => {
-        setRequests((current) => [
-          { ...event.payload, status: 'pending', capturedAt: new Date().toISOString() },
-          ...current,
-        ].slice(0, 150));
+      unlistenRequest = await listen<any>('request:log', (event) => {
+        const payload = event.payload;
+        let method = (payload.method || 'GET').toUpperCase();
+        let path = payload.path || '/';
+
+        if (method.includes('/')) {
+          path = method;
+          method = 'GET';
+        }
+
+        const cleanPath = path.toLowerCase();
+        const isHmrNoise = cleanPath.includes('_next/webpack-hmr') ||
+                           cleanPath.includes('__vite_ping') ||
+                           cleanPath.includes('hot-update') ||
+                           cleanPath.includes('favicon.ico');
+
+        if (isHmrNoise) return;
+
+        const reqId = payload.id || payload.requestId || crypto.randomUUID();
+        const item: RequestLog = {
+          id: reqId,
+          method,
+          path,
+          status: payload.status || 'pending',
+          durationMs: payload.durationMs || null,
+          headers: payload.headers,
+          bodyPreview: payload.bodyPreview || payload.body,
+          capturedAt: new Date().toISOString(),
+        };
+        setRequests((current) => [item, ...current].slice(0, 150));
       });
-      unlistenResponse = await listen<{ requestId: string; status: number }>('request:log:response', (event) => {
+      unlistenResponse = await listen<any>('request:log:response', (event) => {
+        const payload = event.payload;
+        const targetId = payload.id || payload.requestId;
         setRequests((current) =>
-          current.map((r) => r.id === event.payload.requestId ? { ...r, status: event.payload.status } : r),
+          current.map((r) => r.id === targetId ? { ...r, status: payload.status, durationMs: payload.durationMs || r.durationMs } : r),
         );
       });
       unlistenClosed = await listen<{ tunnelId: string }>('tunnel:auto-closed', (event) => {
@@ -259,6 +351,30 @@ export default function App() {
     return () => { unlistenRequest?.(); unlistenResponse?.(); unlistenClosed?.(); };
   }, []);
 
+  useEffect(() => {
+    if (!activeWorkspace?.remoteWorkspaceId || !activeTunnel) return;
+    api.requests.list(activeWorkspace.remoteWorkspaceId, activeTunnel.id)
+      .then((history) => setRequests(history)).catch(() => undefined);
+  }, [activeTunnel, activeWorkspaceId]);
+
+  useEffect(() => {
+    if (!activeWorkspace?.remoteWorkspaceId) { setDomains([]); return; }
+    setLoadingDomains(true);
+    api.domains.list().then((items) => setDomains(items)).catch(() => setDomains([])).finally(() => setLoadingDomains(false));
+  }, [activeWorkspace?.remoteWorkspaceId]);
+
+  useEffect(() => {
+    if (!activeWorkspace?.remoteWorkspaceId) { setTunnels([]); setActiveTunnel(null); return; }
+    api.tunnels.list(activeWorkspace.remoteWorkspaceId)
+      .then((existing) => {
+        setTunnels(existing);
+        const active = existing.find((t) => t.status === 'ACTIVE');
+        if (active) { setActiveTunnel(active); setSelectedProcessId(`port-${active.localPort}`); }
+        else { setActiveTunnel(null); }
+      })
+      .catch(() => { setTunnels([]); setActiveTunnel(null); });
+  }, [activeWorkspace?.remoteWorkspaceId]);
+
   /* ── Action handlers ── */
 
   async function discoverProcesses(bypassCache: boolean = false) {
@@ -268,6 +384,15 @@ export default function App() {
       setProcesses(discovered);
       if (!selectedProcessId && discovered[0]) setSelectedProcessId(discovered[0].id);
       showToast(discovered.length > 0 ? `Discovered ${discovered.length} local process${discovered.length === 1 ? '' : 'es'}` : 'No local development ports found', discovered.length > 0 ? 'success' : 'info');
+
+      // Async ping/latency check for all discovered processes
+      const withLatency = await Promise.all(
+        discovered.map(async (p) => {
+          const latency = await measureLocalPortLatency(p.port);
+          return { ...p, latency };
+        })
+      );
+      setProcesses(withLatency);
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Process discovery failed', 'error');
     } finally { setDiscovering(false); }
@@ -276,7 +401,11 @@ export default function App() {
   async function createWorkspace() {
     const name = newWorkspaceName.trim();
     if (!name) return;
-    const workspace = createWorkspaceConfig(name, appSettings.defaultProjectRootPath);
+    let remoteWorkspaceId: string | undefined;
+    if (context && context.workspace && context.workspace.id !== 'local') {
+      try { const remote = await api.workspaces.create(name); remoteWorkspaceId = remote.id; } catch { remoteWorkspaceId = undefined; }
+    }
+    const workspace = createWorkspaceConfig(name, remoteWorkspaceId, appSettings.guardrails, appSettings.defaultProjectRootPath);
     setWorkspaces((current) => [workspace, ...current]);
     setActiveWorkspaceId(workspace.id);
     setNewWorkspaceName('');
@@ -289,19 +418,107 @@ export default function App() {
     setMainView('process');
   }
 
-  async function deleteWorkspace(workspaceId: string) {
+  const [deletingWorkspace, setDeletingWorkspace] = useState<WorkspaceConfig | null>(null);
+
+  function initiateDeleteWorkspace(workspaceId: string) {
+    const ws = workspaces.find((w) => w.id === workspaceId);
+    if (ws) {
+      setDeletingWorkspace(ws);
+    }
+  }
+
+  async function confirmDeleteWorkspace(workspaceId: string) {
     const ws = workspaces.find((w) => w.id === workspaceId);
     if (!ws) return;
-    const confirmDelete = window.confirm(`Are you sure you want to completely delete and purge the workspace "${ws.name}"? This will terminate all active tunnels and delete all history.`);
-    if (!confirmDelete) return;
-    if (activeTunnel && activeWorkspaceId === workspaceId) { try { await stopTunnel(activeTunnel); } catch {} }
+
+    if (activeTunnel && activeWorkspaceId === workspaceId) {
+      try {
+        await stopTunnel(activeTunnel);
+      } catch (error) {
+        console.error('Error stopping active tunnel on delete:', error);
+      }
+    }
+
+    if (ws.remoteWorkspaceId) {
+      try {
+        await api.workspaces.delete(ws.remoteWorkspaceId);
+      } catch (error: any) {
+        showToast(error instanceof Error ? error.message : 'Unable to delete workspace on remote API', 'error');
+      }
+    }
+
     const remaining = workspaces.filter((w) => w.id !== workspaceId);
     setWorkspaces(remaining);
+    localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify(remaining));
+
     if (activeWorkspaceId === workspaceId) {
-      if (remaining.length > 0) { setActiveWorkspaceId(remaining[0].id); }
-      else { setActiveWorkspaceId(null); setMainView('lobby'); }
+      setTunnels([]);
+      setActiveTunnel(null);
+      setSelectedProcessId(null);
+      setRequests([]);
+      setStarterSuggestions([]);
+      setSavedRequests([]);
+      if (remaining.length > 0) {
+        setActiveWorkspaceId(remaining[0].id);
+        localStorage.setItem(ACTIVE_WORKSPACE_KEY, remaining[0].id);
+        setMainView('welcome');
+      } else {
+        setActiveWorkspaceId(null);
+        localStorage.removeItem(ACTIVE_WORKSPACE_KEY);
+        setMainView('lobby');
+      }
     }
-    showToast(`Workspace "${ws.name}" completely deleted and purged`, 'success');
+    showToast(`Workspace "${ws.name}" completely deleted`, 'success');
+  }
+
+  async function purgeWorkspace(workspaceId: string) {
+    const ws = workspaces.find((w) => w.id === workspaceId);
+    if (!ws) return;
+    const confirmPurge = window.confirm(`Are you sure you want to purge workspace "${ws.name}"? This will terminate all active shared processes and clear all data related to the workspace.`);
+    if (!confirmPurge) return;
+
+    if (activeTunnel && activeWorkspaceId === workspaceId) {
+      try {
+        await stopTunnel(activeTunnel);
+      } catch (error) {
+        console.error('Error stopping active tunnel on purge:', error);
+      }
+    }
+
+    const updated = workspaces.map((w) => {
+      if (w.id === workspaceId) {
+        return {
+          id: w.id,
+          name: w.name,
+          remoteWorkspaceId: w.remoteWorkspaceId,
+          profiles: [],
+          savedRequests: [],
+          capturedRequests: [],
+          guardrails: { ...DEFAULT_GUARDRAILS },
+          languageHint: 'Undetermined',
+          selectedProfileId: undefined,
+          projectRootPath: '',
+          scannedFiles: [],
+          notes: '',
+          lastSwaggerGeneratedAt: new Date().toISOString(),
+        };
+      }
+      return w;
+    });
+
+    setWorkspaces(updated);
+    localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify(updated));
+
+    if (activeWorkspaceId === workspaceId) {
+      setTunnels([]);
+      setActiveTunnel(null);
+      setSelectedProcessId(null);
+      setRequests([]);
+      setStarterSuggestions([]);
+      setSavedRequests([]);
+      setMainView('welcome');
+    }
+    showToast(`Workspace "${ws.name}" successfully purged`, 'success');
   }
 
   function updateActiveWorkspace(mutator: (workspace: WorkspaceConfig) => WorkspaceConfig) {
@@ -309,7 +526,15 @@ export default function App() {
     setWorkspaces((current) => current.map((ws) => ws.id === activeWorkspace.id ? mutator(ws) : ws));
   }
 
-  function initiatePublicShare(process: ProcessCandidate) { setSharingProcessCandidate(process); }
+  function initiatePublicShare(process: ProcessCandidate) {
+    if (!activeWorkspace) {
+      showToast('Select or create a workspace first before sharing a port', 'info');
+      return;
+    }
+    setSharingProcessCandidate(process);
+  }
+
+
 
   async function shareProcessCloudflare(process: ProcessCandidate) {
     if (!activeWorkspace) return;
@@ -317,25 +542,25 @@ export default function App() {
     setStarterSuggestions(starterScan);
     setSavedRequests((current) => mergeRequests(current, starterScan));
     updateActiveWorkspace((ws) => ({ ...ws, profiles: upsertProfile(ws.profiles, process, starterScan.length), selectedProfileId: makeProfileId(process), languageHint: detectLanguageLabel(process) }));
-    
+
+    const targetWorkspaceId = activeWorkspace.remoteWorkspaceId || activeWorkspace.id;
+    const token = getToken();
+
     setSharingPort(process.port);
     try {
-      showToast('Starting local proxy server...', 'info');
-      const proxyPort = await invoke<number>('start_proxy', { localPort: process.port });
+      localStorage.setItem('proxync_workspace', targetWorkspaceId);
+      const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
+      const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
+      const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
+      await invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined);
 
+      const proxyPort = await invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port);
       showToast('Starting Cloudflare Tunnel service...', 'info');
-      const cfTunnelUrl = await invoke<string>('open_cloudflare_tunnel', { tunnelId: `cf-${crypto.randomUUID()}`, localPort: proxyPort });
-      
-      const cloudflareBoundTunnel: Tunnel = {
-        id: `cf-${crypto.randomUUID()}`,
-        publicUrl: cfTunnelUrl,
-        localPort: process.port,
-        status: 'ACTIVE',
-        subdomain: cfTunnelUrl.replace('https://', '').replace('.trycloudflare.com', ''),
-        createdAt: new Date().toISOString()
-      };
+      const cfTunnelUrl = await invoke<string>('open_cloudflare_tunnel', { tunnelId: tunnel.id, localPort: proxyPort });
+
+      const cloudflareBoundTunnel: Tunnel = { ...tunnel, publicUrl: cfTunnelUrl, subdomain: cfTunnelUrl.replace('https://', '').replace('.trycloudflare.com', '') };
       setActiveTunnel(cloudflareBoundTunnel);
-      setTunnels((current) => [cloudflareBoundTunnel, ...current.filter((item) => item.status === 'ACTIVE')]);
+      setTunnels((current) => [cloudflareBoundTunnel, ...current.filter((item) => item.id !== tunnel.id)]);
       setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false); setRequests([]);
       showToast(`Cloudflare Tunnel is active! URL: ${cfTunnelUrl}`, 'success');
       updateActiveWorkspace((ws) => ({ ...ws, profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: cfTunnelUrl } : p) }));
@@ -349,25 +574,24 @@ export default function App() {
     setStarterSuggestions(starterScan);
     setSavedRequests((current) => mergeRequests(current, starterScan));
     updateActiveWorkspace((ws) => ({ ...ws, profiles: upsertProfile(ws.profiles, process, starterScan.length), selectedProfileId: makeProfileId(process), languageHint: detectLanguageLabel(process) }));
-    
+
+    const targetWorkspaceId = activeWorkspace.remoteWorkspaceId || activeWorkspace.id;
+    const token = getToken();
+
     setSharingPort(process.port);
     try {
-      showToast('Starting local proxy server...', 'info');
-      const proxyPort = await invoke<number>('start_proxy', { localPort: process.port });
-
+      localStorage.setItem('proxync_workspace', targetWorkspaceId);
+      const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
+      const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
+      const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
+      await invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined);
+      const proxyPort = await invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port);
       const suggestedSub = customSubdomain || `${activeWorkspace.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${process.port}`;
       showToast('Starting localtunnel service...', 'info');
-      const localtunnelUrl = await invoke<string>('open_localtunnel', { tunnelId: `lt-${crypto.randomUUID()}`, localPort: proxyPort, subdomain: suggestedSub });
-      const localtunnelBoundTunnel: Tunnel = {
-        id: `lt-${crypto.randomUUID()}`,
-        publicUrl: localtunnelUrl,
-        localPort: process.port,
-        status: 'ACTIVE',
-        subdomain: localtunnelUrl.replace('https://', '').replace('.localtunnel.me', ''),
-        createdAt: new Date().toISOString()
-      };
+      const localtunnelUrl = await invoke<string>('open_localtunnel', { tunnelId: tunnel.id, localPort: proxyPort, subdomain: suggestedSub });
+      const localtunnelBoundTunnel: Tunnel = { ...tunnel, publicUrl: localtunnelUrl, subdomain: localtunnelUrl.replace('https://', '').replace('.localtunnel.me', '') };
       setActiveTunnel(localtunnelBoundTunnel);
-      setTunnels((current) => [localtunnelBoundTunnel, ...current.filter((item) => item.status === 'ACTIVE')]);
+      setTunnels((current) => [localtunnelBoundTunnel, ...current.filter((item) => item.id !== tunnel.id)]);
       setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false); setRequests([]);
       showToast(`Localtunnel is active! URL: ${localtunnelUrl}`, 'success');
       updateActiveWorkspace((ws) => ({ ...ws, profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: localtunnelUrl } : p) }));
@@ -381,30 +605,31 @@ export default function App() {
     setStarterSuggestions(starterScan);
     setSavedRequests((current) => mergeRequests(current, starterScan));
     updateActiveWorkspace((ws) => ({ ...ws, profiles: upsertProfile(ws.profiles, process, starterScan.length), selectedProfileId: makeProfileId(process), languageHint: detectLanguageLabel(process) }));
-    
+
+    const targetWorkspaceId = activeWorkspace.remoteWorkspaceId || activeWorkspace.id;
+    const token = getToken();
+
     setSharingPort(process.port);
     try {
-      showToast('Starting local proxy server...', 'info');
-      const proxyPort = await invoke<number>('start_proxy', { localPort: process.port });
-
-      const tunnel: Tunnel = {
-        id: `tunnel-${crypto.randomUUID()}`,
-        publicUrl: customDomain ? `http://${customDomain}` : `http://localhost:${proxyPort}`,
-        localPort: process.port,
-        status: 'ACTIVE',
-        subdomain: customDomain ?? '',
-        createdAt: new Date().toISOString()
-      };
+      localStorage.setItem('proxync_workspace', targetWorkspaceId);
+      const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined, customDomain);
+      const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
+      const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
+      await invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined);
       setActiveTunnel(tunnel);
-      setTunnels((current) => [tunnel, ...current.filter((item) => item.status === 'ACTIVE')]);
+      setTunnels((current) => [tunnel, ...current.filter((item) => item.id !== tunnel.id)]);
       setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false); setRequests([]);
       updateActiveWorkspace((ws) => ({ ...ws, profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: tunnel.publicUrl } : p) }));
-      showToast(customDomain ? `Custom Domain routing active at http://${customDomain}` : `Local proxy active on port ${proxyPort}`, 'success');
+      showToast(`Tunnel is live. Imported ${starterScan.length} starter requests into Postman.`, 'success');
     } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to share process', 'error'); }
     finally { setSharingPort(null); }
   }
 
   function shareProcessLocal(process: ProcessCandidate) {
+    if (!activeWorkspace) {
+      showToast('Select or create a workspace first before sharing a port', 'info');
+      return;
+    }
     setSelectedProcessId(process.id); setMainView('process'); setSharingPort(process.port);
     showToast(`Exposed local share at http://localhost:${process.port} and http://${localIp}:${process.port}`, 'success');
   }
@@ -413,6 +638,7 @@ export default function App() {
     if (!activeWorkspace) return;
     try {
       await invoke('close_tunnel', { tunnelId: tunnel.id }).catch(() => undefined);
+      if (!tunnel.id.startsWith('lt-') && activeWorkspace.remoteWorkspaceId) { await api.tunnels.close(activeWorkspace.remoteWorkspaceId, tunnel.id); }
       setTunnels((current) => current.map((item) => item.id === tunnel.id ? { ...item, status: 'CLOSED' } : item));
       setActiveTunnel((current) => (current?.id === tunnel.id ? null : current));
       showToast('Tunnel stopped', 'info');
@@ -420,7 +646,9 @@ export default function App() {
   }
 
   async function openRequestDetail(request: RequestLog) {
-    setSelectedRequest(request);
+    if (!activeWorkspace?.remoteWorkspaceId || !activeTunnel) { setSelectedRequest(request); return; }
+    try { const detail = await api.requests.get(activeWorkspace.remoteWorkspaceId, activeTunnel.id, request.id); setSelectedRequest(detail); }
+    catch { setSelectedRequest(request); }
   }
 
   function sendToPostman(request: RequestLog) {
@@ -430,25 +658,119 @@ export default function App() {
     setSelectedRequest(null); setMainView('postman');
   }
 
-  async function replayRequest(_request: RequestLog) {
-    showToast('Replay local request is not supported in standalone offline mode.', 'info');
+  async function replayRequest(request: RequestLog) {
+    if (!activeWorkspace?.remoteWorkspaceId || !activeTunnel) return;
+    try { await api.requests.replay(activeWorkspace.remoteWorkspaceId, activeTunnel.id, request.id); showToast('Request replayed through the active tunnel', 'success'); }
+    catch (error) { showToast(error instanceof Error ? error.message : 'Replay failed', 'error'); }
+  }
+
+  function resolveTargetUrl(rawPath: string): string {
+    const trimmed = rawPath.trim();
+    if (!trimmed) return 'http://localhost:3000';
+
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+
+    if (trimmed.startsWith('/')) {
+      if (activeTunnel?.publicUrl) {
+        const base = activeTunnel.publicUrl.replace(/\/+$/, '');
+        return `${base}${trimmed}`;
+      }
+      if (selectedProcess?.port) {
+        return `http://localhost:${selectedProcess.port}${trimmed}`;
+      }
+      return `http://localhost:3000${trimmed}`;
+    }
+
+    return `https://${trimmed}`;
   }
 
   async function runPostmanRequest() {
     setSendingRequest(true); setPostmanResponse(null);
     const startedAt = Date.now();
+    const targetUrl = resolveTargetUrl(draftRequest.path);
+
     try {
-      const response = await fetch(draftRequest.path, { method: draftRequest.method, headers: draftRequest.headers, body: ['GET', 'HEAD'].includes(draftRequest.method) ? undefined : draftRequest.body });
-      setPostmanResponse({ status: response.status, duration: Date.now() - startedAt, headers: Object.fromEntries(response.headers.entries()), body: await response.text() });
-      showToast('Request completed', 'success');
-    } catch (error) { showToast(error instanceof Error ? error.message : 'Request failed', 'error'); }
-    finally { setSendingRequest(false); }
+      let status = 200;
+      let durationMs = 0;
+      let resHeaders: Record<string, string> = {};
+      let bodyText = '';
+
+      if (activeWorkspace?.remoteWorkspaceId && activeTunnel) {
+        const response = await api.requests.execute(activeWorkspace.remoteWorkspaceId, activeTunnel.id, draftRequest.method, draftRequest.path, draftRequest.headers, draftRequest.body);
+        durationMs = Date.now() - startedAt;
+        status = response.status;
+        resHeaders = response.headers ?? {};
+        bodyText = decodeResponseBody(response.body);
+      } else {
+        // Try native Rust HTTP executor first to bypass CORS completely
+        try {
+          const res = await invoke<{ status: number; headers: Record<string, string>; body: string }>('execute_http_request', {
+            method: draftRequest.method,
+            url: targetUrl,
+            headers: draftRequest.headers || {},
+            body: draftRequest.body || null,
+          });
+          durationMs = Date.now() - startedAt;
+          status = res.status;
+          resHeaders = res.headers;
+          bodyText = res.body;
+        } catch {
+          // Web browser mode fallback
+          const response = await fetch(targetUrl, {
+            method: draftRequest.method,
+            headers: draftRequest.headers,
+            body: ['GET', 'HEAD'].includes(draftRequest.method) ? undefined : draftRequest.body,
+          });
+          durationMs = Date.now() - startedAt;
+          status = response.status;
+          resHeaders = Object.fromEntries(response.headers.entries());
+          bodyText = await response.text();
+        }
+      }
+
+      setPostmanResponse({ status, duration: durationMs, headers: resHeaders, body: bodyText });
+
+      const newLog: RequestLog = {
+        id: crypto.randomUUID(),
+        method: draftRequest.method,
+        path: targetUrl,
+        status,
+        durationMs,
+        headers: draftRequest.headers,
+        bodyPreview: draftRequest.body,
+        capturedAt: new Date().toISOString(),
+      };
+      setRequests((current) => [newLog, ...current].slice(0, 150));
+      showToast(`Request to ${targetUrl} completed (${status})`, 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Request failed', 'error');
+    } finally {
+      setSendingRequest(false);
+    }
   }
 
   function saveDraftRequest() {
-    const saved = { ...draftRequest, id: draftRequest.id === 'draft' ? crypto.randomUUID() : draftRequest.id, name: draftRequest.name.trim() || `${draftRequest.method} ${draftRequest.path}` };
+    const folder = draftRequest.collectionName || 'Default Collection';
+    const saved: SavedRequest = {
+      ...draftRequest,
+      id: draftRequest.id === 'draft' ? crypto.randomUUID() : draftRequest.id,
+      name: draftRequest.name.trim() || `${draftRequest.method} ${draftRequest.path}`,
+      collectionName: folder,
+    };
     setSavedRequests((current) => mergeRequests(current, [saved]));
-    setDraftRequest(saved); showToast('Request saved to collection', 'success');
+    setDraftRequest(saved);
+    showToast(`Request saved to "${folder}"`, 'success');
+  }
+
+  function deleteSavedRequest(id: string) {
+    setSavedRequests((current) => current.filter((r) => r.id !== id));
+    showToast('Request removed from collection', 'info');
+  }
+
+  function updateSavedRequests(next: SavedRequest[]) {
+    setSavedRequests(next);
   }
 
   function importStarterRequests() {
@@ -460,7 +782,19 @@ export default function App() {
 
   function updateDraftHeader(rawHeaders: string) { setDraftRequest((current) => ({ ...current, headers: parseHeaderText(rawHeaders) })); }
 
-  function updateWorkspaceNotes(notes: string) { if (!activeWorkspace) return; updateActiveWorkspace((ws) => ({ ...ws, notes })); }
+  function updateGuardrails(patch: Partial<Guardrails>) {
+    const nextGuardrails = { ...appSettings.guardrails, ...patch };
+    setAppSettings((current) => ({ ...current, guardrails: nextGuardrails }));
+    setWorkspaces((current) => current.map((ws) => ({ ...ws, guardrails: nextGuardrails })));
+  }
+
+  function updateWorkspaceSettings(workspaceId: string, patch: Partial<Pick<WorkspaceConfig, 'name' | 'notes'>>) {
+    setWorkspaces((current) =>
+      current.map((ws) => (ws.id === workspaceId ? { ...ws, ...patch } : ws)),
+    );
+    showToast('Workspace settings saved', 'success');
+  }
+
   function updateProjectRootPath(projectRootPath: string) {
     setAppSettings((current) => ({ ...current, defaultProjectRootPath: projectRootPath }));
     if (!activeWorkspace) return;
@@ -473,7 +807,28 @@ export default function App() {
     try {
       const files = await invoke<string[]>('scan_directory', { path: activeWorkspace.projectRootPath });
       const inferredLanguage = inferLanguageFromFiles(files);
-      updateActiveWorkspace((ws) => ({ ...ws, scannedFiles: files, languageHint: inferredLanguage }));
+      updateActiveWorkspace((ws) => {
+        const nextProfiles = ws.profiles.map((p) => {
+          const nextP = { ...p };
+          if (!nextP.directory || nextP.directory === 'unknown') {
+            nextP.directory = ws.projectRootPath;
+          }
+          if (!nextP.executable || nextP.executable === 'unknown') {
+            const lang = inferredLanguage.toLowerCase();
+            if (lang.includes('ts') || lang.includes('js')) nextP.executable = 'node';
+            else if (lang.includes('py')) nextP.executable = 'python';
+            else if (lang.includes('go')) nextP.executable = 'go';
+            else if (lang.includes('java')) nextP.executable = 'java';
+          }
+          return nextP;
+        });
+        return {
+          ...ws,
+          scannedFiles: files,
+          languageHint: inferredLanguage,
+          profiles: nextProfiles,
+        };
+      });
       showToast(`Scanned ${files.length} files. Language hint updated to ${inferredLanguage}.`, 'success');
       void discoverProcesses(true);
     } catch (error) { showToast(error instanceof Error ? error.message : 'Project scan failed', 'error'); }
@@ -482,53 +837,39 @@ export default function App() {
 
   function updateAppNotes(notes: string) { setAppSettings((current) => ({ ...current, notes })); }
 
-  const updateWorkspaceDomains = (newDomains: DomainRecord[]) => {
-    setDomains(newDomains);
-    updateActiveWorkspace((ws) => ({ ...ws, domains: newDomains }));
-  };
+  function updateTheme(theme: string) { setAppSettings((current) => ({ ...current, theme })); }
 
   async function addDomain() {
-    if (!activeWorkspace) return;
     if (!domainDraft.trim()) { showToast('Enter a domain name first', 'info'); return; }
     setBusyDomainId('new');
-    const newDomain: DomainRecord = {
-      id: `domain-${crypto.randomUUID()}`,
-      name: domainDraft.trim(),
-      verificationToken: `proxync-verification-${crypto.randomUUID().substring(0, 8)}`,
-      verified: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    updateWorkspaceDomains([newDomain, ...domains]);
-    setDomainDraft('');
-    showToast('Domain added. Configure DNS and then verify it.', 'success');
-    setBusyDomainId(null);
+    const wsId = activeWorkspace?.remoteWorkspaceId || activeWorkspace?.id || 'local';
+    try { const created = await api.domains.create(wsId, domainDraft.trim().toLowerCase()); setDomains((current) => [...current.filter((d) => d.id !== created.id), created]); setDomainDraft(''); showToast('Domain added successfully!', 'success'); }
+    catch (error) { showToast(error instanceof Error ? error.message : 'Unable to add domain', 'error'); }
+    finally { setBusyDomainId(null); }
   }
 
   async function verifyDomain(domainId: string) {
-    if (!activeWorkspace) return;
     setBusyDomainId(domainId);
-    const updated = domains.map((d) => (d.id === domainId ? { ...d, verified: true } : d));
-    updateWorkspaceDomains(updated);
-    showToast('Domain verification succeeded', 'success');
-    setBusyDomainId(null);
+    const wsId = activeWorkspace?.remoteWorkspaceId || activeWorkspace?.id || 'local';
+    try { const updated = await api.domains.verify(wsId, domainId); setDomains((current) => current.map((d) => (d.id === domainId ? updated : d))); showToast('Domain verification succeeded', 'success'); }
+    catch (error) { showToast(error instanceof Error ? error.message : 'Verification failed', 'error'); }
+    finally { setBusyDomainId(null); }
   }
 
   async function removeDomain(domainId: string) {
-    if (!activeWorkspace) return;
     setBusyDomainId(domainId);
-    const updated = domains.filter((d) => d.id !== domainId);
-    updateWorkspaceDomains(updated);
-    showToast('Domain removed', 'success');
-    setBusyDomainId(null);
+    const wsId = activeWorkspace?.remoteWorkspaceId || activeWorkspace?.id || 'local';
+    try { await api.domains.delete(wsId, domainId); setDomains((current) => current.filter((d) => d.id !== domainId)); showToast('Domain removed', 'success'); }
+    catch (error) { showToast(error instanceof Error ? error.message : 'Unable to remove domain', 'error'); }
+    finally { setBusyDomainId(null); }
   }
 
-  function selectProfile(profileId: string) {
-    if (!activeWorkspace) return;
-    updateActiveWorkspace((ws) => ({ ...ws, selectedProfileId: profileId }));
-    const matchingProcess = processes.find((p) => makeProfileId(p) === profileId);
-    if (matchingProcess) setSelectedProcessId(matchingProcess.id);
-    setMainView('process');
+  function clearTrafficLogs() {
+    setRequests([]);
+    if (activeWorkspace) {
+      updateActiveWorkspace((ws) => ({ ...ws, capturedRequests: [] }));
+    }
+    showToast('Traffic logs cleared', 'info');
   }
 
   function copyText(value: string, message: string) {
@@ -536,172 +877,351 @@ export default function App() {
   }
 
   /* ══════════════════════════════════════════════
-     RENDER — Redesigned Shell
+     RENDER — Reference-Matching Shell
      ══════════════════════════════════════════════ */
 
-  const viewTitle = mainView === 'lobby' ? 'Workspace Lobby'
-    : mainView === 'welcome' ? 'Overview'
-    : mainView === 'traffic' ? 'Traffic'
-    : mainView === 'postman' ? 'Postman'
-    : mainView === 'swagger' ? 'Swagger'
-    : mainView === 'settings' ? 'Settings'
-    : mainView === 'process' ? 'Process'
-    : 'Proxync';
+  const viewLabel = NAV_ITEMS.find((n) => n.view === mainView)?.label
+    ?? (mainView === 'process' ? 'Process' : mainView === 'postman' ? 'Postman' : mainView === 'observability' ? 'Observability' : 'Proxync');
 
   return (
-    <div className="mvp-shell">
-      {sidebarOpen && (
-        <div
-          className="sidebar-overlay"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
-        <div className="brand-block">
+    <div className="app-frame flex flex-col h-screen w-screen overflow-hidden bg-surface">
+      {/* ── Top Header Bar (48px) ── */}
+      <header
+        className="app-titlebar h-[48px] min-h-[48px] w-full flex items-center border-b border-outline-variant bg-surface px-4 justify-between select-none z-50 cursor-default"
+        onMouseDown={(e) => {
+          const target = e.target as HTMLElement;
+          if (
+            target.tagName !== 'BUTTON' &&
+            target.tagName !== 'INPUT' &&
+            target.tagName !== 'SELECT' &&
+            !target.closest('button') &&
+            !target.closest('input') &&
+            !target.closest('select')
+          ) {
+            void getCurrentWindow().startDragging();
+          }
+        }}
+      >
+        <div className="flex items-center gap-6">
+          <div className="app-brand flex items-center gap-2">
+            <img src="/logo.svg" className="w-5 h-5 object-contain select-none" alt="Logo" />
+            <span className="text-headline-sm font-bold text-on-surface">Proxync</span>
+          </div>
+          {viewLabel !== 'Explore' && (
+            <>
+              <span className="text-outline-variant">|</span>
+              <span className="text-body-md text-on-surface-variant">{viewLabel}</span>
+            </>
+          )}
+          <div className="app-search flex items-center bg-surface-container-low px-3 py-1 rounded border border-outline-variant">
+            <span className="material-symbols-outlined text-outline text-[18px] mr-2">search</span>
+            <input
+              type="text"
+              placeholder="Search workspaces..."
+              className="bg-transparent border-none focus:ring-0 focus:outline-none text-body-md w-48 placeholder:text-outline text-on-surface"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="window-controls flex items-center h-full">
           <button
-            className="sidebar-toggle-btn"
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            aria-label="Toggle navigation menu"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              void getCurrentWindow().minimize();
+            }}
+            className="window-control window-control-hover text-on-surface-variant hover:text-on-surface cursor-pointer"
+            title="Minimize"
+            aria-label="Minimize"
           >
-            {Icons.menu}
+            <span className="material-symbols-outlined text-[12px]">remove</span>
           </button>
-          <img className="brand-mark" src="/logo.svg" alt="Proxync Logo" />
-          <div>
-            <div className="brand-name">Proxync</div>
-            <div className="brand-caption">workspace studio</div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              void getCurrentWindow().toggleMaximize();
+            }}
+            className="window-control window-control-hover text-on-surface-variant hover:text-on-surface cursor-pointer"
+            title="Maximize"
+            aria-label="Maximize"
+          >
+            <span className="material-symbols-outlined text-[11px]">check_box_outline_blank</span>
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              void getCurrentWindow().close();
+            }}
+            className="window-control close-hover text-on-surface-variant cursor-pointer"
+            title="Close"
+            aria-label="Close"
+          >
+            <span className="material-symbols-outlined text-[13px]">close</span>
+          </button>
+        </div>
+      </header>
+
+      {/* ── Body: Sidebar + Content ── */}
+      <div className="flex flex-1 min-h-0">
+        {/* ── Sidebar (260px) ── */}
+        <aside className="app-sidebar w-[260px] min-w-[260px] flex flex-col py-4 bg-surface-container-low border-r border-outline-variant z-40">
+          <div className="px-6 mb-6">
+            <h2 className="text-headline-sm font-bold text-primary">Proxync Engine</h2>
+            <p className="text-code-sm text-on-surface-variant opacity-60">v0.2.0-stable</p>
           </div>
-        </div>
 
-        <div className="workspace-summary">
-          <span className="workspace-summary-label">Active workspace</span>
-          <strong>{activeWorkspace?.name ?? 'No active workspace'}</strong>
-          <small>{activeWorkspace?.languageHint ?? 'Create or select a workspace to begin'}</small>
-          <button className="sidebar-action secondary" onClick={() => { setMainView('lobby'); setSidebarOpen(false); }}>
-            Open workspace lobby
-          </button>
-        </div>
-
-        <div className={(activeTunnel || sharingPort) ? 'sidebar-tunnel-status active' : 'sidebar-tunnel-status'}>
-          <span className={(activeTunnel || sharingPort) ? 'live-ring active' : 'live-ring'} />
-          <span className="sidebar-tunnel-text">
-            {activeTunnel
-              ? `🌐 ${activeTunnel.publicUrl}`
-              : sharingPort
-                ? `LAN :${sharingPort}`
-                : 'No active tunnel'}
-          </span>
-        </div>
-
-        <nav className="sidebar-nav" aria-label="Primary">
-          {NAV_ITEMS.map((item) => (
-            <button
-              key={item.view}
-              className={mainView === item.view ? 'active' : ''}
-              disabled={item.view !== 'lobby' && !activeWorkspace}
-              onClick={() => { setMainView(item.view); setSidebarOpen(false); }}
+          {/* Active Workspace Selector Section */}
+          <div className="px-6 mb-6">
+            <p className="text-[10px] font-bold text-on-surface-variant/40 tracking-wider uppercase mb-2">Active Workspace</p>
+            <div
+              onClick={() => setMainView('lobby')}
+              className="workspace-selector flex items-center justify-between border border-outline-variant bg-surface-container rounded-lg px-3 py-2 cursor-pointer hover:bg-surface-container-high transition-all text-xs text-on-surface select-none"
             >
-              {item.icon}
-              {item.label}
-            </button>
-          ))}
-        </nav>
-
-        <button
-          className="sidebar-action secondary"
-          disabled={!activeWorkspace}
-          onClick={() => { setDiscoverOpen(true); setSidebarOpen(false); }}
-        >
-          {Icons.search} Discover process
-        </button>
-
-        <div className="sidebar-section">
-          <div className="sidebar-section-title">
-            Live processes
-            <button onClick={() => { void discoverProcesses(true); }} disabled={discovering}>
-              {Icons.refresh} {discovering ? 'Scanning' : 'Rescan'}
-            </button>
+              <div className="flex items-center gap-2 truncate">
+                <span className="w-1.5 h-1.5 rounded-full bg-secondary shrink-0" />
+                <span className="truncate font-semibold">{activeWorkspace?.name ?? 'Select Workspace'}</span>
+              </div>
+              <span className="material-symbols-outlined text-[16px] text-on-surface-variant">unfold_more</span>
+            </div>
           </div>
-          <div className="process-list">
-            {processes.length === 0 ? (
-              <div className="sidebar-empty">No local dev servers found yet.</div>
-            ) : (
-              processes.map((process) => (
+
+          {/* Menu Items Section */}
+          <div className="px-6 mb-2">
+            <p className="text-[10px] font-bold text-on-surface-variant/40 tracking-wider uppercase">Menu</p>
+          </div>
+
+          <nav className="app-nav flex-1 space-y-1">
+            {NAV_ITEMS.map((item) => {
+              const isSelected = mainView === item.view;
+              const isDisabled = item.view !== 'lobby' && item.view !== 'settings' && item.view !== 'docs' && !activeWorkspace;
+              return (
                 <button
-                  key={process.id}
-                  className={process.id === selectedProcessId ? 'process-row active' : 'process-row'}
-                  onClick={() => { setSelectedProcessId(process.id); setMainView('process'); setSidebarOpen(false); }}
+                  key={item.view}
+                  disabled={isDisabled}
+                  className={`nav-item flex items-center gap-3 px-6 py-2.5 w-full text-left transition-colors font-label-md text-label-md border-l-2 ${isSelected
+                    ? 'active text-on-surface border-secondary-container bg-surface-container-high'
+                    : 'text-on-surface-variant hover:bg-surface-container-highest border-l-2 border-transparent'
+                    } ${isDisabled ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'cursor-pointer'}`}
+                  onClick={() => {
+                    if (item.view === 'settings') {
+                      setSettingsSection('general');
+                    }
+                    setMainView(item.view);
+                  }}
                 >
-                  <span className="status-dot" />
-                  <span>
-                    <strong>{process.name}</strong>
-                    <small>:{process.port}</small>
+                  <span className="material-symbols-outlined">{item.icon}</span>
+                  {item.label}
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="pt-4 border-t border-outline-variant/30 space-y-1">
+            <button onClick={() => openUrl("https://github.com/Inilax/Proxync/issues")}
+              className="nav-item flex items-center gap-3 px-6 py-2.5 w-full text-left text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md cursor-pointer">
+              <span className="material-symbols-outlined">help</span> Support
+            </button>
+            <div className="px-6 py-4 mt-2">
+              <button
+                onClick={() => setAuthDialogOpen(true)}
+                className="btn-primary flex items-center justify-center gap-2 px-4 py-2.5 w-full rounded-lg text-xs font-bold font-label-md cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[18px]">lock_open</span>
+                Sign In
+              </button>
+            </div>
+          </div>
+        </aside>
+
+        <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+          {/* ── Main Content Area ── */}
+          <main className="app-main flex-1 min-w-0 overflow-y-auto p-8 bg-surface-container-lowest">
+            {mainView === 'lobby' && (
+              <LobbyView workspaces={workspaces} activeWorkspaceId={activeWorkspaceId} newWorkspaceName={newWorkspaceName} onWorkspaceNameChange={setNewWorkspaceName} onCreateWorkspace={createWorkspace} onSelectWorkspace={selectWorkspace} onDeleteWorkspace={initiateDeleteWorkspace} onPurgeWorkspace={purgeWorkspace} onUpdateWorkspace={updateWorkspaceSettings} searchQuery={searchQuery} requests={requests} />
+            )}
+            {mainView === 'welcome' && (
+              <WelcomeView
+                tunnels={tunnels}
+                requests={requests}
+                activeTunnel={activeTunnel}
+                onDiscover={() => setDiscoverOpen(true)}
+                onNavigateToCustomDomains={() => {
+                  setSettingsSection('domains');
+                  setMainView('settings');
+                }}
+                onStopTunnel={stopTunnel}
+              />
+            )}
+            {mainView === 'process' && (
+              <ProcessView workspace={activeWorkspace} process={selectedProcess} profile={selectedProfile} tunnel={activeTunnel} sharingPort={sharingPort} suggestions={starterSuggestions} hasVerifiedDomain={domains.some((d) => d.verified)} localIp={localIp} onDiscover={() => setDiscoverOpen(true)} onShare={initiatePublicShare} onShareLocal={shareProcessLocal} onStop={stopTunnel} onStopLocalShare={() => setSharingPort(null)} onCopy={copyText} onImportStarterRequests={importStarterRequests} />
+            )}
+            {mainView === 'traffic' && (
+              <TrafficView requests={requests} activeTunnel={activeTunnel} onOpen={openRequestDetail} onSendToPostman={sendToPostman} onClear={clearTrafficLogs} />
+            )}
+            {mainView === 'postman' && (
+              <PostmanView draft={draftRequest} savedRequests={savedRequests} response={postmanResponse} sending={sendingRequest} starterSuggestions={starterSuggestions} activeTunnel={activeTunnel} onDraftChange={setDraftRequest} onHeaderTextChange={updateDraftHeader} onRun={runPostmanRequest} onSave={saveDraftRequest} onLoad={setDraftRequest} onImportStarterRequests={importStarterRequests} onDeleteRequest={deleteSavedRequest} onUpdateSavedRequests={updateSavedRequests} />
+            )}
+            {mainView === 'swagger' && (
+              <SwaggerView document={openApiDocument} swaggerPanel={swaggerPanel} workspace={activeWorkspace} languageHint={effectiveLanguageHint} onChangePanel={setSwaggerPanel} onCopy={() => copyText(JSON.stringify(openApiDocument, null, 2), 'OpenAPI JSON copied')} />
+            )}
+            {mainView === 'docs' && (
+              <DocsView />
+            )}
+            {mainView === 'observability' && (
+              <ObservabilityView workspace={activeWorkspace} process={selectedProcess} tunnel={activeTunnel} requestCount={requests.length} />
+            )}
+            {mainView === 'settings' && (
+              <SettingsView workspace={activeWorkspace} appSettings={appSettings} domains={domains} domainDraft={domainDraft} loadingDomains={loadingDomains} busyDomainId={busyDomainId} scanningProject={scanningProject} onUpdateGuardrails={updateGuardrails} onUpdateAppNotes={updateAppNotes} onUpdateProjectRootPath={updateProjectRootPath} onScanProjectFolder={scanProjectFolder} onDomainDraftChange={setDomainDraft} onAddDomain={addDomain} onVerifyDomain={verifyDomain} onRemoveDomain={removeDomain} onUpdateTheme={updateTheme} initialSection={settingsSection} />
+            )}
+          </main>
+
+          {/* ── Global Console Drawer ── */}
+          {terminalOpen && (
+            <div
+              style={{ height: `${terminalHeight}px` }}
+              className="w-full bg-black border-t border-outline-variant flex flex-col overflow-hidden relative shrink-0 z-40"
+            >
+              {/* Resize Handle */}
+              <div
+                onMouseDown={startResize}
+                className="absolute top-0 left-0 right-0 h-1 cursor-ns-resize hover:bg-primary/40 transition-colors z-50"
+              />
+
+              {/* Console Header */}
+              <div className="flex items-center justify-between px-4 py-1.5 bg-surface-container-low border-b border-outline-variant/30 select-none shrink-0">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary text-[16px]">terminal</span>
+                  <span className="font-label-md text-[10px] uppercase tracking-widest text-primary font-bold">
+                    Console Output
                   </span>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span
+                    onClick={() => setRequests([])}
+                    className="material-symbols-outlined text-on-surface-variant text-[16px] cursor-pointer hover:text-on-surface"
+                    title="Clear Logs"
+                  >
+                    delete
+                  </span>
+                  <span
+                    onClick={() => {
+                      const logText = requests.map(req => `[${req.method}] ${req.path} — ${req.status || '200'}`).join('\n');
+                      navigator.clipboard.writeText(logText);
+                      showToast('Console logs copied!', 'success');
+                    }}
+                    className="material-symbols-outlined text-on-surface-variant text-[16px] cursor-pointer hover:text-on-surface"
+                    title="Copy Logs"
+                  >
+                    content_copy
+                  </span>
+                  <span
+                    onClick={() => setTerminalOpen(false)}
+                    className="material-symbols-outlined text-on-surface-variant text-[16px] cursor-pointer hover:text-on-surface"
+                    title="Close Console"
+                  >
+                    close
+                  </span>
+                </div>
+              </div>
 
-        <div className="sidebar-section">
-          <div className="sidebar-section-title">Saved shares</div>
-          <div className="workspace-list">
-            {activeWorkspace?.profiles.length ? (
-              activeWorkspace.profiles.map((profile) => (
-                <button
-                  key={profile.id}
-                  className={profile.id === activeWorkspace.selectedProfileId ? 'workspace-row active' : 'workspace-row'}
-                  onClick={() => { selectProfile(profile.id); setSidebarOpen(false); }}
-                >
-                  <strong>{profile.processName}</strong>
-                  <small>{profile.framework} | {profile.languageHint}</small>
-                </button>
-              ))
-            ) : (
-              <div className="sidebar-empty">Share a process once and it will stay here.</div>
-            )}
-          </div>
+              {/* Console logs */}
+              <div className="flex-1 overflow-y-auto p-4 font-mono text-[12px] leading-relaxed text-on-surface select-text bg-[#030303]">
+                {requests.length === 0 ? (
+                  <div className="space-y-1 opacity-75">
+                    <div className="flex gap-3">
+                      <span className="text-outline opacity-50 shrink-0">12:04:10</span>
+                      <span className="text-secondary shrink-0">[SYS]</span>
+                      <span>Initializing Proxync Core v2.4.0...</span>
+                    </div>
+                    <div className="flex gap-3">
+                      <span className="text-outline opacity-50 shrink-0">12:04:12</span>
+                      <span className="text-primary shrink-0">[RUN]</span>
+                      <span className="text-primary">scanning local dev servers...</span>
+                    </div>
+                    <div className="flex gap-3">
+                      <span className="text-outline opacity-50 shrink-0">12:04:14</span>
+                      <span className="text-secondary shrink-0">[OK]</span>
+                      <span className="font-bold">Ready to expose local tunnels.</span>
+                    </div>
+                    {tunnels.filter(t => t.status === 'ACTIVE').map((tunnel) => (
+                      <div key={tunnel.id} className="flex gap-3">
+                        <span className="text-outline opacity-50 shrink-0">12:04:14</span>
+                        <span className="text-on-surface-variant shrink-0">[INF]</span>
+                        <span className="text-primary underline cursor-pointer">{tunnel.publicUrl}</span>
+                      </div>
+                    ))}
+                    <div className="flex gap-3 pt-2">
+                      <span className="text-primary">❯</span>
+                      <span className="border-r-2 border-primary animate-pulse h-4 w-[2px]"></span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {requests.slice(-50).map((req) => {
+                      const isSuccess = Number(req.status) >= 200 && Number(req.status) < 400;
+                      const logTime = req.capturedAt ? new Date(req.capturedAt).toTimeString().split(' ')[0] : '12:04:10';
+                      return (
+                        <div key={req.id} className="flex gap-3">
+                          <span className="text-outline opacity-50 shrink-0">
+                            {logTime}
+                          </span>
+                          <span className={`shrink-0 font-bold ${req.method === 'GET' ? 'text-primary' : 'text-secondary'}`}>
+                            [{req.method}]
+                          </span>
+                          <span className="text-on-surface-variant shrink-0 truncate max-w-md">{req.path}</span>
+                          <span className={`shrink-0 ${isSuccess ? 'text-secondary' : 'text-error'}`}>
+                            — {req.status || '200'}
+                          </span>
+                          {req.durationMs && (
+                            <span className="text-outline shrink-0">({req.durationMs}ms)</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                    <div className="flex gap-3 pt-2">
+                      <span className="text-primary">❯</span>
+                      <span className="border-r-2 border-primary animate-pulse h-4 w-[2px]"></span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
+      </div>
 
-        <div className="local-card">
-          <span>{activeWorkspace?.name ?? context?.workspace?.name ?? 'No Workspace'}</span>
-          <small>Ready</small>
-        </div>
-      </aside>
+      {/* ── Bottom Status Footer (24px) ── */}
+      <footer className="app-footer h-6 min-h-6 w-full flex justify-between items-center px-3 border-t border-outline-variant bg-surface-container-lowest text-code-sm select-none z-50">
+        <div className="flex items-center gap-4 text-secondary">
+          <span className="flex items-center gap-1">
+            <span className={`w-2 h-2 rounded-full ${activeTunnel ? 'bg-primary animate-pulse' : 'bg-outline'}`} />
+            {activeTunnel ? `Connected: ${new URL(activeTunnel.publicUrl).hostname}` : 'Disconnected'}
+          </span>
+          <span className="text-outline">|</span>
+          <span className="hover:text-primary cursor-default transition-colors">Port {activeTunnel?.localPort ?? '—'}</span>
+          <span className="hover:text-primary cursor-default transition-colors">Latency: 14ms</span>
 
-      <section className="workspace-shell">
-        <div className="mobile-nav-bar">
-          <button className="sidebar-toggle-btn" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Toggle navigation menu">
-            {Icons.menu}
+          <span className="text-outline">|</span>
+          <button
+            onClick={() => setTerminalOpen(!terminalOpen)}
+            className={`flex items-center gap-1 cursor-pointer transition-colors px-2 py-0.5 rounded ${terminalOpen ? 'bg-primary/20 text-primary font-bold' : 'hover:text-primary text-outline'
+              }`}
+          >
+            <span className="material-symbols-outlined text-[14px]">terminal</span>
+            Console
           </button>
-          <span className="mobile-nav-title">{viewTitle}</span>
-          <div className={(activeTunnel || sharingPort) ? 'live-ring active' : 'live-ring'} style={{ flexShrink: 0 }} />
         </div>
+        <div className="flex items-center gap-4 text-on-surface-variant opacity-60">
+          <span>Encoding: UTF-8</span>
+          <span className="text-primary font-bold">{bootstrapError ? 'OFFLINE' : 'STABLE'}</span>
+        </div>
+      </footer>
 
-        <main className="content-stage">
-          {mainView === 'lobby' && (
-            <LobbyView workspaces={workspaces} activeWorkspaceId={activeWorkspaceId} newWorkspaceName={newWorkspaceName} onWorkspaceNameChange={setNewWorkspaceName} onCreateWorkspace={createWorkspace} onSelectWorkspace={selectWorkspace} onDeleteWorkspace={deleteWorkspace} />
-          )}
-          {mainView === 'welcome' && (
-            <WelcomeView workspace={activeWorkspace} processCount={processes.length} tunnelCount={tunnels.filter((t) => t.status === 'ACTIVE').length} requestCount={requests.length} onDiscover={() => setDiscoverOpen(true)} onUpdateNotes={updateWorkspaceNotes} />
-          )}
-          {mainView === 'process' && (
-            <ProcessView workspace={activeWorkspace} process={selectedProcess} profile={selectedProfile} tunnel={activeTunnel} sharingPort={sharingPort} suggestions={starterSuggestions} hasVerifiedDomain={domains.some((d) => d.verified)} localIp={localIp} onDiscover={() => setDiscoverOpen(true)} onShare={initiatePublicShare} onShareLocal={shareProcessLocal} onStop={stopTunnel} onStopLocalShare={() => setSharingPort(null)} onCopy={copyText} onImportStarterRequests={importStarterRequests} />
-          )}
-          {mainView === 'traffic' && (
-            <TrafficView requests={requests} activeTunnel={activeTunnel} onOpen={openRequestDetail} onSendToPostman={sendToPostman} />
-          )}
-          {mainView === 'postman' && (
-            <PostmanView draft={draftRequest} savedRequests={savedRequests} response={postmanResponse} sending={sendingRequest} starterSuggestions={starterSuggestions} activeTunnel={activeTunnel} onDraftChange={setDraftRequest} onHeaderTextChange={updateDraftHeader} onRun={runPostmanRequest} onSave={saveDraftRequest} onLoad={setDraftRequest} onImportStarterRequests={importStarterRequests} />
-          )}
-          {mainView === 'swagger' && (
-            <SwaggerView document={openApiDocument} swaggerPanel={swaggerPanel} workspace={activeWorkspace} languageHint={effectiveLanguageHint} onChangePanel={setSwaggerPanel} onCopy={() => copyText(JSON.stringify(openApiDocument, null, 2), 'OpenAPI JSON copied')} />
-          )}
-          {mainView === 'settings' && (
-            <SettingsView workspace={activeWorkspace} appSettings={appSettings} domains={domains} domainDraft={domainDraft} busyDomainId={busyDomainId} activeTunnel={activeTunnel} scanningProject={scanningProject} onUpdateAppNotes={updateAppNotes} onUpdateProjectRootPath={updateProjectRootPath} onScanProjectFolder={scanProjectFolder} onDomainDraftChange={setDomainDraft} onAddDomain={addDomain} onVerifyDomain={verifyDomain} onRemoveDomain={removeDomain} />
-          )}
-        </main>
-      </section>
+      {/* ── Overlays & Dialogs ── */}
+      {panelView && <CompanionPanel panel={panelView} onClose={() => setPanelView(null)} />}
 
       {discoverOpen && (
         <DiscoverDialog processes={processes} discovering={discovering} sharingPort={sharingPort} onClose={() => setDiscoverOpen(false)} onRefresh={discoverProcesses} onShare={initiatePublicShare} onShareLocal={shareProcessLocal} />
@@ -715,7 +1235,7 @@ export default function App() {
           onConfirm={(selectedOption, ltSubdomain) => {
             if (selectedOption === 'localtunnel') { void shareProcessLocaltunnel(sharingProcessCandidate, ltSubdomain); }
             else if (selectedOption === 'cloudflare') { void shareProcessCloudflare(sharingProcessCandidate); }
-            else { void shareProcess(sharingProcessCandidate, selectedOption); }
+            else { void shareProcess(sharingProcessCandidate, selectedOption === 'default' ? undefined : selectedOption); }
             setSharingProcessCandidate(null);
           }}
         />
@@ -723,6 +1243,31 @@ export default function App() {
 
       {selectedRequest && (
         <RequestDetailDialog request={selectedRequest} onClose={() => setSelectedRequest(null)} onReplay={replayRequest} onSendToPostman={sendToPostman} />
+      )}
+
+      {deletingWorkspace && (
+        <ConfirmDeleteDialog
+          workspaceName={deletingWorkspace.name}
+          onClose={() => setDeletingWorkspace(null)}
+          onConfirm={() => confirmDeleteWorkspace(deletingWorkspace.id)}
+        />
+      )}
+
+      {authDialogOpen && (
+        <div className="dialog-backdrop glass" onClick={() => setAuthDialogOpen(false)}>
+          <section className="workspace-settings-dialog slide-up max-w-sm text-center p-8 flex flex-col items-center gap-4" onClick={(e) => e.stopPropagation()}>
+            <div className="w-16 h-16 bg-primary/20 text-primary rounded-full flex items-center justify-center mb-2 animate-pulse">
+              <span className="material-symbols-outlined text-[36px]">lock_person</span>
+            </div>
+            <h2 className="text-xl font-bold text-on-surface">Coming Soon</h2>
+            <p className="text-xs text-on-surface-variant leading-relaxed">
+              Sign in, team authentication, and cloud workspace syncing are currently under development. Stay tuned!
+            </p>
+            <button className="btn-primary w-full mt-2 cursor-pointer" onClick={() => setAuthDialogOpen(false)}>
+              Got it
+            </button>
+          </section>
+        </div>
       )}
 
       <ToastContainer />
@@ -747,13 +1292,62 @@ async function readNativeProcesses(bypassCache: boolean = false): Promise<Proces
   }));
 }
 
-function createWorkspaceConfig(name: string, defaultProjectRootPath = ''): WorkspaceConfig {
+async function measureLocalPortLatency(port: number): Promise<number> {
+  const start = performance.now();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 1000);
+
+  try {
+    await fetch(`http://127.0.0.1:${port}`, {
+      method: 'GET',
+      mode: 'no-cors',
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return performance.now() - start;
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    return Infinity;
+  }
+}
+
+function hydrateStoredWorkspaces(remoteWorkspace: { id: string; name: string } | null, defaultGuardrails: Guardrails, defaultProjectRootPath: string) {
+  const stored = localStorage.getItem(LOCAL_WORKSPACES_KEY);
+  let parsed = stored ? (JSON.parse(stored) as WorkspaceConfig[]) : [];
+  if (remoteWorkspace) {
+    const exists = parsed.some((w) => w.remoteWorkspaceId === remoteWorkspace.id);
+    if (!exists) {
+      const initial = createWorkspaceConfig(remoteWorkspace.name, remoteWorkspace.id, defaultGuardrails, defaultProjectRootPath);
+      parsed = [initial, ...parsed];
+      localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify(parsed));
+    }
+  }
+  const activeWorkspaceId = localStorage.getItem(ACTIVE_WORKSPACE_KEY) ?? (parsed.length > 0 ? parsed[0].id : null);
+  return { workspaces: parsed, activeWorkspaceId };
+}
+
+function createWorkspaceConfig(name: string, remoteWorkspaceId?: string, defaultGuardrails: Guardrails = DEFAULT_GUARDRAILS, defaultProjectRootPath = ''): WorkspaceConfig {
   return {
-    id: crypto.randomUUID(), name, profiles: [], savedRequests: [],
-    capturedRequests: [], domains: [], languageHint: 'Undetermined',
+    id: crypto.randomUUID(), name, remoteWorkspaceId, profiles: [], savedRequests: [],
+    capturedRequests: [], guardrails: { ...defaultGuardrails }, languageHint: 'Undetermined',
     selectedProfileId: undefined, projectRootPath: defaultProjectRootPath,
     scannedFiles: [], notes: '', lastSwaggerGeneratedAt: new Date().toISOString(),
   };
+}
+
+function loadAppSettings(): AppSettings {
+  const stored = localStorage.getItem(APP_SETTINGS_KEY);
+  if (!stored) return { ...DEFAULT_APP_SETTINGS, guardrails: { ...DEFAULT_GUARDRAILS } };
+  try {
+    const parsed = JSON.parse(stored) as Partial<AppSettings>;
+    return {
+      guardrails: { ...DEFAULT_GUARDRAILS, ...(parsed.guardrails ?? {}) },
+      defaultProjectRootPath: parsed.defaultProjectRootPath ?? '',
+      notes: parsed.notes ?? '',
+      theme: parsed.theme ?? 'slate',
+    };
+  } catch { return { ...DEFAULT_APP_SETTINGS, guardrails: { ...DEFAULT_GUARDRAILS } }; }
 }
 
 function buildStarterRequests(process: ProcessCandidate): SavedRequest[] {
@@ -816,7 +1410,7 @@ function inferLanguageFromFiles(files: string[]) {
   return labels[winner] ?? 'Undetermined';
 }
 
-function buildOpenApi(requests: RequestLog[], savedRequests: SavedRequest[], activeTunnel: Tunnel | null, languageHint: string): Record<string, unknown> {
+function buildOpenApi(requests: RequestLog[], savedRequests: SavedRequest[], activeTunnel: Tunnel | null, languageHint: string, guardrails: Guardrails): Record<string, unknown> {
   const paths: Record<string, Record<string, unknown>> = {};
   for (const item of [...requests, ...savedRequests]) {
     const path = normalizePath(item.path);
@@ -826,7 +1420,7 @@ function buildOpenApi(requests: RequestLog[], savedRequests: SavedRequest[], act
   }
   return {
     openapi: '3.1.0',
-    info: { title: 'Proxync generated API', version: '0.1.0', description: `Language hint: ${languageHint}.` },
+    info: { title: 'Proxync generated API', version: '0.1.0', description: `Language hint: ${languageHint}. PII redaction: ${guardrails.piiRedaction ? 'enabled' : 'disabled'}.` },
     servers: [{ url: activeTunnel?.publicUrl ?? 'http://localhost' }],
     paths,
   };
@@ -838,4 +1432,7 @@ function normalizePath(path: string) {
   catch { return path.startsWith('/') ? path : `/${path}`; }
 }
 
-
+function decodeResponseBody(value: string | undefined) {
+  if (!value) return '';
+  try { return atob(value); } catch { return value; }
+}
