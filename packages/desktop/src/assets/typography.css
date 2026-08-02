@@ -1,0 +1,103 @@
+/* ══════════════════════════════════════════════════════════════════════
+   PROXYNC CENTRALIZED TYPOGRAPHY SYSTEM & FONT TOKENS (typography.css)
+   Font Family: Nunito Sans + JetBrains Mono
+   Base Body Scale: 15px (Enhanced High-DPI Readability & Accessibility)
+   ══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Font Family Tokens ── */
+  --app-font-sans: 'Nunito Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --app-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Consolas, monospace;
+
+  /* ── Increased Readable Font Sizes ── */
+  --app-font-size-xs: 13px;
+  --app-font-size-sm: 14px;
+  --app-font-size-base: 15px; /* Enhanced Base */
+  --app-font-size-md: 17px;
+  --app-font-size-lg: 20px;
+  --app-font-size-xl: 24px;
+  --app-font-size-2xl: 30px;
+  --app-font-size-3xl: 36px;
+
+  /* ── Line Heights ── */
+  --app-line-height-tight: 1.25;
+  --app-line-height-normal: 1.55;
+  --app-line-height-relaxed: 1.7;
+
+  /* ── Font Weights ── */
+  --app-weight-light: 300;
+  --app-weight-regular: 400;
+  --app-weight-medium: 500;
+  --app-weight-semibold: 600;
+  --app-weight-bold: 700;
+  --app-weight-extrabold: 800;
+}
+
+/* Base Body Typography Rules */
+body, html {
+  font-family: var(--app-font-sans);
+  font-size: var(--app-font-size-base);
+  line-height: var(--app-line-height-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Global Font Utility Scale */
+.text-display-sm {
+  font-family: var(--app-font-sans);
+  font-size: var(--app-font-size-2xl);
+  line-height: 38px;
+  font-weight: var(--app-weight-extrabold);
+  letter-spacing: -0.015em;
+}
+
+.text-headline-md {
+  font-family: var(--app-font-sans);
+  font-size: var(--app-font-size-xl);
+  line-height: 32px;
+  font-weight: var(--app-weight-bold);
+  letter-spacing: -0.01em;
+}
+
+.text-headline-sm {
+  font-family: var(--app-font-sans);
+  font-size: var(--app-font-size-lg);
+  line-height: 28px;
+  font-weight: var(--app-weight-semibold);
+}
+
+.text-body-lg {
+  font-family: var(--app-font-sans);
+  font-size: var(--app-font-size-md);
+  line-height: 26px;
+  font-weight: var(--app-weight-regular);
+}
+
+.text-body-md {
+  font-family: var(--app-font-sans);
+  font-size: var(--app-font-size-base);
+  line-height: 24px;
+  font-weight: var(--app-weight-regular);
+}
+
+.text-body-sm {
+  font-family: var(--app-font-sans);
+  font-size: var(--app-font-size-sm);
+  line-height: 22px;
+  font-weight: var(--app-weight-regular);
+}
+
+.text-label-md {
+  font-family: var(--app-font-mono);
+  font-size: var(--app-font-size-xs);
+  line-height: 20px;
+  font-weight: var(--app-weight-semibold);
+}
+
+.text-code-sm {
+  font-family: var(--app-font-mono);
+  font-size: var(--app-font-size-sm);
+  line-height: 22px;
+  font-weight: var(--app-weight-regular);
+}
