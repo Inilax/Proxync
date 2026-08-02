@@ -85,6 +85,10 @@ export function Hero() {
             </Button>
           </div>
 
+          <p className="mt-4 font-mono text-xs text-on-surface-muted animate-fade-up [animation-delay:320ms]">
+            Version {release.tagName}&nbsp;&middot;&nbsp;Windows x64 setup &middot; macOS &amp; Linux coming soon
+          </p>
+
           <div className="mt-10 grid w-full max-w-md grid-cols-3 divide-x divide-outline-variant/20 border-t border-outline-variant/20 pt-6 animate-fade-up [animation-delay:400ms]">
             {STATS.map((stat) => (
               <div key={stat.label} className="flex flex-col gap-1.5 px-4 first:pl-0">
