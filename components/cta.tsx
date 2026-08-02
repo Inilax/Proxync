@@ -3,9 +3,11 @@
 import { Download, Star } from "lucide-react";
 import { Button, Container, Eyebrow } from "@/components/ui";
 import { DOWNLOAD_URL, GITHUB_URL } from "@/lib/links";
+import { useLatestRelease } from "@/lib/releases";
 import { useCloudflareLatency } from "./latency";
 
 export function Cta() {
+  const release = useLatestRelease();
   const latency = useCloudflareLatency();
   const latencyLabel =
     latency.status === "ok"
@@ -52,7 +54,7 @@ export function Cta() {
               <Button
                 variant="primary"
                 size="lg"
-                href={DOWNLOAD_URL}
+                href={release.downloadUrl}
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -72,7 +74,7 @@ export function Cta() {
             </div>
 
             <p className="mt-6 font-mono text-xs text-on-surface-muted">
-              v0.1.7 &mdash; Windows x64 installer · macOS · Linux (soon)
+              {release.tagName} &mdash; Windows x64 installer · macOS · Linux (soon)
             </p>
 
             <div className="mt-10 flex flex-wrap items-center justify-center gap-2">

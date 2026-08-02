@@ -3,6 +3,7 @@
 import { Download, Star } from "lucide-react";
 import { Button, Container } from "@/components/ui";
 import { DOWNLOAD_URL, GITHUB_URL } from "@/lib/links";
+import { useLatestRelease } from "@/lib/releases";
 import { AppMockup } from "./app-mockup";
 import { useCloudflareLatency } from "./latency";
 
@@ -13,6 +14,7 @@ const STATS = [
 ];
 
 export function Hero() {
+  const release = useLatestRelease();
   const latency = useCloudflareLatency();
   const latencyValue =
     latency.status === "ok"
@@ -45,7 +47,7 @@ export function Hero() {
           <div className="animate-fade-up">
             <span className="inline-flex items-center gap-2 rounded-full border border-outline-variant/40 bg-surface-container-low px-3 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-primary">
               <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse-dot" />
-                Version 0.1.7 — Developer Tunneling Workspace Studio
+              Developer Tunneling Workspace Studio
             </span>
           </div>
 
@@ -62,14 +64,14 @@ export function Hero() {
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-4 animate-fade-up [animation-delay:240ms]">
             <Button
-              href={DOWNLOAD_URL}
+              href={release.downloadUrl}
               variant="primary"
               size="lg"
               target="_blank"
               rel="noopener noreferrer"
             >
               <Download className="h-4 w-4" />
-              Download for Windows / macOS / Linux
+              Download for Windows
             </Button>
             <Button
               href={GITHUB_URL}
@@ -82,10 +84,6 @@ export function Hero() {
               Star on GitHub
             </Button>
           </div>
-
-          <p className="mt-4 font-mono text-xs text-on-surface-muted animate-fade-up [animation-delay:320ms]">
-            v0.1.7 — Windows x64 installer · macOS · Linux (soon)
-          </p>
 
           <div className="mt-10 grid w-full max-w-md grid-cols-3 divide-x divide-outline-variant/20 border-t border-outline-variant/20 pt-6 animate-fade-up [animation-delay:400ms]">
             {STATS.map((stat) => (
