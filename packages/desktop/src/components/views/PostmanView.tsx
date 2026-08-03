@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import type { SavedRequest, PostmanResponse, Tunnel } from './SharedComponents';
 import { formatHeaders } from './SharedComponents';
 import { showToast } from '../../lib/toast';
+import { importSwaggerToSavedRequests, importPostmanToOpenApi } from '../../lib/openApiGenerator';
 
 export function PostmanView({
   draft,
@@ -61,6 +62,27 @@ export function PostmanView({
 
   const [newFolderNameInput, setNewFolderNameInput] = useState<string>('');
   const [isCreatingFolder, setIsCreatingFolder] = useState<boolean>(false);
+  const [importSwaggerModalOpen, setImportSwaggerModalOpen] = useState<boolean>(false);
+  const [importSwaggerText, setImportSwaggerText] = useState<string>('');
+
+  const handleImportSwaggerSubmit = () => {
+    if (!importSwaggerText.trim()) return;
+    try {
+      let parsed = JSON.parse(importSwaggerText);
+      if (parsed.info && (parsed.info as any).schema?.includes('postman')) {
+        parsed = importPostmanToOpenApi(parsed);
+      }
+      const importedReqs = importSwaggerToSavedRequests(parsed);
+      if (importedReqs.length > 0 && onUpdateSavedRequests) {
+        onUpdateSavedRequests([...savedRequests, ...importedReqs]);
+        showToast(`Imported ${importedReqs.length} endpoints from Swagger spec`, 'success');
+      }
+      setImportSwaggerModalOpen(false);
+      setImportSwaggerText('');
+    } catch {
+      showToast('Failed to parse Swagger JSON', 'error');
+    }
+  };
 
   // Static Folder Ordering State (Stored in localStorage)
   const [folderOrder, setFolderOrder] = useState<string[]>(() => {
@@ -340,13 +362,22 @@ export function PostmanView({
             <h2 className="font-bold text-xs uppercase tracking-wider text-on-surface">Collections</h2>
           </div>
 
-          <button
-            onClick={() => setIsCreatingFolder(true)}
-            className="p-1 rounded-lg hover:bg-surface-container-high text-outline hover:text-primary transition-colors text-xs font-bold flex items-center gap-1"
-            title="Create new collection folder"
-          >
-            <span className="material-symbols-outlined text-base">create_new_folder</span>
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setImportSwaggerModalOpen(true)}
+              className="p-1 rounded-lg hover:bg-surface-container-high text-outline hover:text-primary transition-colors text-xs font-bold flex items-center gap-1"
+              title="Import Swagger / OpenAPI Spec"
+            >
+              <span className="material-symbols-outlined text-base">file_upload</span>
+            </button>
+            <button
+              onClick={() => setIsCreatingFolder(true)}
+              className="p-1 rounded-lg hover:bg-surface-container-high text-outline hover:text-primary transition-colors text-xs font-bold flex items-center gap-1"
+              title="Create new collection folder"
+            >
+              <span className="material-symbols-outlined text-base">create_new_folder</span>
+            </button>
+          </div>
         </div>
 
         {/* Create Folder Input */}
@@ -839,6 +870,53 @@ export function PostmanView({
           </div>
         </div>
       </div>
+
+      {/* ── Import Swagger Modal ── */}
+      {importSwaggerModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm fade-in">
+          <div className="bg-surface-container-low border border-outline-variant rounded-2xl w-full max-w-xl p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-outline-variant/30 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-[22px]">file_upload</span>
+                <h3 className="font-headline-sm text-sm font-bold text-on-surface">Import OpenAPI / Swagger into Postman</h3>
+              </div>
+              <button
+                onClick={() => setImportSwaggerModalOpen(false)}
+                className="text-on-surface-variant hover:text-on-surface cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+
+            <p className="text-xs text-on-surface-variant leading-relaxed">
+              Paste valid OpenAPI 3.0 or Postman Collection JSON to import collections & saved requests directly into Postman Studio.
+            </p>
+
+            <textarea
+              rows={10}
+              placeholder="Paste openapi.json or Postman JSON collection content here..."
+              value={importSwaggerText}
+              onChange={(e) => setImportSwaggerText(e.target.value)}
+              className="w-full bg-black border border-outline-variant rounded-xl p-3 font-mono text-[11px] text-on-surface placeholder:text-outline focus:outline-none focus:border-primary transition-colors"
+            />
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                onClick={() => setImportSwaggerModalOpen(false)}
+                className="px-4 py-2 rounded-lg text-xs font-label-md text-on-surface-variant hover:text-on-surface cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleImportSwaggerSubmit}
+                className="btn-primary px-5 py-2 text-xs font-semibold"
+              >
+                Import Collections
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
