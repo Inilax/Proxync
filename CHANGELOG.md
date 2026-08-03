@@ -13,10 +13,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - `packages/desktop/src/components/views/SwaggerView.tsx`
   - `packages/desktop/src/components/views/PostmanView.tsx`
   - `packages/desktop/src/App.tsx`
-  - `.agents/architecture.json`
-  - `.agents/changelog.json`
   - `CHANGELOG.md`
-
 
 ## [v0.2.0-dev] - 2026-08-03 (Postman Studio Redesign, Hotkeys & Developer UX Refresh)
 - **Feature Summary**: Redesigned Postman Studio (`PostmanView.tsx`) with static collection tree ordering, inline folder renaming/deletion, custom collection hotkeys (`Ctrl+Enter` to Send, `Ctrl+S` to Save directly to selected collection), inline Response tab, native Rust HTTP executor (`execute_http_request`) to bypass CORS, and Windows console signal handler (`SetConsoleCtrlHandler`). Bumped application version to `0.2.0` across workspace manifests (`package.json`, `packages/desktop/package.json`, `tauri.conf.json`, `Cargo.toml`, `Cargo.lock`, `package-lock.json`, and `.agents/architecture.json`). Established application-wide `Nunito Sans` font typography system in `assets/typography.css`. Redesigned `DocsView.tsx` into a clean 2-column documentation hub with direct portal links to `https://proxync.dev/docs`.
