@@ -770,9 +770,10 @@ async fn execute_http_request(
     headers: HashMap<String, String>,
     body: Option<String>,
 ) -> Result<NativeHttpResponsePayload, String> {
-    let client = Client::builder()
+    let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .danger_accept_invalid_certs(true)
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) ProxyncStudio/0.2.0")
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -780,6 +781,11 @@ async fn execute_http_request(
         .map_err(|e| format!("Invalid HTTP method: {}", e))?;
 
     let mut req_builder = client.request(req_method, &url);
+
+    let has_user_agent = headers.keys().any(|k| k.eq_ignore_ascii_case("user-agent"));
+    if !has_user_agent {
+        req_builder = req_builder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ProxyncStudio/0.2.0");
+    }
 
     for (k, v) in headers {
         req_builder = req_builder.header(&k, &v);
@@ -802,7 +808,8 @@ async fn execute_http_request(
         }
     }
 
-    let body_text = res.text().await.unwrap_or_else(|_| "".to_string());
+    let bytes = res.bytes().await.map_err(|e| format!("Failed to read response body: {}", e))?;
+    let body_text = String::from_utf8_lossy(&bytes).to_string();
 
     Ok(NativeHttpResponsePayload {
         status,
