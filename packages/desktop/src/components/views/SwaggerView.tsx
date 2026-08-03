@@ -248,9 +248,9 @@ export function SwaggerView({
             <div className="flex flex-wrap items-center gap-1.5">
               <button
                 onClick={() => setSelectedTag('ALL')}
-                className={`px-3 py-1 rounded-full text-[11px] font-mono transition-all cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-full text-xs font-mono transition-all cursor-pointer ${
                   selectedTag === 'ALL'
-                    ? 'bg-primary text-on-primary font-bold'
+                    ? 'bg-primary text-white font-bold shadow-md shadow-primary/25 ring-1 ring-primary/40'
                     : 'bg-surface-container border border-outline-variant text-on-surface-variant hover:text-on-surface'
                 }`}
               >
@@ -262,9 +262,9 @@ export function SwaggerView({
                   <button
                     key={tag}
                     onClick={() => setSelectedTag(tag)}
-                    className={`px-3 py-1 rounded-full text-[11px] font-mono transition-all cursor-pointer ${
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-mono transition-all cursor-pointer ${
                       selectedTag === tag
-                        ? 'bg-primary text-on-primary font-bold'
+                        ? 'bg-primary text-white font-bold shadow-md shadow-primary/25 ring-1 ring-primary/40'
                         : 'bg-surface-container border border-outline-variant text-on-surface-variant hover:text-on-surface'
                     }`}
                   >

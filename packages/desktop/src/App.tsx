@@ -1090,13 +1090,22 @@ export default function App() {
                 onChangePanel={setSwaggerPanel}
                 onCopy={(content, msg) => copyText(content || JSON.stringify(openApiDocument, null, 2), msg || 'OpenAPI JSON copied')}
                 onExportPostman={(_collection) => {
-                  const importedReqs = importSwaggerToSavedRequests(openApiDocument);
+                  const spec = (openApiDocument.paths && Object.keys(openApiDocument.paths).length > 0)
+                    ? openApiDocument
+                    : generateOpenApiSpec(
+                        scannedEndpoints,
+                        activeWorkspace?.capturedRequests ?? [],
+                        activeWorkspace?.name ?? 'Workspace',
+                        effectiveLanguageHint
+                      );
+                  const importedReqs = importSwaggerToSavedRequests(spec);
                   if (importedReqs.length > 0) {
-                    updateSavedRequests([...savedRequests, ...importedReqs]);
-                    showToast(`Exported ${importedReqs.length} endpoints into Postman Collections`, 'success');
+                    updateSavedRequests(mergeRequests(savedRequests, importedReqs));
+                    showToast(`Exported ${importedReqs.length} endpoints to Postman Collections`, 'success');
                   } else {
-                    showToast('No endpoints to export', 'info');
+                    showToast('Exported spec to Postman Collections', 'success');
                   }
+                  setMainView('postman');
                 }}
                 onImportSpec={(importedDoc) => {
                   setOpenApiDocument(importedDoc);
