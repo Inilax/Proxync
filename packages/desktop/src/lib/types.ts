@@ -7,7 +7,8 @@ export type MainView =
   | 'swagger'
   | 'settings';
 
-export type SwaggerPanel = 'preview' | 'json';
+export type SwaggerPanel = 'preview' | 'json' | 'yaml';
+export type SwaggerExportFormat = 'json' | 'yaml';
 export type PanelView = null; // Companions removed
 
 export interface ProcessCandidate {

@@ -5,6 +5,8 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { openUrl } from "@tauri-apps/plugin-opener";
 import './index.css';
 import { ToastContainer, showToast } from './lib/toast';
+import { scanCodebaseEndpoints, type ScannedEndpoint } from './lib/codebaseScanner';
+import { generateOpenApiSpec, importSwaggerToSavedRequests } from './lib/openApiGenerator';
 import {
   api,
   ensureLocalWorkspace,
@@ -198,15 +200,35 @@ export default function App() {
     return activeWorkspace?.languageHint ?? 'Undetermined';
   }, [activeWorkspace, selectedProcess, selectedProfile]);
 
-  const openApiDocument = useMemo(
-    () =>
-      buildOpenApi(
-        requests, savedRequests, activeTunnel,
-        effectiveLanguageHint,
-        activeWorkspace?.guardrails ?? DEFAULT_GUARDRAILS,
-      ),
-    [requests, savedRequests, activeTunnel, effectiveLanguageHint, activeWorkspace],
+  const [scannedEndpoints, setScannedEndpoints] = useState<ScannedEndpoint[]>([]);
+  const [openApiDocument, setOpenApiDocument] = useState<Record<string, unknown>>(() =>
+    generateOpenApiSpec([], [], 'Proxync Workspace', 'HTTP Server')
   );
+  const [generatingSwagger, setGeneratingSwagger] = useState<boolean>(false);
+
+  const handleGenerateSwaggerSpec = async () => {
+    setGeneratingSwagger(true);
+    try {
+      let endpoints: ScannedEndpoint[] = scannedEndpoints;
+      if (activeWorkspace?.projectRootPath && activeWorkspace?.scannedFiles?.length > 0) {
+        endpoints = await scanCodebaseEndpoints(activeWorkspace.projectRootPath, activeWorkspace.scannedFiles);
+        setScannedEndpoints(endpoints);
+      }
+      const spec = generateOpenApiSpec(
+        endpoints,
+        requests,
+        activeWorkspace?.name ?? 'Proxync Workspace',
+        effectiveLanguageHint
+      );
+      setOpenApiDocument(spec);
+      const pathCount = Object.keys((spec.paths as any) || {}).length;
+      showToast(`Generated OpenAPI Spec (${pathCount} path${pathCount === 1 ? '' : 's'})`, 'success');
+    } catch (err: any) {
+      showToast(err instanceof Error ? err.message : 'Failed to generate OpenAPI spec', 'error');
+    } finally {
+      setGeneratingSwagger(false);
+    }
+  };
 
 
 
@@ -673,14 +695,14 @@ export default function App() {
     }
 
     if (trimmed.startsWith('/')) {
+      if (selectedProcess?.port) {
+        return `http://localhost:${selectedProcess.port}${trimmed}`;
+      }
       if (activeTunnel?.publicUrl) {
         const base = activeTunnel.publicUrl.replace(/\/+$/, '');
         return `${base}${trimmed}`;
       }
-      if (selectedProcess?.port) {
-        return `http://localhost:${selectedProcess.port}${trimmed}`;
-      }
-      return `http://localhost:3000${trimmed}`;
+      return `http://localhost:4000${trimmed}`;
     }
 
     return `https://${trimmed}`;
@@ -697,37 +719,29 @@ export default function App() {
       let resHeaders: Record<string, string> = {};
       let bodyText = '';
 
-      if (activeWorkspace?.remoteWorkspaceId && activeTunnel) {
-        const response = await api.requests.execute(activeWorkspace.remoteWorkspaceId, activeTunnel.id, draftRequest.method, draftRequest.path, draftRequest.headers, draftRequest.body);
+      // Try native Rust HTTP executor first to bypass CORS completely
+      try {
+        const res = await invoke<{ status: number; headers: Record<string, string>; body: string }>('execute_http_request', {
+          method: draftRequest.method,
+          url: targetUrl,
+          headers: draftRequest.headers || {},
+          body: draftRequest.body || null,
+        });
+        durationMs = Date.now() - startedAt;
+        status = res.status;
+        resHeaders = res.headers;
+        bodyText = res.body;
+      } catch (err: any) {
+        // Web browser mode fallback
+        const response = await fetch(targetUrl, {
+          method: draftRequest.method,
+          headers: draftRequest.headers,
+          body: ['GET', 'HEAD'].includes(draftRequest.method) ? undefined : draftRequest.body,
+        });
         durationMs = Date.now() - startedAt;
         status = response.status;
-        resHeaders = response.headers ?? {};
-        bodyText = decodeResponseBody(response.body);
-      } else {
-        // Try native Rust HTTP executor first to bypass CORS completely
-        try {
-          const res = await invoke<{ status: number; headers: Record<string, string>; body: string }>('execute_http_request', {
-            method: draftRequest.method,
-            url: targetUrl,
-            headers: draftRequest.headers || {},
-            body: draftRequest.body || null,
-          });
-          durationMs = Date.now() - startedAt;
-          status = res.status;
-          resHeaders = res.headers;
-          bodyText = res.body;
-        } catch {
-          // Web browser mode fallback
-          const response = await fetch(targetUrl, {
-            method: draftRequest.method,
-            headers: draftRequest.headers,
-            body: ['GET', 'HEAD'].includes(draftRequest.method) ? undefined : draftRequest.body,
-          });
-          durationMs = Date.now() - startedAt;
-          status = response.status;
-          resHeaders = Object.fromEntries(response.headers.entries());
-          bodyText = await response.text();
-        }
+        resHeaders = Object.fromEntries(response.headers.entries());
+        bodyText = await response.text();
       }
 
       setPostmanResponse({ status, duration: durationMs, headers: resHeaders, body: bodyText });
@@ -1065,7 +1079,30 @@ export default function App() {
               <PostmanView draft={draftRequest} savedRequests={savedRequests} response={postmanResponse} sending={sendingRequest} starterSuggestions={starterSuggestions} activeTunnel={activeTunnel} onDraftChange={setDraftRequest} onHeaderTextChange={updateDraftHeader} onRun={runPostmanRequest} onSave={saveDraftRequest} onLoad={setDraftRequest} onImportStarterRequests={importStarterRequests} onDeleteRequest={deleteSavedRequest} onUpdateSavedRequests={updateSavedRequests} />
             )}
             {mainView === 'swagger' && (
-              <SwaggerView document={openApiDocument} swaggerPanel={swaggerPanel} workspace={activeWorkspace} languageHint={effectiveLanguageHint} onChangePanel={setSwaggerPanel} onCopy={() => copyText(JSON.stringify(openApiDocument, null, 2), 'OpenAPI JSON copied')} />
+              <SwaggerView
+                document={openApiDocument}
+                swaggerPanel={swaggerPanel}
+                workspace={activeWorkspace}
+                languageHint={effectiveLanguageHint}
+                scannedEndpoints={scannedEndpoints}
+                generating={generatingSwagger}
+                onGenerateSpec={handleGenerateSwaggerSpec}
+                onChangePanel={setSwaggerPanel}
+                onCopy={(content, msg) => copyText(content || JSON.stringify(openApiDocument, null, 2), msg || 'OpenAPI JSON copied')}
+                onExportPostman={(_collection) => {
+                  const importedReqs = importSwaggerToSavedRequests(openApiDocument);
+                  if (importedReqs.length > 0) {
+                    updateSavedRequests([...savedRequests, ...importedReqs]);
+                    showToast(`Exported ${importedReqs.length} endpoints into Postman Collections`, 'success');
+                  } else {
+                    showToast('No endpoints to export', 'info');
+                  }
+                }}
+                onImportSpec={(importedDoc) => {
+                  setOpenApiDocument(importedDoc);
+                  showToast('Imported OpenAPI Spec', 'success');
+                }}
+              />
             )}
             {mainView === 'docs' && (
               <DocsView />
@@ -1410,29 +1447,8 @@ function inferLanguageFromFiles(files: string[]) {
   return labels[winner] ?? 'Undetermined';
 }
 
-function buildOpenApi(requests: RequestLog[], savedRequests: SavedRequest[], activeTunnel: Tunnel | null, languageHint: string, guardrails: Guardrails): Record<string, unknown> {
-  const paths: Record<string, Record<string, unknown>> = {};
-  for (const item of [...requests, ...savedRequests]) {
-    const path = normalizePath(item.path);
-    const method = item.method.toLowerCase();
-    const status = 'status' in item ? item.status ?? 200 : 200;
-    paths[path] = { ...paths[path], [method]: { summary: `${item.method} ${path}`, description: 'Generated from Proxync capture and workspace request collection.', responses: { [String(status)]: { description: 'Observed response' } } } };
-  }
-  return {
-    openapi: '3.1.0',
-    info: { title: 'Proxync generated API', version: '0.1.0', description: `Language hint: ${languageHint}. PII redaction: ${guardrails.piiRedaction ? 'enabled' : 'disabled'}.` },
-    servers: [{ url: activeTunnel?.publicUrl ?? 'http://localhost' }],
-    paths,
-  };
-}
 
-function normalizePath(path: string) {
-  if (!path) return '/';
-  try { const parsed = new URL(path); return parsed.pathname || '/'; }
-  catch { return path.startsWith('/') ? path : `/${path}`; }
-}
 
-function decodeResponseBody(value: string | undefined) {
-  if (!value) return '';
-  try { return atob(value); } catch { return value; }
-}
+
+
+
