@@ -32,6 +32,8 @@ We got tired of switching between five tabs to debug a single webhook. The tunne
 - **Live traffic inspector** — Every request and response captured in real-time. Headers, body, timing, status — the works.
 - **Auto-generated Swagger docs** — We watch your traffic and build an OpenAPI spec from it. No YAML required.
 - **Built-in request runner** — Basically Postman, but inside the app. Replay captured requests, tweak them, save collections.
+- **Observability Hub** — Monitor environment health, active request volume, and workspace posture metrics.
+- **Interactive Documentation Hub** — Integrated offline documentation for setting up tunnels, routing, and developer workflows.
 - **Custom domains** — Map custom domains directly to your local tunnel with registrar tips and instant verification.
 
 ### The stack

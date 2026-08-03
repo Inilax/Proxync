@@ -667,20 +667,24 @@ async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, Stri
         while let Ok((mut client_stream, _)) = listener.accept().await {
             let app_clone = app.clone();
             tokio::spawn(async move {
-                let mut client_buf = vec![0u8; 16384];
-                let n = match client_stream.read(&mut client_buf).await {
-                    Ok(read_bytes) if read_bytes > 0 => read_bytes,
+                let target_addr = format!("127.0.0.1:{}", local_port);
+                let mut target_stream = match TcpStream::connect(&target_addr).await {
+                    Ok(stream) => stream,
+                    Err(_) => return,
+                };
+
+                let mut req_buf = vec![0u8; 16384];
+                let n_req = match client_stream.read(&mut req_buf).await {
+                    Ok(bytes) if bytes > 0 => bytes,
                     _ => return,
                 };
 
+                let req_id = format!("req-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
+                let req_str = String::from_utf8_lossy(&req_buf[..n_req]);
                 let mut method = "GET".to_string();
                 let mut path = "/".to_string();
-                let mut headers = HashMap::new();
-                let req_id = format!("req-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
 
-                let request_string = String::from_utf8_lossy(&client_buf[..n]);
-                let mut lines = request_string.lines();
-                if let Some(req_line) = lines.next() {
+                if let Some(req_line) = req_str.lines().next() {
                     let parts: Vec<&str> = req_line.split_whitespace().collect();
                     if parts.len() >= 2 {
                         method = parts[0].to_string();
@@ -688,52 +692,39 @@ async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, Stri
                     }
                 }
 
-                for line in lines {
-                    if line.is_empty() {
-                        break;
-                    }
-                    if let Some(pos) = line.find(':') {
-                        let key = line[..pos].trim().to_string();
-                        let val = line[pos + 1..].trim().to_string();
-                        headers.insert(key, val);
-                    }
-                }
-
                 let req_meta = serde_json::json!({
-                    "id": req_id,
+                    "id": req_id.clone(),
                     "method": method,
                     "path": path,
-                    "headers": headers,
                     "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()
                 });
                 let _ = app_clone.emit("request:log", req_meta);
 
-                let mut target_stream = match TcpStream::connect(format!("127.0.0.1:{}", local_port)).await {
-                    Ok(stream) => stream,
-                    Err(_) => return,
-                };
+                let mut modified_req = req_str.to_string();
+                if modified_req.contains("Connection: keep-alive") || modified_req.contains("connection: keep-alive") {
+                    modified_req = modified_req
+                        .replace("Connection: keep-alive", "Connection: close")
+                        .replace("connection: keep-alive", "connection: close");
+                } else if !modified_req.contains("Connection: close") && !modified_req.contains("connection: close") {
+                    modified_req = modified_req.replace("\r\n\r\n", "\r\nConnection: close\r\n\r\n");
+                }
 
-                if target_stream.write_all(&client_buf[..n]).await.is_err() {
+                if target_stream.write_all(modified_req.as_bytes()).await.is_err() {
                     return;
                 }
 
                 let (mut client_read, mut client_write) = client_stream.into_split();
                 let (mut target_read, mut target_write) = target_stream.into_split();
 
+                let app_c = app_clone.clone();
+                let req_id_c = req_id.clone();
                 tokio::spawn(async move {
-                    let _ = tokio::io::copy(&mut client_read, &mut target_write).await;
-                });
-
-                let app_clone2 = app_clone.clone();
-                let req_id_clone = req_id.clone();
-                tokio::spawn(async move {
-                    let mut target_buf = vec![0u8; 16384];
-                    let mut status: u16 = 200;
-                    match target_read.read(&mut target_buf).await {
-                        Ok(read_bytes) if read_bytes > 0 => {
-                            let response_string = String::from_utf8_lossy(&target_buf[..read_bytes]);
-                            let mut lines = response_string.lines();
-                            if let Some(status_line) = lines.next() {
+                    let mut res_buf = vec![0u8; 16384];
+                    if let Ok(n_res) = target_read.read(&mut res_buf).await {
+                        if n_res > 0 {
+                            let res_str = String::from_utf8_lossy(&res_buf[..n_res]);
+                            let mut status: u16 = 200;
+                            if let Some(status_line) = res_str.lines().next() {
                                 let parts: Vec<&str> = status_line.split_whitespace().collect();
                                 if parts.len() >= 2 {
                                     if let Ok(code) = parts[1].parse::<u16>() {
@@ -743,27 +734,81 @@ async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, Stri
                             }
 
                             let res_meta = serde_json::json!({
-                                "requestId": req_id_clone,
+                                "requestId": req_id_c,
                                 "status": status,
                                 "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()
                             });
-                            let _ = app_clone2.emit("request:log:response", res_meta);
+                            let _ = app_c.emit("request:log:response", res_meta);
 
-                            if client_write.write_all(&target_buf[..read_bytes]).await.is_err() {
-                                return;
-                            }
+                            let _ = client_write.write_all(&res_buf[..n_res]).await;
                         }
-                        _ => return,
                     }
 
                     let _ = tokio::io::copy(&mut target_read, &mut client_write).await;
                 });
+
+                let _ = tokio::io::copy(&mut client_read, &mut target_write).await;
             });
         }
     });
 
     *handle_lock = Some(handle);
     Ok(proxy_port)
+}
+
+#[derive(Serialize, Deserialize)]
+struct NativeHttpResponsePayload {
+    status: u16,
+    headers: HashMap<String, String>,
+    body: String,
+}
+
+#[tauri::command]
+async fn execute_http_request(
+    method: String,
+    url: String,
+    headers: HashMap<String, String>,
+    body: Option<String>,
+) -> Result<NativeHttpResponsePayload, String> {
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .danger_accept_invalid_certs(true)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let req_method = reqwest::Method::from_bytes(method.as_bytes())
+        .map_err(|e| format!("Invalid HTTP method: {}", e))?;
+
+    let mut req_builder = client.request(req_method, &url);
+
+    for (k, v) in headers {
+        req_builder = req_builder.header(&k, &v);
+    }
+
+    if let Some(b) = body {
+        if !b.is_empty() && method != "GET" && method != "HEAD" {
+            req_builder = req_builder.body(b);
+        }
+    }
+
+    let res = req_builder.send().await.map_err(|e| format!("HTTP request failed: {}", e))?;
+
+    let status = res.status().as_u16();
+
+    let mut res_headers = HashMap::new();
+    for (k, v) in res.headers() {
+        if let Ok(v_str) = v.to_str() {
+            res_headers.insert(k.as_str().to_string(), v_str.to_string());
+        }
+    }
+
+    let body_text = res.text().await.unwrap_or_else(|_| "".to_string());
+
+    Ok(NativeHttpResponsePayload {
+        status,
+        headers: res_headers,
+        body: body_text,
+    })
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -782,7 +827,8 @@ pub fn run() {
             get_local_ip,
             save_app_state,
             load_app_state,
-            start_proxy
+            start_proxy,
+            execute_http_request
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

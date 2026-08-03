@@ -1,0 +1,34 @@
+/* ══════════════════════════════════════════════
+   DEEP EMERALD THEME
+   ══════════════════════════════════════════════ */
+.theme-emerald {
+  --color-surface: #031411;
+  --color-surface-dim: #031411;
+  --color-surface-bright: #142b26;
+  --color-surface-container: #081a17;
+  --color-surface-container-low: #041210;
+  --color-surface-container-high: #102420;
+  --color-surface-container-highest: #1a322d;
+  --color-surface-container-lowest: #020908;
+  
+  --color-primary: #10b981;
+  --color-primary-container: #047857;
+  --color-primary-fixed: #a7f3d0;
+  --color-primary-fixed-dim: #10b981;
+  --color-on-primary: #ffffff;
+  --color-on-primary-container: #ffffff;
+  
+  --color-secondary: #34d399;
+  --color-secondary-container: #065f46;
+  --color-secondary-fixed: #a7f3d0;
+  --color-secondary-fixed-dim: #34d399;
+  --color-on-secondary: #064e3b;
+  --color-on-secondary-container: #ffffff;
+  
+  --color-tertiary: #22d3ee;
+  --color-tertiary-container: #0891b2;
+  --color-tertiary-fixed: #cffafe;
+  --color-tertiary-fixed-dim: #22d3ee;
+  --color-on-tertiary: #0891b2;
+  --color-on-tertiary-container: #ffffff;
+}

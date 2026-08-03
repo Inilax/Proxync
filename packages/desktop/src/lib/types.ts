@@ -52,6 +52,7 @@ export interface SavedRequest {
   headers: Record<string, string>;
   body: string;
   source: 'manual' | 'starter-scan' | 'captured';
+  collectionName?: string;
 }
 
 export interface PostmanResponse {

@@ -17,6 +17,7 @@ export interface ProcessCandidate {
   framework?: string;
   access: 'ready' | 'limited' | 'unknown';
   uptime?: string;
+  latency?: number;
 }
 
 export interface Tunnel {
@@ -48,6 +49,7 @@ export interface SavedRequest {
   headers: Record<string, string>;
   body: string;
   source: 'manual' | 'starter-scan' | 'captured';
+  collectionName?: string;
 }
 
 export interface PostmanResponse {
@@ -57,13 +59,12 @@ export interface PostmanResponse {
   body: string;
 }
 
-export interface DomainRecord {
-  id: string;
-  name: string;
-  verificationToken: string;
-  verified: boolean;
-  createdAt: string;
-  updatedAt: string;
+export interface Guardrails {
+  authMode: 'guest' | 'shared-secret' | 'workspace-only';
+  piiRedaction: boolean;
+  captureBodies: boolean;
+  autoUpdateSwagger: boolean;
+  rateLimit: string;
 }
 
 export interface ProcessProfile {
@@ -83,11 +84,12 @@ export interface ProcessProfile {
 export interface WorkspaceConfig {
   id: string;
   name: string;
+  createdAt?: string;
   remoteWorkspaceId?: string;
   profiles: ProcessProfile[];
   savedRequests: SavedRequest[];
   capturedRequests: RequestLog[];
-  domains: DomainRecord[];
+  guardrails: Guardrails;
   languageHint: string;
   selectedProfileId?: string;
   lastSwaggerGeneratedAt?: string;
@@ -97,8 +99,19 @@ export interface WorkspaceConfig {
 }
 
 export interface AppSettings {
+  guardrails: Guardrails;
   defaultProjectRootPath: string;
   notes: string;
+  theme?: string;
+}
+
+export interface DomainRecord {
+  id: string;
+  name: string;
+  verificationToken: string;
+  verified: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type MainView =
@@ -108,10 +121,12 @@ export type MainView =
   | 'traffic'
   | 'postman'
   | 'swagger'
-  | 'settings';
+  | 'observability'
+  | 'settings'
+  | 'docs';
 
 export type SwaggerPanel = 'preview' | 'json';
-export type PanelView = null; // Companions removed
+export type PanelView = 'chat' | 'voice' | null;
 
 /* ────────────────── SVG Icons ────────────────── */
 
@@ -273,7 +288,36 @@ export function InfoTile({
   );
 }
 
-/* CompanionPanel removed */
+/* ────────────────── Companion Panel ────────────────── */
+
+export function CompanionPanel({
+  panel,
+  onClose,
+}: {
+  panel: Exclude<PanelView, null>;
+  onClose: () => void;
+}) {
+  return (
+    <aside className="companion-panel">
+      <header>
+        <strong>{panel === 'chat' ? 'General chat' : 'Voice room'}</strong>
+        <button onClick={onClose} className="icon-btn">{Icons.x}</button>
+      </header>
+      {panel === 'chat' ? (
+        <div className="companion-empty">
+          Workspace chat will attach to the selected project profile in the next
+          collaboration pass.
+        </div>
+      ) : (
+        <div className="voice-box">
+          <button>Mute</button>
+          <button>Deafen</button>
+          <p>No participants yet.</p>
+        </div>
+      )}
+    </aside>
+  );
+}
 
 /* ────────────────── Utility Functions ────────────────── */
 
@@ -298,5 +342,47 @@ export function parseHeaderText(value: string): Record<string, string> {
         if (separator === -1) return [line, ''];
         return [line.slice(0, separator).trim(), line.slice(separator + 1).trim()];
       }),
+  );
+}
+
+export function SignalBars({ latency }: { latency: number }) {
+  let activeBars = 0;
+  let barColor = 'var(--muted)';
+  
+  if (latency < 50) {
+    activeBars = 4;
+    barColor = '#10B981'; // Green
+  } else if (latency < 150) {
+    activeBars = 3;
+    barColor = '#34D399'; // Teal/Light Green
+  } else if (latency < 300) {
+    activeBars = 2;
+    barColor = '#F5B04A'; // Amber/Orange
+  } else if (latency < Infinity) {
+    activeBars = 1;
+    barColor = '#FF7180'; // Red
+  }
+
+  return (
+    <div 
+      style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: '14px', width: '18px' }} 
+      title={latency === Infinity ? 'Unreachable' : `${Math.round(latency)}ms`}
+    >
+      {[1, 2, 3, 4].map((bar) => {
+        const isActive = bar <= activeBars;
+        return (
+          <div
+            key={bar}
+            style={{
+              width: '3px',
+              height: `${bar * 25}%`,
+              background: isActive ? barColor : 'rgba(255,255,255,0.15)',
+              borderRadius: '1px',
+              transition: 'background 0.3s ease'
+            }}
+          />
+        );
+      })}
+    </div>
   );
 }

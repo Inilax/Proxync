@@ -5,7 +5,7 @@
  */
 import { useState, useEffect } from 'react';
 import type { ProcessCandidate, RequestLog } from './SharedComponents';
-import { Icons } from './SharedComponents';
+import { Icons, SignalBars } from './SharedComponents';
 
 /* ────────────────── Discover Dialog ────────────────── */
 
@@ -45,10 +45,20 @@ export function DiscoverDialog({
         <div className="discovery-list">
           {processes.map((process) => (
             <article key={process.id} className="discovery-row">
-              <div>
-                <strong>{process.name}</strong>
-                <span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-3">
+                  <strong>{process.name}</strong>
+                  {process.latency !== undefined && (
+                    <SignalBars latency={process.latency} />
+                  )}
+                </div>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   Port {process.port} | {process.framework ?? 'HTTP service'}
+                  {process.latency !== undefined && (
+                    <span style={{ fontSize: '10px', fontFamily: 'monospace', opacity: 0.8 }}>
+                      ({process.latency === Infinity ? 'offline' : `${Math.round(process.latency)}ms`})
+                    </span>
+                  )}
                 </span>
                 <small>{process.command ?? 'local process'}</small>
               </div>
@@ -85,48 +95,6 @@ export function DiscoverDialog({
 
 /* ────────────────── Domain Select Dialog ────────────────── */
 
-export function SignalBars({ latency }: { latency: number }) {
-  let activeBars = 0;
-  let barColor = 'var(--muted)';
-  
-  if (latency < 50) {
-    activeBars = 4;
-    barColor = '#10B981'; // Green
-  } else if (latency < 150) {
-    activeBars = 3;
-    barColor = '#34D399'; // Teal/Light Green
-  } else if (latency < 300) {
-    activeBars = 2;
-    barColor = '#F5B04A'; // Amber/Orange
-  } else if (latency < Infinity) {
-    activeBars = 1;
-    barColor = '#FF7180'; // Red
-  }
-
-  return (
-    <div 
-      style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: '14px', width: '18px' }} 
-      title={latency === Infinity ? 'Unreachable' : `${Math.round(latency)}ms`}
-    >
-      {[1, 2, 3, 4].map((bar) => {
-        const isActive = bar <= activeBars;
-        return (
-          <div
-            key={bar}
-            style={{
-              width: '3px',
-              height: `${bar * 25}%`,
-              background: isActive ? barColor : 'rgba(255,255,255,0.15)',
-              borderRadius: '1px',
-              transition: 'background 0.3s ease'
-            }}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
 export function DomainSelectDialog({
   process,
   domains,
@@ -138,9 +106,10 @@ export function DomainSelectDialog({
   onClose: () => void;
   onConfirm: (customDomainOrOption: string, ltSubdomain?: string) => void;
 }) {
-  const [selectedDomain, setSelectedDomain] = useState<string>('cloudflare');
+  const [selectedDomain, setSelectedDomain] = useState<string>('default');
   const [customSubdomain, setCustomSubdomain] = useState<string>('');
   const [latencies, setLatencies] = useState<Record<string, number>>({
+    default: Infinity,
     cloudflare: Infinity,
     localtunnel: Infinity,
   });
@@ -150,34 +119,37 @@ export function DomainSelectDialog({
 
     const ping = async (url: string): Promise<number> => {
       const start = performance.now();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300);
       try {
-        await fetch(url, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
+        await fetch(url, { method: 'HEAD', mode: 'no-cors', cache: 'no-store', signal: controller.signal });
+        clearTimeout(timeoutId);
         return performance.now() - start;
       } catch (e) {
-        try {
-          await fetch(url, { method: 'GET', mode: 'no-cors', cache: 'no-store' });
-          return performance.now() - start;
-        } catch (err) {
-          return Infinity;
-        }
+        clearTimeout(timeoutId);
+        return Infinity;
       }
     };
 
     const measureAll = async () => {
+      const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
       const endpoints = {
+        default: `${apiBase.replace(/\/$/, '')}/health`,
         cloudflare: 'https://1.1.1.1/cdn-cgi/trace',
         localtunnel: 'https://loca.lt',
       };
 
       const results = await Promise.all([
+        ping(endpoints.default),
         ping(endpoints.cloudflare),
         ping(endpoints.localtunnel),
       ]);
 
       if (active) {
         setLatencies({
-          cloudflare: results[0],
-          localtunnel: results[1],
+          default: results[0],
+          cloudflare: results[1],
+          localtunnel: results[2],
         });
       }
     };
@@ -189,6 +161,13 @@ export function DomainSelectDialog({
   }, []);
 
   const getDescription = () => {
+    if (selectedDomain === 'default') {
+      return (
+        <span className="domain-desc">
+          🔌 <strong>Local Loopback:</strong> Exposes the server on a local subdomain (e.g., <code>*.localtest.me</code>). Useful for offline loopback testing on your own machine.
+        </span>
+      );
+    }
     if (selectedDomain === 'cloudflare') {
       return (
         <span className="domain-desc accent">
@@ -212,6 +191,13 @@ export function DomainSelectDialog({
 
   const options = [
     {
+      id: 'default',
+      title: 'Default Relay Subdomain',
+      desc: 'Expose server on default localtest.me tunnel',
+      icon: '🔌',
+      latency: latencies.default,
+    },
+    {
       id: 'cloudflare',
       title: 'Cloudflare Tunnel',
       desc: 'Secure TryCloudflare tunnel at Cloudflare\'s edge',
@@ -230,7 +216,7 @@ export function DomainSelectDialog({
       title: `Custom Domain (${d.name})`,
       desc: 'Route traffic through your own verified apex/subdomain',
       icon: '🏷️',
-      latency: Infinity,
+      latency: latencies.default,
     })),
   ];
 
@@ -294,7 +280,7 @@ export function DomainSelectDialog({
               <input
                 className="form-input"
                 type="text"
-                placeholder="e.g. clueliq-demo-port-3000"
+                placeholder="e.g. demo-port-3000"
                 value={customSubdomain}
                 onChange={(e) => setCustomSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
               />
@@ -366,3 +352,52 @@ export function RequestDetailDialog({
     </div>
   );
 }
+
+/* ────────────────── Confirm Delete Dialog ────────────────── */
+
+export function ConfirmDeleteDialog({
+  workspaceName,
+  onClose,
+  onConfirm,
+}: {
+  workspaceName: string;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="dialog-backdrop glass" onClick={onClose}>
+      <section className="workspace-settings-dialog slide-up max-w-md p-6 flex flex-col gap-5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-3 border-b border-outline-variant/30 pb-4">
+          <div className="w-10 h-10 rounded-full bg-error/15 text-error flex items-center justify-center shrink-0">
+            <span className="material-symbols-outlined text-[22px]">delete_forever</span>
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-on-surface">Delete Workspace</h2>
+            <p className="text-xs text-on-surface-variant">Permanent deletion confirmation</p>
+          </div>
+        </div>
+
+        <p className="text-xs text-on-surface-variant leading-relaxed">
+          Are you sure you want to delete workspace <strong className="text-on-surface">"{workspaceName}"</strong>? All active tunnels, saved requests, captured history, and workspace configurations will be permanently removed.
+        </p>
+
+        <div className="flex items-center justify-end gap-3 pt-2">
+          <button className="btn-ghost compact cursor-pointer" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="btn-danger compact cursor-pointer flex items-center gap-1.5"
+            onClick={() => {
+              onConfirm();
+              onClose();
+            }}
+          >
+            <span className="material-symbols-outlined text-[16px]">delete</span>
+            Delete Workspace
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
