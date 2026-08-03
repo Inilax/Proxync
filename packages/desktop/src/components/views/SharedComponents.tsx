@@ -125,7 +125,7 @@ export type MainView =
   | 'settings'
   | 'docs';
 
-export type SwaggerPanel = 'preview' | 'json';
+export type SwaggerPanel = 'preview' | 'json' | 'yaml';
 export type PanelView = 'chat' | 'voice' | null;
 
 /* ────────────────── SVG Icons ────────────────── */
