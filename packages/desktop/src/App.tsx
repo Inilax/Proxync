@@ -3,8 +3,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { check } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 import './index.css';
-import { ToastContainer, showToast } from './lib/toast';
+import { ToastContainer, showToast, dismissToast } from './lib/toast';
 import { scanCodebaseEndpoints, type ScannedEndpoint } from './lib/codebaseScanner';
 import { generateOpenApiSpec, importSwaggerToSavedRequests } from './lib/openApiGenerator';
 import {
@@ -234,8 +236,113 @@ export default function App() {
 
   /* ── Effects ── */
 
+  const SKIP_UPDATE_KEY = 'proxync_skipped_update_version';
+
   useEffect(() => {
     let mounted = true;
+
+    // Auto-Updater setup
+    async function setupUpdater() {
+      try {
+        const update = await check();
+        if (!update) return;
+
+        // Skip if user previously chose to skip this version
+        const skipped = localStorage.getItem(SKIP_UPDATE_KEY);
+        if (skipped === update.version) return;
+
+        // Persistent toast — stays until user acts
+        const toastId = showToast(
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ fontWeight: 600 }}>🚀 Update v{update.version} available</div>
+            <div style={{ fontSize: '0.82em', opacity: 0.8 }}>A new version of Proxync is ready to download.</div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                id={`updater-btn-${update.version}`}
+                style={{ padding: '5px 10px', cursor: 'pointer', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 600 }}
+                onClick={async (e) => {
+                  const btn = e.currentTarget as HTMLButtonElement;
+                  btn.disabled = true;
+                  btn.innerText = 'Starting...';
+
+                  let downloaded = 0;
+                  let contentLength = 0;
+                  await update.downloadAndInstall((event: any) => {
+                    switch (event.event) {
+                      case 'Started':
+                        contentLength = event.data.contentLength || 0;
+                        btn.innerText = 'Downloading...';
+                        break;
+                      case 'Progress':
+                        downloaded += event.data.chunkLength;
+                        if (contentLength) {
+                          const pct = Math.round((downloaded / contentLength) * 100);
+                          btn.innerText = `Downloading... ${pct}%`;
+                        }
+                        break;
+                      case 'Finished':
+                        btn.innerText = 'Done!';
+                        break;
+                    }
+                  });
+
+                  // Dismiss the "available" toast and show persistent restart prompt
+                  dismissToast(toastId);
+                  const restartId = showToast(
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div style={{ fontWeight: 600 }}>✅ Update v{update.version} ready</div>
+                      <div style={{ fontSize: '0.82em', opacity: 0.8 }}>Restart Proxync to apply the update.</div>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          style={{ padding: '5px 10px', cursor: 'pointer', background: '#10b981', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 600 }}
+                          onClick={() => relaunch()}
+                        >
+                          Restart Now
+                        </button>
+                        <button
+                          style={{ padding: '5px 10px', cursor: 'pointer', background: 'transparent', color: 'inherit', border: '1px solid currentColor', borderRadius: '5px' }}
+                          onClick={() => dismissToast(restartId)}
+                        >
+                          Later
+                        </button>
+                      </div>
+                    </div>,
+                    'success',
+                    true // persistent
+                  );
+                }}
+              >
+                Update Now
+              </button>
+              <button
+                style={{ padding: '5px 10px', cursor: 'pointer', background: 'transparent', color: 'inherit', border: '1px solid currentColor', borderRadius: '5px' }}
+                onClick={() => {
+                  localStorage.setItem(SKIP_UPDATE_KEY, update.version);
+                  dismissToast(toastId);
+                }}
+              >
+                Skip this version
+              </button>
+              <button
+                style={{ padding: '5px 10px', cursor: 'pointer', background: 'transparent', color: 'inherit', border: '1px solid currentColor', borderRadius: '5px' }}
+                onClick={() => dismissToast(toastId)}
+              >
+                Later
+              </button>
+            </div>
+          </div>,
+          'info',
+          true // persistent — won't auto-dismiss
+        );
+      } catch (err) {
+        console.error('[AutoUpdater] Failed to check for updates:', err);
+      }
+    }
+
+    setupUpdater();
+    // Re-check every 2 hours
+    const updaterInterval = setInterval(setupUpdater, 2 * 60 * 60 * 1000);
+
     invoke<string>('get_local_ip')
       .then((ip) => { if (mounted) setLocalIp(ip); })
       .catch(() => undefined);
@@ -269,7 +376,7 @@ export default function App() {
           setActiveWorkspaceId(fallback.activeWorkspaceId);
         }
       });
-    return () => { mounted = false; };
+    return () => { mounted = false; clearInterval(updaterInterval); };
   }, [appSettings.defaultProjectRootPath, appSettings.guardrails]);
 
   useEffect(() => { void discoverProcesses(); }, []);

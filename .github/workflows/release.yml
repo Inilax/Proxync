@@ -187,6 +187,11 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Tauri updater signing — set these in your repo's Settings → Secrets:
+          # TAURI_SIGNING_PRIVATE_KEY  : the full private key from `npx tauri signer generate`
+          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD : the password you set when generating (can be empty string)
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: ${{ env.PKG_DIR }}
           tagName: ${{ steps.tag.outputs.tag }}
@@ -196,3 +201,6 @@ jobs:
           # false to publish immediately and fully automatically.
           releaseDraft: true
           prerelease: false
+          # tauri-action automatically generates and uploads updater.json
+          # alongside the installer artifacts when signing keys are provided.
+          includeUpdaterJson: true

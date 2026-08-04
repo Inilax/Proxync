@@ -54,6 +54,10 @@ src-tauri/target/
 target/
 src-tauri/gen/schemas/
 
+# Tauri updater signing keys (NEVER commit the private key!)
+*.key
+*.key.pub
+
 # Editor directories (Ignore personal user configs, preserve extension recommendations)
 .vscode/*
 !.vscode/extensions.json
