@@ -70,6 +70,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   defaultProjectRootPath: '', notes: '',
   theme: 'slate',
   autoUpdate: true,
+  telemetry: 'enhanced',
 };
 
 const LOCAL_WORKSPACES_KEY = 'proxync_local_workspaces_v1';
@@ -1058,6 +1059,8 @@ export default function App() {
 
   function updateAutoUpdate(enabled: boolean) { setAppSettings((current) => ({ ...current, autoUpdate: enabled })); }
 
+  function updateTelemetry(telemetry: 'enhanced' | 'basic') { setAppSettings((current) => ({ ...current, telemetry })); }
+
   async function addDomain() {
     if (!domainDraft.trim()) { showToast('Enter a domain name first', 'info'); return; }
     setBusyDomainId('new');
@@ -1327,6 +1330,7 @@ export default function App() {
                 process={selectedProcess}
                 tunnel={activeTunnel}
                 requests={requests}
+                telemetryMode={appSettings.telemetry ?? 'enhanced'}
                 onNavigateView={setMainView}
                 onOpenDetail={openRequestDetail}
                 onSendToPostman={sendToPostman}
@@ -1334,7 +1338,7 @@ export default function App() {
               />
             )}
             {mainView === 'settings' && (
-              <SettingsView workspace={activeWorkspace} appSettings={appSettings} domains={domains} domainDraft={domainDraft} loadingDomains={loadingDomains} busyDomainId={busyDomainId} scanningProject={scanningProject} onUpdateGuardrails={updateGuardrails} onUpdateAppNotes={updateAppNotes} onUpdateProjectRootPath={updateProjectRootPath} onScanProjectFolder={scanProjectFolder} onDomainDraftChange={setDomainDraft} onAddDomain={addDomain} onVerifyDomain={verifyDomain} onRemoveDomain={removeDomain} onUpdateTheme={updateTheme} onUpdateAutoUpdate={updateAutoUpdate} initialSection={settingsSection} />
+              <SettingsView workspace={activeWorkspace} appSettings={appSettings} domains={domains} domainDraft={domainDraft} loadingDomains={loadingDomains} busyDomainId={busyDomainId} scanningProject={scanningProject} onUpdateGuardrails={updateGuardrails} onUpdateAppNotes={updateAppNotes} onUpdateProjectRootPath={updateProjectRootPath} onScanProjectFolder={scanProjectFolder} onDomainDraftChange={setDomainDraft} onAddDomain={addDomain} onVerifyDomain={verifyDomain} onRemoveDomain={removeDomain} onUpdateTheme={updateTheme} onUpdateAutoUpdate={updateAutoUpdate} onUpdateTelemetry={updateTelemetry} initialSection={settingsSection} />
             )}
           </main>
 
@@ -1607,6 +1611,7 @@ function loadAppSettings(): AppSettings {
       notes: parsed.notes ?? '',
       theme: parsed.theme ?? 'slate',
       autoUpdate: parsed.autoUpdate ?? true,
+      telemetry: parsed.telemetry ?? 'enhanced',
     };
   } catch { return { ...DEFAULT_APP_SETTINGS, guardrails: { ...DEFAULT_GUARDRAILS } }; }
 }

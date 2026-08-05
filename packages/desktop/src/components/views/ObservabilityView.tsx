@@ -7,6 +7,7 @@ interface ObservabilityViewProps {
   process: ProcessCandidate | null;
   tunnel: Tunnel | null;
   requests: RequestLog[];
+  telemetryMode?: 'enhanced' | 'basic';
   onNavigateView?: (view: MainView) => void;
   onOpenDetail?: (request: RequestLog) => void;
   onSendToPostman?: (request: RequestLog) => void;
@@ -18,6 +19,7 @@ export function ObservabilityView({
   process,
   tunnel,
   requests,
+  telemetryMode = 'enhanced',
   onNavigateView,
   onOpenDetail,
   onSendToPostman,
@@ -30,17 +32,45 @@ export function ObservabilityView({
    * ────────────────────────────────────────────────────────── */
   const telemetry = useMemo(() => {
     const totalCount = requests.length;
+    let count5xx = 0;
+    const errorLogs: RequestLog[] = [];
+
+    // ── BASIC MODE: Minimal CPU Overhead — Bypass non-fatal math ──
+    if (telemetryMode === 'basic') {
+      for (let i = 0; i < requests.length; i++) {
+        const req = requests[i];
+        const statusNum = typeof req.status === 'number' ? req.status : parseInt(String(req.status || '200'), 10);
+        if (statusNum >= 500) {
+          count5xx++;
+          errorLogs.push(req);
+        }
+      }
+      return {
+        totalCount,
+        avgMs: 0,
+        p50: 0,
+        p90: 0,
+        p99: 0,
+        count2xx: 0,
+        count3xx: 0,
+        count4xx: 0,
+        count5xx,
+        successRate: '100.0',
+        formattedBytes: '0 KB',
+        leaderboards: [],
+        errorLogs: errorLogs.reverse(),
+        webhookLogs: [],
+      };
+    }
     let sumDuration = 0;
     let validDurationCount = 0;
     let count2xx = 0;
     let count3xx = 0;
     let count4xx = 0;
-    let count5xx = 0;
     let totalBytes = 0;
 
     const durations: number[] = [];
     const endpointMap = new Map<string, { method: string; path: string; count: number; totalMs: number; errors: number }>();
-    const errorLogs: RequestLog[] = [];
     const webhookLogs: RequestLog[] = [];
 
     for (let i = 0; i < requests.length; i++) {
@@ -158,7 +188,7 @@ export function ObservabilityView({
       errorLogs: errorLogs.reverse(),
       webhookLogs: webhookLogs.reverse(),
     };
-  }, [requests]);
+  }, [requests, telemetryMode]);
 
   const cards = [
     {
@@ -170,21 +200,21 @@ export function ObservabilityView({
     },
     {
       label: 'P90 Latency',
-      value: `${telemetry.p90} ms`,
-      note: `P50: ${telemetry.p50}ms | P99: ${telemetry.p99}ms`,
-      status: telemetry.p90 < 200 ? 'good' : telemetry.p90 < 800 ? 'warn' : 'danger',
+      value: telemetryMode === 'basic' ? 'Bypassed (Low CPU)' : `${telemetry.p90} ms`,
+      note: telemetryMode === 'basic' ? 'Percentile math skipped in Basic mode' : `P50: ${telemetry.p50}ms | P99: ${telemetry.p99}ms`,
+      status: telemetryMode === 'basic' ? 'neutral' : telemetry.p90 < 200 ? 'good' : telemetry.p90 < 800 ? 'warn' : 'danger',
       icon: 'speed',
     },
     {
       label: 'Success Rate',
       value: `${telemetry.successRate}%`,
-      note: `${telemetry.count2xx + telemetry.count3xx} pass / ${telemetry.count4xx + telemetry.count5xx} fail`,
+      note: telemetryMode === 'basic' ? `${telemetry.count5xx} critical failures` : `${telemetry.count2xx + telemetry.count3xx} pass / ${telemetry.count4xx + telemetry.count5xx} fail`,
       status: Number(telemetry.successRate) > 95 ? 'good' : Number(telemetry.successRate) > 80 ? 'warn' : 'danger',
       icon: 'check_circle',
     },
     {
       label: 'Bandwidth & Posture',
-      value: telemetry.formattedBytes,
+      value: telemetryMode === 'basic' ? 'Minimal Overhead' : telemetry.formattedBytes,
       note: workspace?.guardrails?.piiRedaction ? 'PII Redaction Active' : 'Open Capture',
       status: workspace?.guardrails?.piiRedaction ? 'good' : 'warn',
       icon: 'shield_lock',
@@ -193,11 +223,40 @@ export function ObservabilityView({
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 fade-in select-none">
+      {/* Basic Mode Low CPU Hint Banner */}
+      {telemetryMode === 'basic' && (
+        <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="material-symbols-outlined text-emerald-400 text-[24px]">eco</span>
+            <div>
+              <p className="font-bold text-sm text-emerald-300">Basic Telemetry Mode Active (Low CPU Mode)</p>
+              <p className="text-xs text-emerald-400/80">Non-fatal metric calculations and percentile latency sorting are bypassed to reduce computer computation and save battery/RAM. Only critical 5xx failures are recorded.</p>
+            </div>
+          </div>
+          <button
+            onClick={() => onNavigateView?.('settings')}
+            className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-xs font-semibold border border-emerald-500/30 text-emerald-200 transition-colors shrink-0 cursor-pointer"
+          >
+            Change in Settings
+          </button>
+        </div>
+      )}
+
       {/* Page Heading & Quick Actions */}
       <div className="border-b border-outline-variant/30 pb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
             <h1 className="font-display-sm text-display-sm text-on-surface">Observability Hub</h1>
+            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 ${
+              telemetryMode === 'enhanced'
+                ? 'bg-primary/10 text-primary border border-primary/20'
+                : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+            }`}>
+              <span className="material-symbols-outlined text-[14px]">
+                {telemetryMode === 'enhanced' ? 'speed' : 'eco'}
+              </span>
+              {telemetryMode === 'enhanced' ? 'Enhanced Telemetry' : 'Basic (Low CPU)'}
+            </span>
             <span className="text-xs font-mono text-secondary px-2.5 py-0.5 bg-secondary/10 rounded-full border border-secondary/20 flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse" />
               Real-Time Telemetry

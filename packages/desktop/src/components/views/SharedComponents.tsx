@@ -104,6 +104,7 @@ export interface AppSettings {
   notes: string;
   theme?: string;
   autoUpdate: boolean;
+  telemetry?: 'enhanced' | 'basic';
 }
 
 export interface DomainRecord {
