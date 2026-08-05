@@ -1224,7 +1224,16 @@ export default function App() {
               <DocsView />
             )}
             {mainView === 'observability' && (
-              <ObservabilityView workspace={activeWorkspace} process={selectedProcess} tunnel={activeTunnel} requestCount={requests.length} />
+              <ObservabilityView
+                workspace={activeWorkspace}
+                process={selectedProcess}
+                tunnel={activeTunnel}
+                requests={requests}
+                onNavigateView={setMainView}
+                onOpenDetail={openRequestDetail}
+                onSendToPostman={sendToPostman}
+                onReplayRequest={replayRequest}
+              />
             )}
             {mainView === 'settings' && (
               <SettingsView workspace={activeWorkspace} appSettings={appSettings} domains={domains} domainDraft={domainDraft} loadingDomains={loadingDomains} busyDomainId={busyDomainId} scanningProject={scanningProject} onUpdateGuardrails={updateGuardrails} onUpdateAppNotes={updateAppNotes} onUpdateProjectRootPath={updateProjectRootPath} onScanProjectFolder={scanProjectFolder} onDomainDraftChange={setDomainDraft} onAddDomain={addDomain} onVerifyDomain={verifyDomain} onRemoveDomain={removeDomain} onUpdateTheme={updateTheme} initialSection={settingsSection} />
