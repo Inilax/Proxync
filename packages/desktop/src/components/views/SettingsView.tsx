@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
 import type { WorkspaceConfig, AppSettings, DomainRecord, Guardrails } from './SharedComponents';
 import { showToast } from '../../lib/toast';
 
@@ -45,9 +46,31 @@ export function SettingsView({
     setActiveSection(initialSection);
   }, [initialSection]);
 
-  const [autostart, setAutostart] = useState(true);
+  const [autostart, setAutostart] = useState(false);
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [telemetry, setTelemetry] = useState<'enhanced' | 'basic'>('enhanced');
+
+  useEffect(() => {
+    isEnabled()
+      .then((enabled) => setAutostart(enabled))
+      .catch(() => {});
+  }, []);
+
+  const handleAutostartToggle = async (checked: boolean) => {
+    setAutostart(checked);
+    try {
+      if (checked) {
+        await enable();
+        showToast('Enabled Auto-start on system boot', 'success');
+      } else {
+        await disable();
+        showToast('Disabled Auto-start on system boot', 'info');
+      }
+    } catch (err: any) {
+      console.error('Autostart toggle failed:', err);
+      showToast(err?.message || 'Failed to update auto-start setting', 'error');
+    }
+  };
 
   const getApexDomain = (domain: string) => {
     const parts = domain.split('.');
@@ -167,7 +190,7 @@ export function SettingsView({
                   <input
                     type="checkbox"
                     checked={autostart}
-                    onChange={(e) => setAutostart(e.target.checked)}
+                    onChange={(e) => handleAutostartToggle(e.target.checked)}
                   />
                   <span className="toggle-slider" />
                 </label>

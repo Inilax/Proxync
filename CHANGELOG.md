@@ -2,6 +2,21 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [feature/main-observability-autostart-hub] - 2026-08-05 (Observability Hub, Auto-Start on Boot & Silent Process Spawning)
+- **Feature Summary**: Integrated zero-config Observability Hub featuring P50/P90/P99 latency analytics, status code heatmap, bandwidth meter, public Webhook stream replay, Error Center, and high-contrast theme styling for Midnight Slate and Dracula Dark. Integrated native Auto-Start on Boot functionality using `tauri-plugin-autostart` with silent process spawning on Windows (`CREATE_NO_WINDOW`).
+- **Modified Files**:
+  - `packages/desktop/src/components/views/ObservabilityView.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/components/views/SwaggerView.tsx`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/capabilities/default.json`
+  - `package-lock.json`
+  - `packages/desktop/package.json`
+  - `CHANGELOG.md`
+
 ## [feature/main-observability-hub] - 2026-08-05 (Zero-Config Observability Hub, Latency Analytics & Webhook Stream)
 - **Feature Summary**: Implemented high-performance O(N) zero-config Observability Hub in `ObservabilityView.tsx` featuring percentile latency metrics (P50/P90/P99), status code distribution gauge, total bandwidth meter, shared public tunnel telemetry, public Webhook interception stream with 1-click Webhook Replay, structured Error Center eliminating terminal console log soup, slowest routes leaderboard, and 1-click debugging navigation to Traffic Inspector and Postman Studio.
 - **Modified Files**:
