@@ -9,6 +9,30 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - `packages/desktop/src/App.tsx`
   - `CHANGELOG.md`
 
+## [feature/develop-auto-updater] - 2026-08-04 (Production-Ready Auto Updater)
+- **Feature Summary**: Implemented a fully production-ready automatic update system using Tauri v2 native plugins (`tauri-plugin-updater`, `tauri-plugin-process`), modelled after the POSINX Electron auto-updater pattern. On startup (and every 2 hours), the app silently checks GitHub Releases for a newer version. When an update is found, a persistent non-auto-dismissing toast appears with three actions: **Update Now** (silent background download with live % progress shown on the button), **Skip this version** (version saved to `localStorage` — won't prompt again for that version), and **Later** (dismisses until next check). After downloading, a second persistent toast prompts **Restart Now** or **Later**. Upgraded `toast.tsx` to support persistent toasts with a new `dismissToast(id)` API. Updated `release.yml` GitHub Actions workflow to pass `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets to `tauri-action` with `includeUpdaterJson: true`, enabling automatic signed `updater.json` generation and upload on every release. Set real public key in `tauri.conf.json`. Added `*.key` and `*.key.pub` to `.gitignore` to protect signing keys from accidental commits.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/lib/toast.tsx`
+  - `.github/workflows/release.yml`
+  - `.gitignore`
+  - `CHANGELOG.md`
+
+
+## [fix/develop-swagger-redirection] - 2026-08-04 (Swagger Postman Export Auto-Redirection & Theme Filter Pill High-Contrast Contrast Fix)
+- **Feature Summary**: Added automatic view redirection to Postman Studio (`setMainView('postman')`) upon clicking 'Export to Postman' in Swagger Studio. Fixed active tag filter pill text contrast across Dracula Dark, Midnight, Cyberpunk, and all themes by setting bright white bold text (`text-white font-bold shadow-md shadow-primary/25`).
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/SwaggerView.tsx`
+  - `README.md`
+  - `CHANGELOG.md`
+
+
 ## [fix/develop-postman-response-and-decompression] - 2026-08-04 (Postman Response Payload Decompression & Native Execution Fix)
 - **Feature Summary**: Resolved empty HTTP response payload issue in Postman Studio when requesting Cloudflare Tunnels or relative endpoints. Added gzip, deflate, and brotli automatic decompression features to reqwest in `Cargo.toml`, updated `Cargo.lock`, set desktop User-Agent header in Rust native HTTP executor (`lib.rs`), and bypassed offline mock response handler.
 - **Modified Files**:

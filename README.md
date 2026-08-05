@@ -75,13 +75,14 @@ A few ground rules:
 
 ### What's next
 
-- [ ] **Offline-First SQLite Migration** — Transition local state storage to SQLite for advanced queries and large log payloads.
-- [ ] **CLI Companion** — Run `npx proxync` to start tunnels and stream logs directly to your terminal.
-- [ ] **Local Network Share** — Expose a web-based dashboard viewer for other devices on your local network (LAN).
-- [ ] **AI-Powered Traffic Debugger** — A local agent that automatically flags slow endpoints, common header issues, and schema mismatches.
-- [ ] **HAR & Postman Collection Export** — Download captured requests in industry-standard formats.
-- [ ] **Native OS Notifications** for incoming webhooks or tunnel state transitions.
-- [ ] **Request/Response Interception & Mocking** — Tweak responses on the fly before they hit your localhost.
+- [ ] **v0.2.0 Stabilization & UX Redesign** — Fix all minor bug issues raised in v0.1.8, complete studio UI/UX redesign, and include enhanced custom domain verification in v0.2.0.
+- [ ] **Native High-Speed Proxync Tunneling** — Launch our own proprietary Proxync Tunneling infrastructure alongside Cloudflare Tunnels — built for higher efficiency, lower latency, and maximum speed.
+- [ ] **CLI Companion (`proxync-cli`)** — Run quick tunnels directly from your terminal without opening the desktop GUI when you only need tunneling.
+- [ ] **AI-Powered Traffic Debugger** — Intelligent local agent that automatically flags slow endpoints, common header/schema mismatches, and suggests fixes.
+- [ ] **Enterprise Edition** — Team collaboration workspaces, team sharing, live session preservation with Proxync Tunnels for high uptime, voice chat, and public custom domain visibility.
+- [ ] **On-The-Fly Request & Response Mocking** — Intercept and tweak HTTP request/response headers and payloads on the fly before they hit your localhost.
+- [ ] **Offline-First SQLite State Engine** — Transition local state serialization to SQLite for high-performance log querying and large payload storage.
+- [ ] **Native OS Webhook & Tunnel Notifications** — Instant OS notifications for incoming webhooks and tunnel lifecycle events.
 
 ---
 
