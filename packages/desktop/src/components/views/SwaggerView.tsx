@@ -420,7 +420,7 @@ export function SwaggerView({
                                   onClick={() => setSelectedSnippetFramework(fw)}
                                   className={`px-2 py-0.5 rounded cursor-pointer capitalize transition-all ${
                                     selectedSnippetFramework === fw
-                                      ? 'bg-primary text-on-primary font-bold'
+                                      ? 'bg-primary/20 text-primary border border-primary/30 font-bold'
                                       : 'text-on-surface-variant hover:text-on-surface'
                                   }`}
                                 >

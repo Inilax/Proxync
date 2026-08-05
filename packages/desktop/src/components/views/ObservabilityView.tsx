@@ -271,10 +271,10 @@ export function ObservabilityView({
       <div className="flex items-center gap-2 border-b border-outline-variant/30 pb-3">
         <button
           onClick={() => setActiveTab('overview')}
-          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+          className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
             activeTab === 'overview'
-              ? 'bg-primary text-on-primary shadow-sm'
-              : 'bg-surface-container-low text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
+              ? 'bg-primary/20 text-primary border border-primary/40 shadow-sm'
+              : 'bg-surface-container-low text-on-surface-variant hover:text-on-surface hover:bg-surface-container border border-transparent'
           }`}
         >
           <span className="material-symbols-outlined text-[16px]">analytics</span>
@@ -282,10 +282,10 @@ export function ObservabilityView({
         </button>
         <button
           onClick={() => setActiveTab('errors')}
-          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all relative ${
+          className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all relative ${
             activeTab === 'errors'
-              ? 'bg-primary text-on-primary shadow-sm'
-              : 'bg-surface-container-low text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
+              ? 'bg-primary/20 text-primary border border-primary/40 shadow-sm'
+              : 'bg-surface-container-low text-on-surface-variant hover:text-on-surface hover:bg-surface-container border border-transparent'
           }`}
         >
           <span className="material-symbols-outlined text-[16px]">bug_report</span>
@@ -296,10 +296,10 @@ export function ObservabilityView({
         </button>
         <button
           onClick={() => setActiveTab('webhooks')}
-          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+          className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
             activeTab === 'webhooks'
-              ? 'bg-primary text-on-primary shadow-sm'
-              : 'bg-surface-container-low text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
+              ? 'bg-primary/20 text-primary border border-primary/40 shadow-sm'
+              : 'bg-surface-container-low text-on-surface-variant hover:text-on-surface hover:bg-surface-container border border-transparent'
           }`}
         >
           <span className="material-symbols-outlined text-[16px]">webhook</span>
@@ -307,10 +307,10 @@ export function ObservabilityView({
         </button>
         <button
           onClick={() => setActiveTab('endpoints')}
-          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+          className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
             activeTab === 'endpoints'
-              ? 'bg-primary text-on-primary shadow-sm'
-              : 'bg-surface-container-low text-on-surface-variant hover:text-on-surface hover:bg-surface-container'
+              ? 'bg-primary/20 text-primary border border-primary/40 shadow-sm'
+              : 'bg-surface-container-low text-on-surface-variant hover:text-on-surface hover:bg-surface-container border border-transparent'
           }`}
         >
           <span className="material-symbols-outlined text-[16px]">leaderboard</span>

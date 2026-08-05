@@ -10,6 +10,9 @@ use lazy_static::lazy_static;
 use base64::prelude::*;
 use tokio::io::AsyncBufReadExt;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 lazy_static! {
     static ref ACTIVE_TUNNELS: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>> = Arc::new(Mutex::new(HashMap::new()));
     static ref LOCALTUNNEL_PROCESSES: Arc<Mutex<HashMap<String, tokio::process::Child>>> = Arc::new(Mutex::new(HashMap::new()));
@@ -51,7 +54,10 @@ struct ProcessCandidate {
 }
 
 fn get_pid_for_port(port: u16) -> Option<u32> {
-    let output = std::process::Command::new("netstat")
+    let mut cmd = std::process::Command::new("netstat");
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000);
+    let output = cmd
         .args(&["-ano"])
         .output()
         .ok()?;
@@ -80,7 +86,10 @@ fn get_process_info(pid: u32) -> Option<(Option<String>, Option<String>, Option<
         "Get-CimInstance Win32_Process -Filter 'ProcessId = {}' | Select-Object -Property Name, ExecutablePath, CommandLine | ConvertTo-Json",
         pid
     );
-    let output = std::process::Command::new("powershell")
+    let mut cmd = std::process::Command::new("powershell");
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000);
+    let output = cmd
         .args(&["-Command", &ps_cmd])
         .output()
         .ok()?;
@@ -431,6 +440,8 @@ async fn open_localtunnel(
     subdomain: Option<String>
 ) -> Result<String, String> {
     let mut cmd = tokio::process::Command::new("cmd");
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000);
     cmd.args(&["/C", "npx", "-y", "localtunnel", "--port", &local_port.to_string()]);
     if let Some(sub) = subdomain {
         let clean_sub = sub.replace(" ", "-").to_lowercase();
@@ -498,6 +509,8 @@ async fn open_cloudflare_tunnel(
     local_port: u16,
 ) -> Result<String, String> {
     let mut cmd = tokio::process::Command::new("cmd");
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000);
     cmd.args(&["/C", "npx", "-y", "--package=cloudflared", "cloudflared", "tunnel", "--url", &format!("http://127.0.0.1:{}", local_port)]);
     cmd.stderr(std::process::Stdio::piped());
     
@@ -821,6 +834,7 @@ async fn execute_http_request(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::AppleScript, Some(vec!["--autostart"])))
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
