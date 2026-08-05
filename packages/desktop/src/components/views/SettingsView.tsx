@@ -20,6 +20,7 @@ export function SettingsView({
   onVerifyDomain,
   onRemoveDomain,
   onUpdateTheme,
+  onUpdateAutoUpdate,
   initialSection = 'general',
 }: {
   workspace: WorkspaceConfig | null;
@@ -38,6 +39,7 @@ export function SettingsView({
   onVerifyDomain: (domainId: string) => void;
   onRemoveDomain: (domainId: string) => void;
   onUpdateTheme: (theme: string) => void;
+  onUpdateAutoUpdate: (enabled: boolean) => void;
   initialSection?: 'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger';
 }) {
   const [activeSection, setActiveSection] = useState<'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger'>(initialSection);
@@ -47,12 +49,11 @@ export function SettingsView({
   }, [initialSection]);
 
   const [autostart, setAutostart] = useState(false);
-  const [autoUpdate, setAutoUpdate] = useState(true);
   const [telemetry, setTelemetry] = useState<'enhanced' | 'basic'>('enhanced');
 
   useEffect(() => {
     isEnabled()
-      .then((enabled) => setAutostart(enabled))
+      .then((enabled: boolean) => setAutostart(enabled))
       .catch(() => {});
   }, []);
 
@@ -204,8 +205,16 @@ export function SettingsView({
                 <label className="toggle-switch">
                   <input
                     type="checkbox"
-                    checked={autoUpdate}
-                    onChange={(e) => setAutoUpdate(e.target.checked)}
+                    checked={appSettings.autoUpdate}
+                    onChange={(e) => {
+                      onUpdateAutoUpdate(e.target.checked);
+                      showToast(
+                        e.target.checked
+                          ? 'Auto-update enabled — checks every 2 hours'
+                          : 'Auto-update set to weekly checks',
+                        'info'
+                      );
+                    }}
                   />
                   <span className="toggle-slider" />
                 </label>

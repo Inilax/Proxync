@@ -103,6 +103,7 @@ export interface AppSettings {
   defaultProjectRootPath: string;
   notes: string;
   theme?: string;
+  autoUpdate: boolean;
 }
 
 export interface DomainRecord {

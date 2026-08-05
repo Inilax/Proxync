@@ -69,6 +69,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   guardrails: { ...DEFAULT_GUARDRAILS },
   defaultProjectRootPath: '', notes: '',
   theme: 'slate',
+  autoUpdate: true,
 };
 
 const LOCAL_WORKSPACES_KEY = 'proxync_local_workspaces_v1';
@@ -237,111 +238,206 @@ export default function App() {
   /* ── Effects ── */
 
   const SKIP_UPDATE_KEY = 'proxync_skipped_update_version';
+  const LAST_UPDATE_CHECK_KEY = 'proxync_last_update_check_ts';
+
+  // ── Semver Force-Update Helper ────────────────────────────────────
+  // Returns true when the minor OR major segment increments, which is
+  // considered a "new iteration" requiring a forced update.
+  // Patch-only bumps (1.1.4 → 1.1.6) are optional (non-forced).
+  function isForceUpdate(current: string, next: string): boolean {
+    const parse = (v: string) => v.split('.').map(Number);
+    const [curMajor, curMinor] = parse(current);
+    const [nxtMajor, nxtMinor] = parse(next);
+    return nxtMajor > curMajor || nxtMinor > curMinor;
+  }
 
   useEffect(() => {
     let mounted = true;
+    let updaterInterval: ReturnType<typeof setInterval> | null = null;
 
-    // Auto-Updater setup
-    async function setupUpdater() {
+    async function runUpdateCheck() {
       try {
         const update = await check();
-        if (!update) return;
+        if (!mounted || !update) return;
 
-        // Skip if user previously chose to skip this version
-        const skipped = localStorage.getItem(SKIP_UPDATE_KEY);
-        if (skipped === update.version) return;
+        const forced = isForceUpdate(update.currentVersion, update.version);
 
-        // Persistent toast — stays until user acts
-        const toastId = showToast(
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <div style={{ fontWeight: 600 }}>🚀 Update v{update.version} available</div>
-            <div style={{ fontSize: '0.82em', opacity: 0.8 }}>A new version of Proxync is ready to download.</div>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <button
-                id={`updater-btn-${update.version}`}
-                style={{ padding: '5px 10px', cursor: 'pointer', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 600 }}
-                onClick={async (e) => {
-                  const btn = e.currentTarget as HTMLButtonElement;
-                  btn.disabled = true;
-                  btn.innerText = 'Starting...';
+        // Skip logic only applies to non-forced (patch-only) updates
+        if (!forced) {
+          const skipped = localStorage.getItem(SKIP_UPDATE_KEY);
+          if (skipped === update.version) return;
+        }
 
-                  let downloaded = 0;
-                  let contentLength = 0;
-                  await update.downloadAndInstall((event: any) => {
-                    switch (event.event) {
-                      case 'Started':
-                        contentLength = event.data.contentLength || 0;
-                        btn.innerText = 'Downloading...';
-                        break;
-                      case 'Progress':
-                        downloaded += event.data.chunkLength;
-                        if (contentLength) {
-                          const pct = Math.round((downloaded / contentLength) * 100);
-                          btn.innerText = `Downloading... ${pct}%`;
-                        }
-                        break;
-                      case 'Finished':
-                        btn.innerText = 'Done!';
-                        break;
-                    }
-                  });
+        if (forced) {
+          // ── FORCE UPDATE TOAST ── No Skip, No Later ────────────────
+          const forceToastId = showToast(
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ fontWeight: 700, fontSize: '1em' }}>⚠️ Required Update v{update.version}</div>
+              <div style={{ fontSize: '0.82em', opacity: 0.85, lineHeight: 1.4 }}>
+                This is a major release update and is required to continue using Proxync.
+                Please update now.
+              </div>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  id={`updater-force-btn-${update.version}`}
+                  style={{ padding: '5px 14px', cursor: 'pointer', background: '#ef4444', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 700 }}
+                  onClick={async (e) => {
+                    const btn = e.currentTarget as HTMLButtonElement;
+                    btn.disabled = true;
+                    btn.innerText = 'Downloading...';
 
-                  // Dismiss the "available" toast and show persistent restart prompt
-                  dismissToast(toastId);
-                  const restartId = showToast(
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      <div style={{ fontWeight: 600 }}>✅ Update v{update.version} ready</div>
-                      <div style={{ fontSize: '0.82em', opacity: 0.8 }}>Restart Proxync to apply the update.</div>
-                      <div style={{ display: 'flex', gap: '8px' }}>
+                    let downloaded = 0;
+                    let contentLength = 0;
+                    await update.downloadAndInstall((event: any) => {
+                      switch (event.event) {
+                        case 'Started':
+                          contentLength = event.data.contentLength || 0;
+                          break;
+                        case 'Progress':
+                          downloaded += event.data.chunkLength;
+                          if (contentLength) {
+                            const pct = Math.round((downloaded / contentLength) * 100);
+                            btn.innerText = `Downloading... ${pct}%`;
+                          }
+                          break;
+                        case 'Finished':
+                          btn.innerText = 'Done!';
+                          break;
+                      }
+                    });
+
+                    dismissToast(forceToastId);
+                    showToast(
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        <div style={{ fontWeight: 600 }}>✅ Update v{update.version} ready</div>
+                        <div style={{ fontSize: '0.82em', opacity: 0.8 }}>Restart Proxync to apply the update.</div>
                         <button
                           style={{ padding: '5px 10px', cursor: 'pointer', background: '#10b981', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 600 }}
                           onClick={() => relaunch()}
                         >
                           Restart Now
                         </button>
-                        <button
-                          style={{ padding: '5px 10px', cursor: 'pointer', background: 'transparent', color: 'inherit', border: '1px solid currentColor', borderRadius: '5px' }}
-                          onClick={() => dismissToast(restartId)}
-                        >
-                          Later
-                        </button>
-                      </div>
-                    </div>,
-                    'success',
-                    true // persistent
-                  );
-                }}
-              >
-                Update Now
-              </button>
-              <button
-                style={{ padding: '5px 10px', cursor: 'pointer', background: 'transparent', color: 'inherit', border: '1px solid currentColor', borderRadius: '5px' }}
-                onClick={() => {
-                  localStorage.setItem(SKIP_UPDATE_KEY, update.version);
-                  dismissToast(toastId);
-                }}
-              >
-                Skip this version
-              </button>
-              <button
-                style={{ padding: '5px 10px', cursor: 'pointer', background: 'transparent', color: 'inherit', border: '1px solid currentColor', borderRadius: '5px' }}
-                onClick={() => dismissToast(toastId)}
-              >
-                Later
-              </button>
-            </div>
-          </div>,
-          'info',
-          true // persistent — won't auto-dismiss
-        );
+                      </div>,
+                      'success',
+                      true
+                    );
+                  }}
+                >
+                  Update Now
+                </button>
+              </div>
+            </div>,
+            'error',
+            true // persistent — cannot be dismissed
+          );
+        } else {
+          // ── OPTIONAL UPDATE TOAST ── Skip / Later available ────────
+          const toastId = showToast(
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ fontWeight: 600 }}>🚀 Update v{update.version} available</div>
+              <div style={{ fontSize: '0.82em', opacity: 0.8 }}>A new version of Proxync is ready to download.</div>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  id={`updater-btn-${update.version}`}
+                  style={{ padding: '5px 10px', cursor: 'pointer', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 600 }}
+                  onClick={async (e) => {
+                    const btn = e.currentTarget as HTMLButtonElement;
+                    btn.disabled = true;
+                    btn.innerText = 'Starting...';
+
+                    let downloaded = 0;
+                    let contentLength = 0;
+                    await update.downloadAndInstall((event: any) => {
+                      switch (event.event) {
+                        case 'Started':
+                          contentLength = event.data.contentLength || 0;
+                          btn.innerText = 'Downloading...';
+                          break;
+                        case 'Progress':
+                          downloaded += event.data.chunkLength;
+                          if (contentLength) {
+                            const pct = Math.round((downloaded / contentLength) * 100);
+                            btn.innerText = `Downloading... ${pct}%`;
+                          }
+                          break;
+                        case 'Finished':
+                          btn.innerText = 'Done!';
+                          break;
+                      }
+                    });
+
+                    dismissToast(toastId);
+                    const restartId = showToast(
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        <div style={{ fontWeight: 600 }}>✅ Update v{update.version} ready</div>
+                        <div style={{ fontSize: '0.82em', opacity: 0.8 }}>Restart Proxync to apply the update.</div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            style={{ padding: '5px 10px', cursor: 'pointer', background: '#10b981', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 600 }}
+                            onClick={() => relaunch()}
+                          >
+                            Restart Now
+                          </button>
+                          <button
+                            style={{ padding: '5px 10px', cursor: 'pointer', background: 'transparent', color: 'inherit', border: '1px solid currentColor', borderRadius: '5px' }}
+                            onClick={() => dismissToast(restartId)}
+                          >
+                            Later
+                          </button>
+                        </div>
+                      </div>,
+                      'success',
+                      true
+                    );
+                  }}
+                >
+                  Update Now
+                </button>
+                <button
+                  style={{ padding: '5px 10px', cursor: 'pointer', background: 'transparent', color: 'inherit', border: '1px solid currentColor', borderRadius: '5px' }}
+                  onClick={() => {
+                    localStorage.setItem(SKIP_UPDATE_KEY, update.version);
+                    dismissToast(toastId);
+                  }}
+                >
+                  Skip this version
+                </button>
+                <button
+                  style={{ padding: '5px 10px', cursor: 'pointer', background: 'transparent', color: 'inherit', border: '1px solid currentColor', borderRadius: '5px' }}
+                  onClick={() => dismissToast(toastId)}
+                >
+                  Later
+                </button>
+              </div>
+            </div>,
+            'info',
+            true
+          );
+        }
       } catch (err) {
         console.error('[AutoUpdater] Failed to check for updates:', err);
       }
     }
 
-    setupUpdater();
-    // Re-check every 2 hours
-    const updaterInterval = setInterval(setupUpdater, 2 * 60 * 60 * 1000);
+    // ── Schedule update checks based on autoUpdate setting ────────
+    if (appSettings.autoUpdate) {
+      // Auto-update ON: check on startup + every 2 hours
+      runUpdateCheck();
+      updaterInterval = setInterval(runUpdateCheck, 2 * 60 * 60 * 1000);
+    } else {
+      // Auto-update OFF: only check every 7 days
+      const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+      const lastCheck = parseInt(localStorage.getItem(LAST_UPDATE_CHECK_KEY) ?? '0', 10);
+      const now = Date.now();
+      if (now - lastCheck >= sevenDaysMs) {
+        localStorage.setItem(LAST_UPDATE_CHECK_KEY, String(now));
+        runUpdateCheck();
+      }
+      updaterInterval = setInterval(() => {
+        localStorage.setItem(LAST_UPDATE_CHECK_KEY, String(Date.now()));
+        runUpdateCheck();
+      }, sevenDaysMs);
+    }
 
     invoke<string>('get_local_ip')
       .then((ip) => { if (mounted) setLocalIp(ip); })
@@ -376,8 +472,8 @@ export default function App() {
           setActiveWorkspaceId(fallback.activeWorkspaceId);
         }
       });
-    return () => { mounted = false; clearInterval(updaterInterval); };
-  }, [appSettings.defaultProjectRootPath, appSettings.guardrails]);
+    return () => { mounted = false; if (updaterInterval) clearInterval(updaterInterval); };
+  }, [appSettings.defaultProjectRootPath, appSettings.guardrails, appSettings.autoUpdate]);
 
   useEffect(() => { void discoverProcesses(); }, []);
 
@@ -960,6 +1056,8 @@ export default function App() {
 
   function updateTheme(theme: string) { setAppSettings((current) => ({ ...current, theme })); }
 
+  function updateAutoUpdate(enabled: boolean) { setAppSettings((current) => ({ ...current, autoUpdate: enabled })); }
+
   async function addDomain() {
     if (!domainDraft.trim()) { showToast('Enter a domain name first', 'info'); return; }
     setBusyDomainId('new');
@@ -1236,7 +1334,7 @@ export default function App() {
               />
             )}
             {mainView === 'settings' && (
-              <SettingsView workspace={activeWorkspace} appSettings={appSettings} domains={domains} domainDraft={domainDraft} loadingDomains={loadingDomains} busyDomainId={busyDomainId} scanningProject={scanningProject} onUpdateGuardrails={updateGuardrails} onUpdateAppNotes={updateAppNotes} onUpdateProjectRootPath={updateProjectRootPath} onScanProjectFolder={scanProjectFolder} onDomainDraftChange={setDomainDraft} onAddDomain={addDomain} onVerifyDomain={verifyDomain} onRemoveDomain={removeDomain} onUpdateTheme={updateTheme} initialSection={settingsSection} />
+              <SettingsView workspace={activeWorkspace} appSettings={appSettings} domains={domains} domainDraft={domainDraft} loadingDomains={loadingDomains} busyDomainId={busyDomainId} scanningProject={scanningProject} onUpdateGuardrails={updateGuardrails} onUpdateAppNotes={updateAppNotes} onUpdateProjectRootPath={updateProjectRootPath} onScanProjectFolder={scanProjectFolder} onDomainDraftChange={setDomainDraft} onAddDomain={addDomain} onVerifyDomain={verifyDomain} onRemoveDomain={removeDomain} onUpdateTheme={updateTheme} onUpdateAutoUpdate={updateAutoUpdate} initialSection={settingsSection} />
             )}
           </main>
 
@@ -1508,6 +1606,7 @@ function loadAppSettings(): AppSettings {
       defaultProjectRootPath: parsed.defaultProjectRootPath ?? '',
       notes: parsed.notes ?? '',
       theme: parsed.theme ?? 'slate',
+      autoUpdate: parsed.autoUpdate ?? true,
     };
   } catch { return { ...DEFAULT_APP_SETTINGS, guardrails: { ...DEFAULT_GUARDRAILS } }; }
 }
