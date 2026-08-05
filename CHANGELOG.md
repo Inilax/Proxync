@@ -2,6 +2,18 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [feature/main-smart-auto-update] - 2026-08-05 (Smart Version-Aware Auto-Update System)
+- **Feature Summary**: Fully wired the Settings "Automatic Updates" toggle to the real update scheduler. When **ON** (default), the app checks for updates on startup and every **2 hours**. When **OFF**, it checks only every **7 days** using a persisted timestamp. Introduced a semver `isForceUpdate()` helper: if the **minor or major** version segment increments (e.g. `1.1.x → 1.2.0`, `0.2.x → 0.3.0`), a **forced update** dialog is shown — red, persistent, no Skip or Later buttons, only "Update Now". Pure **patch-only bumps** (e.g. `1.1.4 → 1.1.6`) show the standard optional toast with Skip this version and Later. Toggle state is now persisted to `AppSettings` and survives restarts.
+- **Modified Files**:
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/package.json`
+  - `package-lock.json`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
+
 ## [feature/main-observability-autostart-hub] - 2026-08-05 (Observability Hub, Auto-Start on Boot & Silent Process Spawning)
 - **Feature Summary**: Integrated zero-config Observability Hub featuring P50/P90/P99 latency analytics, status code heatmap, bandwidth meter, public Webhook stream replay, Error Center, and high-contrast theme styling for Midnight Slate and Dracula Dark. Integrated native Auto-Start on Boot functionality using `tauri-plugin-autostart` with silent process spawning on Windows (`CREATE_NO_WINDOW`).
 - **Modified Files**:
