@@ -2,6 +2,14 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [feature/develop-patch-socketio-parser-vulnerability] - 2026-08-06 (Socket.IO Vulnerability Patch & Orphaned Dependency Pruning)
+- **Feature Summary**: Resolved Dependabot security vulnerability `GHSA-2m8v-j782-fhvr` (**Socket.IO: Zero-attachment Memory Exhaustion**) and conducted full codebase audit. Completely pruned 3 orphaned, 100% unused dependencies (`socket.io-client`, `socket.io-parser`, `react-router`) from `packages/desktop/package.json` and root `package.json` overrides, removing 9 unneeded node packages. Verified via `npm audit` (0 vulnerabilities) and clean `npm run build`.
+- **Modified Files**:
+  - `package.json`
+  - `packages/desktop/package.json`
+  - `package-lock.json`
+  - `CHANGELOG.md`
+
 ## [feature/main-telemetry-options] - 2026-08-06 (Persistent Telemetry System with Low-CPU Basic Mode)
 - **Feature Summary**: Fully wired persistent **Enhanced** vs **Basic** telemetry options into `AppSettings` with storage persistence. **Enhanced Mode** (default) enables full P50/P90/P99 latency calculations, route leaderboards, and bandwidth meters. **Basic Mode** bypasses array sorting (`durations.sort`) and non-fatal percentile math to minimize CPU/RAM computational overhead, logging only critical 5xx errors. Features clean inline descriptions in Settings and an active Low CPU Mode indicator banner in Observability Hub.
 - **Modified Files**:
