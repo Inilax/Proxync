@@ -1535,7 +1535,7 @@ export default function App() {
       {authDialogOpen && (
         <div className="dialog-backdrop glass" onClick={() => setAuthDialogOpen(false)}>
           <section className="workspace-settings-dialog slide-up max-w-sm text-center p-8 flex flex-col items-center gap-4" onClick={(e) => e.stopPropagation()}>
-            <div className="w-16 h-16 bg-primary/20 text-primary rounded-full flex items-center justify-center mb-2 animate-pulse">
+            <div className="w-16 h-16 bg-primary/20 text-primary rounded-full flex items-center justify-center mx-auto mb-2 animate-pulse">
               <span className="material-symbols-outlined text-[36px]">lock_person</span>
             </div>
             <h2 className="text-xl font-bold text-on-surface">Coming Soon</h2>
