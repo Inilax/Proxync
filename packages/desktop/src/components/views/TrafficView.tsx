@@ -111,7 +111,7 @@ export function TrafficView({
                       onClick={() => onSendToPostman(request)}
                       className="btn-ghost compact"
                     >
-                      Send to Postman →
+                      Send to Playground →
                     </button>
                   </div>
                 </div>

@@ -161,7 +161,7 @@ export function ProcessView({
           <div className="space-y-1">
             <h2 className="font-body-lg text-body-lg text-on-surface font-semibold">Starter Request Scan</h2>
             <p className="text-xs text-on-surface-variant leading-relaxed max-w-xl">
-              Proxync detected likely routing endpoints for this framework. Import them to your Postman collection to start live tests and build Swagger validation contracts.
+              Proxync detected likely routing endpoints for this framework. Import them to your Playground collection to start live tests and build Swagger validation contracts.
             </p>
           </div>
           <div className="flex items-center gap-3 shrink-0">

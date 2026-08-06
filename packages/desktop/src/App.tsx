@@ -86,7 +86,7 @@ const NAV_ITEMS: { view: MainView; label: string; icon: string }[] = [
   { view: 'lobby', label: 'Workspaces', icon: 'hub' },
   { view: 'process', label: 'Tunnels', icon: 'lan' },
   { view: 'traffic', label: 'Traffic', icon: 'terminal' },
-  { view: 'postman', label: 'Postman', icon: 'send' },
+  { view: 'postman', label: 'Playground', icon: 'send' },
   { view: 'swagger', label: 'Swagger', icon: 'api' },
   { view: 'docs', label: 'Docs', icon: 'menu_book' },
   { view: 'observability', label: 'Observability', icon: 'insights' },
@@ -859,7 +859,7 @@ export default function App() {
       setTunnels((current) => [tunnel, ...current.filter((item) => item.id !== tunnel.id)]);
       setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false); setRequests([]);
       updateActiveWorkspace((ws) => ({ ...ws, profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: tunnel.publicUrl } : p) }));
-      showToast(`Tunnel is live. Imported ${starterScan.length} starter requests into Postman.`, 'success');
+      showToast(`Tunnel is live. Imported ${starterScan.length} starter requests into Playground.`, 'success');
     } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to share process', 'error'); }
     finally { setSharingPort(null); }
   }
@@ -1118,7 +1118,7 @@ export default function App() {
      ══════════════════════════════════════════════ */
 
   const viewLabel = NAV_ITEMS.find((n) => n.view === mainView)?.label
-    ?? (mainView === 'process' ? 'Process' : mainView === 'postman' ? 'Postman' : mainView === 'observability' ? 'Observability' : 'Proxync');
+    ?? (mainView === 'process' ? 'Process' : mainView === 'postman' ? 'Playground' : mainView === 'observability' ? 'Observability' : 'Proxync');
 
   return (
     <div className="app-frame flex flex-col h-screen w-screen overflow-hidden bg-surface">
