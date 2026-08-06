@@ -2,8 +2,8 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
-## [feature/develop-patch-socketio-parser-vulnerability] - 2026-08-06 (Socket.IO Zero-attachment Memory Exhaustion Patch)
-- **Feature Summary**: Patched Dependabot security vulnerability `GHSA-2m8v-j782-fhvr` (**Socket.IO: Zero-attachment Memory Exhaustion**) by upgrading `socket.io-parser` dependency to `>= 4.2.7` (resolved to `4.2.8`) across root `package.json` overrides and `packages/desktop/package.json`.
+## [feature/develop-patch-socketio-parser-vulnerability] - 2026-08-06 (Socket.IO Vulnerability Patch & Orphaned Dependency Pruning)
+- **Feature Summary**: Resolved Dependabot security vulnerability `GHSA-2m8v-j782-fhvr` (**Socket.IO: Zero-attachment Memory Exhaustion**) and conducted full codebase audit. Completely pruned 3 orphaned, 100% unused dependencies (`socket.io-client`, `socket.io-parser`, `react-router`) from `packages/desktop/package.json` and root `package.json` overrides, removing 9 unneeded node packages. Verified via `npm audit` (0 vulnerabilities) and clean `npm run build`.
 - **Modified Files**:
   - `package.json`
   - `packages/desktop/package.json`

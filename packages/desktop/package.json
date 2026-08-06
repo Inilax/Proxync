@@ -19,10 +19,7 @@
     "@tauri-apps/plugin-shell": "^2.3.5",
     "@tauri-apps/plugin-updater": "^2",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "react-router": "^8.3.0",
-    "socket.io-client": "^4.8.3",
-    "socket.io-parser": ">=4.2.7"
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
