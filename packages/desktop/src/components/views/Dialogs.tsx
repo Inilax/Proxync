@@ -249,18 +249,18 @@ export function DomainSelectDialog({
                     justifyContent: 'space-between',
                     padding: '10px 14px',
                     borderRadius: '8px',
-                    background: isSelected ? 'var(--teal-dim)' : 'var(--surface-2)',
-                    border: isSelected ? '1px solid var(--teal)' : '1px solid var(--line)',
+                    background: isSelected ? 'var(--color-primary-container)' : 'var(--color-surface-container-high)',
+                    border: isSelected ? '1px solid var(--color-primary)' : '1px solid var(--color-outline-variant)',
                     cursor: 'pointer',
                     transition: 'all var(--dur-fast) var(--ease)',
-                    boxShadow: isSelected ? '0 0 12px var(--teal-dim)' : 'none',
+                    boxShadow: isSelected ? '0 0 12px var(--color-primary-container)' : 'none',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
                     <span style={{ fontSize: '18px', minWidth: '24px', textAlign: 'center' }}>{opt.icon}</span>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, textAlign: 'left' }}>
                       <strong style={{ fontSize: '12px', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{opt.title}</strong>
-                      <span style={{ fontSize: '11px', color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{opt.desc}</span>
+                      <span style={{ fontSize: '11px', color: 'var(--color-on-surface-variant)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{opt.desc}</span>
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '12px' }}>
@@ -446,5 +446,4 @@ export function ConfirmPurgeDialog({
     </div>
   );
 }
-
 
