@@ -508,7 +508,7 @@ export default function App() {
   useEffect(() => {
     if (!activeWorkspace) return;
     setSavedRequests(activeWorkspace.savedRequests);
-    setRequests(activeWorkspace.capturedRequests);
+    setRequests((current) => (current.length > 0 ? current : (activeWorkspace.capturedRequests || [])));
     setStarterSuggestions(activeWorkspace.savedRequests.filter((r) => r.source === 'starter-scan'));
     if (activeWorkspace.remoteWorkspaceId) {
       localStorage.setItem('proxync_workspace', activeWorkspace.remoteWorkspaceId);
@@ -550,9 +550,10 @@ export default function App() {
 
         if (isHmrNoise) return;
 
-        const reqId = payload.id || payload.requestId || crypto.randomUUID();
-        const item: RequestLog = {
-          id: reqId,
+        const rawRequestId = payload.id || payload.requestId || '';
+        const item: RequestLog & { rawRequestId?: string } = {
+          id: crypto.randomUUID(),
+          rawRequestId,
           method,
           path,
           status: payload.status || 'pending',
@@ -566,8 +567,9 @@ export default function App() {
       unlistenResponse = await listen<any>('request:log:response', (event) => {
         const payload = event.payload;
         const targetId = payload.id || payload.requestId;
+        if (!targetId) return;
         setRequests((current) =>
-          current.map((r) => r.id === targetId ? { ...r, status: payload.status, durationMs: payload.durationMs || r.durationMs } : r),
+          current.map((r: any) => (r.id === targetId || r.rawRequestId === targetId) ? { ...r, status: payload.status, durationMs: payload.durationMs || r.durationMs } : r),
         );
       });
       unlistenClosed = await listen<{ tunnelId: string }>('tunnel:auto-closed', (event) => {
@@ -734,6 +736,7 @@ export default function App() {
           profiles: [],
           savedRequests: [],
           capturedRequests: [],
+          domains: [],
           guardrails: { ...DEFAULT_GUARDRAILS },
           languageHint: 'Undetermined',
           selectedProfileId: undefined,
@@ -888,10 +891,8 @@ export default function App() {
     } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to stop tunnel', 'error'); }
   }
 
-  async function openRequestDetail(request: RequestLog) {
-    if (!activeWorkspace?.remoteWorkspaceId || !activeTunnel) { setSelectedRequest(request); return; }
-    try { const detail = await api.requests.get(activeWorkspace.remoteWorkspaceId, activeTunnel.id, request.id); setSelectedRequest(detail); }
-    catch { setSelectedRequest(request); }
+  function openRequestDetail(request: RequestLog) {
+    setSelectedRequest(request);
   }
 
   function sendToPostman(request: RequestLog) {
@@ -902,9 +903,52 @@ export default function App() {
   }
 
   async function replayRequest(request: RequestLog) {
-    if (!activeWorkspace?.remoteWorkspaceId || !activeTunnel) return;
-    try { await api.requests.replay(activeWorkspace.remoteWorkspaceId, activeTunnel.id, request.id); showToast('Request replayed through the active tunnel', 'success'); }
-    catch (error) { showToast(error instanceof Error ? error.message : 'Replay failed', 'error'); }
+    const targetUrl = resolveTargetUrl(request.path);
+    const startedAt = Date.now();
+
+    try {
+      let status = 200;
+      let durationMs = 0;
+      let resHeaders: Record<string, string> = {};
+
+      try {
+        const res = await invoke<{ status: number; headers: Record<string, string>; body: string }>('execute_http_request', {
+          method: request.method,
+          url: targetUrl,
+          headers: request.headers || {},
+          body: request.bodyPreview || null,
+        });
+        durationMs = Date.now() - startedAt;
+        status = res.status;
+        resHeaders = res.headers;
+      } catch {
+        const response = await fetch(targetUrl, {
+          method: request.method,
+          headers: request.headers,
+          body: ['GET', 'HEAD'].includes(request.method.toUpperCase()) ? undefined : (request.bodyPreview || undefined),
+        });
+        durationMs = Date.now() - startedAt;
+        status = response.status;
+        resHeaders = Object.fromEntries(response.headers.entries());
+      }
+
+      const replayedLog: RequestLog = {
+        id: crypto.randomUUID(),
+        method: request.method,
+        path: request.path,
+        status,
+        durationMs,
+        headers: request.headers,
+        bodyPreview: request.bodyPreview,
+        responseHeaders: resHeaders,
+        capturedAt: new Date().toISOString(),
+      };
+
+      setRequests((current) => [replayedLog, ...current].slice(0, 150));
+      showToast(`Replayed ${request.method} ${request.path} (${status})`, 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Replay failed', 'error');
+    }
   }
 
   function resolveTargetUrl(rawPath: string): string {
@@ -1624,7 +1668,7 @@ function createWorkspaceConfig(name: string, remoteWorkspaceId?: string, default
   const now = new Date().toISOString();
   return {
     id: crypto.randomUUID(), name, remoteWorkspaceId, profiles: [], savedRequests: [],
-    capturedRequests: [], guardrails: { ...defaultGuardrails }, languageHint: 'Undetermined',
+    capturedRequests: [], domains: [], guardrails: { ...defaultGuardrails }, languageHint: 'Undetermined',
     selectedProfileId: undefined, projectRootPath: defaultProjectRootPath,
     scannedFiles: [], notes: '', lastSwaggerGeneratedAt: now,
     createdAt: now,

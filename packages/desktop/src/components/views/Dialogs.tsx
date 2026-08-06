@@ -320,7 +320,7 @@ export function RequestDetailDialog({
   onSendToPostman: (request: RequestLog) => void;
 }) {
   return (
-    <div className="dialog-backdrop" onClick={onClose}>
+    <div className="dialog-backdrop glass" onClick={onClose}>
       <section className="request-dialog slide-up" onClick={(e) => e.stopPropagation()}>
         <header>
           <div>
@@ -336,7 +336,7 @@ export function RequestDetailDialog({
         </header>
         <div className="dialog-actions">
           <button className="btn-secondary compact" onClick={() => onSendToPostman(request)}>
-            {Icons.send} Send to Postman
+            {Icons.send} Send to Playground
           </button>
           <button className="btn-ghost compact" onClick={() => onReplay(request)}>
             {Icons.play} Replay
