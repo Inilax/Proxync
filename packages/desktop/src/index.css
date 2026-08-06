@@ -531,6 +531,37 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 }
 .form-input::placeholder { color: var(--color-outline); }
 
+.route-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--color-outline-variant);
+  border-radius: 99px;
+  background: var(--color-surface-container-high);
+  color: var(--color-on-surface-variant);
+  font: 700 9px var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.route-tunnel {
+  color: #b7e05a;
+  border-color: rgba(183, 224, 90, 0.45);
+}
+
+.route-local {
+  color: var(--color-on-surface-variant);
+}
+
+.route-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
 .form-textarea {
   width: 100%; min-height: 180px; padding: 14px;
   border: 1px solid var(--color-outline-variant); border-radius: 8px;

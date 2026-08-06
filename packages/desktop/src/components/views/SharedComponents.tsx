@@ -350,7 +350,7 @@ export function parseHeaderText(value: string): Record<string, string> {
 
 export function SignalBars({ latency }: { latency: number }) {
   let activeBars = 0;
-  let barColor = 'var(--muted)';
+  let barColor = 'var(--color-on-surface-variant)';
   
   if (latency < 50) {
     activeBars = 4;
