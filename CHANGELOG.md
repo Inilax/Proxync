@@ -2,6 +2,20 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [feature/develop-workspace-activity-and-tunnel-ux-upgrades] - 2026-08-06 (Dynamic Workspace Activity, 7-Day Inactive Auto-Categorization, Custom Glass Modals & 1-Click Open in Browser)
+- **Feature Summary**: Implemented dynamic workspace activity tracking (`lastActivityAt`) with relative time formatting (`Just now`, `4m ago`, `18h ago`, `3d ago`), auto-activating on workspace selection, tunnel sharing, and HTTP traffic logs. Renamed `Archived` tab to `Inactive` with automatic 7-day inactivity filtering, auto-disappearing dormant workspaces into `Inactive` tab and restricting Provision Workspace inline card to `Active` tab. Replaced native `confirm()` on Purge All Data with glassmorphic `ConfirmPurgeDialog`. Enhanced Active Workspace selector typography and contrast. Added 1-click **Open in Browser** option to Active Tunnels three-dot menu (`⋮`) in `WelcomeView` and endpoint action tiles in `ProcessView`. Fixed horizontal icon alignment in Coming Soon modal. Renamed Postman navigation label to single-word industry-standard **Playground**.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/LobbyView.tsx`
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/lib/types.ts`
+  - `CHANGELOG.md`
+
 ## [feature/develop-patch-socketio-parser-vulnerability] - 2026-08-06 (Socket.IO Vulnerability Patch & Orphaned Dependency Pruning)
 - **Feature Summary**: Resolved Dependabot security vulnerability `GHSA-2m8v-j782-fhvr` (**Socket.IO: Zero-attachment Memory Exhaustion**) and conducted full codebase audit. Completely pruned 3 orphaned, 100% unused dependencies (`socket.io-client`, `socket.io-parser`, `react-router`) from `packages/desktop/package.json` and root `package.json` overrides, removing 9 unneeded node packages. Verified via `npm audit` (0 vulnerabilities) and clean `npm run build`.
 - **Modified Files**:

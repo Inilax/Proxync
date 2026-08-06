@@ -85,6 +85,7 @@ export interface WorkspaceConfig {
   id: string;
   name: string;
   createdAt?: string;
+  lastActivityAt?: string;
   remoteWorkspaceId?: string;
   profiles: ProcessProfile[];
   savedRequests: SavedRequest[];

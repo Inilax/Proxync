@@ -401,3 +401,50 @@ export function ConfirmDeleteDialog({
   );
 }
 
+/* ────────────────── Confirm Purge Engine Data Dialog ────────────────── */
+
+export function ConfirmPurgeDialog({
+  onClose,
+  onConfirm,
+}: {
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="dialog-backdrop glass" onClick={onClose}>
+      <section className="workspace-settings-dialog slide-up max-w-md p-6 flex flex-col gap-5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-3 border-b border-outline-variant/30 pb-4">
+          <div className="w-10 h-10 rounded-full bg-error/15 text-error flex items-center justify-center shrink-0">
+            <span className="material-symbols-outlined text-[22px]">delete_sweep</span>
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-on-surface">Purge Engine Data</h2>
+            <p className="text-xs text-on-surface-variant">High-risk action confirmation</p>
+          </div>
+        </div>
+
+        <p className="text-xs text-on-surface-variant leading-relaxed">
+          Are you sure you want to clear all Proxync app data? This action will permanently remove all local workspaces, saved process profiles, captured request logs, and app settings. <strong className="text-error">This action cannot be undone.</strong>
+        </p>
+
+        <div className="flex items-center justify-end gap-3 pt-2">
+          <button className="btn-ghost compact cursor-pointer" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="btn-danger compact cursor-pointer flex items-center gap-1.5"
+            onClick={() => {
+              onConfirm();
+              onClose();
+            }}
+          >
+            <span className="material-symbols-outlined text-[16px]">delete_forever</span>
+            Purge All Data
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+

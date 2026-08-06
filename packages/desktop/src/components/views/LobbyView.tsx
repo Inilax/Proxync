@@ -4,6 +4,33 @@ import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { Input } from '../ui/Input';
 
+function formatLastActivity(lastActivityAt?: string, createdAt?: string): string {
+  const target = lastActivityAt || createdAt;
+  if (!target) return 'Just now';
+  const time = new Date(target).getTime();
+  if (isNaN(time)) return 'Just now';
+
+  const diffMs = Math.max(0, Date.now() - time);
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHour = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHour / 24);
+
+  if (diffSec < 60) return 'Just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffHour < 24) return `${diffHour}h ago`;
+  return `${diffDay}d ago`;
+}
+
+function isWorkspaceInactive(lastActivityAt?: string, createdAt?: string): boolean {
+  const target = lastActivityAt || createdAt;
+  if (!target) return false;
+  const time = new Date(target).getTime();
+  if (isNaN(time)) return false;
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  return Date.now() - time > SEVEN_DAYS_MS;
+}
+
 export function LobbyView({
   workspaces,
   activeWorkspaceId,
@@ -30,16 +57,26 @@ export function LobbyView({
   requests: RequestLog[];
 }) {
   const [onboardingStep, setOnboardingStep] = useState(1);
-  const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
+  const [activeTab, setActiveTab] = useState<'active' | 'inactive'>('active');
   const [isCreatingInline, setIsCreatingInline] = useState(false);
   const [editingWorkspace, setEditingWorkspace] = useState<WorkspaceConfig | null>(null);
   const [workspaceNameDraft, setWorkspaceNameDraft] = useState('');
   const [workspaceNotesDraft, setWorkspaceNotesDraft] = useState('');
 
-  // Filter workspaces based on search query
-  const filteredWorkspaces = workspaces.filter((ws) =>
+  // Filter workspaces based on search query and 7-day activity threshold
+  const searchedWorkspaces = workspaces.filter((ws) =>
     ws.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const activeWorkspacesList = searchedWorkspaces.filter(
+    (ws) => !isWorkspaceInactive(ws.lastActivityAt, ws.createdAt)
+  );
+
+  const inactiveWorkspacesList = searchedWorkspaces.filter(
+    (ws) => isWorkspaceInactive(ws.lastActivityAt, ws.createdAt)
+  );
+
+  const displayedWorkspaces = activeTab === 'active' ? activeWorkspacesList : inactiveWorkspacesList;
 
   const getWorkspaceIcon = (languageHint: string, index: number) => {
     const hint = languageHint?.toLowerCase() ?? '';
@@ -197,26 +234,27 @@ export function LobbyView({
             <button
               className={`px-4 py-1.5 rounded font-label-md text-label-md cursor-pointer transition-all ${
                 activeTab === 'active'
-                  ? 'bg-surface-bright text-primary'
+                  ? 'bg-surface-bright text-primary font-bold'
                   : 'text-on-surface-variant hover:text-on-surface'
               }`}
               onClick={() => setActiveTab('active')}
             >
-              Active
+              Active ({activeWorkspacesList.length})
             </button>
             <button
               className={`px-4 py-1.5 rounded font-label-md text-label-md cursor-pointer transition-all ${
-                activeTab === 'archived'
-                  ? 'bg-surface-bright text-primary'
+                activeTab === 'inactive'
+                  ? 'bg-surface-bright text-primary font-bold'
                   : 'text-on-surface-variant hover:text-on-surface'
               }`}
-              onClick={() => setActiveTab('archived')}
+              onClick={() => setActiveTab('inactive')}
             >
-              Archived
+              Inactive ({inactiveWorkspacesList.length})
             </button>
           </div>
           <button
             onClick={() => {
+              setActiveTab('active');
               onWorkspaceNameChange('');
               setIsCreatingInline(true);
             }}
@@ -268,8 +306,29 @@ export function LobbyView({
           </Card>
         )}
 
+        {/* Empty state for tabs */}
+        {displayedWorkspaces.length === 0 && !isCreatingInline && (
+          <div className="col-span-full py-12 text-center bg-surface-container-low border border-outline-variant/30 rounded-xl p-8">
+            <div className="w-12 h-12 bg-surface-container-high text-on-surface-variant/40 rounded-full flex items-center justify-center mx-auto mb-3">
+              <span className="material-symbols-outlined text-[24px]">
+                {activeTab === 'inactive' ? 'motion_photos_off' : 'search_off'}
+              </span>
+            </div>
+            <h4 className="text-base font-bold text-on-surface mb-1">
+              {activeTab === 'inactive' ? 'No Inactive Workspaces' : 'No Active Workspaces Found'}
+            </h4>
+            <p className="text-xs text-on-surface-variant max-w-sm mx-auto">
+              {activeTab === 'inactive'
+                ? 'All your workspaces have had activity within the last 7 days.'
+                : searchQuery
+                ? `No active workspaces matching "${searchQuery}".`
+                : 'Create a new workspace to get started.'}
+            </p>
+          </div>
+        )}
+
         {/* Workspaces List */}
-        {filteredWorkspaces.map((workspace, index) => {
+        {displayedWorkspaces.map((workspace, index) => {
           const isActive = workspace.id === activeWorkspaceId;
           const icon = getWorkspaceIcon(workspace.languageHint, index);
           const iconColor = getIconColorClass(icon);
@@ -334,15 +393,19 @@ export function LobbyView({
 
               {/* Card Footer */}
               <div className="mt-6 flex items-center justify-between text-code-sm text-on-surface-variant">
-                <span>Last activity: {index === 0 ? '4m ago' : index === 1 ? '18h ago' : '2m ago'}</span>
+                <span>Last activity: {formatLastActivity(workspace.lastActivityAt, workspace.createdAt)}</span>
                 
                 {isActive ? (
-                  <span className="flex items-center gap-1 text-primary">
+                  <span className="flex items-center gap-1.5 text-primary font-medium">
                     <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span> Synchronized
                   </span>
+                ) : isWorkspaceInactive(workspace.lastActivityAt, workspace.createdAt) ? (
+                  <span className="flex items-center gap-1.5 text-on-surface-variant/50">
+                    <span className="w-2 h-2 rounded-full bg-on-surface-variant/30"></span> Inactive
+                  </span>
                 ) : (
-                  <span className="flex items-center gap-1 text-on-surface-variant opacity-50">
-                    Inactive
+                  <span className="flex items-center gap-1.5 text-emerald-400/90 font-medium">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span> Active
                   </span>
                 )}
               </div>
@@ -350,8 +413,8 @@ export function LobbyView({
           );
         })}
 
-        {/* Provision Workspace Dashed Placeholder */}
-        {!isCreatingInline && (
+        {/* Provision Workspace Dashed Placeholder (Active tab only) */}
+        {!isCreatingInline && activeTab === 'active' && (
           <div
             onClick={() => {
               onWorkspaceNameChange('');

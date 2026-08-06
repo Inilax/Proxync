@@ -86,7 +86,7 @@ const NAV_ITEMS: { view: MainView; label: string; icon: string }[] = [
   { view: 'lobby', label: 'Workspaces', icon: 'hub' },
   { view: 'process', label: 'Tunnels', icon: 'lan' },
   { view: 'traffic', label: 'Traffic', icon: 'terminal' },
-  { view: 'postman', label: 'Postman', icon: 'send' },
+  { view: 'postman', label: 'Playground', icon: 'send' },
   { view: 'swagger', label: 'Swagger', icon: 'api' },
   { view: 'docs', label: 'Docs', icon: 'menu_book' },
   { view: 'observability', label: 'Observability', icon: 'insights' },
@@ -515,10 +515,11 @@ export default function App() {
 
   useEffect(() => {
     if (!activeWorkspace) return;
+    const now = new Date().toISOString();
     setWorkspaces((current) =>
       current.map((ws) =>
         ws.id === activeWorkspace.id
-          ? { ...ws, savedRequests, capturedRequests: requests, languageHint: effectiveLanguageHint, lastSwaggerGeneratedAt: new Date().toISOString() }
+          ? { ...ws, savedRequests, capturedRequests: requests, languageHint: effectiveLanguageHint, lastActivityAt: now }
           : ws,
       ),
     );
@@ -639,8 +640,19 @@ export default function App() {
     showToast(`Workspace "${name}" created`, 'success');
   }
 
+  function touchWorkspaceActivity(workspaceId: string) {
+    const now = new Date().toISOString();
+    setWorkspaces((current) =>
+      current.map((w) => (w.id === workspaceId ? { ...w, lastActivityAt: now } : w))
+    );
+  }
+
   function selectWorkspace(workspaceId: string) {
-    if (activeWorkspaceId !== workspaceId) { setActiveWorkspaceId(workspaceId); setActiveTunnel(null); }
+    if (activeWorkspaceId !== workspaceId) {
+      setActiveWorkspaceId(workspaceId);
+      setActiveTunnel(null);
+    }
+    touchWorkspaceActivity(workspaceId);
     setMainView('process');
   }
 
@@ -749,7 +761,8 @@ export default function App() {
 
   function updateActiveWorkspace(mutator: (workspace: WorkspaceConfig) => WorkspaceConfig) {
     if (!activeWorkspace) return;
-    setWorkspaces((current) => current.map((ws) => ws.id === activeWorkspace.id ? mutator(ws) : ws));
+    const now = new Date().toISOString();
+    setWorkspaces((current) => current.map((ws) => ws.id === activeWorkspace.id ? { ...mutator(ws), lastActivityAt: now } : ws));
   }
 
   function initiatePublicShare(process: ProcessCandidate) {
@@ -846,7 +859,7 @@ export default function App() {
       setTunnels((current) => [tunnel, ...current.filter((item) => item.id !== tunnel.id)]);
       setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false); setRequests([]);
       updateActiveWorkspace((ws) => ({ ...ws, profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: tunnel.publicUrl } : p) }));
-      showToast(`Tunnel is live. Imported ${starterScan.length} starter requests into Postman.`, 'success');
+      showToast(`Tunnel is live. Imported ${starterScan.length} starter requests into Playground.`, 'success');
     } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to share process', 'error'); }
     finally { setSharingPort(null); }
   }
@@ -856,12 +869,14 @@ export default function App() {
       showToast('Select or create a workspace first before sharing a port', 'info');
       return;
     }
+    touchWorkspaceActivity(activeWorkspace.id);
     setSelectedProcessId(process.id); setMainView('process'); setSharingPort(process.port);
     showToast(`Exposed local share at http://localhost:${process.port} and http://${localIp}:${process.port}`, 'success');
   }
 
   async function stopTunnel(tunnel: Tunnel) {
     if (!activeWorkspace) return;
+    touchWorkspaceActivity(activeWorkspace.id);
     try {
       await invoke('close_tunnel', { tunnelId: tunnel.id }).catch(() => undefined);
       if (!tunnel.id.startsWith('lt-') && activeWorkspace.remoteWorkspaceId) { await api.tunnels.close(activeWorkspace.remoteWorkspaceId, tunnel.id); }
@@ -1103,7 +1118,7 @@ export default function App() {
      ══════════════════════════════════════════════ */
 
   const viewLabel = NAV_ITEMS.find((n) => n.view === mainView)?.label
-    ?? (mainView === 'process' ? 'Process' : mainView === 'postman' ? 'Postman' : mainView === 'observability' ? 'Observability' : 'Proxync');
+    ?? (mainView === 'process' ? 'Process' : mainView === 'postman' ? 'Playground' : mainView === 'observability' ? 'Observability' : 'Proxync');
 
   return (
     <div className="app-frame flex flex-col h-screen w-screen overflow-hidden bg-surface">
@@ -1197,22 +1212,22 @@ export default function App() {
 
           {/* Active Workspace Selector Section */}
           <div className="px-6 mb-6">
-            <p className="text-[10px] font-bold text-on-surface-variant/40 tracking-wider uppercase mb-2">Active Workspace</p>
+            <p className="text-[11px] font-bold text-on-surface-variant/70 tracking-wider uppercase mb-2">Active Workspace</p>
             <div
               onClick={() => setMainView('lobby')}
-              className="workspace-selector flex items-center justify-between border border-outline-variant bg-surface-container rounded-lg px-3 py-2 cursor-pointer hover:bg-surface-container-high transition-all text-xs text-on-surface select-none"
+              className="workspace-selector flex items-center justify-between border border-outline-variant bg-surface-container rounded-lg px-3.5 py-2.5 cursor-pointer hover:bg-surface-container-high transition-all text-sm text-on-surface select-none"
             >
-              <div className="flex items-center gap-2 truncate">
-                <span className="w-1.5 h-1.5 rounded-full bg-secondary shrink-0" />
-                <span className="truncate font-semibold">{activeWorkspace?.name ?? 'Select Workspace'}</span>
+              <div className="flex items-center gap-2.5 truncate">
+                <span className="w-2 h-2 rounded-full bg-secondary shrink-0" />
+                <span className="truncate font-semibold text-sm">{activeWorkspace?.name ?? 'Select Workspace'}</span>
               </div>
-              <span className="material-symbols-outlined text-[16px] text-on-surface-variant">unfold_more</span>
+              <span className="material-symbols-outlined text-[18px] text-on-surface-variant">unfold_more</span>
             </div>
           </div>
 
           {/* Menu Items Section */}
           <div className="px-6 mb-2">
-            <p className="text-[10px] font-bold text-on-surface-variant/40 tracking-wider uppercase">Menu</p>
+            <p className="text-[11px] font-bold text-on-surface-variant/70 tracking-wider uppercase">Menu</p>
           </div>
 
           <nav className="app-nav flex-1 space-y-1">
@@ -1520,7 +1535,7 @@ export default function App() {
       {authDialogOpen && (
         <div className="dialog-backdrop glass" onClick={() => setAuthDialogOpen(false)}>
           <section className="workspace-settings-dialog slide-up max-w-sm text-center p-8 flex flex-col items-center gap-4" onClick={(e) => e.stopPropagation()}>
-            <div className="w-16 h-16 bg-primary/20 text-primary rounded-full flex items-center justify-center mb-2 animate-pulse">
+            <div className="w-16 h-16 bg-primary/20 text-primary rounded-full flex items-center justify-center mx-auto mb-2 animate-pulse">
               <span className="material-symbols-outlined text-[36px]">lock_person</span>
             </div>
             <h2 className="text-xl font-bold text-on-surface">Coming Soon</h2>
@@ -1592,11 +1607,14 @@ function hydrateStoredWorkspaces(remoteWorkspace: { id: string; name: string } |
 }
 
 function createWorkspaceConfig(name: string, remoteWorkspaceId?: string, defaultGuardrails: Guardrails = DEFAULT_GUARDRAILS, defaultProjectRootPath = ''): WorkspaceConfig {
+  const now = new Date().toISOString();
   return {
     id: crypto.randomUUID(), name, remoteWorkspaceId, profiles: [], savedRequests: [],
     capturedRequests: [], guardrails: { ...defaultGuardrails }, languageHint: 'Undetermined',
     selectedProfileId: undefined, projectRootPath: defaultProjectRootPath,
-    scannedFiles: [], notes: '', lastSwaggerGeneratedAt: new Date().toISOString(),
+    scannedFiles: [], notes: '', lastSwaggerGeneratedAt: now,
+    createdAt: now,
+    lastActivityAt: now,
   };
 }
 
