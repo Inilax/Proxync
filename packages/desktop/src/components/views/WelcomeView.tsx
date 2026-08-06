@@ -63,7 +63,7 @@ export function WelcomeView({
     }
 
     async function measureAll() {
-      const relayMeshLatency = await pingUrl('https://api.proxync.io/health', 1500);
+      const relayMeshLatency = await pingUrl('https://api.proxync.dev/health', 1500);
       const cloudflareLatency = await pingUrl('https://1.1.1.1', 1200);
       const localtunnelLatency = await pingUrl('https://localtunnel.me', 1500);
 

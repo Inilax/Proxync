@@ -5,6 +5,8 @@ export type MainView =
   | 'traffic'
   | 'postman'
   | 'swagger'
+  | 'observability'
+  | 'docs'
   | 'settings';
 
 export type SwaggerPanel = 'preview' | 'json' | 'yaml';
@@ -22,6 +24,7 @@ export interface ProcessCandidate {
   framework?: string;
   access: 'ready' | 'limited' | 'unknown';
   uptime?: string;
+  latency?: number;
 }
 
 export interface Tunnel {
@@ -63,6 +66,14 @@ export interface PostmanResponse {
   body: string;
 }
 
+export interface Guardrails {
+  authMode: 'guest' | 'shared-secret' | 'workspace-only';
+  piiRedaction: boolean;
+  captureBodies: boolean;
+  autoUpdateSwagger: boolean;
+  rateLimit: string;
+}
+
 export interface ProcessProfile {
   id: string;
   processName: string;
@@ -96,6 +107,7 @@ export interface WorkspaceConfig {
   savedRequests: SavedRequest[];
   capturedRequests: RequestLog[];
   domains: DomainRecord[];
+  guardrails: Guardrails;
   languageHint: string;
   selectedProfileId?: string;
   lastSwaggerGeneratedAt?: string;
@@ -105,8 +117,12 @@ export interface WorkspaceConfig {
 }
 
 export interface AppSettings {
+  guardrails: Guardrails;
   defaultProjectRootPath: string;
   notes: string;
+  theme?: string;
+  autoUpdate: boolean;
+  telemetry?: 'enhanced' | 'basic';
   enableDevTools?: boolean;
 }
 

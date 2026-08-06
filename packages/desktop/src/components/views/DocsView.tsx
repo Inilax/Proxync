@@ -121,9 +121,9 @@ export function DocsView() {
             </p>
 
             <div className="bg-black/60 p-4 rounded-xl border border-outline-variant/30 font-mono text-xs text-secondary flex items-center justify-between">
-              <span>tunnel.proxync.io</span>
+              <span>tunnel.proxync.dev</span>
               <button 
-                onClick={() => copyText('tunnel.proxync.io', 'CNAME target')}
+                onClick={() => copyText('tunnel.proxync.dev', 'CNAME target')}
                 className="btn-ghost compact text-xs flex items-center gap-1"
               >
                 <span className="material-symbols-outlined text-sm">content_copy</span>
