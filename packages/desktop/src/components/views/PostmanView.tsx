@@ -35,6 +35,12 @@ export function PostmanView({
   onDeleteRequest?: (id: string) => void;
   onUpdateSavedRequests?: (next: SavedRequest[]) => void;
 }) {
+  const routeTarget = activeTunnel
+    ? activeTunnel.publicUrl.includes('trycloudflare.com')
+      ? 'Cloudflare Edge'
+      : 'Public Tunnel'
+    : 'Local Loopback';
+
   // Request Sub-Tabs: 'body' | 'headers' | 'auth' | 'response'
   const [requestTab, setRequestTab] = useState<'body' | 'headers' | 'auth' | 'response'>('body');
   const [responseSubTab, setResponseSubTab] = useState<'body' | 'headers'>('body');
@@ -654,6 +660,14 @@ export function PostmanView({
             placeholder={activeTunnel ? '/api/users' : 'https://example.com/api'}
             aria-label="Request URL or path"
           />
+
+          <span
+            className={`route-badge ${activeTunnel?.publicUrl.includes('trycloudflare.com') ? 'route-tunnel' : 'route-local'}`}
+            title={activeTunnel?.publicUrl ?? 'http://localhost:3000'}
+          >
+            <span className="route-dot" aria-hidden="true" />
+            {routeTarget}
+          </span>
 
           <button
             className="btn-primary shrink-0 font-bold px-4 py-2 rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-md hover:scale-[1.01] transition-transform"
