@@ -21,6 +21,7 @@ export function SettingsView({
   onRemoveDomain,
   onUpdateTheme,
   onUpdateAutoUpdate,
+  onUpdateTelemetry,
   initialSection = 'general',
 }: {
   workspace: WorkspaceConfig | null;
@@ -40,6 +41,7 @@ export function SettingsView({
   onRemoveDomain: (domainId: string) => void;
   onUpdateTheme: (theme: string) => void;
   onUpdateAutoUpdate: (enabled: boolean) => void;
+  onUpdateTelemetry?: (telemetry: 'enhanced' | 'basic') => void;
   initialSection?: 'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger';
 }) {
   const [activeSection, setActiveSection] = useState<'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger'>(initialSection);
@@ -49,7 +51,6 @@ export function SettingsView({
   }, [initialSection]);
 
   const [autostart, setAutostart] = useState(false);
-  const [telemetry, setTelemetry] = useState<'enhanced' | 'basic'>('enhanced');
 
   useEffect(() => {
     isEnabled()
@@ -220,33 +221,47 @@ export function SettingsView({
                 </label>
               </div>
 
-              <div className="p-4 bg-surface-container rounded-xl border border-outline-variant/30 space-y-4">
-                <p className="font-body-lg text-body-lg text-on-surface">Telemetry</p>
-                <div className="space-y-3">
+              <div className="p-4 bg-surface-container rounded-xl border border-outline-variant/30 space-y-3">
+                <div>
+                  <p className="font-body-lg text-body-lg text-on-surface">Telemetry</p>
+                  <p className="text-on-surface-variant text-[13px]">Control metrics collection depth and processing overhead.</p>
+                </div>
+                <div className="space-y-2.5 pt-1">
                   <label className="flex items-start gap-3 cursor-pointer group">
                     <input
                       type="radio"
                       name="telemetry"
                       className="mt-1 bg-surface border-outline-variant text-primary focus:ring-primary/20 cursor-pointer"
-                      checked={telemetry === 'enhanced'}
-                      onChange={() => setTelemetry('enhanced')}
+                      checked={(appSettings.telemetry ?? 'enhanced') === 'enhanced'}
+                      onChange={() => {
+                        onUpdateTelemetry?.('enhanced');
+                        showToast('Telemetry set to Enhanced mode', 'info');
+                      }}
                     />
                     <div>
                       <p className="text-on-surface font-label-md">Enhanced (Recommended)</p>
-                      <p className="text-on-surface-variant text-[12px]">Send performance and crash data to improve the platform.</p>
+                      <p className="text-on-surface-variant text-[12px]">Full performance analytics, P50/P90/P99 latency metrics, and crash reporting.</p>
                     </div>
                   </label>
+
                   <label className="flex items-start gap-3 cursor-pointer group">
                     <input
                       type="radio"
                       name="telemetry"
-                      className="mt-1 bg-surface border-outline-variant text-primary focus:ring-primary/20 cursor-pointer"
-                      checked={telemetry === 'basic'}
-                      onChange={() => setTelemetry('basic')}
+                      className="mt-1 bg-surface border-outline-variant text-emerald-400 focus:ring-emerald-400/20 cursor-pointer"
+                      checked={(appSettings.telemetry ?? 'enhanced') === 'basic'}
+                      onChange={() => {
+                        onUpdateTelemetry?.('basic');
+                        showToast('Telemetry set to Basic mode (Minimal CPU)', 'info');
+                      }}
                     />
                     <div>
-                      <p className="text-on-surface font-label-md">Basic</p>
-                      <p className="text-on-surface-variant text-[12px]">Only send critical failure logs.</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-on-surface font-label-md">Basic</p>
+                        <span className="material-symbols-outlined text-[14px] text-emerald-400">eco</span>
+                        <span className="text-[11px] text-emerald-400 font-medium font-mono">(Low CPU Mode)</span>
+                      </div>
+                      <p className="text-on-surface-variant text-[12px]">Minimal CPU overhead — skips non-fatal metric calculations; only logs critical 5xx errors.</p>
                     </div>
                   </label>
                 </div>
