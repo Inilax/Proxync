@@ -1,5 +1,6 @@
 import type { ScannedEndpoint } from './codebaseScanner';
 import type { RequestLog } from './types';
+import { stripMethodPrefix } from '../components/views/SharedComponents';
 
 export interface OpenApiSchema {
   type?: string;
@@ -279,7 +280,7 @@ export function exportSwaggerToPostmanCollection(
       }
 
       const postmanItem = {
-        name: op.summary || `${methodStr.toUpperCase()} ${pathStr}`,
+        name: op.summary || pathStr,
         request: {
           method: methodStr.toUpperCase(),
           header: [
@@ -466,9 +467,11 @@ export function importSwaggerToSavedRequests(openApiDoc: Record<string, unknown>
         bodyStr = req.body.raw;
       }
 
+      const cleanItemName = stripMethodPrefix(reqItem.name || path || '/');
+
       newRequests.push({
         id: `imported-swg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-        name: reqItem.name || `${method} ${path}`,
+        name: cleanItemName || path || '/',
         method,
         path: path || '/',
         headers: { 'Content-Type': 'application/json' },

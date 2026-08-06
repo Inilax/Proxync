@@ -23,6 +23,7 @@ export function SettingsView({
   onUpdateTheme,
   onUpdateAutoUpdate,
   onUpdateTelemetry,
+  onUpdateEnableDevTools,
   initialSection = 'general',
 }: {
   workspace: WorkspaceConfig | null;
@@ -43,6 +44,7 @@ export function SettingsView({
   onUpdateTheme: (theme: string) => void;
   onUpdateAutoUpdate: (enabled: boolean) => void;
   onUpdateTelemetry?: (telemetry: 'enhanced' | 'basic') => void;
+  onUpdateEnableDevTools?: (enabled: boolean) => void;
   initialSection?: 'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger';
 }) {
   const [activeSection, setActiveSection] = useState<'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger'>(initialSection);
@@ -679,6 +681,29 @@ export function SettingsView({
                   placeholder="Keep app-wide notes or default credentials..."
                   style={{ minHeight: '120px' }}
                 />
+              </div>
+
+              <div className="flex items-center justify-between p-5 bg-surface-container rounded-xl border border-outline-variant/30">
+                <div>
+                  <h3 className="font-body-lg text-body-lg text-on-surface font-semibold">Developer Inspect Tools</h3>
+                  <p className="text-xs text-on-surface-variant mt-1">Enable browser right-click Inspect Element & DOM debugging tools.</p>
+                </div>
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={!!appSettings.enableDevTools}
+                    onChange={(e) => {
+                      if (onUpdateEnableDevTools) onUpdateEnableDevTools(e.target.checked);
+                      showToast(
+                        e.target.checked
+                          ? 'Developer Inspect Tools enabled'
+                          : 'Developer Inspect Tools disabled',
+                        'info'
+                      );
+                    }}
+                  />
+                  <span className="toggle-slider" />
+                </label>
               </div>
 
               <div className="p-5 bg-error/5 border border-error/20 rounded-xl flex items-center justify-between gap-4">

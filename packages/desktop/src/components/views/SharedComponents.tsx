@@ -4,6 +4,17 @@
  * Extracted from the App.tsx monolith and redesigned.
  */
 
+/* ────────────────── Shared Constants & Utilities ────────────────── */
+
+export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
+
+const METHOD_PREFIX_REGEX = new RegExp(`^(${HTTP_METHODS.join('|')})\\s+`, 'i');
+
+export function stripMethodPrefix(name: string): string {
+  if (!name) return '';
+  return name.replace(METHOD_PREFIX_REGEX, '').trim();
+}
+
 /* ────────────────── Shared Types ────────────────── */
 
 export interface ProcessCandidate {
@@ -106,6 +117,7 @@ export interface AppSettings {
   theme?: string;
   autoUpdate: boolean;
   telemetry?: 'enhanced' | 'basic';
+  enableDevTools?: boolean;
 }
 
 export interface DomainRecord {

@@ -249,22 +249,22 @@ export function DomainSelectDialog({
                     justifyContent: 'space-between',
                     padding: '10px 14px',
                     borderRadius: '8px',
-                    background: isSelected ? 'var(--color-primary-container)' : 'var(--color-surface-container-high)',
+                    background: isSelected ? 'rgba(192, 193, 255, 0.12)' : 'var(--color-surface-container-high)',
                     border: isSelected ? '1px solid var(--color-primary)' : '1px solid var(--color-outline-variant)',
                     cursor: 'pointer',
                     transition: 'all var(--dur-fast) var(--ease)',
-                    boxShadow: isSelected ? '0 0 12px var(--color-primary-container)' : 'none',
+                    boxShadow: isSelected ? '0 0 16px rgba(192, 193, 255, 0.15)' : 'none',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
                     <span style={{ fontSize: '18px', minWidth: '24px', textAlign: 'center' }}>{opt.icon}</span>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, textAlign: 'left' }}>
-                      <strong style={{ fontSize: '12px', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{opt.title}</strong>
+                      <strong style={{ fontSize: '12px', color: isSelected ? 'var(--color-primary)' : 'var(--color-on-surface)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{opt.title}</strong>
                       <span style={{ fontSize: '11px', color: 'var(--color-on-surface-variant)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{opt.desc}</span>
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '12px' }}>
-                    <span style={{ fontSize: '10px', color: hasMeasured ? 'var(--text-secondary)' : 'var(--faint)' }}>
+                    <span style={{ fontSize: '10px', color: isSelected ? 'var(--color-primary)' : 'var(--color-on-surface-variant)' }}>
                       {hasMeasured ? `${Math.round(opt.latency)} ms` : 'pinging...'}
                     </span>
                     <SignalBars latency={opt.latency} />
