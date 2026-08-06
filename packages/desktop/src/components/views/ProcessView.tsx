@@ -1,5 +1,10 @@
+import { openUrl } from '@tauri-apps/plugin-opener';
 import type { WorkspaceConfig, ProcessCandidate, ProcessProfile, Tunnel, SavedRequest } from './SharedComponents';
 import { InfoTile, formatDate } from './SharedComponents';
+
+function handleOpenUrl(url: string) {
+  openUrl(url).catch(() => window.open(url, '_blank'));
+}
 
 export function ProcessView({
   workspace,
@@ -230,28 +235,60 @@ export function ProcessView({
               <div className="flex items-center justify-between p-3 bg-surface-container-low border border-outline-variant/30 rounded-lg">
                 <div className="flex flex-col">
                   <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Local Endpoint</span>
-                  <code className="text-xs font-mono text-primary mt-0.5">http://localhost:{processLike.port}</code>
+                  <code
+                    onClick={() => handleOpenUrl(`http://localhost:${processLike.port}`)}
+                    className="text-xs font-mono text-primary font-semibold mt-0.5 hover:underline cursor-pointer select-all"
+                    title="Open in Browser"
+                  >
+                    http://localhost:{processLike.port}
+                  </code>
                 </div>
-                <button
-                  onClick={() => onCopy(`http://localhost:${processLike.port}`, 'Local address copied')}
-                  className="btn-ghost compact cursor-pointer hover:bg-surface-container-high rounded"
-                >
-                  <span className="material-symbols-outlined text-[16px]">content_copy</span>
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => handleOpenUrl(`http://localhost:${processLike.port}`)}
+                    className="btn-ghost compact cursor-pointer hover:bg-surface-container-high rounded text-on-surface-variant hover:text-primary transition-colors"
+                    title="Open in Browser"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+                  </button>
+                  <button
+                    onClick={() => onCopy(`http://localhost:${processLike.port}`, 'Local address copied')}
+                    className="btn-ghost compact cursor-pointer hover:bg-surface-container-high rounded text-on-surface-variant hover:text-on-surface transition-colors"
+                    title="Copy Address"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">content_copy</span>
+                  </button>
+                </div>
               </div>
 
               {localIp && localIp !== '127.0.0.1' && (
                 <div className="flex items-center justify-between p-3 bg-surface-container-low border border-outline-variant/30 rounded-lg">
                   <div className="flex flex-col">
                     <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">LAN Endpoint</span>
-                    <code className="text-xs font-mono text-primary mt-0.5">http://{localIp}:{processLike.port}</code>
+                    <code
+                      onClick={() => handleOpenUrl(`http://${localIp}:${processLike.port}`)}
+                      className="text-xs font-mono text-primary font-semibold mt-0.5 hover:underline cursor-pointer select-all"
+                      title="Open in Browser"
+                    >
+                      http://{localIp}:{processLike.port}
+                    </code>
                   </div>
-                  <button
-                    onClick={() => onCopy(`http://${localIp}:${processLike.port}`, 'LAN address copied')}
-                    className="btn-ghost compact cursor-pointer hover:bg-surface-container-high rounded"
-                  >
-                    <span className="material-symbols-outlined text-[16px]">content_copy</span>
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleOpenUrl(`http://${localIp}:${processLike.port}`)}
+                      className="btn-ghost compact cursor-pointer hover:bg-surface-container-high rounded text-on-surface-variant hover:text-primary transition-colors"
+                      title="Open in Browser"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+                    </button>
+                    <button
+                      onClick={() => onCopy(`http://${localIp}:${processLike.port}`, 'LAN address copied')}
+                      className="btn-ghost compact cursor-pointer hover:bg-surface-container-high rounded text-on-surface-variant hover:text-on-surface transition-colors"
+                      title="Copy Address"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">content_copy</span>
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -260,27 +297,59 @@ export function ProcessView({
                   <div className="flex items-center justify-between p-3 bg-surface-container-low border border-outline-variant/30 rounded-lg">
                     <div className="flex flex-col">
                       <span className="text-[10px] text-primary font-bold uppercase tracking-wider">Public Exposure URL</span>
-                      <code className="text-xs font-mono text-primary font-bold mt-0.5 select-all">{tunnel.publicUrl}</code>
+                      <code
+                        onClick={() => handleOpenUrl(tunnel.publicUrl)}
+                        className="text-xs font-mono text-primary font-bold mt-0.5 hover:underline cursor-pointer select-all"
+                        title="Open in Browser"
+                      >
+                        {tunnel.publicUrl}
+                      </code>
                     </div>
-                    <button
-                      onClick={() => onCopy(tunnel.publicUrl, 'Public URL copied')}
-                      className="btn-ghost compact cursor-pointer hover:bg-surface-container-high rounded"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">content_copy</span>
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleOpenUrl(tunnel.publicUrl)}
+                        className="btn-ghost compact cursor-pointer hover:bg-surface-container-high rounded text-primary hover:text-primary/80 transition-colors"
+                        title="Open in Browser"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+                      </button>
+                      <button
+                        onClick={() => onCopy(tunnel.publicUrl, 'Public URL copied')}
+                        className="btn-ghost compact cursor-pointer hover:bg-surface-container-high rounded text-on-surface-variant hover:text-on-surface transition-colors"
+                        title="Copy Address"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">content_copy</span>
+                      </button>
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between p-3 bg-surface-container-low border border-outline-variant/30 rounded-lg">
                     <div className="flex flex-col">
                       <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">LAN Proxy Tunnel</span>
-                      <code className="text-xs font-mono text-on-surface mt-0.5">http://{localIp}:3939</code>
+                      <code
+                        onClick={() => handleOpenUrl(`http://${localIp}:3939`)}
+                        className="text-xs font-mono text-on-surface mt-0.5 hover:underline cursor-pointer select-all"
+                        title="Open in Browser"
+                      >
+                        http://{localIp}:3939
+                      </code>
                     </div>
-                    <button
-                      onClick={() => onCopy(`http://${localIp}:3939`, 'LAN Tunnel URL copied')}
-                      className="btn-ghost compact cursor-pointer hover:bg-surface-container-high rounded"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">content_copy</span>
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleOpenUrl(`http://${localIp}:3939`)}
+                        className="btn-ghost compact cursor-pointer hover:bg-surface-container-high rounded text-on-surface-variant hover:text-primary transition-colors"
+                        title="Open in Browser"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+                      </button>
+                      <button
+                        onClick={() => onCopy(`http://${localIp}:3939`, 'LAN Tunnel URL copied')}
+                        className="btn-ghost compact cursor-pointer hover:bg-surface-container-high rounded text-on-surface-variant hover:text-on-surface transition-colors"
+                        title="Copy Address"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">content_copy</span>
+                      </button>
+                    </div>
                   </div>
                   
                   <div className="p-3 bg-surface-container-low border border-outline-variant/20 rounded-lg text-[11px] text-on-surface-variant leading-relaxed">

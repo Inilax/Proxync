@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import type { Tunnel, RequestLog } from './SharedComponents';
 import { SignalBars } from './SharedComponents';
 import { showToast } from '../../lib/toast';
@@ -243,6 +244,18 @@ export function WelcomeView({
                         <>
                           <div className="fixed inset-0 z-40" onClick={() => setActiveMenuTunnelId(null)} />
                           <div className="absolute right-0 mt-1 w-44 rounded-lg bg-surface-container border border-outline-variant shadow-xl py-1 z-50 animate-scale-in">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveMenuTunnelId(null);
+                                openUrl(tunnel.publicUrl).catch(() => window.open(tunnel.publicUrl, '_blank'));
+                              }}
+                              className="flex items-center gap-2 px-4 py-2 w-full text-left text-xs text-primary font-medium hover:bg-surface-container-highest transition-colors cursor-pointer"
+                            >
+                              <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+                              Open in Browser
+                            </button>
+
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();

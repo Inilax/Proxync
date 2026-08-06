@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
 import type { WorkspaceConfig, AppSettings, DomainRecord, Guardrails } from './SharedComponents';
 import { showToast } from '../../lib/toast';
+import { ConfirmPurgeDialog } from './Dialogs';
 
 export function SettingsView({
   workspace,
@@ -45,6 +46,7 @@ export function SettingsView({
   initialSection?: 'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger';
 }) {
   const [activeSection, setActiveSection] = useState<'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger'>(initialSection);
+  const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
 
   useEffect(() => {
     setActiveSection(initialSection);
@@ -685,13 +687,8 @@ export function SettingsView({
                   <p className="text-xs text-on-surface-variant mt-1">Clears all locally saved workspaces, process history, and credentials.</p>
                 </div>
                 <button
-                  className="btn-danger"
-                  onClick={() => {
-                    if (confirm('Are you sure you want to clear all Proxync app data? This action is permanent.')) {
-                      localStorage.clear();
-                      window.location.reload();
-                    }
-                  }}
+                  className="btn-danger cursor-pointer"
+                  onClick={() => setShowPurgeConfirm(true)}
                 >
                   Purge All Data
                 </button>
@@ -700,6 +697,16 @@ export function SettingsView({
           )}
         </div>
       </div>
+
+      {showPurgeConfirm && (
+        <ConfirmPurgeDialog
+          onClose={() => setShowPurgeConfirm(false)}
+          onConfirm={() => {
+            localStorage.clear();
+            window.location.reload();
+          }}
+        />
+      )}
     </div>
   );
 }
