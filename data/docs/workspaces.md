@@ -1,42 +1,25 @@
 ---
 title: Workspaces
-description: Isolated project contexts that group processes, requests, traffic, domains, and notes.
+description: Isolated project contexts featuring dynamic activity tracking, 7-day inactivity filtering, and custom glass dialogs.
 ---
 
-A **workspace** is Proxync's unit of organization. It gives each project its own isolated context so nothing bleeds between projects.
+In Proxync v0.2.0, workspaces serve as isolated project contexts with dynamic activity tracking and dynamic categorizations.
 
-## What a workspace contains
+## What a Workspace Holds
 
-- `ProcessProfile[]` — discovered development servers (process name, port, framework, command, directory, executable).
-- `SavedRequest[]` — your Postman-style request collection.
-- `RequestLog[]` — captured traffic for the workspace.
-- `DomainRecord[]` — custom domains and their verification status.
-- A language hint (inferred from scanned source files).
-- Notes, scanned files, and the project root path.
+- **Discovered Processes (`ProcessProfile[]`)** — Identified dev servers with PID, command, working directory, and framework detection.
+- **Playground Collections (`SavedRequest[]`)** — Saved REST API requests organized into tree folders.
+- **Traffic Log History (`RequestLog[]`)** — Recorded HTTP/WebSocket traffic with unique UUIDs.
+- **Domain Records (`DomainRecord[]`)** — Verified custom domain configurations.
+- **Workspace Activity (`lastActivityAt`)** — Timestamps updated automatically on workspace selection, tunnel launch, or incoming traffic.
 
-## Creating a workspace
+## Dynamic Activity Tracking & 7-Day Inactivity Filtering
 
-From **Lobby**, the two-step onboarding wizard asks for:
+- **Relative Activity Indicators** — Workspace cards display relative timestamps (`Just now`, `4m ago`, `18h ago`, `3d ago`).
+- **Inactive Auto-Categorization** — Workspaces dormant for over 7 days automatically transition into the **Inactive** tab to keep your active workspace rail clean.
+- **Active Workspace Restraints** — Workspace provisioning cards are focused exclusively on the **Active** tab.
 
-1. A project name.
-2. The project root path (used for the source scan and language inference).
+## Custom Glass Dialogs & Escape Key Handlers
 
-The workspace is persisted immediately and becomes the active workspace.
-
-## Switching workspaces
-
-The sidebar shows your workspaces. Selecting one makes it active; all views — Lobby, Traffic, Postman, Swagger, Settings — operate on the active workspace's data.
-
-## Persistence
-
-The entire app state — `{ workspaces, activeWorkspaceId, appSettings }` — is written to a single JSON file on every change:
-
-```text
-%APPDATA%\Proxync\data.json
-```
-
-See [Configuration](/docs/configuration) for the full schema, including the automatic migration from the legacy `localStorage` keys used in early versions.
-
-## Deleting a workspace
-
-Removing a workspace deletes its profiles, requests, and traffic from the state file. It does **not** touch your project files on disk.
+- **Confirm Purge Dialog** — Replaced browser native `confirm()` dialogs with customized glassmorphic confirmation modals.
+- **Global Escape Key Handler (`useEscape`)** — Pressing `Esc` dismisses modal overlays and inline creation forms seamlessly.

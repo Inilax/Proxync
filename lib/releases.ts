@@ -11,7 +11,7 @@ export interface ReleaseInfo {
 }
 
 export const GITHUB_REPO_URL = "https://github.com/Inilax/Proxync";
-export const DEFAULT_VERSION = "0.1.8";
+export const DEFAULT_VERSION = "0.2.0";
 export const DEFAULT_TAG = `v${DEFAULT_VERSION}`;
 
 export const DEFAULT_RELEASE: ReleaseInfo = {
@@ -34,7 +34,7 @@ export function getReleaseForTag(tagOrVersion: string): ReleaseInfo {
 
 /**
  * Client hook to get the latest release data dynamically.
- * Starts with DEFAULT_RELEASE (v0.1.8) and updates asynchronously from /api/release.
+ * Starts with DEFAULT_RELEASE (v0.2.0) and updates asynchronously from /api/release.
  */
 export function useLatestRelease(): ReleaseInfo {
   const [release, setRelease] = useState<ReleaseInfo>(DEFAULT_RELEASE);
@@ -50,8 +50,8 @@ export function useLatestRelease(): ReleaseInfo {
         if (active && data?.tagName) {
           setRelease(data);
         }
-      } catch (err) {
-        // Fall back gracefully to default state
+      } catch {
+        // Fail silently and keep DEFAULT_RELEASE
       }
     }
 

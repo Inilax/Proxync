@@ -15,7 +15,7 @@ type RevealProps = {
  * Scroll-triggered reveal wrapper. Respects prefers-reduced-motion.
  * Uses initial={false} so server-rendered HTML is 100% visible by default and never trapped at opacity 0.
  */
-export function Reveal({ children, className, delay = 0, y = 16, once = true }: RevealProps) {
+export function Reveal({ children, className, delay = 0, y: _y = 16, once = true }: RevealProps) {
   const reduce = useReducedMotion();
 
   if (reduce) {

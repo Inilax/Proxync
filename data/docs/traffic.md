@@ -1,45 +1,32 @@
 ---
 title: Traffic Inspector
-description: A live log of every HTTP request flowing through your tunnels, with status and timing.
+description: Live HTTP & WebSocket traffic log with unique UUID keys, immutable request ID tracking, headers HashMap, and raw body previews.
 ---
 
-The **Traffic** view is a real-time table of HTTP requests captured by Proxync's proxy. It is the fastest way to see what is actually hitting your development server.
+Proxync v0.2.0 includes a comprehensive **Traffic Inspector Overhaul** designed for stability under high live traffic volume.
 
-## What is captured
+## Key Features in v0.2.0
 
-For each request, Proxync records:
+- **Immutable Request ID Expansion** — Fixed dropdown auto-collapse under live traffic by tracking row expansion using immutable request IDs (`rawRequestId`).
+- **Unique React Keys** — Solved key collisions and scroll jumping by keying log rows with unique UUID identifiers.
+- **Rust Header & Body Preview** — Enhanced Rust TCP and WebSocket proxy to parse, store, and emit complete headers HashMaps and body previews.
+- **Accurate Status Code Badging** — Aligned status code updates and response duration timing across active requests.
+
+## Captured Data
 
 | Field | Description |
 | --- | --- |
-| `method` | HTTP method (GET, POST, ...). |
-| `path` | The request path. |
-| `status` | The response status code. |
-| `duration` | Time to receive the response. |
-| `headers` | Request and response headers. |
-| `timestamp` | When the request was captured. |
+| `rawRequestId` | Immutable unique identifier for matching request/response pairs. |
+| `method` | HTTP Method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `HEAD`). |
+| `path` | Full request URI path with query parameters. |
+| `status` | HTTP response status code (e.g. `200 OK`, `404 Not Found`, `500 Server Error`). |
+| `latency` | Response time calculation in milliseconds. |
+| `headers` | Parsed request and response headers HashMap. |
+| `bodyPreview` | Raw body snippet for inspecting request/response payloads. |
 
-Bodies are **not** stored — the log and OpenAPI generation are built from metadata only.
+## Actions & Replay
 
-## Reading the log
-
-- Rows are prepended live as requests arrive.
-- A request is marked **pending** until its response event arrives. A row that stays pending suggests the target server accepted the connection but stalled.
-- The log is capped at **150 entries** per workspace; the oldest are dropped.
-
-## Request detail
-
-Clicking a row opens a detail dialog showing the parsed request line, headers, and response status/headers captured by the proxy.
-
-## Send to Postman
-
-Each captured request can be sent to the [Postman Runner](/docs/postman). It becomes a `SavedRequest` with `source: "captured"` in the active workspace's collection, ready to replay or edit.
-
-## Events behind the scenes
-
-The frontend subscribes to these Tauri events to build the log:
-
-- `request:log` — `{ id, method, path, headers, timestamp }` (proxy path) or `{ requestId, method, path, timestamp }` (relay path).
-- `request:log:response` — `{ requestId, status, timestamp }`, matched to the pending entry.
-- `tunnel:auto-closed` — `{ tunnelId }`, flags the related tunnel as closed.
-
-See [API Reference](/docs/api-reference) for event payload details.
+From any traffic row:
+- **Send to Playground** — Converts the captured request directly into a saved Playground collection item.
+- **Generic Replay Engine** — Replays captured requests through native Rust HTTP executor, appending the replayed response directly back into the Traffic log.
+- **Inspect Drawer** — Inspect full request headers, response headers, and payload previews.

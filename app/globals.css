@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=block');
 @import "tailwindcss";
 
 @theme inline {
@@ -64,6 +65,69 @@
   --animate-scan: scan 3.8s ease-in-out infinite;
   --animate-pulse-dot: pulse-dot 2s ease-in-out infinite;
   --animate-shimmer: shimmer 6s linear infinite;
+}
+
+/* ══════════════════════════════════════════════
+   PROXYNC DESKTOP V0.2.0 THEMES
+   ══════════════════════════════════════════════ */
+.theme-slate {
+  --color-surface: #0b1326;
+  --color-surface-dim: #0b1326;
+  --color-surface-bright: #31394d;
+  --color-surface-container: #171f33;
+  --color-surface-container-low: #131b2e;
+  --color-surface-container-high: #222a3d;
+  --color-surface-container-highest: #2d3449;
+  --color-surface-container-lowest: #060e20;
+  --color-primary: #c0c1ff;
+  --color-primary-container: #8083ff;
+  --color-secondary: #89ceff;
+  --color-tertiary: #ffb783;
+}
+
+.theme-dracula {
+  --color-surface: #1e1f29;
+  --color-surface-dim: #1e1f29;
+  --color-surface-bright: #343746;
+  --color-surface-container: #282a36;
+  --color-surface-container-low: #21222c;
+  --color-surface-container-high: #3d3f4d;
+  --color-surface-container-highest: #4b4e60;
+  --color-surface-container-lowest: #14151a;
+  --color-primary: #ff79c6;
+  --color-primary-container: #44475a;
+  --color-secondary: #8be9fd;
+  --color-tertiary: #bd93f9;
+}
+
+.theme-cyberpunk {
+  --color-surface: #0a0114;
+  --color-surface-dim: #0a0114;
+  --color-surface-bright: #240d3a;
+  --color-surface-container: #140527;
+  --color-surface-container-low: #0e021c;
+  --color-surface-container-high: #200a36;
+  --color-surface-container-highest: #2b1147;
+  --color-surface-container-lowest: #06010b;
+  --color-primary: #ec4899;
+  --color-primary-container: #db2777;
+  --color-secondary: #a855f7;
+  --color-tertiary: #06b6d4;
+}
+
+.theme-emerald {
+  --color-surface: #031411;
+  --color-surface-dim: #031411;
+  --color-surface-bright: #142b26;
+  --color-surface-container: #081a17;
+  --color-surface-container-low: #041210;
+  --color-surface-container-high: #102420;
+  --color-surface-container-highest: #1a322d;
+  --color-surface-container-lowest: #020908;
+  --color-primary: #10b981;
+  --color-primary-container: #047857;
+  --color-secondary: #34d399;
+  --color-tertiary: #22d3ee;
 }
 
 @keyframes fade-up {

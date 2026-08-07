@@ -37,7 +37,8 @@ export async function GET() {
 
     if (res.ok) {
       const data = await res.json();
-      const tagName = data.tag_name || DEFAULT_RELEASE.tagName;
+      const rawTag = data.tag_name || DEFAULT_RELEASE.tagName;
+      const tagName = rawTag.includes("0.1.") ? DEFAULT_RELEASE.tagName : rawTag;
       const version = tagName.replace(/^v/, "");
 
       // Find direct .exe setup download link if attached in assets
@@ -63,11 +64,22 @@ export async function GET() {
         publishedAt: data.published_at,
       };
 
-      return NextResponse.json(releaseInfo);
+      return NextResponse.json({
+        tagName: releaseInfo.tagName,
+        version: releaseInfo.version,
+        releaseUrl: releaseInfo.releaseUrl,
+        downloadUrl: releaseInfo.downloadUrl,
+        publishedAt: releaseInfo.publishedAt,
+      });
     }
-  } catch (err) {
+  } catch {
     // Fail silently and return DEFAULT_RELEASE fallback
   }
 
-  return NextResponse.json(DEFAULT_RELEASE);
+  return NextResponse.json({
+    tagName: DEFAULT_RELEASE.tagName,
+    version: DEFAULT_RELEASE.version,
+    releaseUrl: DEFAULT_RELEASE.releaseUrl,
+    downloadUrl: DEFAULT_RELEASE.downloadUrl,
+  });
 }
