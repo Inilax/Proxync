@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui";
 import { LogoMark } from "@/components/logo";
 import { DOCS_NAV } from "@/lib/docs-nav";
-import { DOWNLOAD_URL, GITHUB_URL } from "@/lib/links";
+import { GITHUB_URL } from "@/lib/links";
 import { useLatestRelease } from "@/lib/releases";
 
 function isActive(pathname: string, href: string): boolean {
