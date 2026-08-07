@@ -96,7 +96,7 @@ const NAV_ITEMS: { view: MainView; label: string; icon: string }[] = [
   { view: 'settings', label: 'Settings', icon: 'settings' },
 ];
 
-export async function checkRealInternetConnection(timeoutMs = 1200): Promise<boolean> {
+async function checkRealInternetConnection(timeoutMs = 1200): Promise<boolean> {
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return false;
   }
@@ -596,9 +596,9 @@ export default function App() {
 
         const cleanPath = path.toLowerCase();
         const isHmrNoise = cleanPath.includes('_next/webpack-hmr') ||
-                           cleanPath.includes('__vite_ping') ||
-                           cleanPath.includes('hot-update') ||
-                           cleanPath.includes('favicon.ico');
+          cleanPath.includes('__vite_ping') ||
+          cleanPath.includes('hot-update') ||
+          cleanPath.includes('favicon.ico');
 
         if (isHmrNoise) return;
 
@@ -641,10 +641,42 @@ export default function App() {
   }, [activeTunnel, activeWorkspaceId]);
 
   useEffect(() => {
-    if (!activeWorkspace?.remoteWorkspaceId) { setDomains([]); return; }
+    if (!activeWorkspaceId) return;
     setLoadingDomains(true);
-    api.domains.list().then((items) => setDomains(items)).catch(() => setDomains([])).finally(() => setLoadingDomains(false));
-  }, [activeWorkspace?.remoteWorkspaceId]);
+    const wsId = activeWorkspace?.remoteWorkspaceId || activeWorkspaceId;
+    api.domains.list(wsId)
+      .then((items) => {
+        const combined = items.length > 0 ? items : (activeWorkspace?.domains || []);
+        setDomains(combined);
+      })
+      .catch(() => setDomains(activeWorkspace?.domains || []))
+      .finally(() => setLoadingDomains(false));
+  }, [activeWorkspaceId, activeWorkspace?.remoteWorkspaceId]);
+
+  useEffect(() => {
+    const pendingDomains = domains.filter((d) => !d.verified);
+    if (!activeWorkspaceId || pendingDomains.length === 0) return;
+    const wsId = activeWorkspace?.remoteWorkspaceId || activeWorkspaceId;
+
+    const timer = setInterval(() => {
+      pendingDomains.forEach((d) => {
+        api.domains.checkDomainStatus(wsId, d).then((res) => {
+          if (res.verified) {
+            setDomains((curr) => curr.map((item) => (item.id === d.id ? res.domain : item)));
+            if (activeWorkspace) {
+              updateActiveWorkspace((ws) => ({
+                ...ws,
+                domains: ws.domains.map((item) => (item.id === d.id ? res.domain : item)),
+              }));
+            }
+            showToast(`🎉 Domain ${d.name} ownership verified automatically!`, 'success');
+          }
+        }).catch(() => undefined);
+      });
+    }, 60000);
+
+    return () => clearInterval(timer);
+  }, [domains, activeWorkspaceId]);
 
   useEffect(() => {
     if (!activeWorkspace?.remoteWorkspaceId) { setTunnels([]); setActiveTunnel(null); return; }
@@ -907,10 +939,6 @@ export default function App() {
 
   async function shareProcess(process: ProcessCandidate, customDomain?: string) {
     if (!activeWorkspace) return;
-    const starterScan = buildStarterRequests(process);
-    setStarterSuggestions(starterScan);
-    setSavedRequests((current) => mergeRequests(current, starterScan));
-    updateActiveWorkspace((ws) => ({ ...ws, profiles: upsertProfile(ws.profiles, process, starterScan.length), selectedProfileId: makeProfileId(process), languageHint: detectLanguageLabel(process) }));
 
     const targetWorkspaceId = activeWorkspace.remoteWorkspaceId || activeWorkspace.id;
     const token = getToken();
@@ -918,15 +946,57 @@ export default function App() {
     setSharingPort(process.port);
     try {
       localStorage.setItem('proxync_workspace', targetWorkspaceId);
+
+      if (customDomain) {
+        const preFlightResult = await api.domains.verifyByName(targetWorkspaceId, customDomain);
+        if (!preFlightResult.verified) {
+          if (preFlightResult.domain) {
+            setDomains((curr) =>
+              curr.map((item) => (item.id === preFlightResult.domain!.id ? preFlightResult.domain! : item))
+            );
+            if (activeWorkspace) {
+              updateActiveWorkspace((ws) => ({
+                ...ws,
+                domains: ws.domains.map((item) =>
+                  item.id === preFlightResult.domain!.id ? preFlightResult.domain! : item
+                ),
+              }));
+            }
+          }
+          showToast(
+            `Cannot go live: DNS TXT record for '${customDomain}' is missing or expired. Open Settings → Custom Domains to re-verify.`,
+            'error'
+          );
+          return;
+        }
+      }
+
+      // DNS pre-flight passed — now set up starter scan and update UI
+      const starterScan = buildStarterRequests(process);
+      setStarterSuggestions(starterScan);
+      setSavedRequests((current) => mergeRequests(current, starterScan));
+      updateActiveWorkspace((ws) => ({
+        ...ws,
+        profiles: upsertProfile(ws.profiles, process, starterScan.length),
+        selectedProfileId: makeProfileId(process),
+        languageHint: detectLanguageLabel(process),
+      }));
+      const proxyPort = await invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port);
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined, customDomain);
+      if (customDomain) {
+        tunnel.publicUrl = customDomain.includes(':') ? customDomain : `http://${customDomain}:${proxyPort}`;
+      }
       const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
       const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
-      await invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined);
+      await invoke('open_tunnel', { tunnelId: tunnel.id, localPort: proxyPort, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined);
       setActiveTunnel(tunnel);
       setTunnels((current) => [tunnel, ...current.filter((item) => item.id !== tunnel.id)]);
       setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false); setRequests([]);
-      updateActiveWorkspace((ws) => ({ ...ws, profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: tunnel.publicUrl } : p) }));
-      showToast(`Tunnel is live. Imported ${starterScan.length} starter requests into Playground.`, 'success');
+      updateActiveWorkspace((ws) => ({
+        ...ws,
+        profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: tunnel.publicUrl } : p)
+      }));
+      showToast(`Tunnel active on ${tunnel.publicUrl}. Traffic interception enabled!`, 'success');
     } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to share process', 'error'); }
     finally { setSharingPort(null); }
   }
@@ -1190,25 +1260,69 @@ export default function App() {
     if (!domainDraft.trim()) { showToast('Enter a domain name first', 'info'); return; }
     setBusyDomainId('new');
     const wsId = activeWorkspace?.remoteWorkspaceId || activeWorkspace?.id || 'local';
-    try { const created = await api.domains.create(wsId, domainDraft.trim().toLowerCase()); setDomains((current) => [...current.filter((d) => d.id !== created.id), created]); setDomainDraft(''); showToast('Domain added successfully!', 'success'); }
-    catch (error) { showToast(error instanceof Error ? error.message : 'Unable to add domain', 'error'); }
-    finally { setBusyDomainId(null); }
+    try {
+      const created = await api.domains.create(wsId, domainDraft.trim().toLowerCase());
+      setDomains((current) => {
+        const next = [...current.filter((d) => d.id !== created.id), created];
+        if (activeWorkspace) {
+          updateActiveWorkspace((ws) => ({ ...ws, domains: next }));
+        }
+        return next;
+      });
+      setDomainDraft('');
+      showToast('Domain added successfully!', 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Unable to add domain', 'error');
+    } finally {
+      setBusyDomainId(null);
+    }
   }
 
   async function verifyDomain(domainId: string) {
     setBusyDomainId(domainId);
     const wsId = activeWorkspace?.remoteWorkspaceId || activeWorkspace?.id || 'local';
-    try { const updated = await api.domains.verify(wsId, domainId); setDomains((current) => current.map((d) => (d.id === domainId ? updated : d))); showToast('Domain verification succeeded', 'success'); }
-    catch (error) { showToast(error instanceof Error ? error.message : 'Verification failed', 'error'); }
-    finally { setBusyDomainId(null); }
+    try {
+      const updated = await api.domains.verify(wsId, domainId);
+      setDomains((current) => {
+        const next = current.map((d) => (d.id === domainId ? updated : d));
+        if (activeWorkspace) {
+          updateActiveWorkspace((ws) => ({ ...ws, domains: next }));
+        }
+        return next;
+      });
+      showToast('Domain verification succeeded!', 'success');
+    } catch (error) {
+      const refreshed = await api.domains.list(wsId).catch(() => []);
+      if (refreshed.length > 0) {
+        setDomains(refreshed);
+        if (activeWorkspace) {
+          updateActiveWorkspace((ws) => ({ ...ws, domains: refreshed }));
+        }
+      }
+      showToast(error instanceof Error ? error.message : 'Verification failed', 'error');
+    } finally {
+      setBusyDomainId(null);
+    }
   }
 
   async function removeDomain(domainId: string) {
     setBusyDomainId(domainId);
     const wsId = activeWorkspace?.remoteWorkspaceId || activeWorkspace?.id || 'local';
-    try { await api.domains.delete(wsId, domainId); setDomains((current) => current.filter((d) => d.id !== domainId)); showToast('Domain removed', 'success'); }
-    catch (error) { showToast(error instanceof Error ? error.message : 'Unable to remove domain', 'error'); }
-    finally { setBusyDomainId(null); }
+    try {
+      await api.domains.delete(wsId, domainId);
+      setDomains((current) => {
+        const next = current.filter((d) => d.id !== domainId);
+        if (activeWorkspace) {
+          updateActiveWorkspace((ws) => ({ ...ws, domains: next }));
+        }
+        return next;
+      });
+      showToast('Domain removed', 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Unable to remove domain', 'error');
+    } finally {
+      setBusyDomainId(null);
+    }
   }
 
   function clearTrafficLogs() {
@@ -1436,11 +1550,11 @@ export default function App() {
                   const spec = (openApiDocument.paths && Object.keys(openApiDocument.paths).length > 0)
                     ? openApiDocument
                     : generateOpenApiSpec(
-                        scannedEndpoints,
-                        activeWorkspace?.capturedRequests ?? [],
-                        activeWorkspace?.name ?? 'Workspace',
-                        effectiveLanguageHint
-                      );
+                      scannedEndpoints,
+                      activeWorkspace?.capturedRequests ?? [],
+                      activeWorkspace?.name ?? 'Workspace',
+                      effectiveLanguageHint
+                    );
                   const importedReqs = importSwaggerToSavedRequests(spec);
                   if (importedReqs.length > 0) {
                     updateSavedRequests(mergeRequests(savedRequests, importedReqs));
