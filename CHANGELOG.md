@@ -2,6 +2,27 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [v0.2.0-release] - 2026-08-07 (Traffic Inspector Overhaul, Generic Replay Engine, Enterprise Tier Preview & Playground Hotkeys)
+- **Feature Summary**:
+  - **Traffic Inspector Overhaul**: Fixed React key collisions using unique UUIDs. Fixed inline dropdown auto-collapse under live traffic by tracking expansion via immutable request IDs. Solved scroll-position jumping by removing container dynamic key. Fixed status code badge updates in `App.tsx` by aligning `rawRequestId` matching. Enhanced Rust TCP and WebSocket proxy in `lib.rs` to capture and emit headers HashMap and bodyPreview.
+  - **Generic Replay Engine**: Upgraded `replayRequest` in `App.tsx` to generically execute any HTTP method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) via native Rust HTTP executor and append newly replayed packages directly to Traffic Logs. Raised modal overlay z-index to `9999` with glassmorphic backdrop blur.
+  - **Type Safety & Enterprise Preview**: Resolved `AppSettings` and `MainView` type drift in `types.ts`. Re-exported shared interfaces in `SharedComponents.tsx`. Replaced static fake API key box with Enterprise API Key Management preview card in `SettingsView.tsx`. Upgraded Account Settings to Proxync Enterprise & Cloud Sync preview card. Added Enterprise RBAC and Policy badges to Workspace Guardrails. Updated official website domain URLs across `SettingsView`, `WelcomeView`, and `DocsView` to `https://proxync.dev/`.
+  - **Playground Hotkeys & Code Generator Fix**: Added `Ctrl + /` and `Ctrl + ?` keyboard hotkey binding in Playground (`PostmanView.tsx`) displaying a glassmorphic hotkey reference modal overlay. Replaced TODO comment stub in `codeSnippetGenerator.ts` with working JSON response handler template.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/TrafficView.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/DocsView.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/lib/codeSnippetGenerator.ts`
+  - `packages/desktop/src/lib/types.ts`
+  - `packages/desktop/src/index.css`
+  - `CHANGELOG.md`
+
 ## [feature/develop-playground-ux-and-context-menu-enhancements] - 2026-08-06 (Playground UX Overhaul, Glass Context Menu & Smart Banner Hiding)
 - **Feature Summary**: Expanded Collections Rail sidebar width to 280px and eliminated duplicate HTTP method badges in sidebar items. Built a custom glassmorphic right-click context menu (Rename, Copy URL, Duplicate Request, Delete) with global contextmenu suppression unless Developer Inspect Tools is enabled. Added Developer Inspect Tools toggle in Settings under Danger Zone. Centralized `HTTP_METHODS` and `stripMethodPrefix()` utility in `SharedComponents.tsx` to strip method prefixes from request titles. Added unimported endpoint deduplication to starter suggestions banner so it automatically stays hidden when all scanned endpoints are already in collections.
 - **Modified Files**:

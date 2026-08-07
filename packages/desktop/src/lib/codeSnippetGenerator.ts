@@ -26,8 +26,11 @@ export class ${pascalTag}Controller {
   async handleRequest(
 ${paramsDecorators ? paramsDecorators + '\n' : ''}    @Body() body: any,
   ) {
-    // TODO: Implement handler logic
-    return { success: true };
+    return {
+      success: true,
+      path: '${path}',
+      method: '${cleanMethod}',
+    };
   }
 }`;
     }

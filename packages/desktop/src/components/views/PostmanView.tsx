@@ -94,6 +94,8 @@ export function PostmanView({
     }
   };
 
+  const [showHotkeysModal, setShowHotkeysModal] = useState(false);
+
   // Static Folder Ordering State (Stored in localStorage)
   const [folderOrder, setFolderOrder] = useState<string[]>(() => {
     const saved = localStorage.getItem('postman_folder_order');
@@ -218,6 +220,9 @@ export function PostmanView({
       } else if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
         e.preventDefault();
         onSave();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === '?' || e.key === '/' || e.code === 'Slash')) {
+        e.preventDefault();
+        setShowHotkeysModal((prev) => !prev);
       }
     };
 
@@ -692,14 +697,23 @@ export function PostmanView({
             placeholder="Request Title (e.g. Fetch User Profile)"
           />
 
-          <button
-            className="btn-secondary shrink-0 font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-sm"
-            onClick={onSave}
-            title="Save request (Ctrl + S)"
-          >
-            <span className="material-symbols-outlined text-sm">bookmark</span>
-            <span>Save</span>
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              className="btn-secondary shrink-0 font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-sm"
+              onClick={onSave}
+              title="Save request (Ctrl + S)"
+            >
+              <span className="material-symbols-outlined text-sm">bookmark</span>
+              <span>Save</span>
+            </button>
+            <button
+              className="p-2 rounded-xl bg-surface-container-high border border-outline-variant/40 hover:border-primary/50 text-outline hover:text-primary transition-all cursor-pointer"
+              onClick={() => setShowHotkeysModal(true)}
+              title="Keyboard Shortcuts & Hotkeys"
+            >
+              <span className="material-symbols-outlined text-sm">keyboard</span>
+            </button>
+          </div>
         </div>
 
         {/* Unified Method + URL Toolbar */}
@@ -1069,6 +1083,75 @@ export function PostmanView({
               )}
             </>
           ) : null}
+        </div>
+      )}
+
+      {/* Keyboard Shortcuts Help Dialog */}
+      {showHotkeysModal && (
+        <div className="dialog-backdrop glass" onClick={() => setShowHotkeysModal(false)}>
+          <div
+            className="dialog-content max-w-md w-full p-6 bg-surface-container-high border border-outline-variant/40 rounded-2xl space-y-4 shadow-2xl slide-up select-none"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-outline-variant/30 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-xl">keyboard</span>
+                <h3 className="font-bold text-on-surface text-base">Playground Keyboard Shortcuts</h3>
+              </div>
+              <button
+                onClick={() => setShowHotkeysModal(false)}
+                className="p-1 rounded-lg hover:bg-surface-container-highest text-outline hover:text-on-surface transition-colors"
+              >
+                <span className="material-symbols-outlined text-base">close</span>
+              </button>
+            </div>
+
+            <div className="space-y-2.5 text-xs">
+              <div className="flex items-center justify-between p-2.5 bg-surface-container-lowest rounded-xl border border-outline-variant/20">
+                <span className="text-on-surface font-medium">Send Request</span>
+                <kbd className="px-2 py-1 bg-surface-container-high border border-outline-variant/40 rounded text-[11px] font-mono text-primary font-bold">
+                  Ctrl + Enter
+                </kbd>
+              </div>
+
+              <div className="flex items-center justify-between p-2.5 bg-surface-container-lowest rounded-xl border border-outline-variant/20">
+                <span className="text-on-surface font-medium">Save Request to Collection</span>
+                <kbd className="px-2 py-1 bg-surface-container-high border border-outline-variant/40 rounded text-[11px] font-mono text-primary font-bold">
+                  Ctrl + S
+                </kbd>
+              </div>
+
+              <div className="flex items-center justify-between p-2.5 bg-surface-container-lowest rounded-xl border border-outline-variant/20">
+                <span className="text-on-surface font-medium">Open Item Context Menu</span>
+                <span className="px-2 py-1 bg-surface-container-high border border-outline-variant/40 rounded text-[11px] font-mono text-secondary font-semibold">
+                  Right Click (Mouse)
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-2.5 bg-surface-container-lowest rounded-xl border border-outline-variant/20">
+                <span className="text-on-surface font-medium">Toggle Shortcuts & Hotkeys</span>
+                <kbd className="px-2 py-1 bg-surface-container-high border border-outline-variant/40 rounded text-[11px] font-mono text-secondary font-bold">
+                  Ctrl + /  or  Ctrl + ?
+                </kbd>
+              </div>
+
+              <div className="flex items-center justify-between p-2.5 bg-surface-container-lowest rounded-xl border border-outline-variant/20">
+                <span className="text-on-surface font-medium">Close Context Menu / Modals</span>
+                <kbd className="px-2 py-1 bg-surface-container-high border border-outline-variant/40 rounded text-[11px] font-mono text-on-surface-variant">
+                  Esc
+                </kbd>
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                className="btn-primary compact"
+                onClick={() => setShowHotkeysModal(false)}
+              >
+                Got it
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
