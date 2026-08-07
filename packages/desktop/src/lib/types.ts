@@ -107,5 +107,6 @@ export interface WorkspaceConfig {
 export interface AppSettings {
   defaultProjectRootPath: string;
   notes: string;
+  enableDevTools?: boolean;
 }
 

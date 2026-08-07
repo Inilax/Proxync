@@ -33,6 +33,7 @@ import {
   type DomainRecord,
   CompanionPanel,
   parseHeaderText,
+  stripMethodPrefix,
 } from './components/views/SharedComponents';
 import { WelcomeView } from './components/views/WelcomeView';
 import { LobbyView } from './components/views/LobbyView';
@@ -71,6 +72,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   theme: 'slate',
   autoUpdate: true,
   telemetry: 'enhanced',
+  enableDevTools: false,
 };
 
 const LOCAL_WORKSPACES_KEY = 'proxync_local_workspaces_v1';
@@ -989,7 +991,7 @@ export default function App() {
     const saved: SavedRequest = {
       ...draftRequest,
       id: draftRequest.id === 'draft' ? crypto.randomUUID() : draftRequest.id,
-      name: draftRequest.name.trim() || `${draftRequest.method} ${draftRequest.path}`,
+      name: stripMethodPrefix(draftRequest.name.trim() || draftRequest.path) || draftRequest.path,
       collectionName: folder,
     };
     setSavedRequests((current) => mergeRequests(current, [saved]));
@@ -1074,6 +1076,8 @@ export default function App() {
 
   function updateAutoUpdate(enabled: boolean) { setAppSettings((current) => ({ ...current, autoUpdate: enabled })); }
 
+  function updateEnableDevTools(enabled: boolean) { setAppSettings((current) => ({ ...current, enableDevTools: enabled })); }
+
   function updateTelemetry(telemetry: 'enhanced' | 'basic') { setAppSettings((current) => ({ ...current, telemetry })); }
 
   async function addDomain() {
@@ -1112,6 +1116,16 @@ export default function App() {
   function copyText(value: string, message: string) {
     navigator.clipboard.writeText(value).then(() => showToast(message, 'success')).catch(() => showToast('Clipboard access failed', 'error'));
   }
+
+  useEffect(() => {
+    const handleGlobalContextMenu = (e: MouseEvent) => {
+      if (!appSettings.enableDevTools) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('contextmenu', handleGlobalContextMenu);
+    return () => window.removeEventListener('contextmenu', handleGlobalContextMenu);
+  }, [appSettings.enableDevTools]);
 
   /* ══════════════════════════════════════════════
      RENDER — Reference-Matching Shell
@@ -1299,7 +1313,7 @@ export default function App() {
               <TrafficView requests={requests} activeTunnel={activeTunnel} onOpen={openRequestDetail} onSendToPostman={sendToPostman} onClear={clearTrafficLogs} />
             )}
             {mainView === 'postman' && (
-              <PostmanView draft={draftRequest} savedRequests={savedRequests} response={postmanResponse} sending={sendingRequest} starterSuggestions={starterSuggestions} activeTunnel={activeTunnel} onDraftChange={setDraftRequest} onHeaderTextChange={updateDraftHeader} onRun={runPostmanRequest} onSave={saveDraftRequest} onLoad={setDraftRequest} onImportStarterRequests={importStarterRequests} onDeleteRequest={deleteSavedRequest} onUpdateSavedRequests={updateSavedRequests} />
+              <PostmanView draft={draftRequest} savedRequests={savedRequests} response={postmanResponse} sending={sendingRequest} starterSuggestions={starterSuggestions} activeTunnel={activeTunnel} selectedProcessPort={selectedProcess?.port} onDraftChange={setDraftRequest} onHeaderTextChange={updateDraftHeader} onRun={runPostmanRequest} onSave={saveDraftRequest} onLoad={setDraftRequest} onImportStarterRequests={importStarterRequests} onDeleteRequest={deleteSavedRequest} onUpdateSavedRequests={updateSavedRequests} />
             )}
             {mainView === 'swagger' && (
               <SwaggerView
@@ -1353,7 +1367,7 @@ export default function App() {
               />
             )}
             {mainView === 'settings' && (
-              <SettingsView workspace={activeWorkspace} appSettings={appSettings} domains={domains} domainDraft={domainDraft} loadingDomains={loadingDomains} busyDomainId={busyDomainId} scanningProject={scanningProject} onUpdateGuardrails={updateGuardrails} onUpdateAppNotes={updateAppNotes} onUpdateProjectRootPath={updateProjectRootPath} onScanProjectFolder={scanProjectFolder} onDomainDraftChange={setDomainDraft} onAddDomain={addDomain} onVerifyDomain={verifyDomain} onRemoveDomain={removeDomain} onUpdateTheme={updateTheme} onUpdateAutoUpdate={updateAutoUpdate} onUpdateTelemetry={updateTelemetry} initialSection={settingsSection} />
+              <SettingsView workspace={activeWorkspace} appSettings={appSettings} domains={domains} domainDraft={domainDraft} loadingDomains={loadingDomains} busyDomainId={busyDomainId} scanningProject={scanningProject} onUpdateGuardrails={updateGuardrails} onUpdateAppNotes={updateAppNotes} onUpdateProjectRootPath={updateProjectRootPath} onScanProjectFolder={scanProjectFolder} onDomainDraftChange={setDomainDraft} onAddDomain={addDomain} onVerifyDomain={verifyDomain} onRemoveDomain={removeDomain} onUpdateTheme={updateTheme} onUpdateAutoUpdate={updateAutoUpdate} onUpdateTelemetry={updateTelemetry} onUpdateEnableDevTools={updateEnableDevTools} initialSection={settingsSection} />
             )}
           </main>
 

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import type { SavedRequest, PostmanResponse, Tunnel } from './SharedComponents';
-import { formatHeaders } from './SharedComponents';
+import { formatHeaders, stripMethodPrefix } from './SharedComponents';
 import { showToast } from '../../lib/toast';
 import { importSwaggerToSavedRequests, importPostmanToOpenApi } from '../../lib/openApiGenerator';
 
@@ -11,6 +11,7 @@ export function PostmanView({
   sending,
   starterSuggestions,
   activeTunnel,
+  selectedProcessPort,
   onDraftChange,
   onHeaderTextChange,
   onRun,
@@ -26,6 +27,7 @@ export function PostmanView({
   sending: boolean;
   starterSuggestions: SavedRequest[];
   activeTunnel: Tunnel | null;
+  selectedProcessPort?: number;
   onDraftChange: (request: SavedRequest) => void;
   onHeaderTextChange: (value: string) => void;
   onRun: () => void;
@@ -51,10 +53,12 @@ export function PostmanView({
   // Resizable Panel Width for Collections Rail
   const [collectionsWidth, setCollectionsWidth] = useState<number>(() => {
     const saved = localStorage.getItem('postman_collections_width');
-    return saved ? Math.max(200, Math.min(500, parseInt(saved, 10))) : 260;
+    return saved ? Math.max(240, Math.min(500, parseInt(saved, 10))) : 280;
   });
 
   const [isResizingLeft, setIsResizingLeft] = useState<boolean>(false);
+  const [bannerDismissed, setBannerDismissed] = useState<boolean>(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; request?: SavedRequest; folderName?: string } | null>(null);
 
   // Folder Collapsed States
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
@@ -121,6 +125,17 @@ export function PostmanView({
     return map;
   }, [savedRequests]);
 
+  // Filter out starter suggestions that are already saved in collections
+  const unimportedSuggestions = useMemo(() => {
+    if (!starterSuggestions || starterSuggestions.length === 0) return [];
+    const savedKeys = new Set(
+      savedRequests.map((r) => `${r.method.toUpperCase()}:${r.path.replace(/\/+$/, '')}`)
+    );
+    return starterSuggestions.filter(
+      (s) => !savedKeys.has(`${s.method.toUpperCase()}:${s.path.replace(/\/+$/, '')}`)
+    );
+  }, [starterSuggestions, savedRequests]);
+
   // High-performance O(N) Static Folder Ordering Data Structure
   const orderedFoldersList = useMemo(() => {
     const keys = Object.keys(groupedCollections);
@@ -173,6 +188,28 @@ export function PostmanView({
   };
 
   // Global Keyboard Shortcuts (Ctrl + Enter to Send, Ctrl + S to Save)
+  // Close context menu on outside click
+  useEffect(() => {
+    const handleClickOutside = () => setContextMenu(null);
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  // Duplicate Request Handler
+  const handleDuplicateRequest = (req: SavedRequest, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const dup: SavedRequest = {
+      ...req,
+      id: crypto.randomUUID(),
+      name: `${req.name} (Copy)`,
+    };
+    if (onUpdateSavedRequests) {
+      onUpdateSavedRequests([...savedRequests, dup]);
+    }
+    showToast(`Duplicated "${req.name}"`, 'success');
+    setContextMenu(null);
+  };
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
@@ -427,6 +464,11 @@ export function PostmanView({
                 {/* Folder Header Item */}
                 <div 
                   onClick={() => handleSelectFolder(folderName)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setContextMenu({ x: e.clientX, y: e.clientY, folderName });
+                  }}
                   className="group flex items-center justify-between p-1.5 hover:bg-surface-container-high rounded-lg cursor-pointer transition-all border border-transparent hover:border-outline-variant/20"
                 >
                   <div className="flex items-center gap-1.5 min-w-0 flex-1">
@@ -457,7 +499,7 @@ export function PostmanView({
                         autoFocus
                       />
                     ) : (
-                      <span className="text-xs font-bold text-on-surface truncate flex-1">
+                      <span className="text-xs font-bold text-on-surface truncate flex-1" title={folderName}>
                         {folderName}
                       </span>
                     )}
@@ -516,6 +558,8 @@ export function PostmanView({
                       const bgClass = isGet ? 'bg-primary/10' : isPost ? 'bg-secondary/10' : 'bg-error/10';
                       const isEditingThisReq = editingRequestId === request.id;
                       const isActiveDraft = draft.id === request.id;
+                      
+                      const cleanReqName = stripMethodPrefix(request.name || '');
 
                       return (
                         <div
@@ -523,6 +567,11 @@ export function PostmanView({
                           onClick={() => {
                             handleSelectFolder(folderName);
                             onLoad(request);
+                          }}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setContextMenu({ x: e.clientX, y: e.clientY, request, folderName });
                           }}
                           className={`group/req w-full text-left flex items-center justify-between p-2 hover:bg-surface-container-high rounded-xl cursor-pointer transition-colors border ${
                             isActiveDraft ? 'bg-primary/10 border-primary/30' : 'border-transparent hover:border-outline-variant/20'
@@ -548,7 +597,9 @@ export function PostmanView({
                                 autoFocus
                               />
                             ) : (
-                              <span className="text-xs font-semibold text-on-surface truncate flex-1">{request.name}</span>
+                              <span className="text-xs font-semibold text-on-surface truncate flex-1" title={request.name}>
+                                {cleanReqName}
+                              </span>
                             )}
                           </div>
 
@@ -602,20 +653,32 @@ export function PostmanView({
       {/* ── 2. Main Request & Response Workspace (Flex-1) ── */}
       <div className="flex-1 min-w-0 bg-surface-container border border-outline-variant/30 rounded-2xl p-5 flex flex-col gap-4 overflow-y-auto shadow-sm select-none">
         {/* Starter Suggestion Banner */}
-        {starterSuggestions.length > 0 && (
+        {!bannerDismissed && unimportedSuggestions.length > 0 && (
           <div className="p-3.5 bg-primary-container/10 border-l-4 border-primary rounded-r-xl flex items-center justify-between gap-4">
-            <div className="space-y-0.5">
+            <div className="space-y-0.5 flex-1 min-w-0">
               <strong className="text-xs text-on-surface font-bold">Starter endpoints detected</strong>
               <p className="text-xs text-on-surface-variant leading-relaxed">
                 Endpoints inferred from workspace files. Click import to add them to your collection.
               </p>
             </div>
-            <button
-              className="btn-primary compact shrink-0"
-              onClick={onImportStarterRequests}
-            >
-              Import Scan
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                className="btn-primary compact shrink-0"
+                onClick={() => {
+                  onImportStarterRequests();
+                  setBannerDismissed(true);
+                }}
+              >
+                Import Scan
+              </button>
+              <button
+                onClick={() => setBannerDismissed(true)}
+                className="p-1 rounded-lg hover:bg-surface-container-highest text-outline hover:text-on-surface transition-colors"
+                title="Dismiss banner"
+              >
+                <span className="material-symbols-outlined text-sm">close</span>
+              </button>
+            </div>
           </div>
         )}
 
@@ -623,8 +686,8 @@ export function PostmanView({
         <div className="flex items-center justify-between gap-3">
           <input
             className="w-full bg-surface-container-low border border-outline-variant/30 hover:border-outline-variant/60 focus:border-primary rounded-xl px-3.5 py-2 text-sm text-on-surface font-bold focus:outline-none transition-all placeholder:text-outline"
-            value={draft.name}
-            onChange={(event) => onDraftChange({ ...draft, name: event.target.value })}
+            value={stripMethodPrefix(draft.name || '')}
+            onChange={(event) => onDraftChange({ ...draft, name: stripMethodPrefix(event.target.value) })}
             aria-label="Request name"
             placeholder="Request Title (e.g. Fetch User Profile)"
           />
@@ -662,8 +725,8 @@ export function PostmanView({
           />
 
           <span
-            className={`route-badge ${activeTunnel?.publicUrl.includes('trycloudflare.com') ? 'route-tunnel' : 'route-local'}`}
-            title={activeTunnel?.publicUrl ?? 'http://localhost:3000'}
+            className={`route-badge ${activeTunnel ? 'route-tunnel' : 'route-local'}`}
+            title={activeTunnel?.publicUrl ?? `http://localhost:${selectedProcessPort ?? 3000}`}
           >
             <span className="route-dot" aria-hidden="true" />
             {routeTarget}
@@ -929,6 +992,83 @@ export function PostmanView({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Floating Right-Click Context Menu Overlay */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-surface-container-high/95 backdrop-blur-md border border-outline-variant/40 rounded-xl shadow-2xl p-1.5 min-w-[170px] flex flex-col gap-0.5 text-xs font-semibold select-none animate-in fade-in zoom-in-95 duration-100"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {contextMenu.request ? (
+            <>
+              <button
+                onClick={(e) => {
+                  handleStartRenameRequest(contextMenu.request!, e);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-2 text-on-surface cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-base">edit</span>
+                <span>Rename Request</span>
+              </button>
+              <button
+                onClick={() => {
+                  copyText(contextMenu.request!.path, 'Request URL');
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-2 text-on-surface cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-base">content_copy</span>
+                <span>Copy URL</span>
+              </button>
+              <button
+                onClick={() => handleDuplicateRequest(contextMenu.request!)}
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-2 text-on-surface cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-base">content_paste_go</span>
+                <span>Duplicate Request</span>
+              </button>
+              <div className="h-px bg-outline-variant/30 my-1" />
+              <button
+                onClick={(e) => {
+                  handleDeleteRequestItem(contextMenu.request!.id, e);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-error/20 text-error transition-colors flex items-center gap-2 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-base">delete</span>
+                <span>Delete Request</span>
+              </button>
+            </>
+          ) : contextMenu.folderName ? (
+            <>
+              <button
+                onClick={(e) => {
+                  handleStartRenameFolder(contextMenu.folderName!, e);
+                  setContextMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-2 text-on-surface cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-base">edit</span>
+                <span>Rename Collection</span>
+              </button>
+              {contextMenu.folderName !== 'Default Collection' && (
+                <button
+                  onClick={(e) => {
+                    handleDeleteFolder(contextMenu.folderName!, e);
+                    setContextMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-error/20 text-error transition-colors flex items-center gap-2 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-base">delete</span>
+                  <span>Delete Collection</span>
+                </button>
+              )}
+            </>
+          ) : null}
         </div>
       )}
     </div>
