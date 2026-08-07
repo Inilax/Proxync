@@ -1,49 +1,35 @@
 ---
 title: FAQ
-description: Frequently asked questions about Proxync — privacy, requirements, and how it works.
+description: Frequently asked questions about Proxync v0.2.0 — features, privacy, telemetry options, auto-updater, and system requirements.
 ---
 
 ## Does Proxync require an account?
 
-No. There is no sign-up, no account, and no telemetry. Everything runs locally on your machine.
+No. Proxync runs 100% locally on your machine with local file serialization. No cloud account is required.
 
-## Where is my data stored?
+## How does Telemetry work in v0.2.0?
 
-In a single JSON file on your machine — `%APPDATA%\Proxync\data.json` on Windows. Your workspaces, requests, traffic metadata, and settings live there. See [Configuration](/docs/configuration).
+Proxync v0.2.0 includes persistent telemetry options stored locally under **Settings**:
+- **Enhanced Mode (Default)** — Processes live P50, P90, P99 latency analytics and bandwidth meters for the Observability Hub.
+- **Basic Mode (Low CPU)** — Bypasses percentile array calculations to minimize CPU/RAM usage on low-spec hardware.
 
-## Do I need to pay for tunnels?
+Telemetry calculations are processed 100% locally on-device.
 
-No. Both public tunnel modes use free services:
+## How do Automatic Updates work?
 
-- **Cloudflare Quick Tunnels** (`trycloudflare.com`) — free, no account.
-- **Localtunnel** (`loca.lt`) — free.
+The built-in Smart Version-Aware Auto-Updater silently checks GitHub Releases for new versions:
+- Checks run every **2 hours** when automatic updates are enabled.
+- **Major and minor releases** (e.g. `0.2.0 → 0.3.0`) prompt a persistent forced update dialog.
+- **Patch releases** (e.g. `0.2.0 → 0.2.1`) present optional update toasts.
 
-Both are fetched on demand through `npx` the first time you use them.
+## What is the Active Internet Connectivity Guard?
 
-## Does capturing traffic slow my server?
+Before launching cloud tunnels (`cloudflared` or `localtunnel`), Proxync performs real edge ping checks (`checkRealInternetConnection`) to ensure your connection is active, preventing CLI timeout hangs when offline.
 
-No. Proxync starts a lightweight local intercepting proxy that forwards raw bytes and parses only metadata (method, path, headers, status, timing). Request and response **bodies are not stored**.
+## Which frameworks are supported by the Codebase Scanner?
 
-## Do public tunnels work offline?
+The OpenAPI generator automatically scans **Express**, **Fastify**, **Next.js**, **NestJS**, **FastAPI**, **Spring Boot**, and **Go** codebases to infer routes and produce OpenAPI 3.0 spec files.
 
-No. Public tunnels need a network connection and `node`/`npx` on your `PATH`. Everything else — workspaces, the local proxy, the Postman runner, and Swagger generation — works fully offline.
+## How does the Generic Replay Engine work?
 
-## Which operating systems are supported?
-
-Windows is the primary supported platform (10+, x64). The app is built with Tauri, which is cross-platform, and the code contains best-effort macOS/Linux paths — but the tunnel and process-discovery tooling is Windows-specific, so other platforms are not officially supported yet.
-
-## Is Proxync open source?
-
-The source is MIT-licensed and published by **Inilax**. The repository is currently private; public availability is planned.
-
-## Does Proxync require WebView2?
-
-Yes. Tauri 2 renders the UI with the Microsoft WebView2 Runtime on Windows. The installer handles this automatically in most setups.
-
-## Why does sharing a process require Node?
-
-The Cloudflare and Localtunnel tunnels are launched with `npx` (the `cloudflared` and `localtunnel` packages). If you only use LAN shares or the local traffic inspector, no Node runtime is needed.
-
-## How do custom domains work?
-
-Register a domain in Settings, add the DNS records Proxync shows you (TXT verification + routing), and verify. Verified domains unlock the custom-domain share mode. Verification currently toggles the flag locally; live DNS verification is planned.
+The Playground Replay Engine uses a native Rust HTTP executor (`execute_http_request`) with automatic `gzip`, `deflate`, and `brotli` payload decompression. It executes any HTTP method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) without CORS restrictions.

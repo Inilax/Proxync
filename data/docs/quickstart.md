@@ -1,52 +1,57 @@
 ---
 title: Quickstart
-description: Share a local server with a public URL and inspect its traffic in about five minutes.
+description: Share a local server with a public URL, inspect live traffic, replay requests in Playground, and monitor performance in Observability Hub.
 ---
 
-This guide gets you from an empty install to a shared, inspectable development server in about five minutes. It assumes your project is already running locally on a common dev port.
+This guide gets you from installation to a shared, inspectable development server in under five minutes using Proxync v0.2.0.
 
-## 1. Create a workspace
+## 1. Create a Workspace
 
-Launch Proxync. On first run the onboarding wizard asks for a project name and the root path of your project. This creates an isolated workspace — see [Workspaces](/docs/workspaces) for what a workspace holds.
+Launch Proxync. The onboarding wizard or inline workspace builder creates an isolated workspace tracking processes, saved collections, traffic logs, and activity stats. See [Workspaces](/docs/workspaces) for details.
 
-## 2. Discover your process
+## 2. Discover Your Process
 
-Open **Lobby**. Proxync scans the common development ports — `3000, 3001, 4000, 4200, 5000, 5173, 8000, 8080, 8888` — and lists anything listening on them with its PID, command, working directory, and an inferred framework.
+Open **Lobby**. Proxync scans common development ports (`3000`, `3001`, `4000`, `4200`, `5000`, `5173`, `8000`, `8080`, `8888`) using native netstat and process cache lookup in Rust. It identifies running PIDs, working directories, and framework signatures.
 
-If your server uses another port, start it, then rescan. The scan respects a short cache; reseanning forces a fresh lookup.
+## 3. Share Your Local Server
 
-## 3. Share it
+Choose a sharing method:
 
-On the process row choose a share method:
+- **Cloudflare** — launches a free HTTPS public `*.trycloudflare.com` tunnel protected by our **Active Internet Connectivity Guard**.
+- **Localtunnel** — launches a public `*.loca.lt` tunnel with optional custom subdomains.
+- **Custom Domain** — maps custom domains configured in [Settings](/docs/settings).
+- **LAN** — exposes local IP addresses for testing on local networks.
 
-- **Cloudflare** — starts a Quick Tunnel via `cloudflared` and gives you a public `*.trycloudflare.com` URL.
-- **Localtunnel** — starts a Localtunnel and gives you a public `*.loca.lt` URL. An optional subdomain can be supplied.
-- **Custom domain** — uses a domain you verified in [Settings & Domains](/docs/settings) (traffic capture only, no public URL).
-- **LAN** — surfaces `http://localhost:<port>` and `http://<local-ip>:<port>` for machines on your network.
+Click **Open in Browser** from the tunnel actions menu (`⋮`) to view your live public server.
 
-Pick **Cloudflare** for the fastest public URL. The tunnel takes a few seconds to come up while `npx` fetches `cloudflared` on first use.
+> **Active Internet Connectivity Guard**: Proxync checks real edge pings before launching cloud tunnels, preventing CLI timeout delays when offline.
 
-> The share starts a local intercepting proxy (on an ephemeral `127.0.0.1` port) that captures request metadata. Public traffic flows through that proxy into your server, and the metadata lands in the traffic log.
+## 4. Inspect Live Traffic
 
-## 4. Inspect traffic
+Open **Traffic**. Real-time HTTP & WebSocket traffic flows into the inspector:
+- Unique UUIDs and immutable request IDs prevent auto-collapsing dropdowns while traffic streams live.
+- Expand entries to inspect headers HashMaps, timing, and raw response body previews.
 
-Open **Traffic**. Every HTTP request that hits your tunnel appears live with its method, path, status code, and timing. Click any row to inspect the request and response headers.
+## 5. Replay in Playground
 
-Requests appear as `pending` until a response is seen; long-pending entries can indicate the target server stalled. Public tunnels that close automatically are flagged in the log.
+Click **Send to Playground** on any captured log item or open **Playground**:
+- Use the **Generic Replay Engine** to execute requests directly via native Rust HTTP executor (bypassing CORS).
+- Notice the **Target Route Badge** (`Cloudflare Edge`, `Public Tunnel`, `Local Loopback`) next to the Send button.
+- Use right-click glass context menus to rename, duplicate, or delete saved endpoints.
+- Press `Ctrl + /` anywhere in Playground to open the hotkey reference sheet (`Ctrl + Enter` to Send, `Ctrl + S` to Save).
 
-## 5. Send a request to Postman
+## 6. Monitor in Observability Hub
 
-On any captured request, choose **Send to Postman**. It becomes a saved request (source `captured`) in the current workspace's collection, ready to replay.
+Open **Observability Hub** to inspect P50/P90/P99 latency percentiles, total bandwidth meters, status code gauges, public webhook streams, and the structured Error Center.
 
-## 6. Generate Swagger
+## 7. Generate OpenAPI Docs & Codebase Scanner
 
-Open **Swagger**. Proxync builds an **OpenAPI 3.1.0** document from your captured and saved requests — normalized paths, observed methods, and status codes — and sets the server URL to your active tunnel's public URL. Preview it or copy the JSON.
+Open **Swagger**. Run the **Automatic Multi-Framework Codebase Scanner** (Express, Fastify, Next.js, NestJS, FastAPI, Spring Boot, Go) to infer OpenAPI 3.0 specs and export 2-way Playground collections.
 
-## Done
+## Next Steps
 
-You have a public URL for your local server, a live traffic log, reusable saved requests, and an OpenAPI document. Continue with:
-
-- [Tunnels & Sharing](/docs/tunnels) — every share mode in detail.
-- [Traffic Inspector](/docs/traffic) — the request log.
-- [Postman Runner](/docs/postman) — the REST client.
-- [Swagger & OpenAPI](/docs/swagger) — OpenAPI generation.
+- [Tunnels & Sharing](/docs/tunnels) — detailed tunnel configuration and internet connection guards.
+- [Traffic Inspector](/docs/traffic) — live traffic inspection.
+- [Playground](/docs/postman) — Playground REST client & Replay Engine.
+- [Observability Hub](/docs/observability) — performance monitoring dashboard.
+- [Swagger & OpenAPI](/docs/swagger) — spec generator & codebase scanner.

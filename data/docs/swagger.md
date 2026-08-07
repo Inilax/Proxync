@@ -1,41 +1,30 @@
 ---
-title: Swagger & OpenAPI
-description: Generate an OpenAPI 3.1.0 document from your captured traffic and saved requests.
+title: Swagger & OpenAPI Studio
+description: Automatic OpenAPI 3.0 spec generation engine and multi-framework codebase route scanner for Express, Fastify, Next.js, NestJS, FastAPI, Spring Boot, and Go.
 ---
 
-The **Swagger** view generates an OpenAPI document for your workspace without you writing a single line of YAML.
+In Proxync v0.2.0, the **Swagger Studio** combines live traffic OpenAPI spec generation with an **Automatic Multi-Framework Codebase Scanner**.
 
-## What it produces
+## Key Features in v0.2.0
 
-An **OpenAPI 3.1.0** JSON document built from:
+- **Multi-Framework Codebase Scanner** — Automatically scans local codebase repositories (Express, Fastify, Next.js, NestJS, FastAPI, Spring Boot, Go) to infer endpoints and generate OpenAPI 3.0 definitions.
+- **Traffic-Driven JSON Schema Inferrer** — Infers JSON parameter and response schemas dynamically from live intercepted traffic.
+- **Automatic Multi-Framework Codebase Scanner** — Scans local project directories (Express, Fastify, Next.js App/Pages Router, NestJS, FastAPI, Spring Boot, Go Chi/Gin) and extracts routes into an OpenAPI 3.0 schema.
+- **Traffic-Driven Schema Inference** — Merges live captured HTTP request/response payloads from Traffic Inspector to automatically populate missing OpenAPI request body and response schemas.
+- **2-Way Collection Export/Import** — Export OpenAPI specs directly into Playground collections or import existing OpenAPI YAML/JSON specs.
+- **Interactive OpenAPI UI & Spec Generator** — Built-in visual API documentation viewer with instant YAML/JSON copy and download options.
 
-- **Captured requests** — every path and method seen in the traffic log.
-- **Saved requests** — the methods and normalized paths in your collection.
+## Codebase Scanner Supported Frameworks
 
-Observed response status codes are recorded per path/operation. The document includes:
+| Framework | Scan Strategy |
+| --- | --- |
+| Express / Fastify | Inspects route registration (`app.get`, `router.post`). |
+| Next.js | Scans `app/api/**/route.ts` and `pages/api/**/*.ts`. |
+| NestJS | Parses `@Controller()` and HTTP method decorators (`@Get`, `@Post`). |
+| FastAPI | Parses `@app.get()`, `@app.post()`, and Pydantic models. |
+| Spring Boot | Parses `@RestController`, `@GetMapping`, `@PostMapping`. |
+| Go (Gin/Chi) | Scans router definitions and handler signatures. |
 
-```json
-{
-  "openapi": "3.1.0",
-  "info": {
-    "title": "Proxync generated API",
-    "version": "0.1.0"
-  },
-  "servers": [{ "url": "https://your-tunnel.trycloudflare.com" }]
-}
-```
+## 2-Way Playground Collection Sync
 
-The `servers[0].url` is set to your active tunnel's public URL (falling back to `http://localhost` when no tunnel is active). The workspace's inferred language hint is included as metadata.
-
-## Using it
-
-Open **Swagger** to preview the generated document. You can copy the JSON to feed it into tools like Swagger UI, Redoc, or your API client of choice.
-
-## Limits
-
-- Generation is **metadata-only**: because Proxync does not capture request/response bodies, the document describes paths, methods, and observed statuses rather than request/response schemas.
-- The document reflects the workspace's current captured + saved state at generation time. Re-generate after capturing more traffic to refresh it.
-
-## Example
-
-A workspace that captured `GET /users` and saved `POST /users` produces an OpenAPI document with a `/users` path, `get` and `post` operations, and the observed status codes.
+Clicking **Export to Playground** inside Swagger Studio automatically converts all endpoints into collection items and redirects seamlessly into **Playground**.
