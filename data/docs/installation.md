@@ -1,91 +1,73 @@
 ---
 title: Installation
-description: Requirements, installing the Windows build, and building Proxync from source.
+description: Requirements, installing the Windows packaged installer, Smart Auto-Updates, and building Proxync from source.
 ---
 
-This page covers system requirements, installing the packaged Windows build, and building Proxync from source.
+This page covers system requirements, installing the packaged Windows release, the Smart Version-Aware Auto-Updater, and building Proxync from source.
 
 ## Requirements
 
-Proxync targets **Windows**. Tauri itself is cross-platform and the code contains best-effort macOS/Linux paths, but the tunnel and process-discovery commands are Windows-only tooling.
+Proxync targets **Windows x64** (with cross-platform macOS/Linux support coming soon).
 
-- **OS** — Windows 10 or later (x64).
-- **WebView2 Runtime** — required by Tauri 2 for the embedded webview. The NSIS installer installs it automatically in most setups.
-- **Node.js ≥ 20** and **npm ≥ 10** — only required at runtime for public tunnels (see below) and for building from source.
-- **Rust toolchain** — only required for building from source (MSVC toolchain on Windows).
+- **OS** — Windows 10 or later (64-bit).
+- **WebView2 Runtime** — required by Tauri v2. Included in standard Windows setup or installed automatically.
+- **Node.js ≥ 20** and **npm ≥ 10** — required at runtime for public tunnel spawning (`cloudflared` / `localtunnel`).
+- **Rust Toolchain** — required only when building from source (`x86_64-pc-windows-msvc`).
 
-### Runtime dependencies for tunnels
+## Install the Packaged Build
 
-Public tunnels (Cloudflare and Localtunnel) are launched on demand via `npx`, which downloads the `cloudflared` / `localtunnel` packages the first time you use them. This requires:
-
-- A network connection.
-- `node` and `npx` available on your `PATH`.
-
-Everything else — workspaces, traffic inspection on the local proxy, Postman runner, Swagger generation — works fully offline.
-
-## Install the packaged build
-
-The official distribution is the NSIS installer `Proxync_0.1.8_x64-setup.exe` (an MSI variant is also produced).
+The official release is available as `Proxync_0.2.0_x64-setup.exe` via GitHub Releases:
 
 1. Download the installer from the [GitHub Releases](https://github.com/Inilax/Proxync/releases) page.
-2. Run the installer and follow the setup wizard.
-3. Launch **Proxync** from the Start menu or desktop shortcut.
+2. Run the NSIS installer wizard.
+3. Launch **Proxync** from your Start menu or Desktop shortcut.
 
-## Build from source
+## Smart Version-Aware Auto-Updater
 
-### 1. Prerequisites
+Proxync v0.2.0 includes a built-in background update system powered by `tauri-plugin-updater` and `tauri-plugin-process`:
 
-- Node.js ≥ 20 and npm ≥ 10.
-- Rust stable with the **MSVC** target (`x86_64-pc-windows-msvc`).
-- The Tauri CLI is a dev dependency of the desktop package (`@tauri-apps/cli`), so no global install is needed.
+- **Silent Update Scheduler** — Checks for updates on application startup and every **2 hours** when automatic updates are enabled in **Settings** (or every **7 days** when disabled).
+- **Forced Version Dialogs** — When a **minor or major** version bump is released (e.g. `0.2.x → 0.3.0` or `0.x → 1.0.0`), a persistent forced update dialog prompts **Update Now**.
+- **Optional Patch Toasts** — Patch updates (e.g. `0.2.0 → 0.2.1`) present non-blocking toasts allowing you to **Update Now**, **Skip this version**, or choose **Later**.
 
-### 2. Install dependencies
+## Build from Source
+
+### 1. Clone & Install Dependencies
 
 ```bash
+git clone https://github.com/Inilax/Proxync.git
+cd proxync
 npm install
 ```
 
-This installs the `packages/desktop` workspace and its frontend and Tauri dependencies.
-
-### 3. Run in development mode
+### 2. Run Desktop App in Development Mode
 
 ```bash
+cd packages/desktop
 npm run tauri dev
 ```
 
-Run from `packages/desktop`. This starts the Vite dev server (fixed on port **1420**) and opens the app window pointed at it.
+This starts the Vite dev server on port `1420` and launches the Tauri v2 window.
 
-### 4. Build a release bundle
+### 3. Build Production Executable
 
 ```bash
 npm run tauri build
 ```
 
-Outputs NSIS and MSI installers under:
+Generates production NSIS and MSI installers under:
 
 ```text
-packages/desktop/src-tauri/target/release/bundle/nsis
-packages/desktop/src-tauri/target/release/bundle/msi
+packages/desktop/src-tauri/target/release/bundle/nsis/
+packages/desktop/src-tauri/target/release/bundle/msi/
 ```
 
-### 5. Build the frontend only
+## Local State Directory
 
-```bash
-npm run build
-```
-
-Type-checks with `tsc` and builds the Vite production bundle into `packages/desktop/dist`.
-
-## Verify the installation
-
-On first launch, Proxync asks you to create a workspace. If you installed the packaged build, a `data.json` state file appears at:
+Local workspace state and application settings persist automatically at:
 
 ```text
 %APPDATA%\Proxync\data.json
 ```
 
-See [Configuration](/docs/configuration) for the file's format.
-
-## Uninstall
-
-Use **Settings → Apps → Installed apps** on Windows and select Proxync, or re-run the NSIS installer and choose **Uninstall**. The uninstaller removes the app but keeps the data file at `%APPDATA%\Proxync\data.json`.
+See [Configuration](/docs/configuration) for details.

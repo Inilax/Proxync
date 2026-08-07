@@ -1,8 +1,8 @@
 "use client";
 
-import { Download, Star } from "lucide-react";
+import { Cloud, Download, Star, Zap } from "lucide-react";
 import { Button, Container } from "@/components/ui";
-import { DOWNLOAD_URL, GITHUB_URL } from "@/lib/links";
+import { GITHUB_URL } from "@/lib/links";
 import { useLatestRelease } from "@/lib/releases";
 import { AppMockup } from "./app-mockup";
 import { useCloudflareLatency } from "./latency";
@@ -106,6 +106,21 @@ export function Hero() {
         </div>
 
         <div className="relative mt-16 w-full animate-fade-up [animation-delay:480ms]">
+          {/* Floating Glass Badges */}
+          <div className="glass absolute -top-5 right-4 z-20 hidden animate-float items-center gap-2 rounded-full border border-primary/30 bg-surface-container-low/90 px-3.5 py-2 font-mono text-[11px] text-on-surface-variant shadow-xl backdrop-blur-md md:flex lg:-right-8">
+            <Cloud className="h-3.5 w-3.5 text-primary" />
+            <span>
+              <strong className="font-bold text-primary">proxync.dev</strong> — Instant Public Edge Tunnels
+            </span>
+          </div>
+
+          <div className="glass absolute -bottom-5 left-4 z-20 hidden animate-float items-center gap-2 rounded-full border border-secondary/30 bg-surface-container-low/90 px-3.5 py-2 font-mono text-[11px] text-on-surface-variant shadow-xl backdrop-blur-md md:flex lg:-left-8 [animation-delay:2.5s]">
+            <Zap className="h-3.5 w-3.5 text-secondary" />
+            <span>
+              <strong className="font-bold text-secondary">● Real-Time Traffic Inspector</strong> — Monitoring :5173
+            </span>
+          </div>
+
           <AppMockup />
         </div>
       </Container>

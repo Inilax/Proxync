@@ -1,63 +1,57 @@
 ---
 title: Tunnels & Sharing
-description: Expose a local process with Cloudflare Quick Tunnels, Localtunnel, custom domains, or a LAN share.
+description: Expose local processes with Cloudflare Quick Tunnels, Localtunnel, custom domains, or LAN shares with Active Internet Guard.
 ---
 
-Proxync exposes a running local process in four ways. Three of them produce a public URL; one is LAN-only.
+Proxync v0.2.0 provides instant one-click public URL creation and LAN sharing for your local servers, backed by edge connection health checks and target route indicators.
 
-## How sharing works
+## How Sharing Works
 
-When you share a process, Proxync:
+When you start a tunnel:
 
-1. Starts a **local intercepting TCP proxy** bound to an ephemeral `127.0.0.1` port. It forwards raw bytes to `127.0.0.1:<your port>`, parses the request line and headers, and emits `request:log` / `request:log:response` events used by the traffic log.
-2. Ties a tunnel (or LAN share) to that proxy.
+1. **Local Intercepting TCP/WebSocket Proxy** — Bound to an ephemeral local port, this Rust proxy forwards traffic to your dev server (`127.0.0.1:<port>`), captures headers HashMaps and body previews, and emits real-time events.
+2. **Tunnel Child Process Spawning** — Spawns `cloudflared` or `localtunnel` pointing at the intercepting proxy.
+3. **Target Route Badges** — Playground requests display dynamic target badges:
+   - `Cloudflare Edge` — Requests passing through a public Cloudflare edge tunnel.
+   - `Public Tunnel` — Requests passing through Localtunnel edge proxies.
+   - `Local Loopback` — Requests routed directly to local loopback ports.
 
-Request bodies and responses are streamed through; only metadata (method, path, headers, status, timing) is captured.
+## Active Internet Connectivity Guard
 
-## Cloudflare Quick Tunnel
+To prevent CLI timeout hangs when attempting to launch cloud tunnels while offline or on degraded connections, Proxync v0.2.0 includes an **Active Internet Connectivity Guard** (`checkRealInternetConnection`):
 
-Uses the official `cloudflared` package via `npx`:
+- **Edge Ping Check** — Validates internet connectivity against public edge endpoints before executing `cloudflared` or `localtunnel`.
+- **Offline Callout Banners** — Displays offline warnings inside `DomainSelectDialog` and surfaces real-time toast notifications when network status changes (`offline` / `online`).
+
+## Cloudflare Quick Tunnels
+
+Executes official `cloudflared` quick tunnels:
 
 ```bash
 npx -y --package=cloudflared cloudflared tunnel --url http://127.0.0.1:<proxy-port>
 ```
 
-Proxync spawns the process, watches its stderr for the first `*.trycloudflare.com` URL, and returns it as the public URL. Timeout is 20 seconds.
-
-**Requirements:** network access and `npx` on `PATH` (first run downloads `cloudflared`). No Cloudflare account needed.
+Proxync parses stderr output for your public `*.trycloudflare.com` URL with high-reliability stdout parsing.
 
 ## Localtunnel
 
-Uses the `localtunnel` package via `npx`:
+Executes `localtunnel` with optional custom subdomains:
 
 ```bash
 cmd /C npx -y localtunnel --port <proxy-port> [--subdomain <subdomain>]
 ```
 
-Proxync spawns the process and parses the `your url is:` line to get the public `*.loca.lt` URL. Timeout is 10 seconds. An optional subdomain can be supplied if it is still available.
+Parses the returned `*.loca.lt` URL.
 
-## Custom domain
+## Custom Domain Verification
 
-If you have verified a domain in [Settings & Domains](/docs/settings), you can share a process against it. This path creates a local tunnel for traffic capture but does **not** open a public tunnel — it is used when your own infrastructure routes the domain to your machine.
+Map custom domains to your local tunnels with integrated DNS record verification (A and CNAME records) and registrar configuration instructions in Settings.
 
-## LAN share
+## LAN Sharing & 1-Click Open in Browser
 
-No tunnel at all. Proxync surfaces:
+- **LAN Share** — Exposes `http://<local-ip>:<port>` for devices on your local network.
+- **1-Click Open in Browser** — Active tunnel action menus (`⋮`) in **WelcomeView** and **ProcessView** feature a 1-click **Open in Browser** shortcut to launch public URLs instantly.
 
-```text
-http://localhost:<port>
-http://<local-ip>:<port>
-```
+## Process Cleanup & Safety
 
-so other machines on your network can reach the server directly. The local IP is resolved via a UDP connect to `8.8.8.8:80` (`get_local_ip`).
-
-## Stopping a tunnel
-
-Closing a tunnel kills the underlying child process (`cloudflared` / `localtunnel`) and the proxy so no orphan processes are left behind. Tunnels that drop on their own emit a `tunnel:auto-closed` event, mark the tunnel closed in the UI, and show a toast.
-
-## Notes
-
-- Only **one public URL** is active per share.
-- The proxy port is ephemeral — do not depend on a fixed port.
-- Public tunnel modes require `node`/`npx` **at runtime**; LAN share and local capture do not.
-- The internal `open_tunnel` command registers with a WebSocket relay at `ws://localhost:3939/relay`. This was used by the legacy API architecture (since removed) and is **not** invoked by the current UI. See [Architecture](/docs/architecture).
+When stopping a tunnel, Proxync cleanly sends signal commands to terminate all child processes (`cloudflared`, `localtunnel`, and TCP proxy workers), preventing orphaned background processes.

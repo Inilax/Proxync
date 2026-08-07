@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   Activity,
@@ -21,37 +21,37 @@ type TabId = "tunnels" | "traffic" | "postman" | "swagger";
 const tabs: { id: TabId; label: string; icon: typeof Globe }[] = [
   { id: "tunnels", label: "Tunnels", icon: Globe },
   { id: "traffic", label: "Traffic", icon: Activity },
-  { id: "postman", label: "Postman", icon: Send },
+  { id: "postman", label: "Playground", icon: Send },
   { id: "swagger", label: "Swagger", icon: FileCode },
 ];
 
 const bullets: Record<TabId, string[]> = {
   tunnels: [
-    "Instant Cloudflare Quick Tunnels & Localtunnel",
-    "One command, public HTTPS preview",
-    "Port and process recon built right in",
+    "Active Internet Connectivity Guard with edge pings",
+    "One-click Cloudflare & Localtunnel public HTTPS URLs",
+    "Target Route Badges (Edge, Public Tunnel, Loopback)",
   ],
   traffic: [
-    "Every request captured live over your tunnel",
-    "Method, path, status, and timing at a glance",
-    "Send any captured request straight to Postman",
+    "Immutable request ID tracking — zero dropdown collapse",
+    "Headers HashMap, body previews, and status code matching",
+    "1-click send to Playground & Observability",
   ],
   postman: [
-    "Request builder with saved collections",
-    "Starter requests auto-generated from your app",
-    "Responses with headers and timing",
+    "Generic Replay Engine executing native Rust HTTP requests",
+    "Glass context menus, hotkeys modal (Ctrl+/), and collections rail",
+    "Target Route Badges next to Send button",
   ],
   swagger: [
-    "OpenAPI 3.1 generated from live traffic",
-    "Preview and JSON export in one workspace",
-    "Contract updates as you test",
+    "Multi-Framework Codebase Scanner (Express, NestJS, FastAPI, Go, etc.)",
+    "Traffic-driven OpenAPI 3.0 schema inference",
+    "2-way collection export & code snippet generator",
   ],
 };
 
 const chips: { icon: typeof Globe; label: string }[] = [
-  { icon: Radar, label: "Port & Process Recon" },
-  { icon: Settings2, label: "One-Click Tunnels" },
-  { icon: Send, label: "Postman Workbench" },
+  { icon: Radar, label: "Codebase Route Scanner" },
+  { icon: Settings2, label: "Active Connectivity Guard" },
+  { icon: Send, label: "Playground Replay Engine" },
   { icon: Cpu, label: "Rust-Powered Speed" },
 ];
 
@@ -274,8 +274,28 @@ function Mockup({ id }: { id: TabId }) {
 export function FeatureTabs() {
   const [active, setActive] = useState<TabId>("tunnels");
 
+  useEffect(() => {
+    const handleHash = () => {
+      const hash = window.location.hash.replace("#", "").toLowerCase();
+      if (hash === "tunnels") setActive("tunnels");
+      else if (hash === "traffic") setActive("traffic");
+      else if (hash === "playground" || hash === "postman") setActive("postman");
+      else if (hash === "swagger") setActive("swagger");
+      else if (hash === "product") setActive("tunnels");
+    };
+
+    handleHash();
+    window.addEventListener("hashchange", handleHash);
+    return () => window.removeEventListener("hashchange", handleHash);
+  }, []);
+
   return (
     <section id="product" className="relative py-24 scroll-mt-24">
+      <div id="tunnels" className="absolute -top-24" />
+      <div id="traffic" className="absolute -top-24" />
+      <div id="playground" className="absolute -top-24" />
+      <div id="postman" className="absolute -top-24" />
+      <div id="swagger" className="absolute -top-24" />
       <Container>
         <SectionHeader
           eyebrow="Precision-Engineered Tooling"
@@ -292,7 +312,13 @@ export function FeatureTabs() {
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setActive(tab.id)}
+                  onClick={() => {
+                    setActive(tab.id);
+                    const hash = tab.id === "postman" ? "playground" : tab.id;
+                    if (window.location.hash !== `#${hash}`) {
+                      window.history.replaceState(null, "", `#${hash}`);
+                    }
+                  }}
                   className={cn(
                     "flex items-center gap-2 rounded-md px-4 py-2 text-sm transition-colors",
                     isActive

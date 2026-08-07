@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://proxync.dev"),
   title: "Proxync — Developer Tunneling Workspace Studio",
   description:
-    "A local-first developer tunneling workspace studio. Cloudflare Quick Tunnels, traffic inspection, Postman-style requests, and Swagger docs in one private desktop app built with Rust.",
+    "A local-first developer tunneling workspace studio. Cloudflare Quick Tunnels, traffic inspection, Playground REST client, and Swagger docs in one private desktop app built with Rust.",
   keywords: [
     "proxync",
     "developer tunneling workspace studio",
@@ -26,6 +26,7 @@ export const metadata: Metadata = {
     "cloudflare quick tunnel",
     "trycloudflare",
     "traffic inspector",
+    "playground studio",
     "postman alternative",
     "swagger",
     "tauri",
@@ -38,13 +39,13 @@ export const metadata: Metadata = {
     siteName: "Proxync",
     title: "Proxync — Developer Tunneling Workspace Studio",
     description:
-      "Cloudflare Quick Tunnels, traffic inspection, Postman-style requests, and Swagger docs in one private desktop app.",
+      "Cloudflare Quick Tunnels, traffic inspection, Playground REST client, and Swagger docs in one private desktop app.",
   },
   twitter: {
     card: "summary_large_image",
     title: "Proxync — Developer Tunneling Workspace Studio",
     description:
-      "Cloudflare Quick Tunnels, traffic inspection, Postman-style requests, and Swagger docs in one private desktop app.",
+      "Cloudflare Quick Tunnels, traffic inspection, Playground REST client, and Swagger docs in one private desktop app.",
   },
   icons: {
     icon: "/icon.svg",
@@ -63,7 +64,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="scroll-smooth">
+    <html lang="en" className="scroll-smooth" data-scroll-behavior="smooth">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         {children}
       </body>

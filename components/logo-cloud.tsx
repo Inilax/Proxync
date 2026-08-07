@@ -34,7 +34,7 @@ const BRANDS = [
     ),
   },
   {
-    name: "Postman",
+    name: "Playground",
     svg: (
       <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm3.8 6.8l-3.2 6.4-1.6-3.2-3.2 1.6 6.4-6.4 1.6 1.6z" />

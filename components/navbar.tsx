@@ -7,25 +7,27 @@ import { Download, Menu, Star, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui";
 import { LogoMark } from "@/components/logo";
-import { DOWNLOAD_URL, GITHUB_URL } from "@/lib/links";
+import { GITHUB_URL } from "@/lib/links";
 import { useLatestRelease } from "@/lib/releases";
 
 const NAV_LINKS = [
-  { href: "#features", label: "Features" },
-  { href: "#product", label: "Product" },
-  { href: "#how-it-works", label: "How it works" },
-  { href: "#faq", label: "FAQ" },
+  { href: "/#features", label: "Features" },
+  { href: "/#product", label: "Product" },
+  { href: "/#how-it-works", label: "How it works" },
+  { href: "/#faq", label: "FAQ" },
   { href: "/docs", label: "Docs" },
 ];
 
 const SCROLL_SPY_OFFSET = 160;
 
 function getSectionId(href: string) {
-  return href.startsWith("#") ? href.slice(1) : null;
+  if (href.startsWith("/#")) return href.slice(2);
+  if (href.startsWith("#")) return href.slice(1);
+  return null;
 }
 
 function isRouteHref(href: string) {
-  return href.startsWith("/");
+  return href.startsWith("/") && !href.startsWith("/#");
 }
 
 export function Navbar() {
@@ -72,7 +74,8 @@ export function Navbar() {
   const isLinkActive = (href: string) => {
     if (isRouteHref(href)) return pathname?.startsWith(href) ?? false;
     if (pathname !== "/") return false;
-    return href === `#${activeSection}`;
+    const secId = getSectionId(href);
+    return secId ? secId === activeSection : false;
   };
 
   const handleNavClick = (href: string) => {
@@ -90,7 +93,7 @@ export function Navbar() {
       )}
     >
       <div className="relative mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        <a href="#" className="flex items-center gap-2.5">
+        <a href="/" className="flex items-center gap-2.5">
           <LogoMark />
           <span className="text-lg font-semibold tracking-tight text-on-surface">
             Proxync

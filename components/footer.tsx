@@ -10,10 +10,11 @@ const linkColumns: FooterColumn[] = [
   {
     title: "Product",
     links: [
-      { label: "Features", href: "#features" },
-      { label: "Tunnels", href: "#product" },
-      { label: "Traffic", href: "#product" },
-      { label: "Postman", href: "#product" },
+      { label: "Features", href: "/#features" },
+      { label: "Tunnels", href: "/#tunnels" },
+      { label: "Traffic", href: "/#traffic" },
+      { label: "Playground", href: "/#playground" },
+      { label: "Swagger", href: "/#swagger" },
       { label: "Docs", href: "/docs" },
     ],
   },
@@ -29,17 +30,17 @@ const linkColumns: FooterColumn[] = [
   {
     title: "Company",
     links: [
-      { label: "About", href: "#" },
+      { label: "About", href: "/docs" },
       // { label: "Blog", href: "#" },
-      { label: "Privacy", href: "#" },
-      { label: "Terms", href: "#" },
+      { label: "Privacy Policy", href: "/privacy" },
+      { label: "Terms of Service", href: "/terms" },
     ],
   },
 ];
 
 function Logo() {
   return (
-    <a href="#" className="inline-flex items-center gap-2.5">
+    <a href="/" className="inline-flex items-center gap-2.5">
       <span className="grid h-8 w-8 place-items-center">
         <LogoMark className="h-8 w-8" />
       </span>
@@ -92,7 +93,7 @@ export function Footer() {
       <div className="border-t border-outline-variant/20">
         <Container className="flex flex-col items-center justify-between gap-4 py-6 md:flex-row">
           <p className="font-mono text-xs text-outline">
-            &copy; 2026 Proxync. Developer Tunneling Workspace Studio.
+            &copy; 2026 Proxync. Built with ❤️ by <span className="font-semibold text-on-surface">Inilax</span>.
           </p>
           <span className="inline-flex items-center gap-2 rounded-full bg-surface-container-high px-4 py-1.5 font-mono text-[11px] text-on-surface">
             <Zap className="h-3.5 w-3.5 text-tertiary" />

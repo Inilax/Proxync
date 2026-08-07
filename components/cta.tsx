@@ -2,7 +2,7 @@
 
 import { Download, Star } from "lucide-react";
 import { Button, Container, Eyebrow } from "@/components/ui";
-import { DOWNLOAD_URL, GITHUB_URL } from "@/lib/links";
+import { GITHUB_URL } from "@/lib/links";
 import { useLatestRelease } from "@/lib/releases";
 import { useCloudflareLatency } from "./latency";
 

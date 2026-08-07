@@ -9,32 +9,32 @@ const faqs = [
   {
     question: "Is Proxync really local-first?",
     answer:
-      "Yes. Workspaces, saved requests, and captured traffic live in a JSON store on your machine. Public tunnel URLs terminate at your own box through Cloudflare Quick Tunnels or Localtunnel over HTTPS. There is no cloud storage, no telemetry, and no account required.",
+      "Yes. Workspaces, saved request collections, traffic history, and custom settings are serialized locally in a JSON store (%APPDATA%\\Proxync\\data.json). There is no cloud sign-up or forced cloud account required.",
   },
   {
-    question: "Can I share over my local network?",
+    question: "How does Telemetry work in v0.2.0?",
     answer:
-      "Yes. Every shared process gets a LAN address that colleagues on the same network can hit instantly (http://<your-ip>:3939), and a public HTTPS URL whenever you start a tunnel.",
+      "Telemetry is processed 100% on-device. You can choose Enhanced Telemetry (live P50/P90/P99 latency calculations and bandwidth meters for the Observability Hub) or Basic Telemetry (low CPU mode that bypasses percentile sorting to save system resources).",
+  },
+  {
+    question: "What is the Active Internet Connectivity Guard?",
+    answer:
+      "Before launching Cloudflare or Localtunnel edge tunnels, Proxync performs real edge pings (checkRealInternetConnection) to verify internet connectivity, preventing CLI timeout hangs when working offline.",
+  },
+  {
+    question: "Does the OpenAPI generator support my framework?",
+    answer:
+      "Yes! The v0.2.0 Automatic Multi-Framework Codebase Scanner supports Express, Fastify, Next.js, NestJS, FastAPI, Spring Boot, and Go codebases to infer OpenAPI 3.0 specs and export 2-way Playground collections.",
   },
   {
     question: "Which platforms are supported?",
     answer:
-      "A native Windows x64 installer ships today. Proxync runs entirely on-device via Tauri v2 — no Electron runtime required. macOS and Linux builds are in progress.",
+      "A native Windows x64 installer (Proxync_0.2.0_x64-setup.exe) ships today via Tauri v2 with built-in Smart Version-Aware Auto-Updates. macOS and Linux support is currently in development.",
   },
   {
-    question: "Does it work with Cloudflare or Localtunnel?",
+    question: "What are Target Route Badges in Playground?",
     answer:
-      "Yes. One-click tunnels support Cloudflare Quick Tunnels (trycloudflare.com) and Localtunnel, so you can test webhooks and share previews in seconds. Proxync even measures both providers' latency before you pick one.",
-  },
-  {
-    question: "What are the system requirements?",
-    answer:
-      "A 64-bit OS with 2GB+ RAM. Proxync is built with Rust and consumes roughly 90% less memory than Electron-based API clients.",
-  },
-  {
-    question: "Is Proxync free?",
-    answer:
-      "The engine is free to download and use locally. Pro features — like team collections and extended tunnel bandwidth — are coming soon.",
+      "Playground request builders feature visual Target Route Badges (Cloudflare Edge, Public Tunnel, or Local Loopback) next to the Send button so you immediately know where your traffic is traveling.",
   },
 ];
 

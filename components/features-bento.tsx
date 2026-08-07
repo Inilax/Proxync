@@ -112,7 +112,7 @@ export function FeaturesBento() {
               </CardCopy>
               <div className="mt-auto pt-8">
                 <div className="flex items-end gap-3 translate-y-4 transition-transform duration-500 group-hover:translate-y-0">
-                  <TabBar name="Postman" className="h-24 bg-surface-variant/50 text-outline" />
+                  <TabBar name="Playground" className="h-24 bg-surface-variant/50 text-outline" />
                   <TabBar name="ngrok" className="h-20 bg-surface-variant/50 text-outline" />
                   <TabBar
                     name="Proxync"
@@ -126,16 +126,15 @@ export function FeaturesBento() {
           <Reveal delay={0.08} className="lg:col-span-2">
             <Card className="group flex h-full flex-col p-6 md:p-8">
               <IconTile icon={Lock} tone="tertiary" />
-              <CardHeading>Zero Telemetry</CardHeading>
+              <CardHeading>Local-First & Configurable</CardHeading>
               <CardCopy>
-                Your API keys, secrets, and traffic data never leave your machine. Local-first means
-                exactly that.
+                Your API keys, secrets, and traffic data stay on your machine. Choose Enhanced or Basic Low-CPU local telemetry.
               </CardCopy>
               <div className="mt-auto pt-8">
                 <div className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3">
                   <div className="flex items-center gap-2 font-mono text-[11px] font-semibold tracking-[0.14em] text-tertiary">
                     <span className="h-1.5 w-1.5 rounded-full bg-tertiary animate-pulse-dot" />
-                    Data Residency — Local Only
+                    Data Residency — Local Storage
                   </div>
                   <div className="mt-2.5 h-1 w-full overflow-hidden rounded-full bg-surface-variant">
                     <div className="h-full w-full rounded-full bg-tertiary" />
