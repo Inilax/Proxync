@@ -375,15 +375,49 @@ export function SettingsView({
           {/* Account Settings */}
           {activeSection === 'account' && (
             <section className="space-y-6">
-              <h2 className="font-headline-md text-headline-md border-b border-outline-variant/30 pb-4">Account</h2>
+              <h2 className="font-headline-md text-headline-md border-b border-outline-variant/30 pb-4">Account & Enterprise Edition</h2>
               
-              <div className="p-5 bg-primary-container/10 border-l-4 border-primary rounded-r-xl flex gap-4 mt-6">
-                <span className="material-symbols-outlined text-primary shrink-0 text-[24px]">cloud_queue</span>
-                <div>
-                  <h4 className="font-body-lg font-bold text-on-surface text-sm mb-1">Coming Soon</h4>
-                  <p className="text-xs text-on-surface-variant leading-relaxed">
-                    Next release will be there, stay tuned!
-                  </p>
+              <div className="p-5 bg-surface-container border border-outline-variant/30 rounded-xl space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center">
+                    <span className="material-symbols-outlined text-[24px]">corporate_fare</span>
+                  </div>
+                  <div>
+                    <h3 className="font-body-lg text-body-lg text-on-surface font-bold">Proxync Enterprise & Cloud Sync</h3>
+                    <p className="text-xs text-on-surface-variant">Local-first mode active. Upgrade to Enterprise Edition for team collaboration.</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-outline-variant/20 text-xs">
+                  <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/20 flex items-center gap-2.5">
+                    <span className="material-symbols-outlined text-secondary text-sm">sync</span>
+                    <span className="text-on-surface">Team Workspace Cloud Sync</span>
+                  </div>
+                  <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/20 flex items-center gap-2.5">
+                    <span className="material-symbols-outlined text-secondary text-sm">verified_user</span>
+                    <span className="text-on-surface">SSO / SAML Authentication</span>
+                  </div>
+                  <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/20 flex items-center gap-2.5">
+                    <span className="material-symbols-outlined text-secondary text-sm">key</span>
+                    <span className="text-on-surface">Centralized API Key Management</span>
+                  </div>
+                  <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/20 flex items-center gap-2.5">
+                    <span className="material-symbols-outlined text-secondary text-sm">shield</span>
+                    <span className="text-on-surface">Dedicated Relay Infrastructure</span>
+                  </div>
+                </div>
+
+                <div className="pt-2 flex items-center justify-between">
+                  <span className="text-[11px] text-outline font-mono">Current Tier: Local Studio (Free / Open-Source)</span>
+                  <a
+                    href="https://proxync.dev/"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn-secondary compact text-xs cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>Learn More at proxync.dev</span>
+                    <span className="material-symbols-outlined text-sm">open_in_new</span>
+                  </a>
                 </div>
               </div>
             </section>
@@ -395,34 +429,37 @@ export function SettingsView({
               <h2 className="font-headline-md text-headline-md border-b border-outline-variant/30 pb-4">Security & Guardrails</h2>
               
               <div className="space-y-6">
-                <div className="space-y-4">
+                <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-body-lg text-body-lg text-on-surface font-semibold">Active API Tokens</h3>
+                    <h3 className="font-body-lg text-body-lg text-on-surface font-semibold">API Key Management</h3>
+                    <span className="badge muted" style={{ background: 'rgba(192, 193, 255, 0.1)', color: 'var(--color-primary)' }}>Enterprise Feature</span>
                   </div>
                   <div className="p-4 bg-surface-container border border-outline-variant/30 rounded-xl flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3 w-full overflow-hidden">
-                      <span className="material-symbols-outlined text-outline shrink-0">key</span>
-                      <code className="text-xs text-primary font-mono truncate select-all">
-                        px_live_a7f293b8e4c1902...
-                      </code>
+                    <div className="flex items-center gap-3">
+                      <span className="material-symbols-outlined text-outline shrink-0">vpn_key</span>
+                      <div>
+                        <p className="text-xs text-on-surface font-medium">Local Anonymous Session</p>
+                        <p className="text-[11px] text-outline">Team API keys & central token rotation available in Enterprise Edition.</p>
+                      </div>
                     </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => copyVal('px_live_a7f293b8e4c1902...')}
-                        className="btn-ghost compact cursor-pointer hover:bg-surface-container-highest rounded"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">content_copy</span>
-                      </button>
-                    </div>
+                    <span className="px-2.5 py-1 bg-surface-container-high text-on-surface-variant text-[11px] font-mono rounded border border-outline-variant/30">
+                      Local Mode
+                    </span>
                   </div>
                 </div>
 
                 <div className="space-y-4 pt-4 border-t border-outline-variant/30">
-                  <h3 className="font-body-lg text-body-lg text-on-surface font-semibold">Workspace Guardrails</h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-body-lg text-body-lg text-on-surface font-semibold">Workspace Guardrails</h3>
+                    <span className="text-[11px] text-outline font-mono">Local Dev Mode (Unrestricted)</span>
+                  </div>
                   
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <label className="font-label-md text-label-md text-on-surface-variant block">Auth mode</label>
+                      <div className="flex items-center justify-between">
+                        <label className="font-label-md text-label-md text-on-surface-variant block">Auth mode</label>
+                        <span className="text-[10px] text-primary font-mono bg-primary/10 px-1.5 py-0.5 rounded">Enterprise RBAC</span>
+                      </div>
                       <select
                         className="form-select"
                         value={appSettings.guardrails.authMode}
@@ -438,7 +475,10 @@ export function SettingsView({
                       </select>
                     </div>
                     <div className="space-y-2">
-                      <label className="font-label-md text-label-md text-on-surface-variant block">Rate limit</label>
+                      <div className="flex items-center justify-between">
+                        <label className="font-label-md text-label-md text-on-surface-variant block">Rate limit</label>
+                        <span className="text-[10px] text-secondary font-mono bg-secondary/10 px-1.5 py-0.5 rounded">Enterprise Policy</span>
+                      </div>
                       <input
                         className="form-input"
                         value={appSettings.guardrails.rateLimit}

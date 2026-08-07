@@ -330,6 +330,8 @@ async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u16, 
                                     "requestId": req_data.request_id,
                                     "method": req_data.method,
                                     "path": req_data.path,
+                                    "headers": req_data.headers,
+                                    "bodyPreview": req_data.body,
                                     "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()
                                 });
                                 let _ = app_clone.emit("request:log", req_meta);
@@ -705,10 +707,27 @@ async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, Stri
                     }
                 }
 
+                let mut headers = HashMap::new();
+                let mut body_preview = String::new();
+
+                let parts_split: Vec<&str> = req_str.splitn(2, "\r\n\r\n").collect();
+                if let Some(header_part) = parts_split.get(0) {
+                    for line in header_part.lines().skip(1) {
+                        if let Some((k, v)) = line.split_once(':') {
+                            headers.insert(k.trim().to_string(), v.trim().to_string());
+                        }
+                    }
+                }
+                if let Some(body_part) = parts_split.get(1) {
+                    body_preview = body_part.trim().to_string();
+                }
+
                 let req_meta = serde_json::json!({
                     "id": req_id.clone(),
                     "method": method,
                     "path": path,
+                    "headers": headers,
+                    "bodyPreview": body_preview,
                     "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()
                 });
                 let _ = app_clone.emit("request:log", req_meta);
