@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { WorkspaceConfig, RequestLog } from './SharedComponents';
+import { useEscape } from './SharedComponents';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { Input } from '../ui/Input';
@@ -62,6 +63,11 @@ export function LobbyView({
   const [editingWorkspace, setEditingWorkspace] = useState<WorkspaceConfig | null>(null);
   const [workspaceNameDraft, setWorkspaceNameDraft] = useState('');
   const [workspaceNotesDraft, setWorkspaceNotesDraft] = useState('');
+
+  useEscape(() => {
+    setIsCreatingInline(false);
+    setEditingWorkspace(null);
+  }, isCreatingInline || !!editingWorkspace);
 
   // Filter workspaces based on search query and 7-day activity threshold
   const searchedWorkspaces = workspaces.filter((ws) =>
@@ -290,6 +296,7 @@ export function LobbyView({
                 autoFocus
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleCreate();
+                  else if (e.key === 'Escape') setIsCreatingInline(false);
                 }}
               />
             </div>

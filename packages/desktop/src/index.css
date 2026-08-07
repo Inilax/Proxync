@@ -28,8 +28,8 @@
   --color-primary-container: #8083ff;
   --color-primary-fixed: #e1e0ff;
   --color-primary-fixed-dim: #c0c1ff;
-  --color-on-primary: #1000a9;
-  --color-on-primary-container: #0d0096;
+  --color-on-primary: #ffffff;
+  --color-on-primary-container: #ffffff;
   --color-on-primary-fixed: #07006c;
   --color-on-primary-fixed-variant: #2f2ebe;
   --color-inverse-primary: #494bd6;
@@ -859,6 +859,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 }
 .toast.success { border-color: rgba(192, 193, 255, 0.30); }
 .toast.error { border-color: rgba(255, 180, 171, 0.30); }
+.toast.warning { border-color: rgba(245, 158, 11, 0.40); }
 
 /* ══════════════════════════════════════════════
    COMPANION PANEL

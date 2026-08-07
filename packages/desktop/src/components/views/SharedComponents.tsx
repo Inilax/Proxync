@@ -194,6 +194,20 @@ export function InfoTile({
   );
 }
 
+import { useEffect } from 'react';
+
+/** ponytail: Reusable hook for Escape key dismissals across dialogs & forms */
+export function useEscape(onClose: () => void, active = true) {
+  useEffect(() => {
+    if (!active) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, active]);
+}
+
 /* ────────────────── Companion Panel ────────────────── */
 
 export function CompanionPanel({
@@ -203,6 +217,8 @@ export function CompanionPanel({
   panel: Exclude<PanelView, null>;
   onClose: () => void;
 }) {
+  useEscape(onClose);
+
   return (
     <aside className="companion-panel">
       <header>

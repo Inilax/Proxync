@@ -3,7 +3,7 @@ import { useState, useCallback, ReactNode } from 'react';
 interface Toast {
   id: string;
   message: ReactNode;
-  type: 'success' | 'error' | 'info';
+  type: 'success' | 'error' | 'info' | 'warning';
   /** If true, the toast will NOT auto-dismiss — must be dismissed via dismissToast() */
   persistent?: boolean;
 }
