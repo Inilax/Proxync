@@ -123,31 +123,28 @@ export function SwaggerView({
         <div className="flex flex-wrap items-center gap-3 shrink-0">
           <div className="flex bg-surface-container p-1 rounded-lg border border-outline-variant">
             <button
-              className={`px-3 py-1.5 rounded text-xs font-label-md cursor-pointer transition-all ${
-                swaggerPanel === 'preview'
+              className={`px-3 py-1.5 rounded text-xs font-label-md cursor-pointer transition-all ${swaggerPanel === 'preview'
                   ? 'bg-surface-bright text-primary font-semibold'
                   : 'text-on-surface-variant hover:text-on-surface'
-              }`}
+                }`}
               onClick={() => onChangePanel('preview')}
             >
               Endpoints Preview
             </button>
             <button
-              className={`px-3 py-1.5 rounded text-xs font-label-md cursor-pointer transition-all ${
-                swaggerPanel === 'json'
+              className={`px-3 py-1.5 rounded text-xs font-label-md cursor-pointer transition-all ${swaggerPanel === 'json'
                   ? 'bg-surface-bright text-primary font-semibold'
                   : 'text-on-surface-variant hover:text-on-surface'
-              }`}
+                }`}
               onClick={() => onChangePanel('json')}
             >
               Raw JSON
             </button>
             <button
-              className={`px-3 py-1.5 rounded text-xs font-label-md cursor-pointer transition-all ${
-                swaggerPanel === 'yaml'
+              className={`px-3 py-1.5 rounded text-xs font-label-md cursor-pointer transition-all ${swaggerPanel === 'yaml'
                   ? 'bg-surface-bright text-primary font-semibold'
                   : 'text-on-surface-variant hover:text-on-surface'
-              }`}
+                }`}
               onClick={() => onChangePanel('yaml')}
             >
               Raw YAML
@@ -171,7 +168,7 @@ export function SwaggerView({
             className="px-3 py-1.5 rounded text-xs font-label-md transition-all flex items-center gap-1.5 text-secondary bg-secondary/10 border border-secondary/30 hover:bg-secondary/20 cursor-pointer disabled:opacity-40"
           >
             <span className="material-symbols-outlined text-[16px]">output</span>
-            Export to Postman
+            Export to Playground
           </button>
 
           <button
@@ -248,11 +245,10 @@ export function SwaggerView({
             <div className="flex flex-wrap items-center gap-1.5">
               <button
                 onClick={() => setSelectedTag('ALL')}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-mono transition-all cursor-pointer ${
-                  selectedTag === 'ALL'
+                className={`px-3.5 py-1.5 rounded-full text-xs font-mono transition-all cursor-pointer ${selectedTag === 'ALL'
                     ? 'bg-primary text-white font-bold shadow-md shadow-primary/25 ring-1 ring-primary/40'
                     : 'bg-surface-container border border-outline-variant text-on-surface-variant hover:text-on-surface'
-                }`}
+                  }`}
               >
                 All ({endpointPreview.length})
               </button>
@@ -262,11 +258,10 @@ export function SwaggerView({
                   <button
                     key={tag}
                     onClick={() => setSelectedTag(tag)}
-                    className={`px-3.5 py-1.5 rounded-full text-xs font-mono transition-all cursor-pointer ${
-                      selectedTag === tag
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-mono transition-all cursor-pointer ${selectedTag === tag
                         ? 'bg-primary text-white font-bold shadow-md shadow-primary/25 ring-1 ring-primary/40'
                         : 'bg-surface-container border border-outline-variant text-on-surface-variant hover:text-on-surface'
-                    }`}
+                      }`}
                   >
                     {tag} ({count})
                   </button>
@@ -303,12 +298,12 @@ export function SwaggerView({
                 const colorClass = isGet
                   ? 'text-primary border-primary/30 bg-primary/10'
                   : isPost
-                  ? 'text-secondary border-secondary/30 bg-secondary/10'
-                  : isPut
-                  ? 'text-amber-400 border-amber-400/30 bg-amber-400/10'
-                  : isDelete
-                  ? 'text-error border-error/30 bg-error/10'
-                  : 'text-on-surface-variant border-outline bg-surface-container';
+                    ? 'text-secondary border-secondary/30 bg-secondary/10'
+                    : isPut
+                      ? 'text-amber-400 border-amber-400/30 bg-amber-400/10'
+                      : isDelete
+                        ? 'text-error border-error/30 bg-error/10'
+                        : 'text-on-surface-variant border-outline bg-surface-container';
 
                 const codeSnippet = generateCodeSnippet(
                   ep.method,
@@ -418,11 +413,10 @@ export function SwaggerView({
                                 <button
                                   key={fw}
                                   onClick={() => setSelectedSnippetFramework(fw)}
-                                  className={`px-2 py-0.5 rounded cursor-pointer capitalize transition-all ${
-                                    selectedSnippetFramework === fw
+                                  className={`px-2 py-0.5 rounded cursor-pointer capitalize transition-all ${selectedSnippetFramework === fw
                                       ? 'bg-primary/20 text-primary border border-primary/30 font-bold'
                                       : 'text-on-surface-variant hover:text-on-surface'
-                                  }`}
+                                    }`}
                                 >
                                   {fw}
                                 </button>
