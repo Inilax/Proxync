@@ -223,12 +223,26 @@ export function PostmanView({
       } else if ((e.ctrlKey || e.metaKey) && (e.key === '?' || e.key === '/' || e.code === 'Slash')) {
         e.preventDefault();
         setShowHotkeysModal((prev) => !prev);
+      } else if (e.key === 'Escape') {
+        if (isCreatingFolder) {
+          setIsCreatingFolder(false);
+        } else if (editingFolderId) {
+          setEditingFolderId(null);
+        } else if (editingRequestId) {
+          setEditingRequestId(null);
+        } else if (contextMenu) {
+          setContextMenu(null);
+        } else if (importSwaggerModalOpen) {
+          setImportSwaggerModalOpen(false);
+        } else if (showHotkeysModal) {
+          setShowHotkeysModal(false);
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onRun, onSave]);
+  }, [onRun, onSave, isCreatingFolder, editingFolderId, editingRequestId, contextMenu, importSwaggerModalOpen, showHotkeysModal]);
 
   // Drag handlers for Collections Rail
   const handleCollectionsMouseDown = (e: React.MouseEvent) => {
@@ -435,7 +449,10 @@ export function PostmanView({
               type="text"
               value={newFolderNameInput}
               onChange={(e) => setNewFolderNameInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleCreateFolder()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleCreateFolder();
+                else if (e.key === 'Escape') setIsCreatingFolder(false);
+              }}
               placeholder="Collection name..."
               className="w-full bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-2.5 py-1.5 text-xs text-on-surface focus:outline-none focus:border-primary font-sans"
               autoFocus
@@ -449,7 +466,7 @@ export function PostmanView({
               </button>
               <button
                 onClick={handleCreateFolder}
-                className="px-3 py-1 rounded bg-primary text-on-primary font-bold"
+                className="px-3 py-1 rounded bg-primary text-white font-bold hover:bg-primary/90 transition-colors shadow-sm shadow-primary/25 cursor-pointer"
               >
                 Create
               </button>
@@ -754,7 +771,7 @@ export function PostmanView({
           >
             {sending ? (
               <>
-                <span className="w-3 h-3 border-2 border-on-primary border-t-transparent rounded-full animate-spin"></span>
+                <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
                 <span>Sending...</span>
               </>
             ) : (

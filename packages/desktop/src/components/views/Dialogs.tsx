@@ -5,7 +5,7 @@
  */
 import { useState, useEffect } from 'react';
 import type { ProcessCandidate, RequestLog } from './SharedComponents';
-import { Icons, SignalBars } from './SharedComponents';
+import { Icons, SignalBars, useEscape } from './SharedComponents';
 
 /* ────────────────── Discover Dialog ────────────────── */
 
@@ -26,6 +26,8 @@ export function DiscoverDialog({
   onShare: (process: ProcessCandidate) => void;
   onShareLocal: (process: ProcessCandidate) => void;
 }) {
+  useEscape(onClose);
+
   return (
     <div className="dialog-backdrop" onClick={onClose}>
       <section className="discover-dialog slide-up" onClick={(e) => e.stopPropagation()}>
@@ -106,6 +108,7 @@ export function DomainSelectDialog({
   onClose: () => void;
   onConfirm: (customDomainOrOption: string, ltSubdomain?: string) => void;
 }) {
+  useEscape(onClose);
   const [selectedDomain, setSelectedDomain] = useState<string>('default');
   const [customSubdomain, setCustomSubdomain] = useState<string>('');
   const [latencies, setLatencies] = useState<Record<string, number>>({
@@ -232,6 +235,12 @@ export function DomainSelectDialog({
         </header>
 
         <div className="dialog-body">
+          {!navigator.onLine && (
+            <div style={{ padding: '8px 12px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', fontSize: '11px', color: '#f87171', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>wifi_off</span>
+              <span><strong>You are offline:</strong> Cloud tunnels (Cloudflare / Localtunnel) require internet connection.</span>
+            </div>
+          )}
           <label className="field-label">Sharing Target</label>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '260px', overflowY: 'auto', paddingRight: '4px', marginBottom: '4px' }}>
@@ -264,8 +273,8 @@ export function DomainSelectDialog({
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '12px' }}>
-                    <span style={{ fontSize: '10px', color: isSelected ? 'var(--color-primary)' : 'var(--color-on-surface-variant)' }}>
-                      {hasMeasured ? `${Math.round(opt.latency)} ms` : 'pinging...'}
+                    <span style={{ fontSize: '10px', color: (opt.id === 'cloudflare' || opt.id === 'localtunnel') && opt.latency === Infinity ? '#f87171' : isSelected ? 'var(--color-primary)' : 'var(--color-on-surface-variant)' }}>
+                      {hasMeasured ? `${Math.round(opt.latency)} ms` : (opt.id === 'cloudflare' || opt.id === 'localtunnel') ? 'Offline' : 'pinging...'}
                     </span>
                     <SignalBars latency={opt.latency} />
                   </div>
@@ -319,6 +328,8 @@ export function RequestDetailDialog({
   onReplay: (request: RequestLog) => void;
   onSendToPostman: (request: RequestLog) => void;
 }) {
+  useEscape(onClose);
+
   return (
     <div className="dialog-backdrop glass" onClick={onClose}>
       <section className="request-dialog slide-up" onClick={(e) => e.stopPropagation()}>
@@ -364,6 +375,8 @@ export function ConfirmDeleteDialog({
   onClose: () => void;
   onConfirm: () => void;
 }) {
+  useEscape(onClose);
+
   return (
     <div className="dialog-backdrop glass" onClick={onClose}>
       <section className="workspace-settings-dialog slide-up max-w-md p-6 flex flex-col gap-5" onClick={(e) => e.stopPropagation()}>
@@ -410,6 +423,8 @@ export function ConfirmPurgeDialog({
   onClose: () => void;
   onConfirm: () => void;
 }) {
+  useEscape(onClose);
+
   return (
     <div className="dialog-backdrop glass" onClick={onClose}>
       <section className="workspace-settings-dialog slide-up max-w-md p-6 flex flex-col gap-5" onClick={(e) => e.stopPropagation()}>

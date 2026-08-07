@@ -2,6 +2,21 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [feature/develop-0.2.0-ui-contrast-and-escape-shortcuts] - 2026-08-07 (UI Button Contrast Overhaul, Active Internet Connection Guard & Escape Shortcuts)
+- **Feature Summary**:
+  - **Button Contrast Overhaul**: Updated `--color-on-primary` and `--color-on-primary-container` theme tokens in `index.css` to `#ffffff` for high contrast text. Updated inline collection folder `Create` button styling in `PostmanView.tsx` to `text-white font-bold shadow-sm shadow-primary/25`.
+  - **Active Internet Connectivity Guard**: Added `checkRealInternetConnection()` edge ping check to prevent `cloudflared` CLI timeout delays when attempting to open cloud tunnels offline. Added `offline` and `online` event listeners with bottom-right toast notifications and added an offline callout banner inside `DomainSelectDialog`.
+  - **Global Escape Key Dismissals & Ponytail Refactoring**: Added `useEscape` custom hook in `SharedComponents.tsx` to handle Esc key dismissals across inline workspace creation (`LobbyView.tsx`), collection creation and renaming (`PostmanView.tsx`), and all modal dialogs (`Dialogs.tsx`, `App.tsx`).
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/LobbyView.tsx`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/index.css`
+  - `packages/desktop/src/lib/toast.tsx`
+  - `CHANGELOG.md`
+
 ## [v0.2.0-release] - 2026-08-07 (Traffic Inspector Overhaul, Generic Replay Engine, Enterprise Tier Preview & Playground Hotkeys)
 - **Feature Summary**:
   - **Traffic Inspector Overhaul**: Fixed React key collisions using unique UUIDs. Fixed inline dropdown auto-collapse under live traffic by tracking expansion via immutable request IDs. Solved scroll-position jumping by removing container dynamic key. Fixed status code badge updates in `App.tsx` by aligning `rawRequestId` matching. Enhanced Rust TCP and WebSocket proxy in `lib.rs` to capture and emit headers HashMap and bodyPreview.

@@ -34,6 +34,7 @@ import {
   CompanionPanel,
   parseHeaderText,
   stripMethodPrefix,
+  useEscape,
 } from './components/views/SharedComponents';
 import { WelcomeView } from './components/views/WelcomeView';
 import { LobbyView } from './components/views/LobbyView';
@@ -95,9 +96,26 @@ const NAV_ITEMS: { view: MainView; label: string; icon: string }[] = [
   { view: 'settings', label: 'Settings', icon: 'settings' },
 ];
 
-/* ══════════════════════════════════════════════
-   APP COMPONENT
-   ══════════════════════════════════════════════ */
+export async function checkRealInternetConnection(timeoutMs = 1200): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return false;
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    await fetch('https://1.1.1.1/cdn-cgi/trace', {
+      method: 'HEAD',
+      mode: 'no-cors',
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    return true;
+  } catch (e) {
+    clearTimeout(timer);
+    return false;
+  }
+}
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -480,6 +498,40 @@ export default function App() {
 
   useEffect(() => { void discoverProcesses(); }, []);
 
+  /* ── Network Online/Offline Status Notification ── */
+  useEffect(() => {
+    if (!navigator.onLine) {
+      showToast(
+        '⚠️ You are currently offline. Cloud tunnels (Cloudflare & Localtunnel) require internet connection. Local network sharing is active.',
+        'warning'
+      );
+    }
+
+    const handleOffline = () => {
+      showToast(
+        '⚠️ Network disconnected: You are offline. Cloud tunnels require internet connection.',
+        'warning'
+      );
+    };
+
+    const handleOnline = () => {
+      showToast(
+        '🌐 Network connected: Back online! Cloud tunnels (Cloudflare & Localtunnel) are ready.',
+        'success'
+      );
+    };
+
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, []);
+
+  useEscape(() => setAuthDialogOpen(false), authDialogOpen);
+
   useEffect(() => {
     if (workspaces.length === 0) {
       localStorage.setItem(LOCAL_WORKSPACES_KEY, JSON.stringify([]));
@@ -782,6 +834,11 @@ export default function App() {
 
   async function shareProcessCloudflare(process: ProcessCandidate) {
     if (!activeWorkspace) return;
+    const isConnected = await checkRealInternetConnection();
+    if (!isConnected) {
+      showToast('⚠️ No internet connection detected. Cloudflare Tunnel requires an active internet connection. Please connect to the internet and try again.', 'error');
+      return;
+    }
     const starterScan = buildStarterRequests(process);
     setStarterSuggestions(starterScan);
     setSavedRequests((current) => mergeRequests(current, starterScan));
@@ -814,6 +871,11 @@ export default function App() {
 
   async function shareProcessLocaltunnel(process: ProcessCandidate, customSubdomain?: string) {
     if (!activeWorkspace) return;
+    const isConnected = await checkRealInternetConnection();
+    if (!isConnected) {
+      showToast('⚠️ No internet connection detected. Localtunnel service requires an active internet connection. Please connect to the internet and try again.', 'error');
+      return;
+    }
     const starterScan = buildStarterRequests(process);
     setStarterSuggestions(starterScan);
     setSavedRequests((current) => mergeRequests(current, starterScan));
