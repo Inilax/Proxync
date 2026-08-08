@@ -290,7 +290,7 @@ export function FeatureTabs() {
   }, []);
 
   return (
-    <section id="product" className="relative py-24 scroll-mt-24">
+    <section id="features" className="relative py-24 scroll-mt-24">
       <div id="tunnels" className="absolute -top-24" />
       <div id="traffic" className="absolute -top-24" />
       <div id="playground" className="absolute -top-24" />

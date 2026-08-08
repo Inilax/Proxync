@@ -87,7 +87,7 @@ function Stat({ value, label }: { value: string; label: string }) {
 
 export function FeaturesBento() {
   return (
-    <section id="features" className="relative py-24 scroll-mt-24">
+    <section id="features-bento" className="relative py-24 scroll-mt-24">
       <Container>
         <div className="mb-14 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="flex flex-col items-start gap-4">

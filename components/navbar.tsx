@@ -11,14 +11,26 @@ import { GITHUB_URL } from "@/lib/links";
 import { useLatestRelease } from "@/lib/releases";
 
 const NAV_LINKS = [
-  { href: "/#features", label: "Features" },
   { href: "/#product", label: "Product" },
+  { href: "/#features", label: "Features" },
   { href: "/#how-it-works", label: "How it works" },
   { href: "/#faq", label: "FAQ" },
   { href: "/docs", label: "Docs" },
 ];
 
-const SCROLL_SPY_OFFSET = 160;
+const ALL_SECTION_IDS = [
+  "product",
+  "features",
+  "tunnels",
+  "traffic",
+  "playground",
+  "postman",
+  "swagger",
+  "how-it-works",
+  "faq",
+];
+
+const FEATURES_SUB_IDS = ["tunnels", "traffic", "playground", "postman", "swagger"];
 
 function getSectionId(href: string) {
   if (href.startsWith("/#")) return href.slice(2);
@@ -47,27 +59,37 @@ export function Navbar() {
   useEffect(() => {
     if (pathname !== "/") return;
 
-    const sectionIds = NAV_LINKS.flatMap((link) => {
-      const id = getSectionId(link.href);
-      return id ? [id] : [];
-    });
-
     const compute = () => {
+      if (window.scrollY < 120) {
+        setActiveSection(null);
+        return;
+      }
+
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 60) {
+        setActiveSection("faq");
+        return;
+      }
+
       let current: string | null = null;
-      for (const id of sectionIds) {
+      for (const id of ALL_SECTION_IDS) {
         const el = document.getElementById(id);
         if (!el) continue;
-        const top = el.getBoundingClientRect().top + window.scrollY;
-        if (window.scrollY + SCROLL_SPY_OFFSET >= top) current = id;
+        const rect = el.getBoundingClientRect();
+        if (rect.top <= 200 && rect.bottom >= 100) {
+          current = id;
+        }
       }
       setActiveSection(current);
     };
 
+    compute();
     window.addEventListener("scroll", compute, { passive: true });
     window.addEventListener("resize", compute);
+    window.addEventListener("hashchange", compute);
     return () => {
       window.removeEventListener("scroll", compute);
       window.removeEventListener("resize", compute);
+      window.removeEventListener("hashchange", compute);
     };
   }, [pathname]);
 
@@ -75,11 +97,16 @@ export function Navbar() {
     if (isRouteHref(href)) return pathname?.startsWith(href) ?? false;
     if (pathname !== "/") return false;
     const secId = getSectionId(href);
-    return secId ? secId === activeSection : false;
+    if (!secId) return false;
+    if (secId === "features") {
+      return activeSection === "features" || FEATURES_SUB_IDS.includes(activeSection ?? "");
+    }
+    return secId === activeSection;
   };
 
   const handleNavClick = (href: string) => {
-    if (getSectionId(href)) setActiveSection(getSectionId(href));
+    const secId = getSectionId(href);
+    if (secId) setActiveSection(secId);
     setOpen(false);
   };
 
@@ -113,13 +140,20 @@ export function Navbar() {
                 onClick={() => handleNavClick(link.href)}
                 aria-current={active ? "true" : undefined}
                 className={cn(
-                  "text-sm transition-colors",
+                  "relative py-1 text-sm transition-colors",
                   active
-                    ? "font-medium text-primary"
+                    ? "font-semibold text-primary"
                     : "text-on-surface-muted hover:text-on-surface",
                 )}
               >
                 {link.label}
+                {active && (
+                  <motion.span
+                    layoutId="navbar-active-indicator"
+                    className="absolute inset-x-0 -bottom-1 h-0.5 rounded-full bg-primary"
+                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                  />
+                )}
               </a>
             );
           })}
