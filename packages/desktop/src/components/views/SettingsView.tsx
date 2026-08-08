@@ -557,21 +557,35 @@ export function SettingsView({
                   </p>
                 </div>
                 
-                <div className="flex gap-3">
+                <form
+                  className="flex items-center gap-3"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (domainDraft.trim() && busyDomainId !== 'new') {
+                      onAddDomain();
+                    }
+                  }}
+                >
                   <input
-                    className="form-input"
+                    className="form-input flex-1"
                     value={domainDraft}
                     onChange={(event) => onDomainDraftChange(event.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && domainDraft.trim() && busyDomainId !== 'new') {
+                        e.preventDefault();
+                        onAddDomain();
+                      }
+                    }}
                     placeholder="demo.example.com"
                   />
                   <button
-                    className="btn-primary cursor-pointer"
-                    onClick={onAddDomain}
+                    type="submit"
+                    className="btn-primary cursor-pointer shrink-0 h-[42px] px-5 flex items-center justify-center"
                     disabled={busyDomainId === 'new' || !domainDraft.trim()}
                   >
                     {busyDomainId === 'new' ? 'Adding...' : 'Add Domain'}
                   </button>
-                </div>
+                </form>
 
                 {loadingDomains ? (
                   <div className="settings-empty text-center p-6">Loading domains...</div>
@@ -616,7 +630,7 @@ export function SettingsView({
                               </div>
                             )}
                             
-                            <div className="overflow-x-auto border border-outline-variant/30 rounded-lg">
+                            <div className="dns-table-wrapper">
                               <table className="dns-table">
                                 <thead>
                                   <tr>
@@ -631,48 +645,48 @@ export function SettingsView({
                                   {!domain.verified && (
                                     <tr>
                                       <td>
-                                        <div className="flex flex-col">
-                                          <div className="flex items-center gap-1.5">
-                                            <code className="font-bold font-mono bg-surface-container-lowest border border-outline-variant/20 px-1.5 py-0.5 rounded text-[11px]">{relativeTxtHost}</code>
-                                            <span className="text-[11px] text-outline">.{apexDomain}</span>
+                                        <div className="flex flex-col gap-0.5">
+                                          <div className="flex items-center gap-1">
+                                            <code className="font-bold font-mono bg-surface-container-lowest border border-outline-variant/30 px-2 py-0.5 rounded text-[11px] text-on-surface">{relativeTxtHost}</code>
+                                            <span className="text-[11px] text-on-surface-variant">.{apexDomain}</span>
                                           </div>
-                                          <span className="text-[10px] text-outline mt-0.5">Full: {fullTxtHost}</span>
+                                          <span className="text-[10px] text-on-surface-variant/70">Full: {fullTxtHost}</span>
                                         </div>
                                       </td>
-                                      <td><span className="badge muted">TXT</span></td>
-                                      <td><code className="text-xs font-mono select-all">proxync-verification={domain.verificationToken}</code></td>
-                                      <td>30 min</td>
+                                      <td><span className="px-2 py-0.5 text-[11px] font-mono font-bold rounded bg-secondary/10 text-secondary border border-secondary/20">TXT</span></td>
+                                      <td><code className="text-xs font-mono select-all text-on-surface bg-surface-container-lowest px-2 py-1 rounded border border-outline-variant/20">proxync-verification={domain.verificationToken}</code></td>
+                                      <td><span className="text-xs font-mono text-on-surface-variant">30 min</span></td>
                                       <td>
-                                        <div className="flex gap-2.5">
-                                          <button className="btn-ghost compact cursor-pointer" onClick={() => copyVal(relativeTxtHost)}>Host</button>
-                                          <button className="btn-ghost compact cursor-pointer" onClick={() => copyVal(`proxync-verification=${domain.verificationToken}`)}>Value</button>
+                                        <div className="flex items-center gap-1.5">
+                                          <button className="btn-secondary compact text-[11px] px-2 py-1 cursor-pointer" onClick={() => copyVal(relativeTxtHost)}>Host</button>
+                                          <button className="btn-secondary compact text-[11px] px-2 py-1 cursor-pointer" onClick={() => copyVal(`proxync-verification=${domain.verificationToken}`)}>Value</button>
                                         </div>
                                       </td>
                                     </tr>
                                   )}
                                   <tr>
                                     <td>
-                                      <div className="flex flex-col">
-                                        <div className="flex items-center gap-1.5">
-                                          <code className="font-bold font-mono bg-surface-container-lowest border border-outline-variant/20 px-1.5 py-0.5 rounded text-[11px]">{relativeTrafficHost}</code>
+                                      <div className="flex flex-col gap-0.5">
+                                        <div className="flex items-center gap-1">
+                                          <code className="font-bold font-mono bg-surface-container-lowest border border-outline-variant/30 px-2 py-0.5 rounded text-[11px] text-on-surface">{relativeTrafficHost}</code>
                                           {relativeTrafficHost !== '@' && (
-                                            <span className="text-[11px] text-outline">.{apexDomain}</span>
+                                            <span className="text-[11px] text-on-surface-variant">.{apexDomain}</span>
                                           )}
                                         </div>
-                                        <span className="text-[10px] text-outline mt-0.5">Full: {domain.name}</span>
+                                        <span className="text-[10px] text-on-surface-variant/70">Full: {domain.name}</span>
                                       </div>
                                     </td>
                                     <td>
-                                      <span className="badge muted" style={{ background: 'rgba(192, 193, 255, 0.1)', color: 'var(--color-primary)' }}>
+                                      <span className="px-2 py-0.5 text-[11px] font-mono font-bold rounded bg-primary/10 text-primary border border-primary/20">
                                         {isSub || domain.name !== apexDomain ? 'CNAME' : 'A'}
                                       </span>
                                     </td>
-                                    <td><code className="text-xs font-mono select-all">{routingValue}</code></td>
-                                    <td>30 min</td>
+                                    <td><code className="text-xs font-mono select-all text-on-surface bg-surface-container-lowest px-2 py-1 rounded border border-outline-variant/20">{routingValue}</code></td>
+                                    <td><span className="text-xs font-mono text-on-surface-variant">30 min</span></td>
                                     <td>
-                                      <div className="flex gap-2.5">
-                                        <button className="btn-ghost compact cursor-pointer" onClick={() => copyVal(relativeTrafficHost)}>Host</button>
-                                        <button className="btn-ghost compact cursor-pointer" onClick={() => copyVal(routingValue)}>Value</button>
+                                      <div className="flex items-center gap-1.5">
+                                        <button className="btn-secondary compact text-[11px] px-2 py-1 cursor-pointer" onClick={() => copyVal(relativeTrafficHost)}>Host</button>
+                                        <button className="btn-secondary compact text-[11px] px-2 py-1 cursor-pointer" onClick={() => copyVal(routingValue)}>Value</button>
                                       </div>
                                     </td>
                                   </tr>
@@ -681,20 +695,20 @@ export function SettingsView({
                             </div>
                           </div>
 
-                          <div className="flex gap-2">
+                          <div className="flex items-center justify-between pt-3 border-t border-outline-variant/20">
                             <button
-                              className="btn-primary compact"
+                              className="btn-primary compact cursor-pointer px-4 py-2 text-xs"
                               onClick={() => onVerifyDomain(domain.id)}
                               disabled={busyDomainId === domain.id}
                             >
-                              {busyDomainId === domain.id ? 'Working...' : 'Verify'}
+                              {busyDomainId === domain.id ? 'Verifying...' : domain.verified ? '✓ Re-verify' : 'Verify Domain'}
                             </button>
                             <button
-                              className="btn-ghost compact cursor-pointer"
+                              className="btn-danger compact cursor-pointer px-3 py-1.5 text-xs"
                               onClick={() => onRemoveDomain(domain.id)}
                               disabled={busyDomainId === domain.id}
                             >
-                              Remove
+                              Remove Domain
                             </button>
                           </div>
                         </article>

@@ -951,3 +951,51 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   display: block;
   margin-top: 2px;
 }
+
+/* ══════════════════════════════════════════════
+   CUSTOM DOMAINS & DNS TABLE STYLING
+   ══════════════════════════════════════════════ */
+.dns-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--color-outline-variant);
+  border-radius: 10px;
+  background: var(--color-surface-container-lowest);
+}
+
+.dns-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+  text-align: left;
+}
+
+.dns-table th {
+  padding: 10px 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-on-surface-variant);
+  background: var(--color-surface-container-high);
+  border-bottom: 1px solid var(--color-outline-variant);
+  white-space: nowrap;
+}
+
+.dns-table td {
+  padding: 12px 14px;
+  vertical-align: middle;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  color: var(--color-on-surface);
+}
+
+.dns-table tr:last-child td {
+  border-bottom: none;
+}
+
+.dns-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+

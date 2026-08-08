@@ -2,6 +2,21 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/custom-domain-dns-preflight] - 2026-08-08 (Custom Domain DNS Pre-Flight Verification Fix)
+- **Feature Summary**:
+  - **Root Cause Fixed**: Resolved a silent tunnel bypass where a previously verified custom domain (`demo.clueliq.com`) would still activate a live tunnel even after its DNS TXT record was deleted from the registrar (`DNS_PROBE_FINISHED_NXDOMAIN`). The bug was a React state dependency issue — `shareProcess` used `domains.find()` against React state which could be empty (app freshly restarted) or keyed under a different workspace ID, causing the entire DNS pre-flight block to silently skip.
+  - **`api.domains.verifyByName()`**: New method in `api.ts` that scans ALL `localStorage` keys prefixed with `proxync_custom_domains` (not a hardcoded candidate list) to find the domain record with zero React state dependency. Performs live DNS-over-HTTPS lookup via Google DoH (`dns.google/resolve`) with Cloudflare DoH (`cloudflare-dns.com/dns-query`) as fallback. If both resolvers are unreachable (network/firewall issue), the tunnel is blocked to be safe. On DNS token mismatch or NXDOMAIN: rotates `verificationToken`, marks `verified: false` in `localStorage`, syncs state back to React and `activeWorkspace`, and surfaces an actionable toast error.
+  - **UI Navigation Bug Fixed**: Moved starter scan state setup (`setStarterSuggestions`, `setSavedRequests`, `updateActiveWorkspace`) to after the DNS pre-flight block. Previously these ran unconditionally at the top of `shareProcess`, causing the UI to navigate to the process view and show the *Import Templates* banner even when the tunnel was being blocked.
+  - **Traffic Interception Fix**: Fixed `open_tunnel` invocation to pass `proxyPort` (Rust TCP proxy port) instead of the raw `process.port`, enabling Traffic View log interception for custom domain tunnels. Fixed `tunnels.create()` to build the correct `http://domain:port` URL format.
+  - **Domain State Sync**: Improved `addDomain`, `verifyDomain`, and `removeDomain` handlers to properly sync domain state changes into `activeWorkspace` via `updateActiveWorkspace` so Settings and process views stay in sync.
+  - **Settings UX Polish**: Enter key now submits the Add Domain form. DNS configuration table polished with new `.dns-table` CSS classes. `Host`/`Value` copy buttons upgraded from `btn-ghost` to `btn-secondary`. Verify button shows dynamic `✓ Re-verify` / `Verify Domain` labels. Remove button upgraded to `btn-danger` with label `Remove Domain`.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/lib/api.ts`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/index.css`
+  - `CHANGELOG.md`
+
 ## [feature/develop-0.2.0-ui-contrast-and-escape-shortcuts] - 2026-08-07 (UI Button Contrast Overhaul, Active Internet Connection Guard & Escape Shortcuts)
 - **Feature Summary**:
   - **Button Contrast Overhaul**: Updated `--color-on-primary` and `--color-on-primary-container` theme tokens in `index.css` to `#ffffff` for high contrast text. Updated inline collection folder `Create` button styling in `PostmanView.tsx` to `text-white font-bold shadow-sm shadow-primary/25`.
