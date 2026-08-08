@@ -16,10 +16,18 @@ export const api = {
     delete: (_id: string) => Promise.resolve({ success: true }),
   },
   domains: {
-    list: (workspaceId?: string): Promise<DomainRecord[]> => {
-      const key = `proxync_custom_domains_${workspaceId ?? 'default'}`;
-      const stored = localStorage.getItem(key) || localStorage.getItem('proxync_custom_domains');
-      return Promise.resolve(stored ? JSON.parse(stored) : []);
+    list: (_workspaceId?: string): Promise<DomainRecord[]> => {
+      // Scan ALL proxync_custom_domains keys so workspace ID mismatch never returns empty
+      const seen = new Map<string, DomainRecord>();
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k || !k.startsWith('proxync_custom_domains')) continue;
+        try {
+          const items: DomainRecord[] = JSON.parse(localStorage.getItem(k) || '[]');
+          for (const d of items) { if (d.id && !seen.has(d.id)) seen.set(d.id, d); }
+        } catch {}
+      }
+      return Promise.resolve(Array.from(seen.values()));
     },
     create: (workspaceId: string, name: string): Promise<DomainRecord> => {
       const newDomain: DomainRecord = {
