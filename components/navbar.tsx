@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { Download, Menu, Star, X } from "lucide-react";
@@ -48,6 +48,8 @@ export function Navbar() {
   const [open, setOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const pathname = usePathname();
+  const isClicking = useRef(false);
+  const clickTimeout = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -60,6 +62,8 @@ export function Navbar() {
     if (pathname !== "/") return;
 
     const compute = () => {
+      if (isClicking.current) return;
+
       if (window.scrollY < 120) {
         setActiveSection(null);
         return;
@@ -75,7 +79,7 @@ export function Navbar() {
         const el = document.getElementById(id);
         if (!el) continue;
         const rect = el.getBoundingClientRect();
-        if (rect.top <= 200 && rect.bottom >= 100) {
+        if (rect.top <= 150) {
           current = id;
         }
       }
@@ -106,7 +110,14 @@ export function Navbar() {
 
   const handleNavClick = (href: string) => {
     const secId = getSectionId(href);
-    if (secId) setActiveSection(secId);
+    if (secId) {
+      isClicking.current = true;
+      setActiveSection(secId);
+      if (clickTimeout.current) clearTimeout(clickTimeout.current);
+      clickTimeout.current = setTimeout(() => {
+        isClicking.current = false;
+      }, 1000);
+    }
     setOpen(false);
   };
 
