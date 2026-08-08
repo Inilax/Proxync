@@ -646,10 +646,9 @@ export default function App() {
     const wsId = activeWorkspace?.remoteWorkspaceId || activeWorkspaceId;
     api.domains.list(wsId)
       .then((items) => {
-        const combined = items.length > 0 ? items : (activeWorkspace?.domains || []);
-        setDomains(combined);
+        setDomains(items);
       })
-      .catch(() => setDomains(activeWorkspace?.domains || []))
+      .catch(() => setDomains([]))
       .finally(() => setLoadingDomains(false));
   }, [activeWorkspaceId, activeWorkspace?.remoteWorkspaceId]);
 
