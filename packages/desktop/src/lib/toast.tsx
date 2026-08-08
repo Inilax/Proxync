@@ -1,9 +1,11 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, ReactNode } from 'react';
 
 interface Toast {
   id: string;
-  message: string;
-  type: 'success' | 'error' | 'info';
+  message: ReactNode;
+  type: 'success' | 'error' | 'info' | 'warning';
+  /** If true, the toast will NOT auto-dismiss — must be dismissed via dismissToast() */
+  persistent?: boolean;
 }
 
 let toastListeners: ((toasts: Toast[]) => void)[] = [];
@@ -13,15 +15,24 @@ function notifyListeners() {
   toastListeners.forEach((fn) => fn([...toastQueue]));
 }
 
-export function showToast(message: string, type: Toast['type'] = 'info') {
+export function showToast(message: ReactNode, type: Toast['type'] = 'info', persistent = false): string {
   const id = Math.random().toString(36).slice(2);
-  const toast: Toast = { id, message, type };
+  const toast: Toast = { id, message, type, persistent };
   toastQueue = [...toastQueue, toast];
   notifyListeners();
-  setTimeout(() => {
-    toastQueue = toastQueue.filter((t) => t.id !== id);
-    notifyListeners();
-  }, 3500);
+  if (!persistent) {
+    setTimeout(() => {
+      toastQueue = toastQueue.filter((t) => t.id !== id);
+      notifyListeners();
+    }, 3500);
+  }
+  return id;
+}
+
+/** Programmatically remove a toast by the id returned from showToast() */
+export function dismissToast(id: string) {
+  toastQueue = toastQueue.filter((t) => t.id !== id);
+  notifyListeners();
 }
 
 export function useToasts() {

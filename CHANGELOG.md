@@ -2,8 +2,228 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/custom-domain-dns-preflight] - 2026-08-08 (Custom Domain DNS Pre-Flight Verification & Restart Persistence Fix)
+- **Feature Summary**:
+  - **Root Cause Fixed**: Resolved a silent tunnel bypass where a previously verified custom domain (`demo.clueliq.com`) would still activate a live tunnel even after its DNS TXT record was deleted from the registrar (`DNS_PROBE_FINISHED_NXDOMAIN`). The bug was a React state dependency issue — `shareProcess` used `domains.find()` against React state which could be empty (app freshly restarted) or keyed under a different workspace ID, causing the entire DNS pre-flight block to silently skip.
+  - **Restart Persistence Fix**: Fixed issue where domain verification status reverted back to verified upon app restart. Updated `api.domains.list()` to scan all `proxync_custom_domains_*` `localStorage` keys and deduplicate entries so workspace ID mismatches no longer return empty lists. Removed stale `activeWorkspace.domains` fallback in `App.tsx` domain loading effect so old workspace state blob never overrides updated `localStorage` domain verification status.
+  - **`api.domains.verifyByName()`**: New method in `api.ts` that scans ALL `localStorage` keys prefixed with `proxync_custom_domains` (not a hardcoded candidate list) to find the domain record with zero React state dependency. Performs live DNS-over-HTTPS lookup via Google DoH (`dns.google/resolve`) with Cloudflare DoH (`cloudflare-dns.com/dns-query`) as fallback. If both resolvers are unreachable (network/firewall issue), the tunnel is blocked to be safe. On DNS token mismatch or NXDOMAIN: rotates `verificationToken`, marks `verified: false` in `localStorage`, syncs state back to React and `activeWorkspace`, and surfaces an actionable toast error.
+  - **UI Navigation Bug Fixed**: Moved starter scan state setup (`setStarterSuggestions`, `setSavedRequests`, `updateActiveWorkspace`) to after the DNS pre-flight block. Previously these ran unconditionally at the top of `shareProcess`, causing the UI to navigate to the process view and show the *Import Templates* banner even when the tunnel was being blocked.
+  - **Traffic Interception Fix**: Fixed `open_tunnel` invocation to pass `proxyPort` (Rust TCP proxy port) instead of the raw `process.port`, enabling Traffic View log interception for custom domain tunnels. Fixed `tunnels.create()` to build the correct `http://domain:port` URL format.
+  - **Domain State Sync**: Improved `addDomain`, `verifyDomain`, and `removeDomain` handlers to properly sync domain state changes into `activeWorkspace` via `updateActiveWorkspace` so Settings and process views stay in sync.
+  - **Settings UX Polish**: Enter key now submits the Add Domain form. DNS configuration table polished with new `.dns-table` CSS classes. `Host`/`Value` copy buttons upgraded from `btn-ghost` to `btn-secondary`. Verify button shows dynamic `✓ Re-verify` / `Verify Domain` labels. Remove button upgraded to `btn-danger` with label `Remove Domain`.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/lib/api.ts`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/index.css`
+  - `CHANGELOG.md`
+
+## [feature/develop-0.2.0-ui-contrast-and-escape-shortcuts] - 2026-08-07 (UI Button Contrast Overhaul, Active Internet Connection Guard & Escape Shortcuts)
+- **Feature Summary**:
+  - **Button Contrast Overhaul**: Updated `--color-on-primary` and `--color-on-primary-container` theme tokens in `index.css` to `#ffffff` for high contrast text. Updated inline collection folder `Create` button styling in `PostmanView.tsx` to `text-white font-bold shadow-sm shadow-primary/25`.
+  - **Active Internet Connectivity Guard**: Added `checkRealInternetConnection()` edge ping check to prevent `cloudflared` CLI timeout delays when attempting to open cloud tunnels offline. Added `offline` and `online` event listeners with bottom-right toast notifications and added an offline callout banner inside `DomainSelectDialog`.
+  - **Global Escape Key Dismissals & Ponytail Refactoring**: Added `useEscape` custom hook in `SharedComponents.tsx` to handle Esc key dismissals across inline workspace creation (`LobbyView.tsx`), collection creation and renaming (`PostmanView.tsx`), and all modal dialogs (`Dialogs.tsx`, `App.tsx`).
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/LobbyView.tsx`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/index.css`
+  - `packages/desktop/src/lib/toast.tsx`
+  - `CHANGELOG.md`
+
+## [v0.2.0-release] - 2026-08-07 (Traffic Inspector Overhaul, Generic Replay Engine, Enterprise Tier Preview & Playground Hotkeys)
+- **Feature Summary**:
+  - **Traffic Inspector Overhaul**: Fixed React key collisions using unique UUIDs. Fixed inline dropdown auto-collapse under live traffic by tracking expansion via immutable request IDs. Solved scroll-position jumping by removing container dynamic key. Fixed status code badge updates in `App.tsx` by aligning `rawRequestId` matching. Enhanced Rust TCP and WebSocket proxy in `lib.rs` to capture and emit headers HashMap and bodyPreview.
+  - **Generic Replay Engine**: Upgraded `replayRequest` in `App.tsx` to generically execute any HTTP method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) via native Rust HTTP executor and append newly replayed packages directly to Traffic Logs. Raised modal overlay z-index to `9999` with glassmorphic backdrop blur.
+  - **Type Safety & Enterprise Preview**: Resolved `AppSettings` and `MainView` type drift in `types.ts`. Re-exported shared interfaces in `SharedComponents.tsx`. Replaced static fake API key box with Enterprise API Key Management preview card in `SettingsView.tsx`. Upgraded Account Settings to Proxync Enterprise & Cloud Sync preview card. Added Enterprise RBAC and Policy badges to Workspace Guardrails. Updated official website domain URLs across `SettingsView`, `WelcomeView`, and `DocsView` to `https://proxync.dev/`.
+  - **Playground Hotkeys & Code Generator Fix**: Added `Ctrl + /` and `Ctrl + ?` keyboard hotkey binding in Playground (`PostmanView.tsx`) displaying a glassmorphic hotkey reference modal overlay. Replaced TODO comment stub in `codeSnippetGenerator.ts` with working JSON response handler template.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/TrafficView.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/DocsView.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/lib/codeSnippetGenerator.ts`
+  - `packages/desktop/src/lib/types.ts`
+  - `packages/desktop/src/index.css`
+  - `CHANGELOG.md`
+
+## [feature/develop-playground-ux-and-context-menu-enhancements] - 2026-08-06 (Playground UX Overhaul, Glass Context Menu & Smart Banner Hiding)
+- **Feature Summary**: Expanded Collections Rail sidebar width to 280px and eliminated duplicate HTTP method badges in sidebar items. Built a custom glassmorphic right-click context menu (Rename, Copy URL, Duplicate Request, Delete) with global contextmenu suppression unless Developer Inspect Tools is enabled. Added Developer Inspect Tools toggle in Settings under Danger Zone. Centralized `HTTP_METHODS` and `stripMethodPrefix()` utility in `SharedComponents.tsx` to strip method prefixes from request titles. Added unimported endpoint deduplication to starter suggestions banner so it automatically stays hidden when all scanned endpoints are already in collections.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/lib/openApiGenerator.ts`
+  - `packages/desktop/src/lib/types.ts`
+  - `packages/desktop/src/index.css`
+  - `CHANGELOG.md`
+
+## [PR #69] - 2026-08-06 (Target Route Badge in Playground - Contributed by @slegarraga)
+- **Feature Summary**: Added a compact, pill-shaped Target Route Badge (`.route-badge`) next to the Send button in Playground request builder. Displays dynamic route target indicators (`Cloudflare Edge`, `Public Tunnel`, or `Local Loopback`) so developers immediately know whether traffic traveled through a public edge tunnel or local loopback. Upgraded design tokens across `Dialogs.tsx`, `SharedComponents.tsx`, and `index.css` to Material 3 palette tokens. Made local loopback tooltip URL 100% dynamic based on active process port.
+- **Contributor**: @slegarraga (PR #69)
+- **Modified Files**:
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/index.css`
+  - `packages/desktop/src/App.tsx`
+  - `CHANGELOG.md`
+
+## [feature/develop-workspace-activity-and-tunnel-ux-upgrades] - 2026-08-06 (Dynamic Workspace Activity, 7-Day Inactive Auto-Categorization, Custom Glass Modals & 1-Click Open in Browser)
+- **Feature Summary**: Implemented dynamic workspace activity tracking (`lastActivityAt`) with relative time formatting (`Just now`, `4m ago`, `18h ago`, `3d ago`), auto-activating on workspace selection, tunnel sharing, and HTTP traffic logs. Renamed `Archived` tab to `Inactive` with automatic 7-day inactivity filtering, auto-disappearing dormant workspaces into `Inactive` tab and restricting Provision Workspace inline card to `Active` tab. Replaced native `confirm()` on Purge All Data with glassmorphic `ConfirmPurgeDialog`. Enhanced Active Workspace selector typography and contrast. Added 1-click **Open in Browser** option to Active Tunnels three-dot menu (`⋮`) in `WelcomeView` and endpoint action tiles in `ProcessView`. Fixed horizontal icon alignment in Coming Soon modal. Renamed Postman navigation label to single-word industry-standard **Playground**.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/LobbyView.tsx`
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/lib/types.ts`
+  - `CHANGELOG.md`
+
+## [feature/develop-patch-socketio-parser-vulnerability] - 2026-08-06 (Socket.IO Vulnerability Patch & Orphaned Dependency Pruning)
+- **Feature Summary**: Resolved Dependabot security vulnerability `GHSA-2m8v-j782-fhvr` (**Socket.IO: Zero-attachment Memory Exhaustion**) and conducted full codebase audit. Completely pruned 3 orphaned, 100% unused dependencies (`socket.io-client`, `socket.io-parser`, `react-router`) from `packages/desktop/package.json` and root `package.json` overrides, removing 9 unneeded node packages. Verified via `npm audit` (0 vulnerabilities) and clean `npm run build`.
+- **Modified Files**:
+  - `package.json`
+  - `packages/desktop/package.json`
+  - `package-lock.json`
+  - `CHANGELOG.md`
+
+## [feature/main-telemetry-options] - 2026-08-06 (Persistent Telemetry System with Low-CPU Basic Mode)
+- **Feature Summary**: Fully wired persistent **Enhanced** vs **Basic** telemetry options into `AppSettings` with storage persistence. **Enhanced Mode** (default) enables full P50/P90/P99 latency calculations, route leaderboards, and bandwidth meters. **Basic Mode** bypasses array sorting (`durations.sort`) and non-fatal percentile math to minimize CPU/RAM computational overhead, logging only critical 5xx errors. Features clean inline descriptions in Settings and an active Low CPU Mode indicator banner in Observability Hub.
+- **Modified Files**:
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/components/views/ObservabilityView.tsx`
+  - `packages/desktop/src/App.tsx`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
+## [feature/main-smart-auto-update] - 2026-08-05 (Smart Version-Aware Auto-Update System)
+- **Feature Summary**: Fully wired the Settings "Automatic Updates" toggle to the real update scheduler. When **ON** (default), the app checks for updates on startup and every **2 hours**. When **OFF**, it checks only every **7 days** using a persisted timestamp. Introduced a semver `isForceUpdate()` helper: if the **minor or major** version segment increments (e.g. `1.1.x → 1.2.0`, `0.2.x → 0.3.0`), a **forced update** dialog is shown — red, persistent, no Skip or Later buttons, only "Update Now". Pure **patch-only bumps** (e.g. `1.1.4 → 1.1.6`) show the standard optional toast with Skip this version and Later. Toggle state is now persisted to `AppSettings` and survives restarts.
+- **Modified Files**:
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/package.json`
+  - `package-lock.json`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
+
+## [feature/main-observability-autostart-hub] - 2026-08-05 (Observability Hub, Auto-Start on Boot & Silent Process Spawning)
+- **Feature Summary**: Integrated zero-config Observability Hub featuring P50/P90/P99 latency analytics, status code heatmap, bandwidth meter, public Webhook stream replay, Error Center, and high-contrast theme styling for Midnight Slate and Dracula Dark. Integrated native Auto-Start on Boot functionality using `tauri-plugin-autostart` with silent process spawning on Windows (`CREATE_NO_WINDOW`).
+- **Modified Files**:
+  - `packages/desktop/src/components/views/ObservabilityView.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/components/views/SwaggerView.tsx`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/capabilities/default.json`
+  - `package-lock.json`
+  - `packages/desktop/package.json`
+  - `CHANGELOG.md`
+
+## [feature/main-observability-hub] - 2026-08-05 (Zero-Config Observability Hub, Latency Analytics & Webhook Stream)
+- **Feature Summary**: Implemented high-performance O(N) zero-config Observability Hub in `ObservabilityView.tsx` featuring percentile latency metrics (P50/P90/P99), status code distribution gauge, total bandwidth meter, shared public tunnel telemetry, public Webhook interception stream with 1-click Webhook Replay, structured Error Center eliminating terminal console log soup, slowest routes leaderboard, and 1-click debugging navigation to Traffic Inspector and Postman Studio.
+- **Modified Files**:
+  - `packages/desktop/src/components/views/ObservabilityView.tsx`
+  - `packages/desktop/src/App.tsx`
+  - `CHANGELOG.md`
+
+## [feature/develop-auto-updater] - 2026-08-04 (Production-Ready Auto Updater)
+- **Feature Summary**: Implemented a fully production-ready automatic update system using Tauri v2 native plugins (`tauri-plugin-updater`, `tauri-plugin-process`), modelled after the POSINX Electron auto-updater pattern. On startup (and every 2 hours), the app silently checks GitHub Releases for a newer version. When an update is found, a persistent non-auto-dismissing toast appears with three actions: **Update Now** (silent background download with live % progress shown on the button), **Skip this version** (version saved to `localStorage` — won't prompt again for that version), and **Later** (dismisses until next check). After downloading, a second persistent toast prompts **Restart Now** or **Later**. Upgraded `toast.tsx` to support persistent toasts with a new `dismissToast(id)` API. Updated `release.yml` GitHub Actions workflow to pass `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets to `tauri-action` with `includeUpdaterJson: true`, enabling automatic signed `updater.json` generation and upload on every release. Set real public key in `tauri.conf.json`. Added `*.key` and `*.key.pub` to `.gitignore` to protect signing keys from accidental commits.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/lib/toast.tsx`
+  - `.github/workflows/release.yml`
+  - `.gitignore`
+  - `CHANGELOG.md`
+
+
+## [fix/develop-swagger-redirection] - 2026-08-04 (Swagger Postman Export Auto-Redirection & Theme Filter Pill High-Contrast Contrast Fix)
+- **Feature Summary**: Added automatic view redirection to Postman Studio (`setMainView('postman')`) upon clicking 'Export to Postman' in Swagger Studio. Fixed active tag filter pill text contrast across Dracula Dark, Midnight, Cyberpunk, and all themes by setting bright white bold text (`text-white font-bold shadow-md shadow-primary/25`).
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/SwaggerView.tsx`
+  - `README.md`
+  - `CHANGELOG.md`
+
+
+## [fix/develop-postman-response-and-decompression] - 2026-08-04 (Postman Response Payload Decompression & Native Execution Fix)
+- **Feature Summary**: Resolved empty HTTP response payload issue in Postman Studio when requesting Cloudflare Tunnels or relative endpoints. Added gzip, deflate, and brotli automatic decompression features to reqwest in `Cargo.toml`, updated `Cargo.lock`, set desktop User-Agent header in Rust native HTTP executor (`lib.rs`), and bypassed offline mock response handler.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `CHANGELOG.md`
+
+
+## [feature/develop-swagger-generator] - 2026-08-04 (Automatic OpenAPI Spec Generator, Multi-Framework Codebase Scanner & Swagger Studio UX Overhaul)
+- **Feature Summary**: Implemented an automatic multi-framework codebase route scanner (Express, Fastify, Next.js, NestJS, FastAPI, Spring Boot, Go) and manual on-demand OpenAPI 3.0 spec generation engine. Added traffic-driven JSON schema inferrer, framework code annotation generator ('Add to Codebase' snippet tab for NestJS, Express JSDoc, FastAPI, Spring Boot, Go), 2-way Postman collection export/import, and redesigned Swagger Studio UX with search filtering, endpoint drawers, parameter tables, raw JSON/YAML views, and spec downloads.
+- **Modified Files**:
+  - `packages/desktop/src/lib/codebaseScanner.ts`
+  - `packages/desktop/src/lib/openApiGenerator.ts`
+  - `packages/desktop/src/lib/codeSnippetGenerator.ts`
+  - `packages/desktop/src/lib/types.ts`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/components/views/SwaggerView.tsx`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/App.tsx`
+  - `CHANGELOG.md`
+
+## [v0.2.0-dev] - 2026-08-03 (Postman Studio Redesign, Hotkeys & Developer UX Refresh)
+- **Feature Summary**: Redesigned Postman Studio (`PostmanView.tsx`) with static collection tree ordering, inline folder renaming/deletion, custom collection hotkeys (`Ctrl+Enter` to Send, `Ctrl+S` to Save directly to selected collection), inline Response tab, native Rust HTTP executor (`execute_http_request`) to bypass CORS, and Windows console signal handler (`SetConsoleCtrlHandler`). Bumped application version to `0.2.0` across workspace manifests (`package.json`, `packages/desktop/package.json`, `tauri.conf.json`, `Cargo.toml`, `Cargo.lock`, `package-lock.json`, and `.agents/architecture.json`). Established application-wide `Nunito Sans` font typography system in `assets/typography.css`. Redesigned `DocsView.tsx` into a clean 2-column documentation hub with direct portal links to `https://proxync.dev/docs`.
+- **Modified Files**:
+  - `package.json`
+  - `package-lock.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/index.css`
+  - `packages/desktop/src/assets/typography.css`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/components/views/DocsView.tsx`
+  - `.agents/architecture.json`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
 ## [v0.1.8] - 2026-08-02 (PostCSS Security Patch & Version Bump)
 - **Feature Summary**: Patched Dependabot security vulnerability by upgrading `postcss` from `8.5.16` to `8.5.25` and `nanoid` from `3.3.15` to `3.3.16` in `package-lock.json`. Bumped version to `0.1.8` across root `package.json`, `packages/desktop/package.json`, `tauri.conf.json`, `Cargo.toml`, and `.agents/architecture.json`.
+- **Modified Files**:
+  - `package.json`
+  - `package-lock.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `.agents/architecture.json`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
+## [feature/main-fix-postcss-vulnerability] - 2026-08-01 (PostCSS Security Patch)
+- **Feature Summary**: Patched Dependabot security vulnerability by upgrading `postcss` from `8.5.16` to `8.5.25` and `nanoid` from `3.3.15` to `3.3.16` in `package-lock.json`.
 - **Modified Files**:
   - `package.json`
   - `package-lock.json`

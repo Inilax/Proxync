@@ -4,114 +4,35 @@
  * Extracted from the App.tsx monolith and redesigned.
  */
 
+/* ────────────────── Shared Constants & Utilities ────────────────── */
+
+export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
+
+const METHOD_PREFIX_REGEX = new RegExp(`^(${HTTP_METHODS.join('|')})\\s+`, 'i');
+
+export function stripMethodPrefix(name: string): string {
+  if (!name) return '';
+  return name.replace(METHOD_PREFIX_REGEX, '').trim();
+}
+
 /* ────────────────── Shared Types ────────────────── */
 
-export interface ProcessCandidate {
-  id: string;
-  name: string;
-  port: number;
-  pid?: number;
-  command?: string;
-  directory?: string;
-  executable?: string;
-  framework?: string;
-  access: 'ready' | 'limited' | 'unknown';
-  uptime?: string;
-}
+export type {
+  ProcessCandidate,
+  Tunnel,
+  RequestLog,
+  SavedRequest,
+  PostmanResponse,
+  Guardrails,
+  ProcessProfile,
+  WorkspaceConfig,
+  AppSettings,
+  DomainRecord,
+  MainView,
+  SwaggerPanel,
+} from '../../lib/types';
 
-export interface Tunnel {
-  id: string;
-  publicUrl: string;
-  localPort: number;
-  status: string;
-  subdomain?: string;
-  createdAt?: string;
-}
-
-export interface RequestLog {
-  id: string;
-  method: string;
-  path: string;
-  status?: number | string;
-  durationMs?: number | null;
-  headers?: Record<string, string>;
-  bodyPreview?: string;
-  responseHeaders?: Record<string, string>;
-  capturedAt?: string;
-}
-
-export interface SavedRequest {
-  id: string;
-  name: string;
-  method: string;
-  path: string;
-  headers: Record<string, string>;
-  body: string;
-  source: 'manual' | 'starter-scan' | 'captured';
-}
-
-export interface PostmanResponse {
-  status: number;
-  duration: number;
-  headers: Record<string, string>;
-  body: string;
-}
-
-export interface DomainRecord {
-  id: string;
-  name: string;
-  verificationToken: string;
-  verified: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ProcessProfile {
-  id: string;
-  processName: string;
-  port: number;
-  framework: string;
-  languageHint: string;
-  command: string;
-  directory: string;
-  executable: string;
-  lastSharedAt?: string;
-  lastTunnelUrl?: string;
-  starterRequestCount: number;
-}
-
-export interface WorkspaceConfig {
-  id: string;
-  name: string;
-  remoteWorkspaceId?: string;
-  profiles: ProcessProfile[];
-  savedRequests: SavedRequest[];
-  capturedRequests: RequestLog[];
-  domains: DomainRecord[];
-  languageHint: string;
-  selectedProfileId?: string;
-  lastSwaggerGeneratedAt?: string;
-  projectRootPath: string;
-  scannedFiles: string[];
-  notes: string;
-}
-
-export interface AppSettings {
-  defaultProjectRootPath: string;
-  notes: string;
-}
-
-export type MainView =
-  | 'lobby'
-  | 'welcome'
-  | 'process'
-  | 'traffic'
-  | 'postman'
-  | 'swagger'
-  | 'settings';
-
-export type SwaggerPanel = 'preview' | 'json';
-export type PanelView = null; // Companions removed
+export type PanelView = 'chat' | 'voice' | null;
 
 /* ────────────────── SVG Icons ────────────────── */
 
@@ -273,7 +194,52 @@ export function InfoTile({
   );
 }
 
-/* CompanionPanel removed */
+import { useEffect } from 'react';
+
+/** ponytail: Reusable hook for Escape key dismissals across dialogs & forms */
+export function useEscape(onClose: () => void, active = true) {
+  useEffect(() => {
+    if (!active) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, active]);
+}
+
+/* ────────────────── Companion Panel ────────────────── */
+
+export function CompanionPanel({
+  panel,
+  onClose,
+}: {
+  panel: Exclude<PanelView, null>;
+  onClose: () => void;
+}) {
+  useEscape(onClose);
+
+  return (
+    <aside className="companion-panel">
+      <header>
+        <strong>{panel === 'chat' ? 'General chat' : 'Voice room'}</strong>
+        <button onClick={onClose} className="icon-btn">{Icons.x}</button>
+      </header>
+      {panel === 'chat' ? (
+        <div className="companion-empty">
+          Workspace chat will attach to the selected project profile in the next
+          collaboration pass.
+        </div>
+      ) : (
+        <div className="voice-box">
+          <button>Mute</button>
+          <button>Deafen</button>
+          <p>No participants yet.</p>
+        </div>
+      )}
+    </aside>
+  );
+}
 
 /* ────────────────── Utility Functions ────────────────── */
 
@@ -298,5 +264,47 @@ export function parseHeaderText(value: string): Record<string, string> {
         if (separator === -1) return [line, ''];
         return [line.slice(0, separator).trim(), line.slice(separator + 1).trim()];
       }),
+  );
+}
+
+export function SignalBars({ latency }: { latency: number }) {
+  let activeBars = 0;
+  let barColor = 'var(--color-on-surface-variant)';
+  
+  if (latency < 50) {
+    activeBars = 4;
+    barColor = '#10B981'; // Green
+  } else if (latency < 150) {
+    activeBars = 3;
+    barColor = '#34D399'; // Teal/Light Green
+  } else if (latency < 300) {
+    activeBars = 2;
+    barColor = '#F5B04A'; // Amber/Orange
+  } else if (latency < Infinity) {
+    activeBars = 1;
+    barColor = '#FF7180'; // Red
+  }
+
+  return (
+    <div 
+      style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: '14px', width: '18px' }} 
+      title={latency === Infinity ? 'Unreachable' : `${Math.round(latency)}ms`}
+    >
+      {[1, 2, 3, 4].map((bar) => {
+        const isActive = bar <= activeBars;
+        return (
+          <div
+            key={bar}
+            style={{
+              width: '3px',
+              height: `${bar * 25}%`,
+              background: isActive ? barColor : 'rgba(255,255,255,0.15)',
+              borderRadius: '1px',
+              transition: 'background 0.3s ease'
+            }}
+          />
+        );
+      })}
+    </div>
   );
 }

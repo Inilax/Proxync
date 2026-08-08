@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Proxync",
-  "version": "0.1.8",
+  "version": "0.2.0",
   "identifier": "com.proxync.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -14,7 +14,8 @@
       {
         "title": "Proxync",
         "width": 800,
-        "height": 600
+        "height": 600,
+        "decorations": false
       }
     ],
     "security": {
@@ -44,6 +45,14 @@
         "headerImage": "icons/nsis-header.bmp",
         "sidebarImage": "icons/nsis-sidebar.bmp"
       }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/Inilax/Proxync/releases/latest/download/updater.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE3MTlEODBGOUQ4OUU2NkMKUldSczVvbWREOWdaRjlEaGthd2d5czRRVEpHNWxnVmMzbDNndm9VZEplVis4dTR0ZlJ0M3FtWTAK"
     }
   }
 }
