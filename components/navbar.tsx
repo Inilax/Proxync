@@ -61,7 +61,7 @@ export function Navbar() {
 
     const compute = () => {
       if (window.scrollY < 120) {
-        setActiveSection(null);
+        setActiveSection("product");
         return;
       }
 
