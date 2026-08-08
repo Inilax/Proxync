@@ -44,7 +44,7 @@ export function AppMockup() {
             <span className="h-3 w-3 rounded-full bg-[#28c840]" />
           </div>
 
-          <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 font-mono text-xs font-bold text-on-surface-variant flex items-center gap-2">
+          <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 font-mono text-xs font-bold text-on-surface-variant hidden md:flex items-center gap-2">
             <Radio className="h-3.5 w-3.5 text-primary" />
             Proxync — Network Hub &amp; Developer Studio
           </div>
@@ -81,7 +81,7 @@ export function AppMockup() {
         </div>
 
         {/* Main Body */}
-        <div className="flex min-h-[540px]">
+        <div className="relative flex min-h-[420px] sm:min-h-[540px]">
           <Sidebar active={active} onSelect={setActive} />
 
           <div className="min-w-0 flex-1 flex flex-col justify-between bg-surface-container-lowest overflow-hidden">

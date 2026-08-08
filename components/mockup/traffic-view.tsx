@@ -96,9 +96,9 @@ export function TrafficView() {
             ))}
           </div>
 
-          <div className="border-t border-outline-variant/20 bg-surface-container-low px-3 py-1.5 font-mono text-[10px] text-outline flex items-center justify-between">
-            <span>5 requests intercepted on port 5173</span>
-            <span className="text-secondary font-bold">● Live Request Inspector Active</span>
+          <div className="border-t border-outline-variant/20 bg-surface-container-low px-3 py-1.5 font-mono text-[10px] text-outline flex items-center justify-between gap-2">
+            <span className="truncate">5 requests intercepted on port 5173</span>
+            <span className="hidden md:inline text-secondary font-bold shrink-0">● Live Inspector Active</span>
           </div>
         </div>
       </div>

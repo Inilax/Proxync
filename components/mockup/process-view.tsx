@@ -6,7 +6,7 @@ import { PROCESSES, TUNNEL_URL } from "./types";
 export function ProcessView() {
   return (
     <div className="p-5 space-y-4 fade-in select-none">
-      <div className="flex items-center justify-between border-b border-outline-variant/30 pb-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-outline-variant/30 pb-3 gap-2">
         <div>
           <h1 className="text-lg font-bold text-on-surface">Tunnels &amp; Process Recon</h1>
           <p className="text-xs text-on-surface-variant font-mono mt-0.5">
@@ -15,7 +15,7 @@ export function ProcessView() {
         </div>
         <button
           type="button"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant/40 bg-surface-container px-3 py-1.5 font-mono text-xs font-bold text-on-surface hover:bg-surface-container-high transition-all cursor-pointer"
+          className="self-start sm:self-auto inline-flex items-center gap-1.5 rounded-lg border border-outline-variant/40 bg-surface-container px-3 py-1.5 font-mono text-xs font-bold text-on-surface hover:bg-surface-container-high transition-all cursor-pointer shrink-0"
         >
           <RefreshCw className="h-3.5 w-3.5 text-primary" />
           Rescan Ports

@@ -5,4 +5,6 @@ export const DOWNLOAD_URL = DEFAULT_RELEASE.downloadUrl;
 export const LATEST_TAG_URL = DEFAULT_RELEASE.releaseUrl;
 export const CURRENT_VERSION = DEFAULT_RELEASE.version;
 export const CURRENT_TAG = DEFAULT_RELEASE.tagName;
+export const INILAX_URL = "https://inilax.com";
+
 

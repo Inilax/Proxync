@@ -84,7 +84,7 @@ export function WelcomeView({
             <span className="font-mono text-xs font-bold uppercase tracking-wider text-on-surface">Active Workspace Tunnels</span>
             <span className="font-mono text-[10px] text-tertiary font-bold">1 Active Tunnel</span>
           </div>
-          <div className="mt-2.5 flex items-center justify-between rounded-xl border border-outline-variant/30 bg-surface-container-low p-3">
+          <div className="mt-2.5 flex flex-col sm:flex-row sm:items-center justify-between rounded-xl border border-outline-variant/30 bg-surface-container-low p-3 gap-2">
             <div className="flex items-center gap-3 min-w-0">
               <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
                 <Globe className="h-4 w-4" />
@@ -147,25 +147,25 @@ export function WelcomeView({
 
       {/* Live Engine Terminal Console Panel — FLUSH ATTACHED DIRECTLY ON TOP OF STATUS BAR (ZERO BOTTOM GAP) */}
       {showConsole && (
-        <div className="-mx-5 border-t border-outline-variant/30 bg-black/95 p-4 font-mono text-[11px] space-y-1 select-text mt-4 fade-in">
-          <div className="flex items-center justify-between text-outline text-[10px] font-bold uppercase tracking-wider pb-1.5 border-b border-white/10 mb-1.5">
-            <div className="flex items-center gap-1.5 text-primary">
-              <Terminal className="h-3.5 w-3.5" />
-              <span>Proxync Engine Log &amp; Network Terminal Stream</span>
+        <div className="-mx-5 border-t border-outline-variant/30 bg-black/95 p-4 font-mono text-[11px] space-y-1 select-text mt-4 fade-in overflow-x-hidden">
+          <div className="flex flex-wrap items-center justify-between text-outline text-[10px] font-bold uppercase tracking-wider pb-1.5 border-b border-white/10 mb-1.5 gap-x-3 gap-y-1">
+            <div className="flex items-center gap-1.5 text-primary min-w-0">
+              <Terminal className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">Proxync Engine Log &amp; Network Terminal Stream</span>
             </div>
             <button
               type="button"
               onClick={onToggleConsole}
-              className="text-secondary font-bold hover:underline cursor-pointer"
+              className="text-secondary font-bold hover:underline cursor-pointer shrink-0"
             >
-              ● Live Monitoring (Port :5173) — Click to Hide
+              ● Live — Click to Hide
             </button>
           </div>
-          <div className="text-secondary"><span className="text-outline">[17:18:02]</span> <span className="font-bold">INFO</span> TCP Proxy Forwarder listening on 127.0.0.1:5173 -&gt; Cloudflare Edge</div>
-          <div className="text-tertiary"><span className="text-outline">[17:18:04]</span> <span className="font-bold">200 OK</span> GET /api/v1/users (14ms · 248 B)</div>
-          <div className="text-primary"><span className="text-outline">[17:18:05]</span> <span className="font-bold">201 CREATED</span> POST /api/v1/session (42ms · 512 B)</div>
-          <div className="text-tertiary"><span className="text-outline">[17:18:08]</span> <span className="font-bold">200 OK</span> GET /api/v1/health (2ms · 42 B)</div>
-          <div className="text-error"><span className="text-outline">[17:18:11]</span> <span className="font-bold">404 NOT FOUND</span> DELETE /api/v1/users/42 (11ms · 0 B)</div>
+          <div className="text-secondary truncate"><span className="text-outline">[17:18:02]</span> <span className="font-bold">INFO</span> TCP Proxy Forwarder → 127.0.0.1:5173 → Cloudflare Edge</div>
+          <div className="text-tertiary truncate"><span className="text-outline">[17:18:04]</span> <span className="font-bold">200 OK</span> GET /api/v1/users (14ms · 248 B)</div>
+          <div className="text-primary truncate"><span className="text-outline">[17:18:05]</span> <span className="font-bold">201 CREATED</span> POST /api/v1/session (42ms · 512 B)</div>
+          <div className="text-tertiary truncate"><span className="text-outline">[17:18:08]</span> <span className="font-bold">200 OK</span> GET /api/v1/health (2ms · 42 B)</div>
+          <div className="text-error truncate"><span className="text-outline">[17:18:11]</span> <span className="font-bold">404 NOT FOUND</span> DELETE /api/v1/users/42 (11ms · 0 B)</div>
         </div>
       )}
     </div>

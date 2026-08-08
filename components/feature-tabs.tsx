@@ -70,18 +70,18 @@ function Bullets({ items }: { items: string[] }) {
 
 function TunnelsMockup() {
   return (
-    <div className="flex min-h-[260px] flex-col justify-center rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-4">
-      <div className="flex items-center gap-2 font-mono text-[11px] tracking-wide text-on-surface-muted">
-        <span className="h-2 w-2 rounded-full bg-tertiary animate-pulse-dot" />
-        cloudflared tunnel · running
+    <div className="flex min-h-[260px] w-full min-w-0 flex-col justify-center rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-4 sm:p-5">
+      <div className="flex items-center gap-2 font-mono text-[11px] tracking-wide text-on-surface-muted min-w-0">
+        <span className="h-2 w-2 shrink-0 rounded-full bg-tertiary animate-pulse-dot" />
+        <span className="truncate">cloudflared tunnel · running</span>
       </div>
-      <div className="mt-3 truncate font-mono text-sm font-semibold text-primary md:text-base">
+      <div className="mt-3 font-mono text-xs font-semibold text-primary break-all sm:text-sm md:text-base max-w-full leading-tight">
         https://proxync-1cf8-7a4e.trycloudflare.com
       </div>
       <div className="mt-2 font-mono text-[11px] tracking-wide text-on-surface-muted">
         1,284 req · 40 req/min
       </div>
-      <div className="mt-5 flex items-center justify-between">
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-on-surface-muted">
             Live
@@ -303,8 +303,8 @@ export function FeatureTabs() {
           description="Tunnels, traffic, requests, and docs — engineered as one continuous workflow."
         />
 
-        <div className="mt-10 flex justify-center">
-          <div className="inline-flex rounded-lg border border-outline-variant/40 bg-surface-container-low p-1">
+        <div className="mt-10 flex justify-center w-full min-w-0">
+          <div className="inline-flex max-w-full overflow-x-auto rounded-lg border border-outline-variant/40 bg-surface-container-low p-1 scrollbar-none">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = active === tab.id;
@@ -320,13 +320,13 @@ export function FeatureTabs() {
                     }
                   }}
                   className={cn(
-                    "flex items-center gap-2 rounded-md px-4 py-2 text-sm transition-colors",
+                    "flex shrink-0 items-center gap-1.5 sm:gap-2 rounded-md px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm transition-colors",
                     isActive
                       ? "bg-primary font-medium text-on-primary"
                       : "text-on-surface-muted hover:text-on-surface",
                   )}
                 >
-                  <Icon size={15} strokeWidth={2} />
+                  <Icon size={15} strokeWidth={2} className="shrink-0" />
                   {tab.label}
                 </button>
               );
@@ -334,8 +334,8 @@ export function FeatureTabs() {
           </div>
         </div>
 
-        <div className="mt-8">
-          <div className="glass rounded-2xl border border-outline-variant/30 p-6 shadow-card md:p-10">
+        <div className="mt-8 w-full min-w-0">
+          <div className="glass rounded-2xl border border-outline-variant/30 p-4 sm:p-6 shadow-card md:p-10 min-w-0 overflow-hidden">
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={active}
@@ -343,27 +343,29 @@ export function FeatureTabs() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -12 }}
                 transition={{ duration: 0.25, ease: "easeOut" }}
-                className="grid gap-8 lg:grid-cols-2 lg:items-center"
+                className="grid gap-8 lg:grid-cols-2 lg:items-center min-w-0"
               >
-                <div className="flex flex-col justify-center">
+                <div className="flex flex-col justify-center min-w-0">
                   <Bullets items={bullets[active]} />
                 </div>
-                <Mockup id={active} />
+                <div className="min-w-0 w-full">
+                  <Mockup id={active} />
+                </div>
               </motion.div>
             </AnimatePresence>
           </div>
         </div>
 
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-2 min-w-0">
           {chips.map((chip) => {
             const Icon = chip.icon;
             return (
               <span
                 key={chip.label}
-                className="inline-flex items-center gap-2 rounded-full border border-outline-variant/40 bg-surface-container-low px-4 py-2 font-mono text-xs text-on-surface-variant"
+                className="inline-flex max-w-full items-center gap-2 rounded-full border border-outline-variant/40 bg-surface-container-low px-3.5 py-1.5 sm:px-4 sm:py-2 font-mono text-[11px] sm:text-xs text-on-surface-variant"
               >
-                <Icon size={13} />
-                {chip.label}
+                <Icon size={13} className="shrink-0" />
+                <span className="truncate">{chip.label}</span>
               </span>
             );
           })}

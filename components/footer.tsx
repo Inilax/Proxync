@@ -1,7 +1,7 @@
 import { Zap } from "lucide-react";
 import { Container } from "@/components/ui";
 import { LogoMark } from "@/components/logo";
-import { GITHUB_URL } from "@/lib/links";
+import { GITHUB_URL, INILAX_URL } from "@/lib/links";
 
 type FooterLink = { label: string; href: string; external?: boolean };
 type FooterColumn = { title: string; links: FooterLink[] };
@@ -30,6 +30,7 @@ const linkColumns: FooterColumn[] = [
   {
     title: "Company",
     links: [
+      { label: "Inilax", href: INILAX_URL, external: true },
       { label: "About", href: "/docs" },
       // { label: "Blog", href: "#" },
       { label: "Privacy Policy", href: "/privacy" },
@@ -37,6 +38,7 @@ const linkColumns: FooterColumn[] = [
     ],
   },
 ];
+
 
 function Logo() {
   return (
@@ -93,7 +95,16 @@ export function Footer() {
       <div className="border-t border-outline-variant/20">
         <Container className="flex flex-col items-center justify-between gap-4 py-6 md:flex-row">
           <p className="font-mono text-xs text-outline">
-            &copy; 2026 Proxync. Built with ❤️ by <span className="font-semibold text-on-surface">Inilax</span>.
+            &copy; 2026 Proxync. Built with ❤️ by{" "}
+            <a
+              href={INILAX_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-on-surface hover:text-primary transition-colors underline decoration-outline-variant/40 underline-offset-4 hover:decoration-primary"
+            >
+              Inilax
+            </a>
+            .
           </p>
           <span className="inline-flex items-center gap-2 rounded-full bg-surface-container-high px-4 py-1.5 font-mono text-[11px] text-on-surface">
             <Zap className="h-3.5 w-3.5 text-tertiary" />
