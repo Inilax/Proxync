@@ -24,7 +24,7 @@ export function Hero() {
         : "…";
 
   return (
-    <section id="hero" className="relative overflow-hidden pb-32 pt-40">
+    <section id="product" className="relative overflow-hidden pb-32 pt-40 scroll-mt-24">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 bg-grid mask-fade-b"
@@ -105,7 +105,7 @@ export function Hero() {
           </div>
         </div>
 
-        <div id="product" className="relative mt-16 w-full animate-fade-up scroll-mt-24 [animation-delay:480ms]">
+        <div className="relative mt-16 w-full animate-fade-up scroll-mt-24 [animation-delay:480ms]">
           {/* Floating Glass Badges */}
           <div className="glass absolute -top-5 right-4 z-20 hidden animate-float items-center gap-2 rounded-full border border-primary/30 bg-surface-container-low/90 px-3.5 py-2 font-mono text-[11px] text-on-surface-variant shadow-xl backdrop-blur-md md:flex lg:-right-8">
             <Cloud className="h-3.5 w-3.5 text-primary" />
