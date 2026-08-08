@@ -64,7 +64,7 @@ export function Testimonials() {
             <Reveal key={t.name} delay={i * 0.1} className="h-full">
               <div className="glass relative flex h-full flex-col gap-4 rounded-xl p-6">
                 <Quote
-                  className="absolute right-5 top-5 h-14 w-14 text-primary/15"
+                  className="absolute right-4 top-4 h-8 w-8 text-primary/15 sm:right-5 sm:top-5 sm:h-10 sm:w-10 md:h-12 md:w-12"
                   aria-hidden="true"
                 />
                 <Stars />
@@ -87,7 +87,7 @@ export function Testimonials() {
           <Reveal delay={0.4} className="md:col-span-2 lg:col-span-3">
             <div className="glass relative flex flex-col gap-8 rounded-xl p-6 md:flex-row md:items-center md:justify-between md:p-8">
               <Quote
-                className="absolute right-6 top-6 h-20 w-20 text-primary/15"
+                className="absolute right-4 top-4 h-8 w-8 text-primary/15 sm:right-6 sm:top-6 sm:h-10 sm:w-10 md:h-12 md:w-12"
                 aria-hidden="true"
               />
               <div className="relative flex max-w-2xl flex-col gap-4">
