@@ -2,6 +2,21 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/footer-responsiveness-and-version-bump] - 2026-08-10 (Status Footer Responsiveness Fix & Release Version Bump to v0.2.1)
+- **Feature Summary**:
+  - **Status Footer Responsiveness**: Fixed fixed-positioning gaps and text overlapping issues on narrow viewports in `App.tsx` and `index.css`. Added `@media (max-width: 820px)` rule setting `.app-footer` and `.output-console-dock` to `left: 0 !important` when the sidebar slides offscreen. Added smooth transition (`left 200ms ease`), `overflow-hidden`, and `whitespace-nowrap` to prevent vertical line clipping. Added responsive truncation for active tunnel URLs and responsive visibility breakpoints (`hidden sm:inline`, `hidden md:inline`) for latency, encoding, and console text labels.
+  - **Release Version Bump**: Bumped release version from `0.2.0` to `0.2.1` across workspace manifests (`package.json`, `packages/desktop/package.json`, `package-lock.json`, `Cargo.toml`, `tauri.conf.json`), Rust HTTP client `User-Agent` (`lib.rs`), sidebar badge (`App.tsx`), and architecture reference map (`.agents/architecture.json`).
+- **Modified Files**:
+  - `package.json`
+  - `package-lock.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/index.css`
+  - `CHANGELOG.md`
+
 ## [fix/custom-domain-dns-preflight] - 2026-08-08 (Custom Domain DNS Pre-Flight Verification & Restart Persistence Fix)
 - **Feature Summary**:
   - **Root Cause Fixed**: Resolved a silent tunnel bypass where a previously verified custom domain (`demo.clueliq.com`) would still activate a live tunnel even after its DNS TXT record was deleted from the registrar (`DNS_PROBE_FINISHED_NXDOMAIN`). The bug was a React state dependency issue — `shareProcess` used `domains.find()` against React state which could be empty (app freshly restarted) or keyed under a different workspace ID, causing the entire DNS pre-flight block to silently skip.

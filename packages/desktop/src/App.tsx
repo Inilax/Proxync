@@ -1440,7 +1440,7 @@ export default function App() {
         <aside className="app-sidebar w-[260px] min-w-[260px] flex flex-col py-4 bg-surface-container-low border-r border-outline-variant z-40">
           <div className="px-6 mb-6">
             <h2 className="text-headline-sm font-bold text-primary">Proxync Engine</h2>
-            <p className="text-code-sm text-on-surface-variant opacity-60">v0.2.0-stable</p>
+            <p className="text-code-sm text-on-surface-variant opacity-60">v0.2.1-stable</p>
           </div>
 
           {/* Active Workspace Selector Section */}
@@ -1706,28 +1706,36 @@ export default function App() {
       </div>
 
       {/* ── Bottom Status Footer (24px) ── */}
-      <footer className="app-footer h-6 min-h-6 w-full flex justify-between items-center px-3 border-t border-outline-variant bg-surface-container-lowest text-code-sm select-none z-50">
-        <div className="flex items-center gap-4 text-secondary">
-          <span className="flex items-center gap-1">
-            <span className={`w-2 h-2 rounded-full ${activeTunnel ? 'bg-primary animate-pulse' : 'bg-outline'}`} />
-            {activeTunnel ? `Connected: ${new URL(activeTunnel.publicUrl).hostname}` : 'Disconnected'}
+      <footer className="app-footer h-6 min-h-6 w-full flex justify-between items-center px-3 border-t border-outline-variant bg-surface-container-lowest text-code-sm select-none z-50 overflow-hidden whitespace-nowrap">
+        <div className="flex items-center gap-2 sm:gap-3 text-secondary min-w-0 overflow-hidden shrink">
+          <span className="flex items-center gap-1.5 min-w-0 shrink truncate">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${activeTunnel ? 'bg-primary animate-pulse' : 'bg-outline'}`} />
+            <span className="truncate max-w-[130px] sm:max-w-[240px] md:max-w-[360px] lg:max-w-none">
+              {activeTunnel ? `Connected: ${new URL(activeTunnel.publicUrl).hostname}` : 'Disconnected'}
+            </span>
           </span>
-          <span className="text-outline">|</span>
-          <span className="hover:text-primary cursor-default transition-colors">Port {activeTunnel?.localPort ?? '—'}</span>
-          <span className="hover:text-primary cursor-default transition-colors">Latency: 14ms</span>
+          <span className="text-outline/50 shrink-0">|</span>
+          <span className="hover:text-primary cursor-default transition-colors shrink-0">
+            Port {activeTunnel?.localPort ?? '—'}
+          </span>
+          <span className="text-outline/50 shrink-0 hidden sm:inline">|</span>
+          <span className="hover:text-primary cursor-default transition-colors shrink-0 hidden sm:inline">
+            Latency: 14ms
+          </span>
 
-          <span className="text-outline">|</span>
+          <span className="text-outline/50 shrink-0">|</span>
           <button
             onClick={() => setTerminalOpen(!terminalOpen)}
-            className={`flex items-center gap-1 cursor-pointer transition-colors px-2 py-0.5 rounded ${terminalOpen ? 'bg-primary/20 text-primary font-bold' : 'hover:text-primary text-outline'
+            className={`flex items-center gap-1 cursor-pointer transition-colors px-1.5 py-0.5 rounded shrink-0 ${terminalOpen ? 'bg-primary/20 text-primary font-bold' : 'hover:text-primary text-outline'
               }`}
+            title="Toggle Console Dock"
           >
             <span className="material-symbols-outlined text-[14px]">terminal</span>
-            Console
+            <span className="hidden sm:inline">Console</span>
           </button>
         </div>
-        <div className="flex items-center gap-4 text-on-surface-variant opacity-60">
-          <span>Encoding: UTF-8</span>
+        <div className="flex items-center gap-2 sm:gap-4 text-on-surface-variant opacity-60 shrink-0 ml-2">
+          <span className="hidden md:inline">Encoding: UTF-8</span>
           <span className="text-primary font-bold">{bootstrapError ? 'OFFLINE' : 'STABLE'}</span>
         </div>
       </footer>
