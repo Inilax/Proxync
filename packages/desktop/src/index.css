@@ -310,6 +310,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   width: auto !important;
   height: var(--spacing-footer);
   box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.018);
+  transition: left 200ms ease;
 }
 
 .app-footer span {
@@ -905,6 +906,8 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   .app-sidebar.open { transform: translateX(0); }
   .app-shell { grid-template-columns: 1fr; }
   .app-header { padding-left: 12px; }
+  .app-footer { left: 0 !important; }
+  .output-console-dock { left: 0 !important; }
 }
 
 @media (max-width: 768px) {
