@@ -262,9 +262,6 @@ export default function App() {
   const LAST_UPDATE_CHECK_KEY = 'proxync_last_update_check_ts';
 
   // ── Semver Force-Update Helper ────────────────────────────────────
-  // Returns true when the minor OR major segment increments, which is
-  // considered a "new iteration" requiring a forced update.
-  // Patch-only bumps (1.1.4 → 1.1.6) are optional (non-forced).
   function isForceUpdate(current: string, next: string): boolean {
     const parse = (v: string) => v.split('.').map(Number);
     const [curMajor, curMinor] = parse(current);
@@ -272,16 +269,37 @@ export default function App() {
     return nxtMajor > curMajor || nxtMinor > curMinor;
   }
 
+  // ── Emergency Security / CVE Update Detection Helper ──────────────
+  // Detects explicit [SECURITY-CVE] tag in GitHub release notes or critical flag
+  function isCriticalSecurityUpdate(update: any): boolean {
+    if (!update) return false;
+    if (update.critical === true || update.cve === true) return true;
+    const body = (update.body || '').toUpperCase();
+    return (
+      body.includes('[SECURITY-CVE]') ||
+      body.includes('[TYPE: CVE-PATCH]') ||
+      body.includes('[CVE-') ||
+      body.includes('[CVE]') ||
+      body.includes('SECURITY ADVISORY')
+    );
+  }
+
   useEffect(() => {
     let mounted = true;
     let updaterInterval: ReturnType<typeof setInterval> | null = null;
 
-    async function runUpdateCheck() {
+    async function runUpdateCheck(isStartupCheck = false) {
       try {
         const update = await check();
         if (!mounted || !update) return;
 
-        const forced = isForceUpdate(update.currentVersion, update.version);
+        const isCVE = isCriticalSecurityUpdate(update);
+        const forced = isCVE || isForceUpdate(update.currentVersion, update.version);
+
+        // Standard Feature Release: Respect autoUpdate preference on startup if not forced/CVE
+        if (!forced && !appSettings.autoUpdate && isStartupCheck) {
+          return;
+        }
 
         // Skip logic only applies to non-forced (patch-only) updates
         if (!forced) {
@@ -293,10 +311,13 @@ export default function App() {
           // ── FORCE UPDATE TOAST ── No Skip, No Later ────────────────
           const forceToastId = showToast(
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ fontWeight: 700, fontSize: '1em' }}>⚠️ Required Update v{update.version}</div>
+              <div style={{ fontWeight: 700, fontSize: '1em' }}>
+                {isCVE ? `🛡️ Required Security Update v${update.version}` : `⚠️ Required Update v${update.version}`}
+              </div>
               <div style={{ fontSize: '0.82em', opacity: 0.85, lineHeight: 1.4 }}>
-                This is a major release update and is required to continue using Proxync.
-                Please update now.
+                {isCVE
+                  ? `A critical security update (v${update.version}) is required to continue using Proxync securely. Please update now.`
+                  : `This release (v${update.version}) is required to continue using Proxync. Please update now.`}
               </div>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 <button
@@ -441,22 +462,24 @@ export default function App() {
     }
 
     // ── Schedule update checks based on autoUpdate setting ────────
+    // Startup pre-flight check runs unconditionally for CVE security radar
+    void runUpdateCheck(true);
+
     if (appSettings.autoUpdate) {
-      // Auto-update ON: check on startup + every 2 hours
-      runUpdateCheck();
-      updaterInterval = setInterval(runUpdateCheck, 2 * 60 * 60 * 1000);
+      // Auto-update ON: check periodically every 2 hours
+      updaterInterval = setInterval(() => { void runUpdateCheck(false); }, 2 * 60 * 60 * 1000);
     } else {
-      // Auto-update OFF: only check every 7 days
+      // Auto-update OFF: check every 7 days as background fallback
       const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
       const lastCheck = parseInt(localStorage.getItem(LAST_UPDATE_CHECK_KEY) ?? '0', 10);
       const now = Date.now();
       if (now - lastCheck >= sevenDaysMs) {
         localStorage.setItem(LAST_UPDATE_CHECK_KEY, String(now));
-        runUpdateCheck();
+        void runUpdateCheck(false);
       }
       updaterInterval = setInterval(() => {
         localStorage.setItem(LAST_UPDATE_CHECK_KEY, String(Date.now()));
-        runUpdateCheck();
+        void runUpdateCheck(false);
       }, sevenDaysMs);
     }
 
@@ -1733,6 +1756,7 @@ export default function App() {
             <span className="material-symbols-outlined text-[14px]">terminal</span>
             <span className="hidden sm:inline">Console</span>
           </button>
+
         </div>
         <div className="flex items-center gap-2 sm:gap-4 text-on-surface-variant opacity-60 shrink-0 ml-2">
           <span className="hidden md:inline">Encoding: UTF-8</span>
