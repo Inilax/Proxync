@@ -2,8 +2,18 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
-## [fix/footer-responsiveness-and-version-bump] - 2026-08-10 (Status Footer Responsiveness Fix & Release Version Bump to v0.2.1)
+## [feature/develop-cve-emergency-security-radar] - 2026-08-10 (Emergency CVE Security Update Radar & Zero False-Positive Detection)
 - **Feature Summary**:
+  - **Emergency CVE Radar**: Implemented deterministic `isCriticalSecurityUpdate()` helper in `App.tsx` scanning GitHub Release notes for explicit security tags (`[SECURITY-CVE]`, `[TYPE: CVE-PATCH]`, `[CVE]`, or `"critical": true`).
+  - **Unconditional Startup Security Check**: Refactored `runUpdateCheck(isStartupCheck)` to run an immediate pre-flight scan on every app launch. Automatically overrides `autoUpdate: OFF` settings and bypasses skipped versions only when a `[SECURITY-CVE]` tagged release is detected.
+  - **Streamlined Force Update UI**: Displays a clean, non-scary `🛡️ Required Security Update vX.Y.Z` force update banner with live percentage progress tracking during download and instant `Restart Now` relaunch action.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `CHANGELOG.md`
+
+## [fix/footer-responsiveness-and-version-bump] - 2026-08-10 (Status Footer Responsiveness Fix, Auto-Updater IPC Fix & Release Version Bump to v0.2.1)
+- **Feature Summary**:
+  - **Auto-Updater Capability Fix**: Fixed missing Tauri v2 security IPC permissions in `packages/desktop/src-tauri/capabilities/default.json`. Added `"updater:default"` and `"process:default"` permissions so the existing auto-updater (`check()`, `downloadAndInstall()`) and restart (`relaunch()`) pass Tauri v2 IPC security checks without runtime permission errors.
   - **Status Footer Responsiveness**: Fixed fixed-positioning gaps and text overlapping issues on narrow viewports in `App.tsx` and `index.css`. Added `@media (max-width: 820px)` rule setting `.app-footer` and `.output-console-dock` to `left: 0 !important` when the sidebar slides offscreen. Added smooth transition (`left 200ms ease`), `overflow-hidden`, and `whitespace-nowrap` to prevent vertical line clipping. Added responsive truncation for active tunnel URLs and responsive visibility breakpoints (`hidden sm:inline`, `hidden md:inline`) for latency, encoding, and console text labels.
   - **Release Version Bump**: Bumped release version from `0.2.0` to `0.2.1` across workspace manifests (`package.json`, `packages/desktop/package.json`, `package-lock.json`, `Cargo.toml`, `tauri.conf.json`), Rust HTTP client `User-Agent` (`lib.rs`), sidebar badge (`App.tsx`), and architecture reference map (`.agents/architecture.json`).
 - **Modified Files**:
@@ -12,6 +22,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - `packages/desktop/package.json`
   - `packages/desktop/src-tauri/Cargo.toml`
   - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/src-tauri/capabilities/default.json`
   - `packages/desktop/src-tauri/src/lib.rs`
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/index.css`
