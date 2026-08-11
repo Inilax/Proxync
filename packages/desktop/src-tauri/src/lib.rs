@@ -850,6 +850,76 @@ async fn execute_http_request(
     })
 }
 
+#[tauri::command]
+async fn open_native_tunnel(
+    app: tauri::AppHandle,
+    tunnel_id: String,
+    local_port: u16,
+    subdomain: String,
+) -> Result<String, String> {
+    let key_path = get_data_filepath().parent().unwrap().join("ssh_key");
+    if !key_path.exists() {
+        std::fs::write(&key_path, include_str!("../sish_key")).map_err(|e| e.to_string())?;
+        #[cfg(target_os = "windows")]
+        {
+            let _ = std::process::Command::new("icacls")
+                .args(&[key_path.to_str().unwrap(), "/inheritance:r"])
+                .creation_flags(0x08000000)
+                .output();
+            let _ = std::process::Command::new("icacls")
+                .args(&[key_path.to_str().unwrap(), "/grant:r", &format!("{}:(R)", std::env::var("USERNAME").unwrap_or_else(|_| "Everyone".to_string()))])
+                .creation_flags(0x08000000)
+                .output();
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600));
+        }
+    }
+
+    let mut cmd = tokio::process::Command::new("ssh");
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000);
+    
+    cmd.args(&[
+        "-i", key_path.to_str().unwrap(),
+        "-N",
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "ServerAliveInterval=30",
+        "-p", "2222",
+        &format!("-R {}:80:127.0.0.1:{}", subdomain, local_port),
+        "azureuser@104.208.83.199",
+    ]);
+    
+    let child = cmd.spawn().map_err(|e| format!("Failed to spawn ssh: {}", e))?;
+    
+    let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
+    lt_procs.insert(tunnel_id.clone(), child);
+    
+    let tunnel_id_clone = tunnel_id.clone();
+    let app_clone = app.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        let mut has_child = true;
+        while has_child {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            let mut procs = LOCALTUNNEL_PROCESSES.lock().await;
+            if let Some(child_proc) = procs.get_mut(&tunnel_id_clone) {
+                if let Ok(Some(_)) = child_proc.try_wait() {
+                    procs.remove(&tunnel_id_clone);
+                    let _ = app_clone.emit("tunnel:auto-closed", serde_json::json!({ "tunnelId": tunnel_id_clone }));
+                    has_child = false;
+                }
+            } else {
+                has_child = false;
+            }
+        }
+    });
+    
+    Ok(format!("https://{}.proxync.dev", subdomain))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -864,6 +934,7 @@ pub fn run() {
             close_tunnel,
             open_localtunnel,
             open_cloudflare_tunnel,
+            open_native_tunnel,
             scan_directory,
             read_file_content,
             get_local_ip,
