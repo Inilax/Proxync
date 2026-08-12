@@ -714,7 +714,15 @@ async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, Stri
                 if let Some(header_part) = parts_split.get(0) {
                     for line in header_part.lines().skip(1) {
                         if let Some((k, v)) = line.split_once(':') {
-                            headers.insert(k.trim().to_string(), v.trim().to_string());
+                            let key = k.trim();
+                            let val = v.trim();
+                            let lower_key = key.to_lowercase();
+                            let display_val = if lower_key == "authorization" || lower_key == "cookie" || lower_key == "set-cookie" || lower_key == "x-api-key" || lower_key == "api-key" {
+                                "[REDACTED]".to_string()
+                            } else {
+                                val.to_string()
+                            };
+                            headers.insert(key.to_string(), display_val);
                         }
                     }
                 }
@@ -857,39 +865,101 @@ async fn open_native_tunnel(
     local_port: u16,
     subdomain: String,
 ) -> Result<String, String> {
-    let key_path = get_data_filepath().parent().unwrap().join("ssh_key");
-    if !key_path.exists() {
-        std::fs::write(&key_path, include_str!("../sish_key")).map_err(|e| e.to_string())?;
+    let clean_subdomain: String = subdomain
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+        .collect();
+
+    if clean_subdomain.is_empty() {
+        return Err("Invalid subdomain format".to_string());
+    }
+
+    let temp_dir = std::env::temp_dir().join(format!("proxync_ssh_{}", tunnel_id));
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    let _ = std::fs::create_dir_all(&temp_dir);
+    
+    let key_path = temp_dir.join("id_ed25519");
+    let pub_path = temp_dir.join("id_ed25519.pub");
+    
+    let key_gen_success = {
+        let mut keygen_cmd = std::process::Command::new("ssh-keygen");
         #[cfg(target_os = "windows")]
-        {
-            let _ = std::process::Command::new("icacls")
-                .args(&[key_path.to_str().unwrap(), "/inheritance:r"])
-                .creation_flags(0x08000000)
+        keygen_cmd.creation_flags(0x08000000);
+        keygen_cmd
+            .args(&["-t", "ed25519", "-f", key_path.to_str().unwrap(), "-q", "-N", ""])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    };
+
+    let active_key_path = if key_gen_success && key_path.exists() && pub_path.exists() {
+        if let Ok(pub_key) = std::fs::read_to_string(&pub_path) {
+            let body_json = serde_json::json!({
+                "subdomain": clean_subdomain,
+                "publicKey": pub_key.trim()
+            }).to_string();
+
+            let mut curl_cmd = std::process::Command::new("curl");
+            #[cfg(target_os = "windows")]
+            curl_cmd.creation_flags(0x08000000);
+            
+            let _ = curl_cmd
+                .args(&[
+                    "-s",
+                    "-X", "POST",
+                    "http://104.208.83.199:3939/api/tunnel/sign-jit-cert",
+                    "-H", "Content-Type: application/json",
+                    "-d", &body_json,
+                ])
                 .output();
-            let _ = std::process::Command::new("icacls")
-                .args(&[key_path.to_str().unwrap(), "/grant:r", &format!("{}:(R)", std::env::var("USERNAME").unwrap_or_else(|_| "Everyone".to_string()))])
-                .creation_flags(0x08000000)
-                .output();
+            
+            // Short delay to allow sish inotify watcher to reload keys into memory
+            tokio::time::sleep(std::time::Duration::from_millis(350)).await;
         }
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600));
+        key_path
+    } else {
+        let static_key_path = get_data_filepath().parent().unwrap().join("ssh_key");
+        if !static_key_path.exists() {
+            std::fs::write(&static_key_path, include_str!("../sish_key")).map_err(|e| e.to_string())?;
         }
+        static_key_path
+    };
+
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("icacls")
+            .args(&[active_key_path.to_str().unwrap(), "/inheritance:r"])
+            .creation_flags(0x08000000)
+            .output();
+        let _ = std::process::Command::new("icacls")
+            .args(&[active_key_path.to_str().unwrap(), "/grant:r", &format!("{}:(R)", std::env::var("USERNAME").unwrap_or_else(|_| "Everyone".to_string()))])
+            .creation_flags(0x08000000)
+            .output();
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&active_key_path, std::fs::Permissions::from_mode(0o600));
     }
 
     let mut cmd = tokio::process::Command::new("ssh");
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000);
     
+    let known_hosts_path = temp_dir.join("known_hosts");
+    let trusted_host_key = "[104.208.83.199]:2222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDyV3ZNPsHhwJaW6akzFMg/KAE7F1K4WamVtMaeP/vi9\n";
+    let _ = std::fs::write(&known_hosts_path, trusted_host_key);
+
     cmd.args(&[
-        "-i", key_path.to_str().unwrap(),
+        "-i", active_key_path.to_str().unwrap(),
         "-N",
-        "-o", "StrictHostKeyChecking=no",
+        "-o", "StrictHostKeyChecking=yes",
+        "-o", &format!("UserKnownHostsFile={}", known_hosts_path.to_str().unwrap()),
         "-o", "ServerAliveInterval=30",
         "-p", "2222",
-        &format!("-R {}:80:127.0.0.1:{}", subdomain, local_port),
-        "azureuser@104.208.83.199",
+        &format!("-R {}:80:127.0.0.1:{}", clean_subdomain, local_port),
+        &format!("{}@104.208.83.199", clean_subdomain),
     ]);
     
     let child = cmd.spawn().map_err(|e| format!("Failed to spawn ssh: {}", e))?;
@@ -899,6 +969,8 @@ async fn open_native_tunnel(
     
     let tunnel_id_clone = tunnel_id.clone();
     let app_clone = app.clone();
+    let temp_dir_clone = temp_dir.clone();
+
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
         let mut has_child = true;
@@ -915,9 +987,10 @@ async fn open_native_tunnel(
                 has_child = false;
             }
         }
+        let _ = std::fs::remove_dir_all(temp_dir_clone);
     });
     
-    Ok(format!("https://{}.proxync.dev", subdomain))
+    Ok(format!("https://{}.proxync.dev", clean_subdomain))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
