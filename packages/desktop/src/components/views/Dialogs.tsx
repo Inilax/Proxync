@@ -115,6 +115,7 @@ export function DomainSelectDialog({
     default: Infinity,
     cloudflare: Infinity,
     localtunnel: Infinity,
+    proxync_native: Infinity,
   });
 
   useEffect(() => {
@@ -140,12 +141,14 @@ export function DomainSelectDialog({
         default: `${apiBase.replace(/\/$/, '')}/health`,
         cloudflare: 'https://1.1.1.1/cdn-cgi/trace',
         localtunnel: 'https://loca.lt',
+        proxync_native: 'http://proxync.dev',
       };
 
       const results = await Promise.all([
         ping(endpoints.default),
         ping(endpoints.cloudflare),
         ping(endpoints.localtunnel),
+        ping(endpoints.proxync_native),
       ]);
 
       if (active) {
@@ -153,6 +156,7 @@ export function DomainSelectDialog({
           default: results[0],
           cloudflare: results[1],
           localtunnel: results[2],
+          proxync_native: results[3],
         });
       }
     };
@@ -178,6 +182,13 @@ export function DomainSelectDialog({
         </span>
       );
     }
+    if (selectedDomain === 'proxync_native') {
+      return (
+        <span className="domain-desc accent" style={{ color: '#8b5cf6' }}>
+          🚀 <strong>Proxync Tunnel (Beta):</strong> Direct SSH tunnel to Proxync edge with auto-generated random subdomains (e.g., <code>px-a1b2c3d4.proxync.dev</code>).
+        </span>
+      );
+    }
     if (selectedDomain === 'localtunnel') {
       return (
         <span className="domain-desc accent">
@@ -199,6 +210,13 @@ export function DomainSelectDialog({
       desc: 'Expose server on default localtest.me tunnel',
       icon: '🔌',
       latency: latencies.default,
+    },
+    {
+      id: 'proxync_native',
+      title: 'Proxync Tunnel (Beta)',
+      desc: 'High-speed native SSH tunnel with random public subdomains',
+      icon: '🚀',
+      latency: latencies.proxync_native,
     },
     {
       id: 'cloudflare',

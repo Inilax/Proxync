@@ -434,6 +434,14 @@ async fn close_tunnel(tunnel_id: String) -> Result<(), String> {
     }
 }
 
+struct TempDirGuard(std::path::PathBuf);
+
+impl Drop for TempDirGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 #[tauri::command]
 async fn open_localtunnel(
     app: tauri::AppHandle,
@@ -444,7 +452,7 @@ async fn open_localtunnel(
     let mut cmd = tokio::process::Command::new("cmd");
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000);
-    cmd.args(&["/C", "npx", "-y", "localtunnel", "--port", &local_port.to_string()]);
+    cmd.args(&["/C", "npx", "-y", "localtunnel@2.0.2", "--port", &local_port.to_string()]);
     if let Some(sub) = subdomain {
         let clean_sub = sub.replace(" ", "-").to_lowercase();
         cmd.args(&["--subdomain", &clean_sub]);
@@ -714,7 +722,15 @@ async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, Stri
                 if let Some(header_part) = parts_split.get(0) {
                     for line in header_part.lines().skip(1) {
                         if let Some((k, v)) = line.split_once(':') {
-                            headers.insert(k.trim().to_string(), v.trim().to_string());
+                            let key = k.trim();
+                            let val = v.trim();
+                            let lower_key = key.to_lowercase();
+                            let display_val = if lower_key == "authorization" || lower_key == "cookie" || lower_key == "set-cookie" || lower_key == "x-api-key" || lower_key == "api-key" {
+                                "[REDACTED]".to_string()
+                            } else {
+                                val.to_string()
+                            };
+                            headers.insert(key.to_string(), display_val);
                         }
                     }
                 }
@@ -804,7 +820,6 @@ async fn execute_http_request(
 ) -> Result<NativeHttpResponsePayload, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
-        .danger_accept_invalid_certs(true)
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) ProxyncStudio/0.2.1")
         .build()
         .map_err(|e| e.to_string())?;
@@ -850,6 +865,169 @@ async fn execute_http_request(
     })
 }
 
+#[tauri::command]
+async fn open_native_tunnel(
+    app: tauri::AppHandle,
+    tunnel_id: String,
+    local_port: u16,
+    subdomain: String,
+) -> Result<String, String> {
+    let raw_sub = subdomain.trim();
+    let clean_subdomain: String = if raw_sub.is_empty() || raw_sub == "auto" {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(12345678);
+        format!("px-{:x}", ts % 0xffffffff)
+    } else {
+        raw_sub
+            .to_lowercase()
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+            .collect()
+    };
+
+    if clean_subdomain.is_empty() {
+        return Err("Invalid subdomain format".to_string());
+    }
+
+    let temp_dir = std::env::temp_dir().join(format!("proxync_ssh_{}", tunnel_id));
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    let _ = std::fs::create_dir_all(&temp_dir);
+    let _guard = TempDirGuard(temp_dir.clone());
+    
+    let key_path = temp_dir.join("id_ed25519");
+    let pub_path = temp_dir.join("id_ed25519.pub");
+    
+    let key_gen_success = {
+        let mut keygen_cmd = std::process::Command::new("ssh-keygen");
+        #[cfg(target_os = "windows")]
+        keygen_cmd.creation_flags(0x08000000);
+        keygen_cmd
+            .args(&["-t", "ed25519", "-f", key_path.to_str().unwrap(), "-q", "-N", ""])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    };
+
+    if !key_gen_success || !key_path.exists() || !pub_path.exists() {
+        return Err("Failed to generate ephemeral SSH keypair. Ensure ssh-keygen is available.".to_string());
+    }
+
+    let known_hosts_path = temp_dir.join("known_hosts");
+    let ssh_host = std::env::var("PROXYNC_SSH_HOST")
+        .unwrap_or_else(|_| "104.208.83.199".to_string());
+    let mut strict_host_checking = "accept-new";
+
+    if let Ok(pub_key) = std::fs::read_to_string(&pub_path) {
+        let body_json = serde_json::json!({
+            "subdomain": clean_subdomain,
+            "publicKey": pub_key.trim()
+        }).to_string();
+
+        let api_url = std::env::var("PROXYNC_API_URL")
+            .unwrap_or_else(|_| "https://api.proxync.dev/api/tunnel/sign-jit-cert".to_string());
+
+        let api_secret = std::env::var("PROXYNC_API_SECRET_TOKEN")
+            .unwrap_or_else(|_| "proxync_default_secret_2026".to_string());
+        let auth_header = format!("Authorization: Bearer {}", api_secret);
+
+        let mut curl_cmd = std::process::Command::new("curl");
+        #[cfg(target_os = "windows")]
+        curl_cmd.creation_flags(0x08000000);
+        
+        let output = curl_cmd
+            .args(&[
+                "-s",
+                "-X", "POST",
+                &api_url,
+                "-H", "Content-Type: application/json",
+                "-H", &auth_header,
+                "-d", &body_json,
+            ])
+            .output();
+        
+        if let Ok(out) = output {
+            if let Ok(resp_text) = String::from_utf8(out.stdout) {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&resp_text) {
+                    if let Some(host_key) = parsed.get("hostKey").and_then(|v| v.as_str()) {
+                        if !host_key.trim().is_empty() {
+                            let entry = format!("[{}]:2222 {}\n", ssh_host, host_key.trim());
+                            let _ = std::fs::write(&known_hosts_path, entry);
+                            strict_host_checking = "yes";
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Short delay to allow sish inotify watcher to reload keys into memory
+        tokio::time::sleep(std::time::Duration::from_millis(350)).await;
+    }
+    let active_key_path = key_path;
+
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("icacls")
+            .args(&[active_key_path.to_str().unwrap(), "/inheritance:r"])
+            .creation_flags(0x08000000)
+            .output();
+        let _ = std::process::Command::new("icacls")
+            .args(&[active_key_path.to_str().unwrap(), "/grant:r", &format!("{}:(R)", std::env::var("USERNAME").unwrap_or_else(|_| "Everyone".to_string()))])
+            .creation_flags(0x08000000)
+            .output();
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&active_key_path, std::fs::Permissions::from_mode(0o600));
+    }
+
+    let mut cmd = tokio::process::Command::new("ssh");
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000);
+
+    cmd.args(&[
+        "-i", active_key_path.to_str().unwrap(),
+        "-N",
+        "-o", &format!("StrictHostKeyChecking={}", strict_host_checking),
+        "-o", &format!("UserKnownHostsFile={}", known_hosts_path.to_str().unwrap()),
+        "-o", "ServerAliveInterval=30",
+        "-p", "2222",
+        &format!("-R {}:80:127.0.0.1:{}", clean_subdomain, local_port),
+        &format!("{}@{}", clean_subdomain, ssh_host),
+    ]);
+    
+    let child = cmd.spawn().map_err(|e| format!("Failed to spawn ssh: {}", e))?;
+    
+    let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
+    lt_procs.insert(tunnel_id.clone(), child);
+    
+    let tunnel_id_clone = tunnel_id.clone();
+    let app_clone = app.clone();
+
+    tokio::spawn(async move {
+        let _active_guard = _guard;
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        let mut has_child = true;
+        while has_child {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            let mut procs = LOCALTUNNEL_PROCESSES.lock().await;
+            if let Some(child_proc) = procs.get_mut(&tunnel_id_clone) {
+                if let Ok(Some(_)) = child_proc.try_wait() {
+                    procs.remove(&tunnel_id_clone);
+                    let _ = app_clone.emit("tunnel:auto-closed", serde_json::json!({ "tunnelId": tunnel_id_clone }));
+                    has_child = false;
+                }
+            } else {
+                has_child = false;
+            }
+        }
+    });
+    
+    Ok(format!("https://{}.proxync.dev", clean_subdomain))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -864,6 +1042,7 @@ pub fn run() {
             close_tunnel,
             open_localtunnel,
             open_cloudflare_tunnel,
+            open_native_tunnel,
             scan_directory,
             read_file_content,
             get_local_ip,

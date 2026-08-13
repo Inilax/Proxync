@@ -923,6 +923,46 @@ export default function App() {
     finally { setSharingPort(null); }
   }
 
+function generateRandomSubdomain(prefix = 'px'): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let rand = '';
+  for (let i = 0; i < 8; i++) {
+    rand += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `${prefix}-${rand}`;
+}
+
+  async function shareProcessNative(process: ProcessCandidate) {
+    if (!activeWorkspace) return;
+    const starterScan = buildStarterRequests(process);
+    setStarterSuggestions(starterScan);
+    setSavedRequests((current) => mergeRequests(current, starterScan));
+    updateActiveWorkspace((ws) => ({ ...ws, profiles: upsertProfile(ws.profiles, process, starterScan.length), selectedProfileId: makeProfileId(process), languageHint: detectLanguageLabel(process) }));
+
+    const targetWorkspaceId = activeWorkspace.remoteWorkspaceId || activeWorkspace.id;
+    const token = getToken();
+
+    setSharingPort(process.port);
+    try {
+      localStorage.setItem('proxync_workspace', targetWorkspaceId);
+      const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
+      const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
+      const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
+      await invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined);
+      const proxyPort = await invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port);
+      const suggestedSub = generateRandomSubdomain('px');
+      showToast('Starting Proxync Native SSH tunnel...', 'info');
+      const nativeTunnelUrl = await invoke<string>('open_native_tunnel', { tunnelId: tunnel.id, localPort: proxyPort, subdomain: suggestedSub });
+      const boundTunnel: Tunnel = { ...tunnel, publicUrl: nativeTunnelUrl, subdomain: suggestedSub };
+      setActiveTunnel(boundTunnel);
+      setTunnels((current) => [boundTunnel, ...current.filter((item) => item.id !== tunnel.id)]);
+      setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false); setRequests([]);
+      showToast(`Tunnel is active! URL: ${nativeTunnelUrl}`, 'success');
+      updateActiveWorkspace((ws) => ({ ...ws, profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: nativeTunnelUrl } : p) }));
+    } catch (error) { showToast(error instanceof Error ? error.message : String(error), 'error'); }
+    finally { setSharingPort(null); }
+  }
+
   async function shareProcessLocaltunnel(process: ProcessCandidate, customSubdomain?: string) {
     if (!activeWorkspace) return;
     const isConnected = await checkRealInternetConnection();
@@ -1777,7 +1817,8 @@ export default function App() {
           domains={domains.filter((d) => d.verified)}
           onClose={() => setSharingProcessCandidate(null)}
           onConfirm={(selectedOption, ltSubdomain) => {
-            if (selectedOption === 'localtunnel') { void shareProcessLocaltunnel(sharingProcessCandidate, ltSubdomain); }
+            if (selectedOption === 'proxync_native') { void shareProcessNative(sharingProcessCandidate); }
+            else if (selectedOption === 'localtunnel') { void shareProcessLocaltunnel(sharingProcessCandidate, ltSubdomain); }
             else if (selectedOption === 'cloudflare') { void shareProcessCloudflare(sharingProcessCandidate); }
             else { void shareProcess(sharingProcessCandidate, selectedOption === 'default' ? undefined : selectedOption); }
             setSharingProcessCandidate(null);
