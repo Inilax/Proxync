@@ -16,6 +16,7 @@ export function SwaggerView({
   onCopy,
   onExportPostman,
   onImportSpec,
+  onOpenWorkbench,
 }: {
   document: Record<string, unknown>;
   swaggerPanel: SwaggerPanel;
@@ -28,6 +29,7 @@ export function SwaggerView({
   onCopy: (content?: string, msg?: string) => void;
   onExportPostman: (collection: Record<string, unknown>) => void;
   onImportSpec: (importedDoc: Record<string, unknown>) => void;
+  onOpenWorkbench?: (req: { method: string; path: string }) => void;
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState<string>('ALL');
@@ -335,7 +337,17 @@ export function SwaggerView({
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-3 shrink-0">
+                      <div className="flex items-center gap-3 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        {onOpenWorkbench && (
+                          <button
+                            onClick={() => onOpenWorkbench({ method: ep.method, path: ep.path })}
+                            className="px-2.5 py-1 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                            title="Inspect in 360° Request Workbench Studio"
+                          >
+                            <span className="material-symbols-outlined text-[14px]">bolt</span>
+                            Workbench
+                          </button>
+                        )}
                         <span className="text-[11px] text-on-surface-variant font-mono hidden md:inline">
                           {ep.responseLabel}
                         </span>

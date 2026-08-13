@@ -37,6 +37,7 @@ import {
   useEscape,
 } from './components/views/SharedComponents';
 import { WelcomeView } from './components/views/WelcomeView';
+import { WorkspaceDashboardView } from './components/views/WorkspaceDashboardView';
 import { LobbyView } from './components/views/LobbyView';
 import { ProcessView } from './components/views/ProcessView';
 import { TrafficView } from './components/views/TrafficView';
@@ -46,6 +47,9 @@ import { ObservabilityView } from './components/views/ObservabilityView';
 import { SettingsView } from './components/views/SettingsView';
 import { DocsView } from './components/views/DocsView';
 import { DiscoverDialog, DomainSelectDialog, RequestDetailDialog, ConfirmDeleteDialog } from './components/views/Dialogs';
+import { RequestWorkbenchDialog } from './components/views/RequestWorkbenchDialog';
+import { TerminalDrawer, type TerminalLogEntry } from './components/ui/TerminalDrawer';
+import type { WorkbenchTab } from './lib/types';
 
 /* ══════════════════════════════════════════════
    CONSTANTS
@@ -79,21 +83,41 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
 const LOCAL_WORKSPACES_KEY = 'proxync_local_workspaces_v1';
 const ACTIVE_WORKSPACE_KEY = 'proxync_local_active_workspace_v1';
 const APP_SETTINGS_KEY = 'proxync_app_settings_v1';
+const ACTIVE_TUNNEL_KEY = 'proxync_active_tunnel_v1';
 
 /* ══════════════════════════════════════════════
    NAV CONFIG
    ══════════════════════════════════════════════ */
 
-const NAV_ITEMS: { view: MainView; label: string; icon: string }[] = [
-  { view: 'welcome', label: 'Explore', icon: 'explore' },
-  { view: 'lobby', label: 'Workspaces', icon: 'hub' },
-  { view: 'process', label: 'Tunnels', icon: 'lan' },
-  { view: 'traffic', label: 'Traffic', icon: 'terminal' },
-  { view: 'postman', label: 'Playground', icon: 'send' },
-  { view: 'swagger', label: 'Swagger', icon: 'api' },
-  { view: 'docs', label: 'Docs', icon: 'menu_book' },
-  { view: 'observability', label: 'Observability', icon: 'insights' },
-  { view: 'settings', label: 'Settings', icon: 'settings' },
+const NAV_CATEGORIES: {
+  category: string;
+  items: { view: MainView; label: string; icon: string }[];
+}[] = [
+  {
+    category: 'OVERVIEW',
+    items: [
+      { view: 'welcome', label: 'Explore', icon: 'explore' },
+      { view: 'workspace_dashboard', label: 'Workspace Hub', icon: 'space_dashboard' },
+    ],
+  },
+  {
+    category: 'DEVELOPMENT & NETWORK',
+    items: [
+      { view: 'process', label: 'Tunnels', icon: 'lan' },
+      { view: 'traffic', label: 'Traffic', icon: 'terminal' },
+      { view: 'postman', label: 'Playground', icon: 'send' },
+      { view: 'workbench', label: 'Workbench', icon: 'bolt' },
+      { view: 'swagger', label: 'Swagger', icon: 'api' },
+    ],
+  },
+  {
+    category: 'OBSERVABILITY & TOOLS',
+    items: [
+      { view: 'observability', label: 'Observability', icon: 'insights' },
+      { view: 'docs', label: 'Docs', icon: 'menu_book' },
+      { view: 'settings', label: 'Settings', icon: 'settings' },
+    ],
+  },
 ];
 
 async function checkRealInternetConnection(timeoutMs = 1200): Promise<boolean> {
@@ -133,7 +157,22 @@ export default function App() {
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [processes, setProcesses] = useState<ProcessCandidate[]>([]);
   const [selectedProcessId, setSelectedProcessId] = useState<string | null>(null);
-  const [activeTunnel, setActiveTunnel] = useState<Tunnel | null>(null);
+  const [activeTunnel, setActiveTunnel] = useState<Tunnel | null>(() => {
+    try {
+      const stored = localStorage.getItem(ACTIVE_TUNNEL_KEY);
+      return stored ? (JSON.parse(stored) as Tunnel) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    if (activeTunnel) {
+      localStorage.setItem(ACTIVE_TUNNEL_KEY, JSON.stringify(activeTunnel));
+    } else {
+      localStorage.removeItem(ACTIVE_TUNNEL_KEY);
+    }
+  }, [activeTunnel]);
   const [tunnels, setTunnels] = useState<Tunnel[]>([]);
   const [requests, setRequests] = useState<RequestLog[]>([]);
   const [selectedRequest, setSelectedRequest] = useState<RequestLog | null>(null);
@@ -150,40 +189,64 @@ export default function App() {
   const [discoverOpen, setDiscoverOpen] = useState(false);
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
-  const [terminalHeight, setTerminalHeight] = useState(180);
-  const [isResizing, setIsResizing] = useState(false);
   const [settingsSection, setSettingsSection] = useState<'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger'>('general');
 
-  const startResize = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizing(true);
-  }, []);
+  /* ── 360° Request Workbench Studio & Terminal Drawer State ── */
+  const [workbenchTabs, setWorkbenchTabs] = useState<WorkbenchTab[]>([]);
+  const [activeWorkbenchTabId, setActiveWorkbenchTabId] = useState<string | null>(null);
+  const [terminalLogs, setTerminalLogs] = useState<TerminalLogEntry[]>([]);
 
-  const doResize = useCallback((e: MouseEvent) => {
-    if (!isResizing) return;
-    const newHeight = window.innerHeight - e.clientY - 24;
-    if (newHeight >= 60 && newHeight <= window.innerHeight * 0.8) {
-      setTerminalHeight(newHeight);
+  const openRequestInWorkbench = useCallback((req: RequestLog | SavedRequest | { method: string; path: string }) => {
+    const method = req.method.toUpperCase();
+    const path = req.path;
+
+    const existing = workbenchTabs.find((t) => t.method === method && t.path === path);
+    if (existing) {
+      setActiveWorkbenchTabId(existing.id);
+      setMainView('workbench');
+      return;
     }
-  }, [isResizing]);
 
-  const stopResize = useCallback(() => {
-    setIsResizing(false);
-  }, []);
-
-  useEffect(() => {
-    if (isResizing) {
-      window.addEventListener('mousemove', doResize);
-      window.addEventListener('mouseup', stopResize);
-    } else {
-      window.removeEventListener('mousemove', doResize);
-      window.removeEventListener('mouseup', stopResize);
-    }
-    return () => {
-      window.removeEventListener('mousemove', doResize);
-      window.removeEventListener('mouseup', stopResize);
+    const tabId = crypto.randomUUID();
+    const requestLog: RequestLog | undefined = 'capturedAt' in req ? req : undefined;
+    const draftRequest: SavedRequest = 'source' in req ? req : {
+      id: `draft-${tabId}`,
+      name: `${method} ${path}`,
+      method,
+      path,
+      headers: 'headers' in req && req.headers ? req.headers : { 'Content-Type': 'application/json' },
+      body: 'bodyPreview' in req ? req.bodyPreview ?? '' : 'body' in req ? String(req.body ?? '') : '',
+      source: 'captured',
     };
-  }, [isResizing, doResize, stopResize]);
+
+    const newTab: WorkbenchTab = {
+      id: tabId,
+      title: `${method} ${path}`,
+      method,
+      path,
+      requestLog,
+      draftRequest,
+      activeSubTab: 'replay',
+      executionHistory: requestLog
+        ? [
+          {
+            id: `run-${tabId}-1`,
+            runIndex: 1,
+            timestamp: requestLog.capturedAt || new Date().toISOString(),
+            status: typeof requestLog.status === 'number' ? requestLog.status : parseInt(String(requestLog.status || 200), 10),
+            durationMs: requestLog.durationMs || 12,
+            headers: requestLog.responseHeaders || { 'Content-Type': 'application/json' },
+            body: requestLog.bodyPreview || '{\n  "status": "initial captured log"\n}',
+            note: 'Captured Log Intercept',
+          },
+        ]
+        : [],
+    };
+
+    setWorkbenchTabs((current) => [...current, newTab]);
+    setActiveWorkbenchTabId(tabId);
+    setMainView('workbench');
+  }, [workbenchTabs]);
   const [discovering, setDiscovering] = useState(false);
   const [sharingPort, setSharingPort] = useState<number | null>(null);
   const [sendingRequest, setSendingRequest] = useState(false);
@@ -519,7 +582,7 @@ export default function App() {
     return () => { mounted = false; if (updaterInterval) clearInterval(updaterInterval); };
   }, [appSettings.defaultProjectRootPath, appSettings.guardrails, appSettings.autoUpdate]);
 
-  useEffect(() => { void discoverProcesses(); }, []);
+  useEffect(() => { void discoverProcesses(false, true); }, []);
 
   /* ── Network Online/Offline Status Notification ── */
   useEffect(() => {
@@ -636,8 +699,22 @@ export default function App() {
           headers: payload.headers,
           bodyPreview: payload.bodyPreview || payload.body,
           capturedAt: new Date().toISOString(),
+          workspaceId: activeWorkspaceId || undefined,
+          workspaceName: activeWorkspace?.name || undefined,
+          port: activeTunnel?.localPort || selectedProcess?.port || undefined,
+          serverName: selectedProcess?.name || undefined,
         };
         setRequests((current) => [item, ...current].slice(0, 150));
+        setTerminalLogs((current) => [
+          {
+            id: item.id,
+            timestamp: item.capturedAt!,
+            source: 'proxy' as const,
+            level: 'info' as const,
+            message: `Intercepted ${method} ${path} (${payload.status || 'pending'})`,
+          },
+          ...current,
+        ].slice(0, 300));
       });
       unlistenResponse = await listen<any>('request:log:response', (event) => {
         const payload = event.payload;
@@ -714,13 +791,15 @@ export default function App() {
 
   /* ── Action handlers ── */
 
-  async function discoverProcesses(bypassCache: boolean = false) {
+  async function discoverProcesses(bypassCache: boolean = false, silent: boolean = false) {
     setDiscovering(true);
     try {
       const discovered = await readNativeProcesses(bypassCache);
       setProcesses(discovered);
       if (!selectedProcessId && discovered[0]) setSelectedProcessId(discovered[0].id);
-      showToast(discovered.length > 0 ? `Discovered ${discovered.length} local process${discovered.length === 1 ? '' : 'es'}` : 'No local development ports found', discovered.length > 0 ? 'success' : 'info');
+      if (!silent) {
+        showToast(discovered.length > 0 ? `Discovered ${discovered.length} local process${discovered.length === 1 ? '' : 'es'}` : 'No local development ports found', discovered.length > 0 ? 'success' : 'info');
+      }
 
       // Async ping/latency check for all discovered processes
       const withLatency = await Promise.all(
@@ -731,7 +810,9 @@ export default function App() {
       );
       setProcesses(withLatency);
     } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Process discovery failed', 'error');
+      if (!silent) {
+        showToast(error instanceof Error ? error.message : 'Process discovery failed', 'error');
+      }
     } finally { setDiscovering(false); }
   }
 
@@ -746,7 +827,8 @@ export default function App() {
     setWorkspaces((current) => [workspace, ...current]);
     setActiveWorkspaceId(workspace.id);
     setNewWorkspaceName('');
-    setMainView('welcome');
+    setMainView('workspace_dashboard');
+    void discoverProcesses(false, true);
     showToast(`Workspace "${name}" created`, 'success');
   }
 
@@ -761,9 +843,10 @@ export default function App() {
     if (activeWorkspaceId !== workspaceId) {
       setActiveWorkspaceId(workspaceId);
       setActiveTunnel(null);
+      void discoverProcesses(false, true);
     }
     touchWorkspaceActivity(workspaceId);
-    setMainView('process');
+    setMainView('workspace_dashboard');
   }
 
   const [deletingWorkspace, setDeletingWorkspace] = useState<WorkspaceConfig | null>(null);
@@ -884,6 +967,42 @@ export default function App() {
     setSharingProcessCandidate(process);
   }
 
+  const refreshProcessDirectory = useCallback(async (process: ProcessCandidate | ProcessProfile): Promise<string> => {
+    showToast('Re-scanning project directory & process configuration...', 'info');
+    try {
+      const port = process.port;
+      const pid = 'pid' in process ? process.pid || null : null;
+
+      const resolvedDir = await invoke<string>('resolve_process_directory', {
+        port,
+        pid,
+      });
+
+      if (resolvedDir && resolvedDir !== 'unknown') {
+        setSelectedProcessId(`port-${port}`);
+        setProcesses((curr) =>
+          curr.map((p) => (p.port === port ? { ...p, directory: resolvedDir } : p))
+        );
+
+        if (activeWorkspace) {
+          updateActiveWorkspace((ws) => ({
+            ...ws,
+            profiles: ws.profiles.map((p) =>
+              p.port === port ? { ...p, directory: resolvedDir } : p
+            ),
+          }));
+        }
+        showToast(`Directory re-scanned successfully: ${resolvedDir}`, 'success');
+        return resolvedDir;
+      } else {
+        showToast('Directory resolution completed (no local project folder found for process)', 'info');
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Directory re-scan failed', 'error');
+    }
+    return process.directory || 'Directory undetected';
+  }, [activeWorkspace]);
+
 
 
   async function shareProcessCloudflare(process: ProcessCandidate) {
@@ -893,6 +1012,10 @@ export default function App() {
       showToast('⚠️ No internet connection detected. Cloudflare Tunnel requires an active internet connection. Please connect to the internet and try again.', 'error');
       return;
     }
+    if (!process.directory || process.directory === 'unknown') {
+      await refreshProcessDirectory(process);
+    }
+    setProcesses((curr) => [process, ...curr.filter((p) => p.id !== process.id)]);
     const starterScan = buildStarterRequests(process);
     setStarterSuggestions(starterScan);
     setSavedRequests((current) => mergeRequests(current, starterScan));
@@ -970,6 +1093,10 @@ function generateRandomSubdomain(prefix = 'px'): string {
       showToast('⚠️ No internet connection detected. Localtunnel service requires an active internet connection. Please connect to the internet and try again.', 'error');
       return;
     }
+    if (!process.directory || process.directory === 'unknown') {
+      await refreshProcessDirectory(process);
+    }
+    setProcesses((curr) => [process, ...curr.filter((p) => p.id !== process.id)]);
     const starterScan = buildStarterRequests(process);
     setStarterSuggestions(starterScan);
     setSavedRequests((current) => mergeRequests(current, starterScan));
@@ -1002,6 +1129,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
   async function shareProcess(process: ProcessCandidate, customDomain?: string) {
     if (!activeWorkspace) return;
 
+    setProcesses((curr) => [process, ...curr.filter((p) => p.id !== process.id)]);
     const targetWorkspaceId = activeWorkspace.remoteWorkspaceId || activeWorkspace.id;
     const token = getToken();
 
@@ -1068,7 +1196,11 @@ function generateRandomSubdomain(prefix = 'px'): string {
       showToast('Select or create a workspace first before sharing a port', 'info');
       return;
     }
+    if (!process.directory || process.directory === 'unknown') {
+      void refreshProcessDirectory(process);
+    }
     touchWorkspaceActivity(activeWorkspace.id);
+    setProcesses((curr) => [process, ...curr.filter((p) => p.id !== process.id)]);
     setSelectedProcessId(process.id); setMainView('process'); setSharingPort(process.port);
     showToast(`Exposed local share at http://localhost:${process.port} and http://${localIp}:${process.port}`, 'success');
   }
@@ -1077,12 +1209,16 @@ function generateRandomSubdomain(prefix = 'px'): string {
     if (!activeWorkspace) return;
     touchWorkspaceActivity(activeWorkspace.id);
     try {
-      await invoke('close_tunnel', { tunnelId: tunnel.id }).catch(() => undefined);
-      if (!tunnel.id.startsWith('lt-') && activeWorkspace.remoteWorkspaceId) { await api.tunnels.close(activeWorkspace.remoteWorkspaceId, tunnel.id); }
-      setTunnels((current) => current.map((item) => item.id === tunnel.id ? { ...item, status: 'CLOSED' } : item));
+      await invoke('close_tunnel', { tunnelId: tunnel.id, localPort: tunnel.localPort }).catch(() => undefined);
+      if (!tunnel.id.startsWith('lt-') && activeWorkspace.remoteWorkspaceId) {
+        await api.tunnels.close(activeWorkspace.remoteWorkspaceId, tunnel.id).catch(() => undefined);
+      }
+      setTunnels((current) => current.filter((item) => item.id !== tunnel.id));
       setActiveTunnel((current) => (current?.id === tunnel.id ? null : current));
       showToast('Tunnel stopped', 'info');
-    } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to stop tunnel', 'error'); }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Unable to stop tunnel', 'error');
+    }
   }
 
   function openRequestDetail(request: RequestLog) {
@@ -1413,7 +1549,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
      RENDER — Reference-Matching Shell
      ══════════════════════════════════════════════ */
 
-  const viewLabel = NAV_ITEMS.find((n) => n.view === mainView)?.label
+  const viewLabel = NAV_CATEGORIES.flatMap((c) => c.items).find((n) => n.view === mainView)?.label
     ?? (mainView === 'process' ? 'Process' : mainView === 'postman' ? 'Playground' : mainView === 'observability' ? 'Observability' : 'Proxync');
 
   return (
@@ -1507,49 +1643,69 @@ function generateRandomSubdomain(prefix = 'px'): string {
           </div>
 
           {/* Active Workspace Selector Section */}
-          <div className="px-6 mb-6">
-            <p className="text-[11px] font-bold text-on-surface-variant/70 tracking-wider uppercase mb-2">Active Workspace</p>
+          <div className="px-6 mb-5">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] font-bold text-on-surface-variant/70 tracking-widest uppercase">Active Workspace</p>
+              <button
+                onClick={() => setMainView('lobby')}
+                className="p-1 rounded text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-all cursor-pointer flex items-center justify-center"
+                title="All Workspaces Studio (Manage & Search 100+ Workspaces)"
+              >
+                <span className="material-symbols-outlined text-[16px]">grid_view</span>
+              </button>
+            </div>
             <div
-              onClick={() => setMainView('lobby')}
-              className="workspace-selector flex items-center justify-between border border-outline-variant bg-surface-container rounded-lg px-3.5 py-2.5 cursor-pointer hover:bg-surface-container-high transition-all text-sm text-on-surface select-none"
+              onClick={() => setMainView('workspace_dashboard')}
+              className="workspace-selector flex items-center border border-outline-variant/60 bg-surface-container hover:border-primary/50 hover:bg-surface-container-high rounded-lg px-3.5 py-2.5 cursor-pointer transition-all text-sm text-on-surface select-none group shadow-sm"
+              title="Open Active Workspace Hub"
             >
               <div className="flex items-center gap-2.5 truncate">
                 <span className="w-2 h-2 rounded-full bg-secondary shrink-0" />
-                <span className="truncate font-semibold text-sm">{activeWorkspace?.name ?? 'Select Workspace'}</span>
+                <span className="truncate font-semibold text-sm text-on-surface group-hover:text-primary transition-colors">
+                  {activeWorkspace?.name ?? 'Select Workspace'}
+                </span>
               </div>
-              <span className="material-symbols-outlined text-[18px] text-on-surface-variant">unfold_more</span>
             </div>
           </div>
 
-          {/* Menu Items Section */}
-          <div className="px-6 mb-2">
-            <p className="text-[11px] font-bold text-on-surface-variant/70 tracking-wider uppercase">Menu</p>
-          </div>
-
-          <nav className="app-nav flex-1 space-y-1">
-            {NAV_ITEMS.map((item) => {
-              const isSelected = mainView === item.view;
-              const isDisabled = item.view !== 'lobby' && item.view !== 'settings' && item.view !== 'docs' && !activeWorkspace;
-              return (
-                <button
-                  key={item.view}
-                  disabled={isDisabled}
-                  className={`nav-item flex items-center gap-3 px-6 py-2.5 w-full text-left transition-colors font-label-md text-label-md border-l-2 ${isSelected
-                    ? 'active text-on-surface border-secondary-container bg-surface-container-high'
-                    : 'text-on-surface-variant hover:bg-surface-container-highest border-l-2 border-transparent'
-                    } ${isDisabled ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'cursor-pointer'}`}
-                  onClick={() => {
-                    if (item.view === 'settings') {
-                      setSettingsSection('general');
-                    }
-                    setMainView(item.view);
-                  }}
-                >
-                  <span className="material-symbols-outlined">{item.icon}</span>
-                  {item.label}
-                </button>
-              );
-            })}
+          {/* Categorized Menu Section */}
+          <nav className="app-nav flex-1 space-y-4 overflow-y-auto">
+            {NAV_CATEGORIES.map((cat) => (
+              <div key={cat.category} className="space-y-0.5">
+                <div className="px-6 mb-1.5">
+                  <p className="text-[10px] font-bold text-on-surface-variant/60 tracking-widest uppercase">
+                    {cat.category}
+                  </p>
+                </div>
+                {cat.items.map((item) => {
+                  const isSelected = mainView === item.view;
+                  const isDisabled = item.view !== 'lobby' && item.view !== 'settings' && item.view !== 'docs' && !activeWorkspace;
+                  return (
+                    <button
+                      key={item.view}
+                      disabled={isDisabled}
+                      className={`nav-item flex items-center gap-3 px-6 py-2 w-full text-left transition-colors font-label-md text-sm ${
+                        isSelected
+                          ? 'active text-on-surface border-secondary-container bg-surface-container-high font-semibold'
+                          : 'text-on-surface-variant hover:bg-surface-container-highest border-l-2 border-transparent'
+                      } ${isDisabled ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'cursor-pointer'}`}
+                      onClick={() => {
+                        if (item.view === 'settings') {
+                          setSettingsSection('general');
+                        }
+                        if (item.view === 'workbench' && workbenchTabs.length === 0) {
+                          openRequestInWorkbench({ method: 'GET', path: '/api/user/profile' });
+                        }
+                        setMainView(item.view);
+                      }}
+                    >
+                      <span className="material-symbols-outlined text-[18px]">{item.icon}</span>
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </nav>
 
           <div className="pt-4 border-t border-outline-variant/30 space-y-1">
@@ -1588,14 +1744,37 @@ function generateRandomSubdomain(prefix = 'px'): string {
                 onStopTunnel={stopTunnel}
               />
             )}
-            {mainView === 'process' && (
-              <ProcessView workspace={activeWorkspace} process={selectedProcess} profile={selectedProfile} tunnel={activeTunnel} sharingPort={sharingPort} suggestions={starterSuggestions} hasVerifiedDomain={domains.some((d) => d.verified)} localIp={localIp} onDiscover={() => setDiscoverOpen(true)} onShare={initiatePublicShare} onShareLocal={shareProcessLocal} onStop={stopTunnel} onStopLocalShare={() => setSharingPort(null)} onCopy={copyText} onImportStarterRequests={importStarterRequests} />
+            {mainView === 'workspace_dashboard' && (
+              <WorkspaceDashboardView
+                workspace={activeWorkspace}
+                tunnels={tunnels}
+                requests={requests}
+                activeTunnel={activeTunnel}
+                processes={processes}
+                discovering={discovering}
+                onScan={() => void discoverProcesses(true)}
+                onSelectProcess={(processId) => {
+                  setSelectedProcessId(processId);
+                  setMainView('process');
+                  const found = processes.find(p => p.id === processId);
+                  if (found && activeWorkspace) {
+                    updateActiveWorkspace((ws) => ({
+                      ...ws,
+                      selectedProfileId: ws.profiles.find((prof) => prof.port === found.port)?.id,
+                    }));
+                  }
+                }}
+                onSharePublic={initiatePublicShare}
+                onShareNative={shareProcessNative}
+                onShareLocal={shareProcessLocal}
+                onStopTunnel={stopTunnel}
+              />
             )}
             {mainView === 'traffic' && (
-              <TrafficView requests={requests} activeTunnel={activeTunnel} onOpen={openRequestDetail} onSendToPostman={sendToPostman} onClear={clearTrafficLogs} />
+              <TrafficView requests={requests} workspaces={workspaces} processes={processes} activeTunnel={activeTunnel} onOpen={openRequestDetail} onSendToPostman={sendToPostman} onClear={clearTrafficLogs} onOpenWorkbench={openRequestInWorkbench} />
             )}
             {mainView === 'postman' && (
-              <PostmanView draft={draftRequest} savedRequests={savedRequests} response={postmanResponse} sending={sendingRequest} starterSuggestions={starterSuggestions} activeTunnel={activeTunnel} selectedProcessPort={selectedProcess?.port} onDraftChange={setDraftRequest} onHeaderTextChange={updateDraftHeader} onRun={runPostmanRequest} onSave={saveDraftRequest} onLoad={setDraftRequest} onImportStarterRequests={importStarterRequests} onDeleteRequest={deleteSavedRequest} onUpdateSavedRequests={updateSavedRequests} />
+              <PostmanView draft={draftRequest} savedRequests={savedRequests} response={postmanResponse} sending={sendingRequest} starterSuggestions={starterSuggestions} activeTunnel={activeTunnel} selectedProcessPort={selectedProcess?.port} onDraftChange={setDraftRequest} onHeaderTextChange={updateDraftHeader} onRun={runPostmanRequest} onSave={saveDraftRequest} onLoad={setDraftRequest} onImportStarterRequests={importStarterRequests} onDeleteRequest={deleteSavedRequest} onUpdateSavedRequests={updateSavedRequests} onOpenWorkbench={openRequestInWorkbench} />
             )}
             {mainView === 'swagger' && (
               <SwaggerView
@@ -1630,6 +1809,26 @@ function generateRandomSubdomain(prefix = 'px'): string {
                   setOpenApiDocument(importedDoc);
                   showToast('Imported OpenAPI Spec', 'success');
                 }}
+                onOpenWorkbench={openRequestInWorkbench}
+              />
+            )}
+            {mainView === 'workbench' && (
+              <RequestWorkbenchDialog
+                isOpen={true}
+                isFullView={true}
+                tabs={workbenchTabs}
+                activeTabId={activeWorkbenchTabId}
+                workspace={activeWorkspace}
+                scannedEndpoints={scannedEndpoints}
+                trafficLogs={requests}
+                terminalLogs={terminalLogs}
+                activeProcessPort={selectedProcess?.port}
+                onClose={() => setMainView('traffic')}
+                onTabsChange={(updatedTabs, nextActiveId) => {
+                  setWorkbenchTabs(updatedTabs);
+                  setActiveWorkbenchTabId(nextActiveId);
+                }}
+                onSaveRequestToCollection={saveDraftRequest}
               />
             )}
             {mainView === 'docs' && (
@@ -1646,124 +1845,63 @@ function generateRandomSubdomain(prefix = 'px'): string {
                 onOpenDetail={openRequestDetail}
                 onSendToPostman={sendToPostman}
                 onReplayRequest={replayRequest}
+                onOpenWorkbench={openRequestInWorkbench}
+              />
+            )}
+            {mainView === 'workbench' && (
+              <RequestWorkbenchDialog
+                isOpen={true}
+                isFullView={true}
+                tabs={workbenchTabs}
+                activeTabId={activeWorkbenchTabId}
+                workspace={activeWorkspace}
+                scannedEndpoints={scannedEndpoints}
+                trafficLogs={requests}
+                terminalLogs={terminalLogs}
+                activeProcessPort={selectedProcess?.port}
+                onClose={() => setMainView('traffic')}
+                onTabsChange={(updatedTabs, nextActiveId) => {
+                  setWorkbenchTabs(updatedTabs);
+                  setActiveWorkbenchTabId(nextActiveId);
+                }}
+                onSaveRequestToCollection={saveDraftRequest}
               />
             )}
             {mainView === 'settings' && (
               <SettingsView workspace={activeWorkspace} appSettings={appSettings} domains={domains} domainDraft={domainDraft} loadingDomains={loadingDomains} busyDomainId={busyDomainId} scanningProject={scanningProject} onUpdateGuardrails={updateGuardrails} onUpdateAppNotes={updateAppNotes} onUpdateProjectRootPath={updateProjectRootPath} onScanProjectFolder={scanProjectFolder} onDomainDraftChange={setDomainDraft} onAddDomain={addDomain} onVerifyDomain={verifyDomain} onRemoveDomain={removeDomain} onUpdateTheme={updateTheme} onUpdateAutoUpdate={updateAutoUpdate} onUpdateTelemetry={updateTelemetry} onUpdateEnableDevTools={updateEnableDevTools} initialSection={settingsSection} />
             )}
+            {mainView === 'process' && (
+              <ProcessView
+                workspace={activeWorkspace}
+                process={selectedProcess}
+                profile={selectedProfile}
+                tunnel={tunnels.find((t) => t.localPort === (selectedProcess?.port || selectedProfile?.port) && t.status === 'ACTIVE') || null}
+                sharingPort={sharingPort}
+                suggestions={starterSuggestions}
+                hasVerifiedDomain={domains.some((d) => d.verified)}
+                localIp={localIp}
+                onDiscover={() => {
+                  setDiscoverOpen(true);
+                  void discoverProcesses(true);
+                }}
+                onShare={initiatePublicShare}
+                onShareLocal={shareProcessLocal}
+                onStop={stopTunnel}
+                onStopLocalShare={() => setSharingPort(null)}
+                onCopy={copyText}
+                onImportStarterRequests={importStarterRequests}
+                onRefreshConfig={(p) => void refreshProcessDirectory(p as ProcessCandidate)}
+              />
+            )}
           </main>
 
-          {/* ── Global Console Drawer ── */}
           {terminalOpen && (
-            <div
-              style={{ height: `${terminalHeight}px` }}
-              className="w-full bg-black border-t border-outline-variant flex flex-col overflow-hidden relative shrink-0 z-40"
-            >
-              {/* Resize Handle */}
-              <div
-                onMouseDown={startResize}
-                className="absolute top-0 left-0 right-0 h-1 cursor-ns-resize hover:bg-primary/40 transition-colors z-50"
-              />
-
-              {/* Console Header */}
-              <div className="flex items-center justify-between px-4 py-1.5 bg-surface-container-low border-b border-outline-variant/30 select-none shrink-0">
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-primary text-[16px]">terminal</span>
-                  <span className="font-label-md text-[10px] uppercase tracking-widest text-primary font-bold">
-                    Console Output
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span
-                    onClick={() => setRequests([])}
-                    className="material-symbols-outlined text-on-surface-variant text-[16px] cursor-pointer hover:text-on-surface"
-                    title="Clear Logs"
-                  >
-                    delete
-                  </span>
-                  <span
-                    onClick={() => {
-                      const logText = requests.map(req => `[${req.method}] ${req.path} — ${req.status || '200'}`).join('\n');
-                      navigator.clipboard.writeText(logText);
-                      showToast('Console logs copied!', 'success');
-                    }}
-                    className="material-symbols-outlined text-on-surface-variant text-[16px] cursor-pointer hover:text-on-surface"
-                    title="Copy Logs"
-                  >
-                    content_copy
-                  </span>
-                  <span
-                    onClick={() => setTerminalOpen(false)}
-                    className="material-symbols-outlined text-on-surface-variant text-[16px] cursor-pointer hover:text-on-surface"
-                    title="Close Console"
-                  >
-                    close
-                  </span>
-                </div>
-              </div>
-
-              {/* Console logs */}
-              <div className="flex-1 overflow-y-auto p-4 font-mono text-[12px] leading-relaxed text-on-surface select-text bg-[#030303]">
-                {requests.length === 0 ? (
-                  <div className="space-y-1 opacity-75">
-                    <div className="flex gap-3">
-                      <span className="text-outline opacity-50 shrink-0">12:04:10</span>
-                      <span className="text-secondary shrink-0">[SYS]</span>
-                      <span>Initializing Proxync Core v2.4.0...</span>
-                    </div>
-                    <div className="flex gap-3">
-                      <span className="text-outline opacity-50 shrink-0">12:04:12</span>
-                      <span className="text-primary shrink-0">[RUN]</span>
-                      <span className="text-primary">scanning local dev servers...</span>
-                    </div>
-                    <div className="flex gap-3">
-                      <span className="text-outline opacity-50 shrink-0">12:04:14</span>
-                      <span className="text-secondary shrink-0">[OK]</span>
-                      <span className="font-bold">Ready to expose local tunnels.</span>
-                    </div>
-                    {tunnels.filter(t => t.status === 'ACTIVE').map((tunnel) => (
-                      <div key={tunnel.id} className="flex gap-3">
-                        <span className="text-outline opacity-50 shrink-0">12:04:14</span>
-                        <span className="text-on-surface-variant shrink-0">[INF]</span>
-                        <span className="text-primary underline cursor-pointer">{tunnel.publicUrl}</span>
-                      </div>
-                    ))}
-                    <div className="flex gap-3 pt-2">
-                      <span className="text-primary">❯</span>
-                      <span className="border-r-2 border-primary animate-pulse h-4 w-[2px]"></span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    {requests.slice(-50).map((req) => {
-                      const isSuccess = Number(req.status) >= 200 && Number(req.status) < 400;
-                      const logTime = req.capturedAt ? new Date(req.capturedAt).toTimeString().split(' ')[0] : '12:04:10';
-                      return (
-                        <div key={req.id} className="flex gap-3">
-                          <span className="text-outline opacity-50 shrink-0">
-                            {logTime}
-                          </span>
-                          <span className={`shrink-0 font-bold ${req.method === 'GET' ? 'text-primary' : 'text-secondary'}`}>
-                            [{req.method}]
-                          </span>
-                          <span className="text-on-surface-variant shrink-0 truncate max-w-md">{req.path}</span>
-                          <span className={`shrink-0 ${isSuccess ? 'text-secondary' : 'text-error'}`}>
-                            — {req.status || '200'}
-                          </span>
-                          {req.durationMs && (
-                            <span className="text-outline shrink-0">({req.durationMs}ms)</span>
-                          )}
-                        </div>
-                      );
-                    })}
-                    <div className="flex gap-3 pt-2">
-                      <span className="text-primary">❯</span>
-                      <span className="border-r-2 border-primary animate-pulse h-4 w-[2px]"></span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+            <TerminalDrawer
+              isOpen={terminalOpen}
+              onClose={() => setTerminalOpen(false)}
+              logs={terminalLogs}
+              onClearLogs={() => setTerminalLogs([])}
+            />
           )}
         </div>
       </div>
@@ -1772,9 +1910,11 @@ function generateRandomSubdomain(prefix = 'px'): string {
       <footer className="app-footer h-6 min-h-6 w-full flex justify-between items-center px-3 border-t border-outline-variant bg-surface-container-lowest text-code-sm select-none z-50 overflow-hidden whitespace-nowrap">
         <div className="flex items-center gap-2 sm:gap-3 text-secondary min-w-0 overflow-hidden shrink">
           <span className="flex items-center gap-1.5 min-w-0 shrink truncate">
-            <span className={`w-2 h-2 rounded-full shrink-0 ${activeTunnel ? 'bg-primary animate-pulse' : 'bg-outline'}`} />
-            <span className="truncate max-w-[130px] sm:max-w-[240px] md:max-w-[360px] lg:max-w-none">
-              {activeTunnel ? `Connected: ${new URL(activeTunnel.publicUrl).hostname}` : 'Disconnected'}
+            <span className={`w-2 h-2 rounded-full shrink-0 ${tunnels.some((t) => t.status === 'ACTIVE') ? 'bg-primary animate-pulse' : 'bg-outline'}`} />
+            <span className="truncate max-w-[130px] sm:max-w-[240px] md:max-w-[360px] lg:max-w-none font-mono">
+              {tunnels.filter((t) => t.status === 'ACTIVE').length > 0
+                ? `${tunnels.filter((t) => t.status === 'ACTIVE').length} Live ${tunnels.filter((t) => t.status === 'ACTIVE').length === 1 ? 'Tunnel' : 'Tunnels'} (${tunnels.filter((t) => t.status === 'ACTIVE').map((t) => `:${t.localPort}`).join(', ')})`
+                : 'No Active Tunnels'}
             </span>
           </span>
           <span className="text-outline/50 shrink-0">|</span>
@@ -1808,7 +1948,25 @@ function generateRandomSubdomain(prefix = 'px'): string {
       {panelView && <CompanionPanel panel={panelView} onClose={() => setPanelView(null)} />}
 
       {discoverOpen && (
-        <DiscoverDialog processes={processes} discovering={discovering} sharingPort={sharingPort} onClose={() => setDiscoverOpen(false)} onRefresh={discoverProcesses} onShare={initiatePublicShare} onShareLocal={shareProcessLocal} />
+        <DiscoverDialog
+          processes={processes}
+          discovering={discovering}
+          sharingPort={sharingPort}
+          onClose={() => setDiscoverOpen(false)}
+          onRefresh={discoverProcesses}
+          onShare={initiatePublicShare}
+          onShareLocal={shareProcessLocal}
+          onSelectProcess={(p) => {
+            setSelectedProcessId(p.id);
+            setMainView('process');
+            if (activeWorkspace) {
+              updateActiveWorkspace((ws) => ({
+                ...ws,
+                selectedProfileId: ws.profiles.find((prof) => prof.port === p.port)?.id,
+              }));
+            }
+          }}
+        />
       )}
 
       {sharingProcessCandidate && (
@@ -1854,6 +2012,8 @@ function generateRandomSubdomain(prefix = 'px'): string {
           </section>
         </div>
       )}
+
+
 
       <ToastContainer />
     </div>

@@ -20,6 +20,7 @@ export function PostmanView({
   onImportStarterRequests,
   onDeleteRequest,
   onUpdateSavedRequests,
+  onOpenWorkbench,
 }: {
   draft: SavedRequest;
   savedRequests: SavedRequest[];
@@ -36,6 +37,7 @@ export function PostmanView({
   onImportStarterRequests: () => void;
   onDeleteRequest?: (id: string) => void;
   onUpdateSavedRequests?: (next: SavedRequest[]) => void;
+  onOpenWorkbench?: (request: SavedRequest) => void;
 }) {
   const routeTarget = activeTunnel
     ? activeTunnel.publicUrl.includes('trycloudflare.com')
@@ -715,6 +717,16 @@ export function PostmanView({
           />
 
           <div className="flex items-center gap-1.5 shrink-0">
+            {onOpenWorkbench && (
+              <button
+                className="btn-primary shrink-0 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-sm cursor-pointer"
+                onClick={() => onOpenWorkbench(draft)}
+                title="Open 360° Request Workbench Studio"
+              >
+                <span className="material-symbols-outlined text-sm">bolt</span>
+                <span>Workbench</span>
+              </button>
+            )}
             <button
               className="btn-secondary shrink-0 font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-sm"
               onClick={onSave}
