@@ -434,6 +434,14 @@ async fn close_tunnel(tunnel_id: String) -> Result<(), String> {
     }
 }
 
+struct TempDirGuard(std::path::PathBuf);
+
+impl Drop for TempDirGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 #[tauri::command]
 async fn open_localtunnel(
     app: tauri::AppHandle,
@@ -444,7 +452,7 @@ async fn open_localtunnel(
     let mut cmd = tokio::process::Command::new("cmd");
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000);
-    cmd.args(&["/C", "npx", "-y", "localtunnel", "--port", &local_port.to_string()]);
+    cmd.args(&["/C", "npx", "-y", "localtunnel@2.0.2", "--port", &local_port.to_string()]);
     if let Some(sub) = subdomain {
         let clean_sub = sub.replace(" ", "-").to_lowercase();
         cmd.args(&["--subdomain", &clean_sub]);
@@ -812,7 +820,6 @@ async fn execute_http_request(
 ) -> Result<NativeHttpResponsePayload, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
-        .danger_accept_invalid_certs(true)
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) ProxyncStudio/0.2.1")
         .build()
         .map_err(|e| e.to_string())?;
@@ -878,6 +885,7 @@ async fn open_native_tunnel(
     let temp_dir = std::env::temp_dir().join(format!("proxync_ssh_{}", tunnel_id));
     let _ = std::fs::remove_dir_all(&temp_dir);
     let _ = std::fs::create_dir_all(&temp_dir);
+    let _guard = TempDirGuard(temp_dir.clone());
     
     let key_path = temp_dir.join("id_ed25519");
     let pub_path = temp_dir.join("id_ed25519.pub");
@@ -893,38 +901,61 @@ async fn open_native_tunnel(
             .unwrap_or(false)
     };
 
-    let active_key_path = if key_gen_success && key_path.exists() && pub_path.exists() {
-        if let Ok(pub_key) = std::fs::read_to_string(&pub_path) {
-            let body_json = serde_json::json!({
-                "subdomain": clean_subdomain,
-                "publicKey": pub_key.trim()
-            }).to_string();
+    if !key_gen_success || !key_path.exists() || !pub_path.exists() {
+        return Err("Failed to generate ephemeral SSH keypair. Ensure ssh-keygen is available.".to_string());
+    }
 
-            let mut curl_cmd = std::process::Command::new("curl");
-            #[cfg(target_os = "windows")]
-            curl_cmd.creation_flags(0x08000000);
-            
-            let _ = curl_cmd
-                .args(&[
-                    "-s",
-                    "-X", "POST",
-                    "http://104.208.83.199:3939/api/tunnel/sign-jit-cert",
-                    "-H", "Content-Type: application/json",
-                    "-d", &body_json,
-                ])
-                .output();
-            
-            // Short delay to allow sish inotify watcher to reload keys into memory
-            tokio::time::sleep(std::time::Duration::from_millis(350)).await;
+    let known_hosts_path = temp_dir.join("known_hosts");
+    let ssh_host = std::env::var("PROXYNC_SSH_HOST")
+        .unwrap_or_else(|_| "104.208.83.199".to_string());
+    let mut strict_host_checking = "accept-new";
+
+    if let Ok(pub_key) = std::fs::read_to_string(&pub_path) {
+        let body_json = serde_json::json!({
+            "subdomain": clean_subdomain,
+            "publicKey": pub_key.trim()
+        }).to_string();
+
+        let api_url = std::env::var("PROXYNC_API_URL")
+            .unwrap_or_else(|_| "https://api.proxync.dev/api/tunnel/sign-jit-cert".to_string());
+
+        let api_secret = std::env::var("PROXYNC_API_SECRET_TOKEN")
+            .unwrap_or_else(|_| "proxync_default_secret_2026".to_string());
+        let auth_header = format!("Authorization: Bearer {}", api_secret);
+
+        let mut curl_cmd = std::process::Command::new("curl");
+        #[cfg(target_os = "windows")]
+        curl_cmd.creation_flags(0x08000000);
+        
+        let output = curl_cmd
+            .args(&[
+                "-s",
+                "-X", "POST",
+                &api_url,
+                "-H", "Content-Type: application/json",
+                "-H", &auth_header,
+                "-d", &body_json,
+            ])
+            .output();
+        
+        if let Ok(out) = output {
+            if let Ok(resp_text) = String::from_utf8(out.stdout) {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&resp_text) {
+                    if let Some(host_key) = parsed.get("hostKey").and_then(|v| v.as_str()) {
+                        if !host_key.trim().is_empty() {
+                            let entry = format!("[{}]:2222 {}\n", ssh_host, host_key.trim());
+                            let _ = std::fs::write(&known_hosts_path, entry);
+                            strict_host_checking = "yes";
+                        }
+                    }
+                }
+            }
         }
-        key_path
-    } else {
-        let static_key_path = get_data_filepath().parent().unwrap().join("ssh_key");
-        if !static_key_path.exists() {
-            std::fs::write(&static_key_path, include_str!("../sish_key")).map_err(|e| e.to_string())?;
-        }
-        static_key_path
-    };
+        
+        // Short delay to allow sish inotify watcher to reload keys into memory
+        tokio::time::sleep(std::time::Duration::from_millis(350)).await;
+    }
+    let active_key_path = key_path;
 
     #[cfg(target_os = "windows")]
     {
@@ -946,20 +977,16 @@ async fn open_native_tunnel(
     let mut cmd = tokio::process::Command::new("ssh");
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000);
-    
-    let known_hosts_path = temp_dir.join("known_hosts");
-    let trusted_host_key = "[104.208.83.199]:2222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDyV3ZNPsHhwJaW6akzFMg/KAE7F1K4WamVtMaeP/vi9\n";
-    let _ = std::fs::write(&known_hosts_path, trusted_host_key);
 
     cmd.args(&[
         "-i", active_key_path.to_str().unwrap(),
         "-N",
-        "-o", "StrictHostKeyChecking=yes",
+        "-o", &format!("StrictHostKeyChecking={}", strict_host_checking),
         "-o", &format!("UserKnownHostsFile={}", known_hosts_path.to_str().unwrap()),
         "-o", "ServerAliveInterval=30",
         "-p", "2222",
         &format!("-R {}:80:127.0.0.1:{}", clean_subdomain, local_port),
-        &format!("{}@104.208.83.199", clean_subdomain),
+        &format!("{}@{}", clean_subdomain, ssh_host),
     ]);
     
     let child = cmd.spawn().map_err(|e| format!("Failed to spawn ssh: {}", e))?;
@@ -969,9 +996,9 @@ async fn open_native_tunnel(
     
     let tunnel_id_clone = tunnel_id.clone();
     let app_clone = app.clone();
-    let temp_dir_clone = temp_dir.clone();
 
     tokio::spawn(async move {
+        let _active_guard = _guard;
         tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
         let mut has_child = true;
         while has_child {
@@ -987,7 +1014,6 @@ async fn open_native_tunnel(
                 has_child = false;
             }
         }
-        let _ = std::fs::remove_dir_all(temp_dir_clone);
     });
     
     Ok(format!("https://{}.proxync.dev", clean_subdomain))
