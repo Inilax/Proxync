@@ -1817,7 +1817,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
           domains={domains.filter((d) => d.verified)}
           onClose={() => setSharingProcessCandidate(null)}
           onConfirm={(selectedOption, ltSubdomain) => {
-            if (selectedOption === 'proxync_native') { void shareProcessNative(sharingProcessCandidate); }
+            if (selectedOption === 'proxync_native') { void shareProcessNative(sharingProcessCandidate, ltSubdomain); }
             else if (selectedOption === 'localtunnel') { void shareProcessLocaltunnel(sharingProcessCandidate, ltSubdomain); }
             else if (selectedOption === 'cloudflare') { void shareProcessCloudflare(sharingProcessCandidate); }
             else { void shareProcess(sharingProcessCandidate, selectedOption === 'default' ? undefined : selectedOption); }
