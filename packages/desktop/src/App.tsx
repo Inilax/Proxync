@@ -923,6 +923,15 @@ export default function App() {
     finally { setSharingPort(null); }
   }
 
+function generateRandomSubdomain(prefix = 'px'): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let rand = '';
+  for (let i = 0; i < 8; i++) {
+    rand += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `${prefix}-${rand}`;
+}
+
   async function shareProcessNative(process: ProcessCandidate, customSubdomain?: string) {
     if (!activeWorkspace) return;
     const starterScan = buildStarterRequests(process);
@@ -941,7 +950,7 @@ export default function App() {
       const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
       await invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined);
       const proxyPort = await invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port);
-      const suggestedSub = customSubdomain || `${activeWorkspace.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${process.port}`;
+      const suggestedSub = customSubdomain || generateRandomSubdomain('px');
       showToast('Starting Proxync Native SSH tunnel...', 'info');
       const nativeTunnelUrl = await invoke<string>('open_native_tunnel', { tunnelId: tunnel.id, localPort: proxyPort, subdomain: suggestedSub });
       const boundTunnel: Tunnel = { ...tunnel, publicUrl: nativeTunnelUrl, subdomain: suggestedSub };
@@ -1808,7 +1817,7 @@ export default function App() {
           domains={domains.filter((d) => d.verified)}
           onClose={() => setSharingProcessCandidate(null)}
           onConfirm={(selectedOption, ltSubdomain) => {
-            if (selectedOption === 'proxync_native') { void shareProcessNative(sharingProcessCandidate, ltSubdomain); }
+            if (selectedOption === 'proxync_native') { void shareProcessNative(sharingProcessCandidate); }
             else if (selectedOption === 'localtunnel') { void shareProcessLocaltunnel(sharingProcessCandidate, ltSubdomain); }
             else if (selectedOption === 'cloudflare') { void shareProcessCloudflare(sharingProcessCandidate); }
             else { void shareProcess(sharingProcessCandidate, selectedOption === 'default' ? undefined : selectedOption); }

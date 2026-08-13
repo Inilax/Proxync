@@ -2,6 +2,22 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [feature/proxync-native-tunnel] - 2026-08-13 (Proxync Native SSH Tunnel Engine, Zero-Trace Key Security & Random Subdomain Auto-Generation)
+- **Feature Summary**:
+  - **Native SSH Tunnel Engine**: Built high-speed native SSH tunneling engine in Rust (`open_native_tunnel` in `lib.rs`) establishing direct reverse port-forwarding (`-R {subdomain}:80:127.0.0.1:{port}`) to Proxync edge servers (`api.proxync.dev` / `104.208.83.199:2222`).
+  - **Ephemeral JIT Certificate Signing**: Integrated on-demand Ed25519 keypair generation and JIT certificate signing request via `api.proxync.dev/api/tunnel/sign-jit-cert` with Bearer auth token validation.
+  - **Zero-Trace Security (`TempDirGuard`)**: Implemented RAII `TempDirGuard` in Rust ensuring temporary SSH private keys and `known_hosts` files are securely erased on tunnel termination. Enforced strict file permissions (`icacls` / `0600`) on Windows and Unix platforms.
+  - **Random Subdomain Auto-Generation**: Removed custom subdomain input for standard Proxync Native Tunnels in favor of auto-generated 8-character random alphanumeric subdomains (e.g. `px-a1b2c3d4.proxync.dev`). Added `generateRandomSubdomain('px')` in `App.tsx` and Rust fallback generator.
+  - **Enterprise Custom Domains & UI Alignment**: Updated `DomainSelectDialog` in `Dialogs.tsx` to remove custom subdomain input for native tunnels, updated modal descriptions, and labeled custom domain entries as `Custom Domain (Enterprise)`. Updated `ProcessView.tsx` info banner to clarify default random subdomains and Enterprise custom domain routing.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/.gitignore`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
 ## [feature/develop-cve-emergency-security-radar] - 2026-08-10 (Emergency CVE Security Update Radar & Zero False-Positive Detection)
 - **Feature Summary**:
   - **Emergency CVE Radar**: Implemented deterministic `isCriticalSecurityUpdate()` helper in `App.tsx` scanning GitHub Release notes for explicit security tags (`[SECURITY-CVE]`, `[TYPE: CVE-PATCH]`, `[CVE]`, or `"critical": true`).

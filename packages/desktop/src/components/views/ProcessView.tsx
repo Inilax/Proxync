@@ -224,9 +224,9 @@ export function ProcessView({
 
             {!hasVerifiedDomain && (
               <div className="p-4 bg-tertiary/10 border border-tertiary/20 rounded-xl flex gap-3">
-                <span className="material-symbols-outlined text-tertiary shrink-0 text-[18px]">warning</span>
+                <span className="material-symbols-outlined text-tertiary shrink-0 text-[18px]">info</span>
                 <p className="text-xs text-on-surface-variant leading-relaxed">
-                  <strong>No Custom Domain Connected.</strong> Standard exposures will use random public subdomains. To register fixed links, verify custom DNS in Settings.
+                  <strong>Standard Tunnels Use Random Subdomains.</strong> Public native exposures automatically generate secure random subdomains (e.g. <code>px-a1b2c3d4.proxync.dev</code>). Enterprise custom domain routing is configured in Settings.
                 </p>
               </div>
             )}

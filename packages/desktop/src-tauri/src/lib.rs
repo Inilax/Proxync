@@ -872,11 +872,20 @@ async fn open_native_tunnel(
     local_port: u16,
     subdomain: String,
 ) -> Result<String, String> {
-    let clean_subdomain: String = subdomain
-        .to_lowercase()
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
-        .collect();
+    let raw_sub = subdomain.trim();
+    let clean_subdomain: String = if raw_sub.is_empty() || raw_sub == "auto" {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(12345678);
+        format!("px-{:x}", ts % 0xffffffff)
+    } else {
+        raw_sub
+            .to_lowercase()
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+            .collect()
+    };
 
     if clean_subdomain.is_empty() {
         return Err("Invalid subdomain format".to_string());
