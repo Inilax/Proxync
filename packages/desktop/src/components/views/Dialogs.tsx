@@ -273,7 +273,7 @@ export function DomainSelectDialog({
           )}
           <label className="field-label">Sharing Target</label>
           
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '420px', paddingRight: '2px', marginBottom: '4px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '4px' }}>
             {options.map((opt) => {
               const isSelected = selectedDomain === opt.id;
               const hasMeasured = opt.latency !== Infinity;

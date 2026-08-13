@@ -205,7 +205,7 @@ fn resolve_directory_advanced(exec_path: &Option<String>, cmd_line: &Option<Stri
         }
     }
 
-    // Stage 4: Relative Script Search Fallback (e.g. server.js in E:\to-do)
+    // Stage 4: Dynamic Script Search Fallback (Current Working Directory & User Home)
     if let Some(cmd) = cmd_line {
         if cmd.contains("server.js") || cmd.contains("app.js") || cmd.contains("index.js") || cmd.contains("main.js") {
             let script_name = if cmd.contains("server.js") {
@@ -218,11 +218,20 @@ fn resolve_directory_advanced(exec_path: &Option<String>, cmd_line: &Option<Stri
                 "index.js"
             };
 
-            let candidate_roots = vec!["E:\\to-do", "E:\\release", "E:\\apex", "E:\\proxync", "C:\\Projects"];
-            for root_candidate in candidate_roots {
-                let path_check = std::path::Path::new(root_candidate).join(script_name);
+            let mut dynamic_roots = Vec::new();
+            if let Ok(cwd) = std::env::current_dir() {
+                dynamic_roots.push(cwd);
+            }
+            if let Ok(user_profile) = std::env::var("USERPROFILE") {
+                dynamic_roots.push(std::path::PathBuf::from(user_profile));
+            } else if let Ok(home) = std::env::var("HOME") {
+                dynamic_roots.push(std::path::PathBuf::from(home));
+            }
+
+            for root_candidate in dynamic_roots {
+                let path_check = root_candidate.join(script_name);
                 if path_check.exists() {
-                    return root_candidate.to_string();
+                    return root_candidate.to_string_lossy().to_string();
                 }
             }
         }

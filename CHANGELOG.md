@@ -7,8 +7,8 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Scalable Workspace Hub**: Replaced 100-workspace dropdown clutter with dedicated `WorkspaceDashboardView` rendering detected local server cards and in-place full scanning.
   - **Theme-Matching Dropdown Filters**: Converted Traffic Inspector toolbar to single-row custom `<select>` dropdown pills (`Workspace:`, `Server:`, `Method:`, `Status:`) with dark theme background styling (`bg-surface-container-high text-on-surface`) and early-exit filter pipeline optimizations.
   - **Process Tree Teardown Fix**: Upgraded Rust `close_tunnel` backend command to execute `taskkill /F /T` on Windows, terminating child process trees (`cmd.exe`, `cloudflared.exe`, `ssh.exe`) and aborting `PROXY_HANDLES` TCP proxy listeners to prevent orphan background connections.
-  - **Proxync Native Tunnel UX Polish**: Added 1-click `⚡ Proxync` action button to detected local server cards and elevated Proxync Native Tunnel to top default position in `DomainSelectDialog` with expanded height and no scrollbar clipping.
-  - **Workbench View Restoration & Empty State UI**: Restored `mainView === 'workbench'` rendering block in `App.tsx` and implemented interactive empty state UI with starter tab creator in `RequestWorkbenchDialog`.
+  - **Public Share Scrollbar RCA Fix**: Expanded `.domain-select-dialog` modal grid bounds (`max-width: 520px; max-height: min(820px, 92vh)`) and removed hardcoded `maxHeight: '420px'` on options container in `Dialogs.tsx`, permanently eliminating vertical scrollbar flakiness across all selection states.
+  - **Dynamic Directory Resolution Security Audit**: Removed hardcoded developer machine path candidates (`candidate_roots` containing `E:\to-do`, `E:\release`, etc.) in `lib.rs` (`resolve_directory_advanced`) and replaced with dynamic current working directory and user home profile resolution.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/lib.rs`
   - `packages/desktop/src/App.tsx`
