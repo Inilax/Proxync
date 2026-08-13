@@ -932,7 +932,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
   return `${prefix}-${rand}`;
 }
 
-  async function shareProcessNative(process: ProcessCandidate, customSubdomain?: string) {
+  async function shareProcessNative(process: ProcessCandidate) {
     if (!activeWorkspace) return;
     const starterScan = buildStarterRequests(process);
     setStarterSuggestions(starterScan);
@@ -950,7 +950,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
       const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
       await invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined);
       const proxyPort = await invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port);
-      const suggestedSub = customSubdomain || generateRandomSubdomain('px');
+      const suggestedSub = generateRandomSubdomain('px');
       showToast('Starting Proxync Native SSH tunnel...', 'info');
       const nativeTunnelUrl = await invoke<string>('open_native_tunnel', { tunnelId: tunnel.id, localPort: proxyPort, subdomain: suggestedSub });
       const boundTunnel: Tunnel = { ...tunnel, publicUrl: nativeTunnelUrl, subdomain: suggestedSub };
@@ -1817,7 +1817,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
           domains={domains.filter((d) => d.verified)}
           onClose={() => setSharingProcessCandidate(null)}
           onConfirm={(selectedOption, ltSubdomain) => {
-            if (selectedOption === 'proxync_native') { void shareProcessNative(sharingProcessCandidate, ltSubdomain); }
+            if (selectedOption === 'proxync_native') { void shareProcessNative(sharingProcessCandidate); }
             else if (selectedOption === 'localtunnel') { void shareProcessLocaltunnel(sharingProcessCandidate, ltSubdomain); }
             else if (selectedOption === 'cloudflare') { void shareProcessCloudflare(sharingProcessCandidate); }
             else { void shareProcess(sharingProcessCandidate, selectedOption === 'default' ? undefined : selectedOption); }

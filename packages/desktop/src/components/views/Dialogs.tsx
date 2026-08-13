@@ -185,7 +185,7 @@ export function DomainSelectDialog({
     if (selectedDomain === 'proxync_native') {
       return (
         <span className="domain-desc accent" style={{ color: '#8b5cf6' }}>
-          🚀 <strong>Proxync Tunnel (Beta):</strong> Ultimate speed via direct SSH tunneling to our edge. Bypasses strict firewalls perfectly.
+          🚀 <strong>Proxync Tunnel (Beta):</strong> Direct SSH tunnel to Proxync edge with auto-generated random subdomains (e.g., <code>px-a1b2c3d4.proxync.dev</code>).
         </span>
       );
     }
@@ -214,7 +214,7 @@ export function DomainSelectDialog({
     {
       id: 'proxync_native',
       title: 'Proxync Tunnel (Beta)',
-      desc: 'High-speed native SSH tunnel bypassing strict firewalls',
+      desc: 'High-speed native SSH tunnel with random public subdomains',
       icon: '🚀',
       latency: latencies.proxync_native,
     },
@@ -301,9 +301,9 @@ export function DomainSelectDialog({
             })}
           </div>
 
-          {(selectedDomain === 'localtunnel' || selectedDomain === 'proxync_native') && (
+          {selectedDomain === 'localtunnel' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
-              <label className="field-label">Custom Subdomain (Optional)</label>
+              <label className="field-label">Localtunnel Subdomain (Optional)</label>
               <input
                 className="form-input"
                 type="text"
@@ -323,7 +323,7 @@ export function DomainSelectDialog({
           <button className="btn-ghost" onClick={onClose}>Cancel</button>
           <button
             className="btn-primary"
-            onClick={() => onConfirm(selectedDomain, (selectedDomain === 'localtunnel' || selectedDomain === 'proxync_native') ? (customSubdomain || undefined) : undefined)}
+            onClick={() => onConfirm(selectedDomain, selectedDomain === 'localtunnel' ? (customSubdomain || undefined) : undefined)}
           >
             Go Live
           </button>
