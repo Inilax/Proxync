@@ -1,0 +1,150 @@
+{
+  "version": "2.0.0",
+  "date": "2026-08-14T08:05:00.000Z",
+  "mode": "daily",
+  "scope": "full",
+  "diff_mode": false,
+  "phases_run": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+  "attack_surface": {
+    "code": {
+      "public_endpoints": 0,
+      "authenticated": 0,
+      "admin": 0,
+      "api": 15,
+      "uploads": 0,
+      "integrations": 4,
+      "background_jobs": 2,
+      "websockets": 1
+    },
+    "infrastructure": {
+      "ci_workflows": 2,
+      "webhook_receivers": 0,
+      "container_configs": 0,
+      "iac_configs": 0,
+      "deploy_targets": 1,
+      "secret_management": "GitHub Actions Secrets & Local AppData Key Files"
+    }
+  },
+  "findings": [
+    {
+      "id": 1,
+      "severity": "HIGH",
+      "confidence": 9,
+      "status": "VERIFIED",
+      "phase": 9,
+      "phase_name": "OWASP Top 10 - Cryptographic Failures / Insecure Defaults",
+      "category": "OWASP A02",
+      "fingerprint": "cso-native-tunnel-accept-new-ssh-host-key-fallback",
+      "title": "Unauthenticated SSH Host Key Fallback ('accept-new') on JIT API Failure",
+      "file": "packages/desktop/src-tauri/src/lib.rs",
+      "line": 1120,
+      "description": "In open_native_tunnel, strict_host_checking defaults to 'accept-new'. If the JIT certificate signing request to https://api.proxync.dev fails or is unreachable, the SSH client connects to port 2222 with StrictHostKeyChecking=accept-new and an empty known_hosts file, accepting any rogue SSH host key.",
+      "exploit_scenario": "An attacker on a compromised local network intercepts DNS/TCP traffic to the SSH host. Because the initial HTTPS cert call failed or was blocked, SSH connects with accept-new and blindly trusts the attacker's fake SSH host key, intercepting or tunneling forwarded developer traffic.",
+      "impact": "Man-in-the-Middle (MitM) interception of local HTTP traffic forwarded through the reverse tunnel.",
+      "recommendation": "If the JIT certificate API call fails or does not return a valid hostKey, fail closed and abort the tunnel connection rather than falling back to accept-new.",
+      "verification": "self-verified"
+    },
+    {
+      "id": 2,
+      "severity": "HIGH",
+      "confidence": 9,
+      "status": "VERIFIED",
+      "phase": 9,
+      "phase_name": "OWASP Top 10 - Sensitive Data Exposure / Logging",
+      "category": "OWASP A09",
+      "fingerprint": "cso-open-tunnel-unredacted-headers-in-request-log",
+      "title": "Sensitive Request Headers (Authorization, Cookie) Unredacted in Relay Tunnel Event Stream",
+      "file": "packages/desktop/src-tauri/src/lib.rs",
+      "line": 480,
+      "description": "In open_tunnel, incoming HTTP requests from the WebSocket relay stream emit raw req_data.headers to the frontend via the 'request:log' Tauri event. Unlike start_proxy (which masks Authorization, Cookie, and API keys), open_tunnel forwards all authentication tokens in plaintext to the UI and state storage.",
+      "exploit_scenario": "A developer tunnels a protected application receiving requests with Bearer tokens or Session Cookies over the relay. The full authorization tokens are logged in plaintext into the UI state and serialized to unencrypted disk storage (%APPDATA%/Proxync/data.json).",
+      "impact": "Credential leakage of session cookies and bearer tokens to unencrypted local logs and application state files.",
+      "recommendation": "Apply the same header redaction filter (masking authorization, cookie, set-cookie, and api-key) in open_tunnel before emitting the 'request:log' event.",
+      "verification": "self-verified"
+    },
+    {
+      "id": 3,
+      "severity": "MEDIUM",
+      "confidence": 9,
+      "status": "VERIFIED",
+      "phase": 9,
+      "phase_name": "OWASP Top 10 - Cryptographic Key Storage Permissions",
+      "category": "OWASP A02",
+      "fingerprint": "cso-device-identity-key-missing-unix-permissions",
+      "title": "Device Identity Private Key Lacks Restricted Unix File Permissions (0600)",
+      "file": "packages/desktop/src-tauri/src/lib.rs",
+      "line": 46,
+      "description": "In get_or_create_device_identity, Windows ACLs are restricted using icacls, but on Linux and macOS (Unix targets), device_identity.key is written with default umask permissions (0644/0664), allowing any other local user on the system to read the device private key.",
+      "exploit_scenario": "In a multi-user Linux/macOS development workstation, another unprivileged user reads ~/.config/Proxync/device_identity.key and impersonates the developer's device identity when requesting JIT tunnel certificates.",
+      "impact": "Device identity private key compromise and unauthorized device spoofing on shared unix machines.",
+      "recommendation": "Add #[cfg(unix)] permissions restriction (std::os::unix::fs::PermissionsExt::from_mode(0o600)) when writing device_identity.key.",
+      "verification": "self-verified"
+    },
+    {
+      "id": 4,
+      "severity": "MEDIUM",
+      "confidence": 8,
+      "status": "VERIFIED",
+      "phase": 9,
+      "phase_name": "OWASP Top 10 - Injection / Incomplete Sanitization",
+      "category": "OWASP A03",
+      "fingerprint": "cso-localtunnel-subdomain-insufficient-sanitization",
+      "title": "Incomplete Subdomain Sanitization in Localtunnel Spawner",
+      "file": "packages/desktop/src-tauri/src/lib.rs",
+      "line": 619,
+      "description": "In open_localtunnel, the subdomain parameter only replaces whitespace with '-' (sub.replace(' ', '-').to_lowercase()), whereas open_native_tunnel uses a strict whitelist (c.is_ascii_alphanumeric() || *c == '-'). Submitting characters like quotes or cmd metacharacters could cause argument parsing issues.",
+      "exploit_scenario": "An unvalidated subdomain containing metacharacters or flags is passed to cmd /C npx localtunnel, leading to CLI argument parsing discrepancies.",
+      "impact": "Unintended CLI argument passing to localtunnel process.",
+      "recommendation": "Apply the strict character filter (alphanumeric and hyphens only) to subdomain in open_localtunnel.",
+      "verification": "self-verified"
+    },
+    {
+      "id": 5,
+      "severity": "MEDIUM",
+      "confidence": 8,
+      "status": "VERIFIED",
+      "phase": 9,
+      "phase_name": "OWASP Top 10 - Data Integrity Failures",
+      "category": "OWASP A08",
+      "fingerprint": "cso-start-proxy-lossy-utf8-binary-corruption",
+      "title": "Lossy UTF-8 String Conversion Corrupts Binary Request Payloads in Local TCP Proxy",
+      "file": "packages/desktop/src-tauri/src/lib.rs",
+      "line": 905,
+      "description": "In start_proxy, incoming request data is converted via String::from_utf8_lossy(&req_buf[..n_req]), modified, and written back as UTF-8 bytes to the target stream. Any non-UTF-8 binary bytes in request bodies (such as multipart image uploads or protobuf payloads) are permanently replaced by U+FFFD (0xEF 0xBF 0xBD), corrupting the payload.",
+      "exploit_scenario": "A developer sends a binary file upload or serialized binary payload through the intercepted local proxy port. The proxy converts the buffer lossily to a UTF-8 string, mutating the binary bytes and causing backend deserialization errors or payload corruption.",
+      "impact": "Silent data corruption of binary HTTP request bodies during proxy interception.",
+      "recommendation": "Parse HTTP headers strictly up to the header delimiter (\\r\\n\\r\\n) as ASCII/UTF-8 while preserving the raw byte slice for the request body and stream piping.",
+      "verification": "self-verified"
+    }
+  ],
+  "supply_chain_summary": {
+    "direct_deps": 20,
+    "transitive_deps": 315,
+    "critical_cves": 0,
+    "high_cves": 0,
+    "install_scripts": 0,
+    "lockfile_present": true,
+    "lockfile_tracked": true,
+    "tools_skipped": ["cargo audit (cargo-audit not installed)"]
+  },
+  "filter_stats": {
+    "candidates_scanned": 18,
+    "hard_exclusion_filtered": 7,
+    "confidence_gate_filtered": 6,
+    "verification_filtered": 0,
+    "reported": 5
+  },
+  "totals": {
+    "critical": 0,
+    "high": 2,
+    "medium": 3,
+    "tentative": 0
+  },
+  "trend": {
+    "prior_report_date": null,
+    "resolved": 0,
+    "persistent": 0,
+    "new": 5,
+    "direction": "first_run"
+  }
+}

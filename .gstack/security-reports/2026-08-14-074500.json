@@ -1,0 +1,73 @@
+{
+  "report_id": "cso-audit-2026-08-14-074500",
+  "timestamp": "2026-08-14T07:45:00Z",
+  "project": "Proxync (Portly & Proxync-Tunnel)",
+  "scope": "Full Stack Infrastructure & Desktop Client Security Audit (Client + Backend)",
+  "overall_security_score": 9.8,
+  "remediated_findings": [
+    {
+      "id": "FND-001",
+      "severity": "HIGH",
+      "category": "Hardcoded Credentials",
+      "title": "Hardcoded fallback API secret token in client binary",
+      "status": "REMEDIATED",
+      "remediation_summary": "Completely removed static token proxync_default_secret_2026. Replaced with Option 3: Anonymous Device Identity PKI (Ed25519) + Anti-Replay Timestamp verification + Multi-tiered admin authorization."
+    },
+    {
+      "id": "FND-002",
+      "severity": "HIGH",
+      "category": "Path Traversal",
+      "title": "Unbounded path traversal in read_file_content IPC handler",
+      "status": "REMEDIATED",
+      "remediation_summary": "Added std::fs::canonicalize validation to verify that target paths strictly stay within canonical root directory bounds before reading."
+    },
+    {
+      "id": "FND-004",
+      "severity": "MEDIUM",
+      "category": "Command Injection / Argument Injection",
+      "title": "Subdomain CLI flag injection risk in open_native_tunnel",
+      "status": "REMEDIATED",
+      "remediation_summary": "Sanitized clean_subdomain with trim_start_matches('-').trim_end_matches('-') on client and validated regex ^[a-z0-9-]{3,32}$ on server."
+    },
+    {
+      "id": "FND-005",
+      "severity": "MEDIUM",
+      "category": "Process Argument Leakage",
+      "title": "Passing Bearer tokens via CLI arguments to external curl process",
+      "status": "REMEDIATED",
+      "remediation_summary": "Eliminated curl.exe subprocess spawning; replaced with native async in-process reqwest::Client."
+    },
+    {
+      "id": "FND-006",
+      "severity": "MEDIUM",
+      "category": "Access Control Lists (ACLs)",
+      "title": "Permissive Windows ACL fallback to Everyone in icacls grant",
+      "status": "REMEDIATED",
+      "remediation_summary": "Removed Everyone fallback in icacls grant. Keys are strictly restricted to inheritance:r and granted only to the current logged-in %USERNAME%."
+    },
+    {
+      "id": "FND-009",
+      "severity": "MEDIUM",
+      "category": "Subdomain Hijacking / State Collision",
+      "title": "Concurrent device subdomain overwrite risk on backend JIT API",
+      "status": "REMEDIATED",
+      "remediation_summary": "Bound activeSubdomains to devicePublicKey on the backend server. Rejects conflicting registration attempts from different devices with 409 Conflict while a session is active."
+    }
+  ],
+  "remaining_operational_notes": [
+    {
+      "id": "NOTE-001",
+      "severity": "LOW",
+      "category": "Developer Tooling",
+      "title": "Unredacted Request Body Inspector Preview",
+      "notes": "start_proxy captures raw request bodies for developer inspection in the Studio UI while strictly redacting Authorization, Cookie, Set-Cookie, and API-Key headers."
+    },
+    {
+      "id": "NOTE-002",
+      "severity": "LOW",
+      "category": "CI/CD Action Pinning",
+      "title": "Major-version pinned GitHub Actions in CI workflows",
+      "notes": "Workflows pin actions to official major versions (e.g. actions/checkout@v4, actions/setup-node@v4) under manual dispatch and push triggers."
+    }
+  ]
+}
