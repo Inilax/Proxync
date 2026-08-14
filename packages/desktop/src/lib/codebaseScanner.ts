@@ -8,6 +8,8 @@ export interface ScannedEndpoint {
   pathParams: string[]; // e.g. ['id']
   tag: string; // e.g. 'Users'
   fileSource: string; // e.g. 'src/controllers/userController.ts'
+  lineNumber?: number; // 1-indexed line number where route is defined
+  compiledRegex?: RegExp; // Cached compiled regex for path matching
   description?: string;
 }
 
@@ -292,5 +294,121 @@ export async function scanCodebaseEndpoints(
     }
   }
 
-  return allEndpoints;
+  return allEndpoints.map((ep) => ({
+    ...ep,
+    compiledRegex: compileEndpointRegex(ep.path),
+  }));
 }
+
+/**
+ * Escapes regex literals first, then converts {param} / :param placeholders into regex groups.
+ */
+export function compileEndpointRegex(openApiPath: string): RegExp {
+  let pattern = openApiPath.trim();
+  if (pattern.includes('?')) {
+    pattern = pattern.split('?')[0];
+  }
+  pattern = pattern.replace(/\/+$/, '');
+  if (!pattern.startsWith('/')) {
+    pattern = '/' + pattern;
+  }
+
+  // 1. Escape literal regex characters
+  const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  // 2. Convert escaped parameters back into regex matchers
+  // \{param\} -> [^/]+
+  const regexString = '^' + escaped.replace(/\\\{[a-zA-Z0-9_]+\\\}/g, '([^/]+)') + '/?$';
+
+  return new RegExp(regexString, 'i');
+}
+
+export interface RouteMatchResult {
+  exactMatch: ScannedEndpoint | null;
+  nearMissMatch: ScannedEndpoint | null;
+  nearMissScore?: number;
+}
+
+/**
+ * Matches a live incoming request against scanned codebase endpoints.
+ * Precedence: Exact Static > Dynamic Regex Match > 3-Tier Near-Miss Scoring
+ */
+export function matchRequestToScannedRoute(
+  method: string,
+  rawPath: string,
+  endpoints: ScannedEndpoint[]
+): RouteMatchResult {
+  if (!rawPath || endpoints.length === 0) {
+    return { exactMatch: null, nearMissMatch: null };
+  }
+
+  const reqMethod = (method || 'GET').toUpperCase();
+  // Strip query params and trailing slash
+  let reqPath = rawPath.split('?')[0].trim().replace(/\/+$/, '');
+  if (!reqPath.startsWith('/')) reqPath = '/' + reqPath;
+
+  const candidateEndpoints = endpoints.filter(
+    (e) => e.method.toUpperCase() === reqMethod || e.method.toUpperCase() === 'ALL'
+  );
+
+  // 1. Check Exact Static Match first (Literal equality outranks regex)
+  const exactStatic = candidateEndpoints.find(
+    (e) => e.path.replace(/\/+$/, '') === reqPath && !e.path.includes('{')
+  );
+  if (exactStatic) {
+    return { exactMatch: exactStatic, nearMissMatch: null };
+  }
+
+  // 2. Check Dynamic Regex Match (Memoized Regex)
+  for (const ep of candidateEndpoints) {
+    const reg = ep.compiledRegex || compileEndpointRegex(ep.path);
+    if (reg.test(reqPath)) {
+      return { exactMatch: ep, nearMissMatch: null };
+    }
+  }
+
+  // 3. 3-Tier Near-Miss Scoring Algorithm (when exact match fails)
+  // Formula: +10 literal match, +5 param match, -5 literal mismatch, -10 segment count diff
+  const reqSegments = reqPath.split('/').filter(Boolean);
+
+  let bestNearMiss: ScannedEndpoint | null = null;
+  let highestScore = -Infinity;
+
+  for (const ep of candidateEndpoints) {
+    const scannedPathClean = ep.path.split('?')[0].trim().replace(/\/+$/, '');
+    const scannedSegments = scannedPathClean.split('/').filter(Boolean);
+
+    let score = 0;
+
+    // Aligned segment comparison
+    const maxLen = Math.min(reqSegments.length, scannedSegments.length);
+    for (let i = 0; i < maxLen; i++) {
+      const reqSeg = reqSegments[i];
+      const scanSeg = scannedSegments[i];
+
+      if (scanSeg.startsWith('{') && scanSeg.endsWith('}')) {
+        score += 5; // Parameter match
+      } else if (reqSeg.toLowerCase() === scanSeg.toLowerCase()) {
+        score += 10; // Literal match
+      } else {
+        score -= 5; // Literal mismatch penalty
+      }
+    }
+
+    // Segment count differential penalty (-10 per missing/extra segment)
+    const segmentDiff = Math.abs(scannedSegments.length - reqSegments.length);
+    score -= segmentDiff * 10;
+
+    if (score > highestScore && score >= 5) {
+      highestScore = score;
+      bestNearMiss = ep;
+    }
+  }
+
+  return {
+    exactMatch: null,
+    nearMissMatch: bestNearMiss,
+    nearMissScore: bestNearMiss ? highestScore : undefined,
+  };
+}
+

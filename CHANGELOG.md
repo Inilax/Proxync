@@ -2,6 +2,23 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [feature/develop-workspace-hub-traffic-filters-and-tunnel-ux] - 2026-08-14 (Workspace Hub Redesign, Theme-Matching Traffic Filters, Process Tree Teardown & Proxync Native Tunnel UX)
+- **Feature Summary**:
+  - **Scalable Workspace Hub**: Replaced 100-workspace dropdown clutter with dedicated `WorkspaceDashboardView` rendering detected local server cards and in-place full scanning.
+  - **Theme-Matching Dropdown Filters**: Converted Traffic Inspector toolbar to single-row custom `<select>` dropdown pills (`Workspace:`, `Server:`, `Method:`, `Status:`) with dark theme background styling (`bg-surface-container-high text-on-surface`) and early-exit filter pipeline optimizations.
+  - **Process Tree Teardown Fix**: Upgraded Rust `close_tunnel` backend command to execute `taskkill /F /T` on Windows, terminating child process trees (`cmd.exe`, `cloudflared.exe`, `ssh.exe`) and aborting `PROXY_HANDLES` TCP proxy listeners to prevent orphan background connections.
+  - **Public Share Scrollbar RCA Fix**: Expanded `.domain-select-dialog` modal grid bounds (`max-width: 520px; max-height: min(820px, 92vh)`) and removed hardcoded `maxHeight: '420px'` on options container in `Dialogs.tsx`, permanently eliminating vertical scrollbar flakiness across all selection states.
+  - **Dynamic Directory Resolution Security Audit**: Removed hardcoded developer machine path candidates (`candidate_roots` containing `E:\to-do`, `E:\release`, etc.) in `lib.rs` (`resolve_directory_advanced`) and replaced with dynamic current working directory and user home profile resolution.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/TrafficView.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `packages/desktop/src/components/views/RequestWorkbenchDialog.tsx`
+  - `CHANGELOG.md`
+
 ## [feature/proxync-native-tunnel] - 2026-08-13 (Proxync Native SSH Tunnel Engine, Zero-Trace Key Security & Random Subdomain Auto-Generation)
 - **Feature Summary**:
   - **Native SSH Tunnel Engine**: Built high-speed native SSH tunneling engine in Rust (`open_native_tunnel` in `lib.rs`) establishing direct reverse port-forwarding (`-R {subdomain}:80:127.0.0.1:{port}`) to Proxync edge servers (`api.proxync.dev` / `104.208.83.199:2222`).

@@ -17,6 +17,7 @@ export function DiscoverDialog({
   onRefresh,
   onShare,
   onShareLocal,
+  onSelectProcess,
 }: {
   processes: ProcessCandidate[];
   discovering: boolean;
@@ -25,6 +26,7 @@ export function DiscoverDialog({
   onRefresh: () => void;
   onShare: (process: ProcessCandidate) => void;
   onShareLocal: (process: ProcessCandidate) => void;
+  onSelectProcess?: (process: ProcessCandidate) => void;
 }) {
   useEscape(onClose);
 
@@ -46,10 +48,10 @@ export function DiscoverDialog({
         </div>
         <div className="discovery-list">
           {processes.map((process) => (
-            <article key={process.id} className="discovery-row">
+            <article key={process.id} className="discovery-row hover:bg-surface-container-high/50 cursor-pointer transition-colors" onClick={() => { onSelectProcess?.(process); onClose(); }}>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3">
-                  <strong>{process.name}</strong>
+                  <strong className="text-on-surface font-semibold">{process.name}</strong>
                   {process.latency !== undefined && (
                     <SignalBars latency={process.latency} />
                   )}
@@ -62,9 +64,19 @@ export function DiscoverDialog({
                     </span>
                   )}
                 </span>
-                <small>{process.command ?? 'local process'}</small>
+                <small>{process.directory && process.directory !== 'unknown' ? process.directory : (process.command ?? 'local process')}</small>
               </div>
-              <div style={{ display: 'flex', gap: '6px' }}>
+              <div style={{ display: 'flex', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
+                <button
+                  className="btn-secondary compact"
+                  onClick={() => {
+                    onSelectProcess?.(process);
+                    onClose();
+                  }}
+                  title="Configure process tunnels"
+                >
+                  Configure
+                </button>
                 <button
                   className="btn-secondary compact"
                   disabled={sharingPort === process.port}
@@ -109,7 +121,7 @@ export function DomainSelectDialog({
   onConfirm: (customDomainOrOption: string, ltSubdomain?: string) => void;
 }) {
   useEscape(onClose);
-  const [selectedDomain, setSelectedDomain] = useState<string>('default');
+  const [selectedDomain, setSelectedDomain] = useState<string>('proxync_native');
   const [customSubdomain, setCustomSubdomain] = useState<string>('');
   const [latencies, setLatencies] = useState<Record<string, number>>({
     default: Infinity,
@@ -168,6 +180,13 @@ export function DomainSelectDialog({
   }, []);
 
   const getDescription = () => {
+    if (selectedDomain === 'proxync_native') {
+      return (
+        <span className="domain-desc accent" style={{ color: '#8b5cf6' }}>
+          ⚡ <strong>Proxync Tunnel (Recommended):</strong> Direct SSH reverse tunnel to Proxync edge hosted on Azure with auto-generated public subdomains (e.g., <code>*.proxync.dev</code>).
+        </span>
+      );
+    }
     if (selectedDomain === 'default') {
       return (
         <span className="domain-desc">
@@ -178,14 +197,7 @@ export function DomainSelectDialog({
     if (selectedDomain === 'cloudflare') {
       return (
         <span className="domain-desc accent">
-          ☁️ <strong>Cloudflare Tunnel (Highly Recommended):</strong> Generates a high-performance public HTTPS URL (e.g., <code>https://*.trycloudflare.com</code>) routed through Cloudflare's secure edge.
-        </span>
-      );
-    }
-    if (selectedDomain === 'proxync_native') {
-      return (
-        <span className="domain-desc accent" style={{ color: '#8b5cf6' }}>
-          🚀 <strong>Proxync Tunnel (Beta):</strong> Direct SSH tunnel to Proxync edge with auto-generated random subdomains (e.g., <code>px-a1b2c3d4.proxync.dev</code>).
+          ☁️ <strong>Cloudflare Tunnel:</strong> Generates a high-performance public HTTPS URL (e.g., <code>https://*.trycloudflare.com</code>) routed through Cloudflare's secure edge.
         </span>
       );
     }
@@ -205,18 +217,18 @@ export function DomainSelectDialog({
 
   const options = [
     {
+      id: 'proxync_native',
+      title: 'Proxync Tunnel (Beta)',
+      desc: 'High-speed native SSH tunnel with random public subdomains',
+      icon: '⚡',
+      latency: latencies.proxync_native,
+    },
+    {
       id: 'default',
       title: 'Default Relay Subdomain',
       desc: 'Expose server on default localtest.me tunnel',
       icon: '🔌',
       latency: latencies.default,
-    },
-    {
-      id: 'proxync_native',
-      title: 'Proxync Tunnel (Beta)',
-      desc: 'High-speed native SSH tunnel with random public subdomains',
-      icon: '🚀',
-      latency: latencies.proxync_native,
     },
     {
       id: 'cloudflare',
@@ -261,7 +273,7 @@ export function DomainSelectDialog({
           )}
           <label className="field-label">Sharing Target</label>
           
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '260px', overflowY: 'auto', paddingRight: '4px', marginBottom: '4px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '4px' }}>
             {options.map((opt) => {
               const isSelected = selectedDomain === opt.id;
               const hasMeasured = opt.latency !== Infinity;

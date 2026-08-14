@@ -17,7 +17,7 @@ lazy_static! {
     static ref ACTIVE_TUNNELS: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>> = Arc::new(Mutex::new(HashMap::new()));
     static ref LOCALTUNNEL_PROCESSES: Arc<Mutex<HashMap<String, tokio::process::Child>>> = Arc::new(Mutex::new(HashMap::new()));
     static ref RECON_PROCESS_CACHE: Arc<Mutex<HashMap<u16, ProcessCandidate>>> = Arc::new(Mutex::new(HashMap::new()));
-    static ref PROXY_HANDLE: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>> = Arc::new(Mutex::new(None));
+    static ref PROXY_HANDLES: Arc<Mutex<HashMap<u16, (u16, tokio::task::JoinHandle<()>)>>> = Arc::new(Mutex::new(HashMap::new()));
 }
 
 #[tauri::command]
@@ -115,46 +115,143 @@ fn is_absolute_win_path(s: &str) -> bool {
         && third == Some('\\')
 }
 
-fn resolve_directory(exec_path: &Option<String>, cmd_line: &Option<String>) -> String {
+fn is_system_installation_dir(path_str: &str) -> bool {
+    let lower = path_str.to_lowercase();
+    lower.contains("\\nvm")
+        || lower.contains("\\nodejs")
+        || lower.contains("\\appdata")
+        || lower.contains("\\program files")
+        || lower.contains("\\windows")
+        || lower.contains("\\system32")
+}
+
+fn extract_root_from_path(start_path: &str) -> Option<String> {
+    if start_path.trim().is_empty() {
+        return None;
+    }
+
+    let clean = start_path.trim_matches('"').trim_matches('\'');
+    let mut path = std::path::PathBuf::from(clean);
+
+    if path.is_file() {
+        if let Some(parent) = path.parent() {
+            path = parent.to_path_buf();
+        }
+    }
+
+    let path_str = path.to_string_lossy().to_string();
+    if is_system_installation_dir(&path_str) {
+        return None;
+    }
+
+    if let Some(idx) = path_str.find("\\node_modules") {
+        let parent = &path_str[..idx];
+        if !parent.is_empty() && !is_system_installation_dir(parent) && std::path::Path::new(parent).exists() {
+            return Some(parent.to_string());
+        }
+    }
+
+    if path.exists() && path.is_dir() {
+        return Some(path_str);
+    }
+
+    None
+}
+
+fn resolve_directory_advanced(exec_path: &Option<String>, cmd_line: &Option<String>, pid: Option<u32>) -> String {
+    // Stage 1: Inspect Command Line arguments for direct absolute or relative paths
     if let Some(cmd) = cmd_line {
-        let mut best_dir = None;
         for word in cmd.split_whitespace() {
-            let clean_word = word.trim_matches('"').trim_matches('\'');
-            if is_absolute_win_path(clean_word) {
-                let path = std::path::Path::new(clean_word);
-                if path.exists() {
-                    let dir = if path.is_dir() {
-                        Some(path.to_path_buf())
-                    } else {
-                        path.parent().map(|p| p.to_path_buf())
-                    };
-                    
-                    if let Some(d) = dir {
-                        let dir_str = d.to_string_lossy().to_string();
-                        if !dir_str.contains("nodejs") && !dir_str.contains("npm") && !dir_str.contains("AppData") {
-                            if let Some(node_modules_idx) = dir_str.find("\\node_modules") {
-                                best_dir = Some(dir_str[..node_modules_idx].to_string());
-                            } else {
-                                best_dir = Some(dir_str);
+            let clean = word.trim_matches('"').trim_matches('\'');
+            if is_absolute_win_path(clean) || clean.contains('/') || clean.contains('\\') {
+                if let Some(root) = extract_root_from_path(clean) {
+                    return root;
+                }
+            }
+        }
+    }
+
+    // Stage 2: Walk Parent Process Tree up to 5 levels (WMI ParentProcessId chain)
+    if let Some(p) = pid {
+        let ps_cmd = format!(
+            "$curr = {}; for ($i=0; $i -lt 5; $i++) {{ $proc = Get-CimInstance Win32_Process -Filter \"ProcessId = $curr\"; if (-not $proc -or -not $proc.ParentProcessId) {{ break }}; $parent = Get-CimInstance Win32_Process -Filter \"ProcessId = $($proc.ParentProcessId)\"; if ($parent -and $parent.CommandLine) {{ Write-Output $parent.CommandLine }}; $curr = $proc.ParentProcessId }}",
+            p
+        );
+        let mut cmd = std::process::Command::new("powershell");
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(0x08000000);
+        if let Ok(output) = cmd.args(&["-Command", &ps_cmd]).output() {
+            let parent_output = String::from_utf8_lossy(&output.stdout);
+            for line in parent_output.lines() {
+                let trimmed_line = line.trim();
+                if !trimmed_line.is_empty() {
+                    for word in trimmed_line.split_whitespace() {
+                        let clean = word.trim_matches('"').trim_matches('\'');
+                        if is_absolute_win_path(clean) || clean.contains('/') || clean.contains('\\') {
+                            if let Some(root) = extract_root_from_path(clean) {
+                                return root;
                             }
-                            break;
                         }
                     }
                 }
             }
         }
-        if let Some(bd) = best_dir {
-            return bd;
-        }
     }
-    
+
+    // Stage 3: Inspect Executable Path
     if let Some(exec) = exec_path {
-        if let Some(parent) = std::path::Path::new(exec).parent() {
-            return parent.to_string_lossy().to_string();
+        if let Some(root) = extract_root_from_path(exec) {
+            return root;
         }
     }
-    
+
+    // Stage 4: Dynamic Script Search Fallback (Current Working Directory & User Home)
+    if let Some(cmd) = cmd_line {
+        if cmd.contains("server.js") || cmd.contains("app.js") || cmd.contains("index.js") || cmd.contains("main.js") {
+            let script_name = if cmd.contains("server.js") {
+                "server.js"
+            } else if cmd.contains("app.js") {
+                "app.js"
+            } else if cmd.contains("main.js") {
+                "main.js"
+            } else {
+                "index.js"
+            };
+
+            let mut dynamic_roots = Vec::new();
+            if let Ok(cwd) = std::env::current_dir() {
+                dynamic_roots.push(cwd);
+            }
+            if let Ok(user_profile) = std::env::var("USERPROFILE") {
+                dynamic_roots.push(std::path::PathBuf::from(user_profile));
+            } else if let Ok(home) = std::env::var("HOME") {
+                dynamic_roots.push(std::path::PathBuf::from(home));
+            }
+
+            for root_candidate in dynamic_roots {
+                let path_check = root_candidate.join(script_name);
+                if path_check.exists() {
+                    return root_candidate.to_string_lossy().to_string();
+                }
+            }
+        }
+    }
+
     "unknown".to_string()
+}
+
+#[tauri::command]
+async fn resolve_process_directory(port: u16, pid: Option<u32>) -> Result<String, String> {
+    let target_pid = pid.or_else(|| get_pid_for_port(port));
+    if let Some(pid_val) = target_pid {
+        if let Some((_, exec_path, cmd_line)) = get_process_info(pid_val) {
+            let resolved = resolve_directory_advanced(&exec_path, &cmd_line, Some(pid_val));
+            if resolved != "unknown" {
+                return Ok(resolved);
+            }
+        }
+    }
+    Err("Unable to resolve project directory for process".to_string())
 }
 
 #[tauri::command]
@@ -207,7 +304,7 @@ async fn scan_processes(bypass_cache: bool) -> Result<Vec<ProcessCandidate>, Str
                 if let Some(ref exec) = exec_path {
                     candidate.executable = Some(exec.clone());
                 }
-                candidate.directory = Some(resolve_directory(&exec_path, &cmd_line));
+                candidate.directory = Some(resolve_directory_advanced(&exec_path, &cmd_line, Some(pid)));
             }
         }
 
@@ -406,7 +503,7 @@ async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u16, 
 }
 
 #[tauri::command]
-async fn close_tunnel(tunnel_id: String) -> Result<(), String> {
+async fn close_tunnel(tunnel_id: String, local_port: Option<u16>) -> Result<(), String> {
     let mut found = false;
 
     let mut tunnels = ACTIVE_TUNNELS.lock().await;
@@ -417,14 +514,29 @@ async fn close_tunnel(tunnel_id: String) -> Result<(), String> {
 
     let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
     if let Some(mut child) = lt_procs.remove(&tunnel_id) {
-        let _ = child.kill().await;
+        if let Some(pid) = child.id() {
+            #[cfg(target_os = "windows")]
+            {
+                let mut cmd = std::process::Command::new("taskkill");
+                cmd.creation_flags(0x08000000);
+                let _ = cmd.args(&["/F", "/T", "/PID", &pid.to_string()]).output();
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let _ = child.kill().await;
+            }
+        } else {
+            let _ = child.kill().await;
+        }
         found = true;
     }
 
-    let mut proxy_lock = PROXY_HANDLE.lock().await;
-    if let Some(handle) = proxy_lock.take() {
-        handle.abort();
-        found = true;
+    if let Some(port) = local_port {
+        let mut proxies = PROXY_HANDLES.lock().await;
+        if let Some((_proxy_port, handle)) = proxies.remove(&port) {
+            handle.abort();
+            found = true;
+        }
     }
 
     if found {
@@ -462,33 +574,42 @@ async fn open_localtunnel(
     let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn localtunnel: {}", e))?;
     let stdout = child.stdout.take().ok_or("Failed to open localtunnel stdout".to_string())?;
     
-    let mut reader = tokio::io::BufReader::new(stdout).lines();
-    
-    let timeout_duration = std::time::Duration::from_secs(10);
-    let read_url_task = async {
-        while let Some(line) = reader.next_line().await.unwrap_or(None) {
-            if line.contains("your url is:") {
-                let resolved = line.replace("your url is:", "").trim().to_string();
-                return Ok(resolved);
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    tokio::spawn(async move {
+        let mut reader = tokio::io::BufReader::new(stdout).lines();
+        let mut tx_opt = Some(tx);
+        while let Ok(Some(line)) = reader.next_line().await {
+            if let Some(tx_sender) = tx_opt.take() {
+                if line.contains("your url is:") {
+                    let resolved = line.replace("your url is:", "").trim().to_string();
+                    let _ = tx_sender.send(Ok(resolved));
+                } else {
+                    tx_opt = Some(tx_sender);
+                }
             }
         }
-        Err("Localtunnel exited without returning a URL".to_string())
-    };
-    
-    let url = match tokio::time::timeout(timeout_duration, read_url_task).await {
-        Ok(Ok(resolved_url)) => {
-            resolved_url
+        if let Some(tx_sender) = tx_opt {
+            let _ = tx_sender.send(Err("localtunnel process exited without returning URL".to_string()));
         }
-        Ok(Err(e)) => return Err(e),
-        Err(_) => {
+    });
+
+    let timeout_duration = std::time::Duration::from_secs(15);
+    let url = match tokio::time::timeout(timeout_duration, rx).await {
+        Ok(Ok(Ok(resolved_url))) => resolved_url,
+        Ok(Ok(Err(err))) => {
+            let _ = child.kill().await;
+            return Err(err);
+        }
+        _ => {
             let _ = child.kill().await;
             return Err("Timed out waiting for localtunnel URL".to_string());
         }
     };
-    
+
     let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
     lt_procs.insert(tunnel_id.clone(), child);
-    
+
     let tunnel_id_clone = tunnel_id.clone();
     let app_clone = app.clone();
     tokio::spawn(async move {
@@ -508,7 +629,7 @@ async fn open_localtunnel(
             }
         }
     });
-    
+
     Ok(url)
 }
 
@@ -521,51 +642,73 @@ async fn open_cloudflare_tunnel(
     let mut cmd = tokio::process::Command::new("cmd");
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000);
-    cmd.args(&["/C", "npx", "-y", "--package=cloudflared", "cloudflared", "tunnel", "--url", &format!("http://127.0.0.1:{}", local_port)]);
+    let local_target = format!("localhost:{}", local_port);
+    cmd.args(&[
+        "/C",
+        "npx",
+        "-y",
+        "--package=cloudflared",
+        "cloudflared",
+        "tunnel",
+        "--metrics",
+        "localhost:0",
+        "--no-autoupdate",
+        "--url",
+        &format!("http://{}", local_target),
+        "--http-host-header",
+        &local_target,
+    ]);
     cmd.stderr(std::process::Stdio::piped());
-    
+
     let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn cloudflared: {}", e))?;
     let stderr = child.stderr.take().ok_or("Failed to open cloudflared stderr".to_string())?;
-    
-    let mut reader = tokio::io::BufReader::new(stderr).lines();
-    
-    let timeout_duration = std::time::Duration::from_secs(20);
-    let read_url_task = async {
-        while let Some(line) = reader.next_line().await.unwrap_or(None) {
-            if line.contains(".trycloudflare.com") {
-                if let Some(start_idx) = line.find("https://") {
-                    let rest = &line[start_idx..];
-                    let url = rest.split_whitespace()
-                        .next()
-                        .unwrap_or("")
-                        .trim_matches(|c| c == '|' || c == ' ' || c == '\r' || c == '\n')
-                        .to_string();
-                    if !url.is_empty() {
-                        return Ok(url);
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    tokio::spawn(async move {
+        let mut reader = tokio::io::BufReader::new(stderr).lines();
+        let mut tx_opt = Some(tx);
+        while let Ok(Some(line)) = reader.next_line().await {
+            if let Some(tx_sender) = tx_opt.take() {
+                if line.contains(".trycloudflare.com") {
+                    if let Some(start_idx) = line.find("https://") {
+                        let rest = &line[start_idx..];
+                        let url = rest
+                            .split_whitespace()
+                            .next()
+                            .unwrap_or("")
+                            .trim_matches(|c| c == '|' || c == ' ' || c == '\r' || c == '\n')
+                            .to_string();
+                        if !url.is_empty() {
+                            let _ = tx_sender.send(Ok(url));
+                            continue;
+                        }
                     }
                 }
+                tx_opt = Some(tx_sender);
             }
         }
-        Err("cloudflared exited or timed out without returning a URL".to_string())
-    };
-    
-    let url = match tokio::time::timeout(timeout_duration, read_url_task).await {
-        Ok(Ok(resolved_url)) => {
-            resolved_url
+        if let Some(tx_sender) = tx_opt {
+            let _ = tx_sender.send(Err("cloudflared process exited without returning URL".to_string()));
         }
-        Ok(Err(e)) => {
+    });
+
+    let timeout_duration = std::time::Duration::from_secs(25);
+    let url = match tokio::time::timeout(timeout_duration, rx).await {
+        Ok(Ok(Ok(resolved_url))) => resolved_url,
+        Ok(Ok(Err(err))) => {
             let _ = child.kill().await;
-            return Err(e);
+            return Err(err);
         }
-        Err(_) => {
+        _ => {
             let _ = child.kill().await;
             return Err("Timed out waiting for trycloudflare URL".to_string());
         }
     };
-    
+
     let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
     lt_procs.insert(tunnel_id.clone(), child);
-    
+
     let tunnel_id_clone = tunnel_id.clone();
     let app_clone = app.clone();
     tokio::spawn(async move {
@@ -585,7 +728,7 @@ async fn open_cloudflare_tunnel(
             }
         }
     });
-    
+
     Ok(url)
 }
 
@@ -678,9 +821,9 @@ async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, Stri
     use tokio::net::TcpStream;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    let mut handle_lock = PROXY_HANDLE.lock().await;
-    if let Some(handle) = handle_lock.take() {
-        handle.abort();
+    let mut map = PROXY_HANDLES.lock().await;
+    if let Some((existing_proxy_port, _)) = map.get(&local_port) {
+        return Ok(*existing_proxy_port);
     }
 
     let listener = TcpListener::bind("127.0.0.1:0").await.map_err(|e| e.to_string())?;
@@ -800,7 +943,7 @@ async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, Stri
         }
     });
 
-    *handle_lock = Some(handle);
+    map.insert(local_port, (proxy_port, handle));
     Ok(proxy_port)
 }
 
@@ -1038,6 +1181,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             scan_ports, 
             scan_processes,
+            resolve_process_directory,
             open_tunnel, 
             close_tunnel,
             open_localtunnel,
