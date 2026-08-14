@@ -2,9 +2,9 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
-## [fix/security-cve-hardening] - 2026-08-14 (Security CVE Remediation, Content Security Policy & CI/CD Workflow Hardening)
+## [fix/security-cve-hardening] - 2026-08-14 [SECURITY-CVE] (Security CVE Remediation, Content Security Policy & CI/CD Workflow Hardening)
 - **Feature Summary**:
-  - **Dependency CVE Remediation**: Patched transitive `nanoid` build dependency vulnerability ([GHSA-2v37-7h3g-55p8](https://github.com/advisories/GHSA-2v37-7h3g-55p8)) via `npm audit fix`, resolving all npm audit security warnings (0 vulnerabilities).
+  - **Dependency CVE Remediation [TYPE: CVE-PATCH]**: Patched transitive `nanoid` build dependency vulnerability ([GHSA-2v37-7h3g-55p8](https://github.com/advisories/GHSA-2v37-7h3g-55p8)) via `npm audit fix`, resolving all npm audit security warnings (0 vulnerabilities).
   - **Tauri Content Security Policy Activation**: Configured a robust Content Security Policy in `tauri.conf.json` (`default-src 'self'`, `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`, `font-src 'self' https://fonts.gstatic.com data:`, `connect-src 'self' ws: wss: http: https: ipc:;`) to protect the desktop webview container against unauthorized external script execution.
   - **CI/CD Workflow Script Injection Protection**: Hardened `prepare-release.yml` by encapsulating `${{ github.event.inputs.version }}` inside `env: INPUT_VERSION` with strict semantic version regex format validation (`^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$`) and cross-platform Node.js `Cargo.toml` updates.
   - **Local Security Report Protection**: Added `.gstack/` to `.gitignore` to prevent local AI security audit reports from being tracked or exposed.
