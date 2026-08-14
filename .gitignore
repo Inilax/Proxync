@@ -67,3 +67,4 @@ src-tauri/gen/schemas/
 .agents/
 
 /POC/
+.gstack/
