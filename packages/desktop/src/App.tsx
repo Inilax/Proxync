@@ -1221,6 +1221,29 @@ function generateRandomSubdomain(prefix = 'px'): string {
     }
   }
 
+  async function stopAllTunnels() {
+    const activeTunnelsList = tunnels.filter((t) => t.status === 'ACTIVE');
+    if (activeTunnelsList.length === 0) return;
+    if (activeWorkspace) {
+      touchWorkspaceActivity(activeWorkspace.id);
+    }
+    try {
+      await Promise.all(
+        activeTunnelsList.map(async (tunnel) => {
+          await invoke('close_tunnel', { tunnelId: tunnel.id, localPort: tunnel.localPort }).catch(() => undefined);
+          if (!tunnel.id.startsWith('lt-') && activeWorkspace?.remoteWorkspaceId) {
+            await api.tunnels.close(activeWorkspace.remoteWorkspaceId, tunnel.id).catch(() => undefined);
+          }
+        })
+      );
+      setTunnels((current) => current.filter((item) => item.status !== 'ACTIVE'));
+      setActiveTunnel(null);
+      showToast(`Stopped all active tunnels (${activeTunnelsList.length})`, 'info');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Unable to stop all tunnels', 'error');
+    }
+  }
+
   function openRequestDetail(request: RequestLog) {
     setSelectedRequest(request);
   }
@@ -1742,6 +1765,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
                   setMainView('settings');
                 }}
                 onStopTunnel={stopTunnel}
+                onStopAllTunnels={stopAllTunnels}
               />
             )}
             {mainView === 'workspace_dashboard' && (
@@ -1768,6 +1792,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
                 onShareNative={shareProcessNative}
                 onShareLocal={shareProcessLocal}
                 onStopTunnel={stopTunnel}
+                onStopAllTunnels={stopAllTunnels}
               />
             )}
             {mainView === 'traffic' && (
