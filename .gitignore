@@ -66,5 +66,7 @@ src-tauri/gen/schemas/
 # Antigravity Assistant metadata
 .agents/
 
+/POC/
+
 # Gstack reports and metadata
-.gstack/
+.gstack/

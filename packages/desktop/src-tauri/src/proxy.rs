@@ -8,24 +8,32 @@ use tokio::net::TcpStream;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 lazy_static! {
-    static ref PROXY_HANDLE: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>> = Arc::new(Mutex::new(None));
+    static ref PROXY_HANDLES: Arc<Mutex<HashMap<u16, (u16, tokio::task::JoinHandle<()>)>>> = Arc::new(Mutex::new(HashMap::new()));
 }
 
-pub async fn stop_proxy() -> bool {
-    let mut proxy_lock = PROXY_HANDLE.lock().await;
-    if let Some(handle) = proxy_lock.take() {
-        handle.abort();
-        true
+pub async fn stop_proxy(local_port: Option<u16>) -> bool {
+    let mut proxies = PROXY_HANDLES.lock().await;
+    if let Some(port) = local_port {
+        if let Some((_proxy_port, handle)) = proxies.remove(&port) {
+            handle.abort();
+            return true;
+        }
     } else {
-        false
+        if !proxies.is_empty() {
+            for (_, (_proxy_port, handle)) in proxies.drain() {
+                handle.abort();
+            }
+            return true;
+        }
     }
+    false
 }
 
 #[tauri::command]
 pub async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, String> {
-    let mut handle_lock = PROXY_HANDLE.lock().await;
-    if let Some(handle) = handle_lock.take() {
-        handle.abort();
+    let mut map = PROXY_HANDLES.lock().await;
+    if let Some((existing_proxy_port, _)) = map.get(&local_port) {
+        return Ok(*existing_proxy_port);
     }
 
     let listener = TcpListener::bind("127.0.0.1:0").await.map_err(|e| e.to_string())?;
@@ -145,6 +153,6 @@ pub async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, 
         }
     });
 
-    *handle_lock = Some(handle);
+    map.insert(local_port, (proxy_port, handle));
     Ok(proxy_port)
 }

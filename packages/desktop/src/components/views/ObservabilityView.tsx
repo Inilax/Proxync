@@ -12,6 +12,7 @@ interface ObservabilityViewProps {
   onOpenDetail?: (request: RequestLog) => void;
   onSendToPostman?: (request: RequestLog) => void;
   onReplayRequest?: (request: RequestLog) => void;
+  onOpenWorkbench?: (request: RequestLog) => void;
 }
 
 export function ObservabilityView({
@@ -24,6 +25,7 @@ export function ObservabilityView({
   onOpenDetail,
   onSendToPostman,
   onReplayRequest,
+  onOpenWorkbench,
 }: ObservabilityViewProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'errors' | 'webhooks' | 'endpoints'>('overview');
 
@@ -550,10 +552,20 @@ export function ObservabilityView({
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
+                      {onOpenWorkbench && (
+                        <button
+                          onClick={() => onOpenWorkbench(req)}
+                          className="px-2.5 py-1 bg-primary text-white hover:bg-primary/90 rounded text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-sm shadow-primary/25"
+                          title="Open 360° Request Workbench Studio"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">bolt</span>
+                          Workbench
+                        </button>
+                      )}
                       {onOpenDetail && (
                         <button
-                          onClick={() => onOpenDetail(req)}
-                          className="px-2.5 py-1 bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/30 rounded text-xs text-on-surface flex items-center gap-1 transition-colors"
+                          onClick={() => (onOpenWorkbench ? onOpenWorkbench(req) : onOpenDetail(req))}
+                          className="px-2.5 py-1 bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/30 rounded text-xs text-on-surface flex items-center gap-1 transition-colors cursor-pointer"
                         >
                           <span className="material-symbols-outlined text-[14px]">search</span>
                           Inspect Log
@@ -562,7 +574,7 @@ export function ObservabilityView({
                       {onSendToPostman && (
                         <button
                           onClick={() => onSendToPostman(req)}
-                          className="px-2.5 py-1 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded text-xs flex items-center gap-1 font-medium transition-colors"
+                          className="px-2.5 py-1 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded text-xs flex items-center gap-1 font-medium transition-colors cursor-pointer"
                         >
                           <span className="material-symbols-outlined text-[14px]">send</span>
                           Debug in Postman

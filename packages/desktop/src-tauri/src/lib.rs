@@ -4,7 +4,7 @@ mod storage;
 mod http;
 mod tunnel;
 
-use recon::{scan_ports, scan_processes};
+use recon::{scan_ports, scan_processes, resolve_process_directory};
 use tunnel::{open_tunnel, close_tunnel, open_localtunnel, open_cloudflare_tunnel, open_native_tunnel};
 use proxy::start_proxy;
 use storage::{scan_directory, read_file_content, get_local_ip, save_app_state, load_app_state};
@@ -20,6 +20,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             scan_ports, 
             scan_processes,
+            resolve_process_directory,
             open_tunnel, 
             close_tunnel,
             open_localtunnel,

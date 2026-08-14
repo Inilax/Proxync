@@ -106,46 +106,143 @@ fn is_absolute_win_path(s: &str) -> bool {
         && third == Some('\\')
 }
 
-fn resolve_directory(exec_path: &Option<String>, cmd_line: &Option<String>) -> String {
+fn is_system_installation_dir(path_str: &str) -> bool {
+    let lower = path_str.to_lowercase();
+    lower.contains("\\nvm")
+        || lower.contains("\\nodejs")
+        || lower.contains("\\appdata")
+        || lower.contains("\\program files")
+        || lower.contains("\\windows")
+        || lower.contains("\\system32")
+}
+
+fn extract_root_from_path(start_path: &str) -> Option<String> {
+    if start_path.trim().is_empty() {
+        return None;
+    }
+
+    let clean = start_path.trim_matches('"').trim_matches('\'');
+    let mut path = std::path::PathBuf::from(clean);
+
+    if path.is_file() {
+        if let Some(parent) = path.parent() {
+            path = parent.to_path_buf();
+        }
+    }
+
+    let path_str = path.to_string_lossy().to_string();
+    if is_system_installation_dir(&path_str) {
+        return None;
+    }
+
+    if let Some(idx) = path_str.find("\\node_modules") {
+        let parent = &path_str[..idx];
+        if !parent.is_empty() && !is_system_installation_dir(parent) && std::path::Path::new(parent).exists() {
+            return Some(parent.to_string());
+        }
+    }
+
+    if path.exists() && path.is_dir() {
+        return Some(path_str);
+    }
+
+    None
+}
+
+fn resolve_directory_advanced(exec_path: &Option<String>, cmd_line: &Option<String>, pid: Option<u32>) -> String {
+    // Stage 1: Inspect Command Line arguments for direct absolute or relative paths
     if let Some(cmd) = cmd_line {
-        let mut best_dir = None;
         for word in cmd.split_whitespace() {
-            let clean_word = word.trim_matches('"').trim_matches('\'');
-            if is_absolute_win_path(clean_word) {
-                let path = std::path::Path::new(clean_word);
-                if path.exists() {
-                    let dir = if path.is_dir() {
-                        Some(path.to_path_buf())
-                    } else {
-                        path.parent().map(|p| p.to_path_buf())
-                    };
-                    
-                    if let Some(d) = dir {
-                        let dir_str = d.to_string_lossy().to_string();
-                        if !dir_str.contains("nodejs") && !dir_str.contains("npm") && !dir_str.contains("AppData") {
-                            if let Some(node_modules_idx) = dir_str.find("\\node_modules") {
-                                best_dir = Some(dir_str[..node_modules_idx].to_string());
-                            } else {
-                                best_dir = Some(dir_str);
+            let clean = word.trim_matches('"').trim_matches('\'');
+            if is_absolute_win_path(clean) || clean.contains('/') || clean.contains('\\') {
+                if let Some(root) = extract_root_from_path(clean) {
+                    return root;
+                }
+            }
+        }
+    }
+
+    // Stage 2: Walk Parent Process Tree up to 5 levels (WMI ParentProcessId chain)
+    if let Some(p) = pid {
+        let ps_cmd = format!(
+            "$curr = {}; for ($i=0; $i -lt 5; $i++) {{ $proc = Get-CimInstance Win32_Process -Filter \"ProcessId = $curr\"; if (-not $proc -or -not $proc.ParentProcessId) {{ break }}; $parent = Get-CimInstance Win32_Process -Filter \"ProcessId = $($proc.ParentProcessId)\"; if ($parent -and $parent.CommandLine) {{ Write-Output $parent.CommandLine }}; $curr = $proc.ParentProcessId }}",
+            p
+        );
+        let mut cmd = std::process::Command::new("powershell");
+        #[cfg(target_os = "windows")]
+        cmd.creation_flags(0x08000000);
+        if let Ok(output) = cmd.args(&["-Command", &ps_cmd]).output() {
+            let parent_output = String::from_utf8_lossy(&output.stdout);
+            for line in parent_output.lines() {
+                let trimmed_line = line.trim();
+                if !trimmed_line.is_empty() {
+                    for word in trimmed_line.split_whitespace() {
+                        let clean = word.trim_matches('"').trim_matches('\'');
+                        if is_absolute_win_path(clean) || clean.contains('/') || clean.contains('\\') {
+                            if let Some(root) = extract_root_from_path(clean) {
+                                return root;
                             }
-                            break;
                         }
                     }
                 }
             }
         }
-        if let Some(bd) = best_dir {
-            return bd;
-        }
     }
-    
+
+    // Stage 3: Inspect Executable Path
     if let Some(exec) = exec_path {
-        if let Some(parent) = std::path::Path::new(exec).parent() {
-            return parent.to_string_lossy().to_string();
+        if let Some(root) = extract_root_from_path(exec) {
+            return root;
         }
     }
-    
+
+    // Stage 4: Dynamic Script Search Fallback (Current Working Directory & User Home)
+    if let Some(cmd) = cmd_line {
+        if cmd.contains("server.js") || cmd.contains("app.js") || cmd.contains("index.js") || cmd.contains("main.js") {
+            let script_name = if cmd.contains("server.js") {
+                "server.js"
+            } else if cmd.contains("app.js") {
+                "app.js"
+            } else if cmd.contains("main.js") {
+                "main.js"
+            } else {
+                "index.js"
+            };
+
+            let mut dynamic_roots = Vec::new();
+            if let Ok(cwd) = std::env::current_dir() {
+                dynamic_roots.push(cwd);
+            }
+            if let Ok(user_profile) = std::env::var("USERPROFILE") {
+                dynamic_roots.push(std::path::PathBuf::from(user_profile));
+            } else if let Ok(home) = std::env::var("HOME") {
+                dynamic_roots.push(std::path::PathBuf::from(home));
+            }
+
+            for root_candidate in dynamic_roots {
+                let path_check = root_candidate.join(script_name);
+                if path_check.exists() {
+                    return root_candidate.to_string_lossy().to_string();
+                }
+            }
+        }
+    }
+
     "unknown".to_string()
+}
+
+#[tauri::command]
+pub async fn resolve_process_directory(port: u16, pid: Option<u32>) -> Result<String, String> {
+    let target_pid = pid.or_else(|| get_pid_for_port(port));
+    if let Some(pid_val) = target_pid {
+        if let Some((_, exec_path, cmd_line)) = get_process_info(pid_val) {
+            let resolved = resolve_directory_advanced(&exec_path, &cmd_line, Some(pid_val));
+            if resolved != "unknown" {
+                return Ok(resolved);
+            }
+        }
+    }
+    Err("Unable to resolve project directory for process".to_string())
 }
 
 #[tauri::command]
@@ -198,7 +295,7 @@ pub async fn scan_processes(bypass_cache: bool) -> Result<Vec<ProcessCandidate>,
                 if let Some(ref exec) = exec_path {
                     candidate.executable = Some(exec.clone());
                 }
-                candidate.directory = Some(resolve_directory(&exec_path, &cmd_line));
+                candidate.directory = Some(resolve_directory_advanced(&exec_path, &cmd_line, Some(pid)));
             }
         }
 

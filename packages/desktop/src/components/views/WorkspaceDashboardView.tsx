@@ -1,41 +1,43 @@
 import { useState, useEffect } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import type { Tunnel, RequestLog } from './SharedComponents';
-import { SignalBars } from './SharedComponents';
+import type { ProcessCandidate, WorkspaceConfig } from '../../lib/types';
 import { showToast } from '../../lib/toast';
 
-export function WelcomeView({
+export function WorkspaceDashboardView({
+  workspace,
   tunnels,
   requests,
   activeTunnel,
-  onDiscover,
-  onNavigateToCustomDomains,
+  processes,
+  discovering,
+  onScan,
+  onSelectProcess,
+  onSharePublic,
+  onShareNative,
+  onShareLocal,
   onStopTunnel,
 }: {
+  workspace: WorkspaceConfig | null;
   tunnels: Tunnel[];
   requests: RequestLog[];
   activeTunnel: Tunnel | null;
-  onDiscover: () => void;
-  onNavigateToCustomDomains: () => void;
+  processes: ProcessCandidate[];
+  discovering: boolean;
+  onScan: () => void;
+  onSelectProcess: (processId: string) => void;
+  onSharePublic: (process: ProcessCandidate) => void;
+  onShareNative?: (process: ProcessCandidate) => void;
+  onShareLocal: (process: ProcessCandidate) => void;
   onStopTunnel: (tunnel: Tunnel) => void;
 }) {
   const [activeMenuTunnelId, setActiveMenuTunnelId] = useState<string | null>(null);
   const activeTunnels = tunnels.filter((t) => t.status === 'ACTIVE');
-
-  const [latencies, setLatencies] = useState<{
-    relayMesh: number;
-    cloudflare: number;
-    localtunnel: number;
-  }>({ relayMesh: 0, cloudflare: 0, localtunnel: 0 });
-
   const [tunnelLatencies, setTunnelLatencies] = useState<Record<string, number>>({});
   const [tick, setTick] = useState(0);
 
-  // Trigger re-render every second for real-time uptime tick
   useEffect(() => {
-    const interval = setInterval(() => {
-      setTick((t) => t + 1);
-    }, 1000);
+    const interval = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -64,25 +66,17 @@ export function WelcomeView({
 
     async function measureAll() {
       const activeTunnelsList = tunnels.filter((t) => t.status === 'ACTIVE');
-
-      const [relayMeshLatency, cloudflareLatency, localtunnelLatency, tunnelResults] = await Promise.all([
-        pingUrl('https://api.proxync.dev/health', 1500),
-        pingUrl('https://1.1.1.1', 1200),
-        pingUrl('https://localtunnel.me', 1500),
-        Promise.all(
-          activeTunnelsList.map(async (t) => {
-            const p = await pingUrl(t.publicUrl, 1500);
-            return [t.id, p === Infinity ? 45 : p] as const;
-          })
-        ),
-      ]);
-
+      if (activeTunnelsList.length === 0) {
+        if (active) setTunnelLatencies({});
+        return;
+      }
+      const tunnelResults = await Promise.all(
+        activeTunnelsList.map(async (t) => {
+          const p = await pingUrl(t.publicUrl, 1500);
+          return [t.id, p === Infinity ? 45 : p] as const;
+        })
+      );
       if (active) {
-        setLatencies({
-          relayMesh: relayMeshLatency === Infinity ? 28 : relayMeshLatency,
-          cloudflare: cloudflareLatency === Infinity ? 42 : cloudflareLatency,
-          localtunnel: localtunnelLatency === Infinity ? 115 : localtunnelLatency,
-        });
         const tunnelPings: Record<string, number> = {};
         for (const [id, ping] of tunnelResults) {
           tunnelPings[id] = ping;
@@ -92,14 +86,8 @@ export function WelcomeView({
     }
 
     void measureAll();
-    const interval = setInterval(() => {
-      void measureAll();
-    }, 10000);
-
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
+    const interval = setInterval(() => void measureAll(), 10000);
+    return () => { active = false; clearInterval(interval); };
   }, [tunnels]);
 
   function formatBytes(bytes: number): string {
@@ -114,15 +102,11 @@ export function WelcomeView({
     if (!createdAtStr) return '00:00:00';
     const elapsedMs = Date.now() - new Date(createdAtStr).getTime();
     if (elapsedMs < 0) return '00:00:00';
-    
     const totalSecs = Math.floor(elapsedMs / 1000);
     const hours = Math.floor(totalSecs / 3600);
     const minutes = Math.floor((totalSecs % 3600) / 60);
     const seconds = totalSecs % 60;
-    
-    return [hours, minutes, seconds]
-      .map(v => v.toString().padStart(2, '0'))
-      .join(':');
+    return [hours, minutes, seconds].map(v => v.toString().padStart(2, '0')).join(':');
   }
 
   const getTrafficStats = (tunnelId: string) => {
@@ -138,64 +122,170 @@ export function WelcomeView({
   return (
     <>
     <div className="hidden" style={{ display: 'none' }}>{tick}</div>
-    <div className="explore-view max-w-6xl mx-auto space-y-8 fade-in select-none">
-      {/* Hero Section */}
+    <div className="workspace-dashboard-view max-w-6xl mx-auto space-y-8 fade-in select-none">
+      {/* Hero Workspace Header */}
       <section className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 bg-surface-container-low p-8 rounded-xl border border-outline-variant relative overflow-hidden">
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-2">
+        <div className="relative z-10 space-y-2">
+          <div className="flex items-center gap-3">
             <span className="flex h-2.5 w-2.5 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-secondary opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-secondary"></span>
             </span>
-            <span className="font-label-md text-label-md text-primary uppercase tracking-widest">
-              Service: Active
+            <span className="font-label-md text-label-md text-secondary uppercase tracking-widest">
+              Active Workspace
             </span>
           </div>
-          <h2 className="font-display-sm text-display-sm mb-2 text-on-surface">Network Hub</h2>
-          <p className="text-on-surface-variant max-w-md">
-            Proxync is currently monitoring {activeTunnels.length} active {activeTunnels.length === 1 ? 'tunnel' : 'tunnels'} across global relay nodes.
+          <h2 className="font-display-sm text-display-sm text-on-surface">
+            {workspace?.name ?? 'Workspace Dashboard'}
+          </h2>
+          <p className="text-on-surface-variant max-w-lg text-xs leading-relaxed">
+            Detected {processes.length} local development {processes.length === 1 ? 'server' : 'servers'} running on localhost ports. Select any server card below to configure and launch a public tunnel.
           </p>
         </div>
         <button
-          onClick={onDiscover}
-          className="btn-primary relative z-10"
+          onClick={onScan}
+          disabled={discovering}
+          className="btn-primary relative z-10 flex items-center gap-2 cursor-pointer"
         >
-          <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>add</span>
-          <span>Expose New Process</span>
+          <span className={`material-symbols-outlined ${discovering ? 'animate-spin' : ''}`}>
+            {discovering ? 'sync' : 'search'}
+          </span>
+          <span>{discovering ? 'Scanning Local Ports...' : 'Full Scan Local Ports'}</span>
         </button>
-        {/* Subtle Background Effect */}
-        <div className="absolute -right-20 -top-20 w-64 h-64 bg-primary/5 rounded-full blur-3xl"></div>
+        <div className="absolute -right-20 -top-20 w-64 h-64 bg-secondary/5 rounded-full blur-3xl"></div>
       </section>
 
-      {/* Main Grid Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Active Tunnels Section */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="font-headline-sm text-headline-sm text-on-surface">Active Tunnels</h3>
-            <span className="font-code-sm text-code-sm text-on-surface-variant px-2 py-0.5 bg-surface-container rounded border border-outline-variant">
-              {activeTunnels.length} {activeTunnels.length === 1 ? 'Session' : 'Sessions'}
-            </span>
+      {/* Main Grid Section */}
+      <div className="space-y-8">
+        {/* Section 1: Detected Local Servers */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h3 className="font-headline-sm text-headline-sm text-on-surface">Detected Local Servers</h3>
+              <span className="font-code-sm text-code-sm text-on-surface-variant px-2 py-0.5 bg-surface-container rounded border border-outline-variant">
+                {processes.length} Running
+              </span>
+            </div>
+            <button
+              onClick={onScan}
+              disabled={discovering}
+              className="text-xs text-primary hover:text-primary-fixed-dim font-mono flex items-center gap-1 cursor-pointer transition-colors"
+              title="Trigger full scan of local ports"
+            >
+              <span className={`material-symbols-outlined text-[14px] ${discovering ? 'animate-spin' : ''}`}>refresh</span>
+              <span>{discovering ? 'Scanning...' : 'Scan Ports'}</span>
+            </button>
           </div>
 
-          {activeTunnels.length === 0 ? (
+          {processes.length === 0 ? (
             <div
-              onClick={onDiscover}
-              className="border-2 border-dashed border-outline-variant hover:border-primary/50 hover:bg-surface-container-low/30 rounded-xl p-8 flex flex-col items-center justify-center gap-4 transition-all cursor-pointer group py-16"
+              onClick={onScan}
+              className="border-2 border-dashed border-outline-variant hover:border-primary/50 hover:bg-surface-container-low/30 rounded-xl p-8 flex flex-col items-center justify-center gap-4 transition-all cursor-pointer group py-12"
             >
-              <div className="w-14 h-14 rounded-full bg-surface-container-high flex items-center justify-center group-hover:bg-primary/10 transition-colors">
-                <span className="material-symbols-outlined text-[32px] text-outline group-hover:text-primary transition-colors">
-                  link
+              <div className="w-12 h-12 rounded-full bg-surface-container-high flex items-center justify-center group-hover:bg-primary/10 transition-colors">
+                <span className="material-symbols-outlined text-[28px] text-outline group-hover:text-primary transition-colors">
+                  dns
                 </span>
               </div>
               <div className="text-center">
                 <p className="font-headline-sm text-sm font-semibold text-on-surface-variant group-hover:text-on-surface transition-colors">
-                  No Active Tunnels
+                  No Local Servers Detected
                 </p>
                 <p className="text-xs text-outline mt-0.5">
-                  Click here to expose a local process or switch to your workspace hub
+                  Click here to run a full scan of localhost development ports
                 </p>
               </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {processes.map((proc) => {
+                const activeT = tunnels.find(t => t.localPort === proc.port && t.status === 'ACTIVE');
+                const isLive = Boolean(activeT);
+                const displayDir = proc.directory && proc.directory !== 'unknown' ? proc.directory : (proc.command ?? 'Local process');
+
+                return (
+                  <div
+                    key={proc.id}
+                    onClick={() => onSelectProcess(proc.id)}
+                    className="p-5 bg-surface-container border border-outline-variant hover:border-primary/60 rounded-xl flex flex-col justify-between gap-4 transition-all cursor-pointer group shadow-sm hover:shadow-md"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className={`badge ${isLive ? 'accent' : 'muted'}`}>
+                          {isLive ? '🟢 Public Tunnel' : '⚡ Local'}
+                        </span>
+                        <span className="font-mono text-xs font-bold text-primary px-2.5 py-0.5 bg-primary/10 rounded-full border border-primary/20">
+                          Port {proc.port}
+                        </span>
+                      </div>
+
+                      <div>
+                        <h4 className="font-body-lg text-base font-bold text-on-surface group-hover:text-primary transition-colors truncate">
+                          {proc.name}
+                        </h4>
+                        <p className="font-mono text-xs text-on-surface-variant/80 truncate mt-1" title={displayDir}>
+                          {displayDir}
+                        </p>
+                      </div>
+                    </div>
+
+                    {activeT && (
+                      <div className="p-2.5 bg-surface-container-high rounded-lg border border-outline-variant/40 space-y-1">
+                        <p className="text-[10px] font-bold text-primary uppercase tracking-wider">Public URL</p>
+                        <p className="font-mono text-xs text-on-surface truncate select-all">{activeT.publicUrl}</p>
+                      </div>
+                    )}
+
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-3 border-t border-outline-variant/30 gap-2">
+                      <span className="text-xs font-semibold text-on-surface-variant group-hover:text-primary transition-colors flex items-center gap-1 shrink-0 whitespace-nowrap">
+                        Expose
+                        <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                        {onShareNative && (
+                          <button
+                            onClick={() => onShareNative(proc)}
+                            className="btn-primary compact text-[11px] py-1 px-2.5 font-semibold whitespace-nowrap"
+                            title="Share via Proxync Native SSH Tunnel"
+                          >
+                            ⚡ Proxync
+                          </button>
+                        )}
+                        <button
+                          onClick={() => onSharePublic(proc)}
+                          className="btn-secondary compact text-[11px] py-1 px-2 whitespace-nowrap"
+                          title="Share Public Cloudflare Tunnel"
+                        >
+                          Cloudflare
+                        </button>
+                        <button
+                          onClick={() => onShareLocal(proc)}
+                          className="btn-secondary compact text-[11px] py-1 px-2 whitespace-nowrap"
+                          title="Share LAN Link"
+                        >
+                          LAN
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Section 2: Active Tunnels for Workspace */}
+        <div className="space-y-4 pt-6 border-t border-outline-variant/30">
+          <div className="flex items-center justify-between">
+            <h3 className="font-headline-sm text-headline-sm text-on-surface">Active Workspace Tunnels</h3>
+            <span className="font-code-sm text-code-sm text-on-surface-variant px-2 py-0.5 bg-surface-container rounded border border-outline-variant">
+              {activeTunnels.length} Active
+            </span>
+          </div>
+
+          {activeTunnels.length === 0 ? (
+            <div className="border border-outline-variant/60 rounded-xl p-6 text-center text-on-surface-variant text-xs">
+              No active public tunnels for this workspace. Select any detected local server card above to launch a tunnel.
             </div>
           ) : (
             <div className="space-y-4">
@@ -318,102 +408,7 @@ export function WelcomeView({
             </div>
           )}
         </div>
-
-        {/* Right Sidebar Column */}
-        <div className="space-y-6">
-          {/* Expose Services Panel */}
-          <div className="space-y-4">
-            <h3 className="font-headline-sm text-headline-sm text-on-surface">Expose Services</h3>
-            <div className="flex flex-col gap-3">
-              {/* Option 0: Proxync Native Tunnel */}
-              <div className="p-4 bg-primary/10 border border-primary/40 rounded-lg group hover:bg-primary/15 transition-all">
-                <div className="flex justify-between items-center mb-1">
-                  <div className="flex items-center gap-2">
-                    <h5 className="font-label-md text-label-md text-primary font-bold flex items-center gap-1">
-                      <span>⚡</span> Proxync Native Tunnel
-                    </h5>
-                    <span className="text-[10px] px-1.5 py-0.5 bg-primary/20 text-primary rounded font-mono font-semibold">
-                      Azure sish
-                    </span>
-                  </div>
-                  <span className="material-symbols-outlined text-primary">
-                    vpn_lock
-                  </span>
-                </div>
-                <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                  Dedicated reverse SSH tunnel hosted on Azure (<code className="text-primary font-mono">*.proxync.dev</code>) with ephemeral key pairs.
-                </p>
-              </div>
-
-              {/* Option 1: Relay Mesh */}
-              <div className="p-4 bg-surface-container border border-outline-variant rounded-lg group hover:bg-surface-container-high transition-all">
-                <div className="flex justify-between items-center mb-1">
-                  <div className="flex items-center gap-2">
-                    <h5 className="font-label-md text-label-md text-on-surface">Relay Mesh</h5>
-                    {latencies.relayMesh !== 0 && (
-                      <SignalBars latency={latencies.relayMesh} />
-                    )}
-                  </div>
-                  <span className="material-symbols-outlined text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-                    bolt
-                  </span>
-                </div>
-                <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                  Global high-speed edge distribution via Proxync Nodes.
-                </p>
-              </div>
-
-              {/* Option 2: Cloudflare */}
-              <div className="p-4 bg-surface-container border border-outline-variant rounded-lg group hover:bg-surface-container-high transition-all">
-                <div className="flex justify-between items-center mb-1">
-                  <div className="flex items-center gap-2">
-                    <h5 className="font-label-md text-label-md text-on-surface">Cloudflare</h5>
-                    {latencies.cloudflare !== 0 && (
-                      <SignalBars latency={latencies.cloudflare} />
-                    )}
-                  </div>
-                  <span className="material-symbols-outlined text-secondary opacity-0 group-hover:opacity-100 transition-opacity">
-                    security
-                  </span>
-                </div>
-                <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                  Secure Argo tunnels with Cloudflare WAF protection.
-                </p>
-              </div>
-
-              {/* Option 3: Localtunnel */}
-              <div className="p-4 bg-surface-container border border-outline-variant rounded-lg group hover:bg-surface-container-high transition-all">
-                <div className="flex justify-between items-center mb-1">
-                  <div className="flex items-center gap-2">
-                    <h5 className="font-label-md text-label-md text-on-surface">Localtunnel</h5>
-                    {latencies.localtunnel !== 0 && (
-                      <SignalBars latency={latencies.localtunnel} />
-                    )}
-                  </div>
-                  <span className="material-symbols-outlined text-on-surface-variant opacity-0 group-hover:opacity-100 transition-opacity">
-                    hub
-                  </span>
-                </div>
-                <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                  Quick, temporary public URLs for rapid testing.
-                </p>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-2 pt-2">
-                <button
-                  onClick={onNavigateToCustomDomains}
-                  className="btn-secondary flex-1"
-                >
-                  <span className="font-label-md text-label-md block text-on-surface">Custom Domain</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-        </div>
       </div>
-
     </div>
     </>
   );

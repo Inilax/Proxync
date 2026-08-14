@@ -215,7 +215,7 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
 }
 
 #[tauri::command]
-pub async fn close_tunnel(tunnel_id: String) -> Result<(), String> {
+pub async fn close_tunnel(tunnel_id: String, local_port: Option<u16>) -> Result<(), String> {
     let mut found = false;
 
     let mut tunnels = ACTIVE_TUNNELS.lock().await;
@@ -226,11 +226,24 @@ pub async fn close_tunnel(tunnel_id: String) -> Result<(), String> {
 
     let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
     if let Some(mut child) = lt_procs.remove(&tunnel_id) {
-        let _ = child.kill().await;
+        if let Some(pid) = child.id() {
+            #[cfg(target_os = "windows")]
+            {
+                let mut cmd = std::process::Command::new("taskkill");
+                cmd.creation_flags(0x08000000);
+                let _ = cmd.args(&["/F", "/T", "/PID", &pid.to_string()]).output();
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let _ = child.kill().await;
+            }
+        } else {
+            let _ = child.kill().await;
+        }
         found = true;
     }
 
-    if stop_proxy().await {
+    if stop_proxy(local_port).await {
         found = true;
     }
 
@@ -261,33 +274,42 @@ pub async fn open_localtunnel(
     let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn localtunnel: {}", e))?;
     let stdout = child.stdout.take().ok_or("Failed to open localtunnel stdout".to_string())?;
     
-    let mut reader = tokio::io::BufReader::new(stdout).lines();
-    
-    let timeout_duration = std::time::Duration::from_secs(10);
-    let read_url_task = async {
-        while let Some(line) = reader.next_line().await.unwrap_or(None) {
-            if line.contains("your url is:") {
-                let resolved = line.replace("your url is:", "").trim().to_string();
-                return Ok(resolved);
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    tokio::spawn(async move {
+        let mut reader = tokio::io::BufReader::new(stdout).lines();
+        let mut tx_opt = Some(tx);
+        while let Ok(Some(line)) = reader.next_line().await {
+            if let Some(tx_sender) = tx_opt.take() {
+                if line.contains("your url is:") {
+                    let resolved = line.replace("your url is:", "").trim().to_string();
+                    let _ = tx_sender.send(Ok(resolved));
+                } else {
+                    tx_opt = Some(tx_sender);
+                }
             }
         }
-        Err("Localtunnel exited without returning a URL".to_string())
-    };
-    
-    let url = match tokio::time::timeout(timeout_duration, read_url_task).await {
-        Ok(Ok(resolved_url)) => {
-            resolved_url
+        if let Some(tx_sender) = tx_opt {
+            let _ = tx_sender.send(Err("localtunnel process exited without returning URL".to_string()));
         }
-        Ok(Err(e)) => return Err(e),
-        Err(_) => {
+    });
+
+    let timeout_duration = std::time::Duration::from_secs(15);
+    let url = match tokio::time::timeout(timeout_duration, rx).await {
+        Ok(Ok(Ok(resolved_url))) => resolved_url,
+        Ok(Ok(Err(err))) => {
+            let _ = child.kill().await;
+            return Err(err);
+        }
+        _ => {
             let _ = child.kill().await;
             return Err("Timed out waiting for localtunnel URL".to_string());
         }
     };
-    
+
     let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
     lt_procs.insert(tunnel_id.clone(), child);
-    
+
     let tunnel_id_clone = tunnel_id.clone();
     let app_clone = app.clone();
     tokio::spawn(async move {
@@ -307,7 +329,7 @@ pub async fn open_localtunnel(
             }
         }
     });
-    
+
     Ok(url)
 }
 
@@ -320,51 +342,73 @@ pub async fn open_cloudflare_tunnel(
     let mut cmd = tokio::process::Command::new("cmd");
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000);
-    cmd.args(&["/C", "npx", "-y", "--package=cloudflared", "cloudflared", "tunnel", "--url", &format!("http://127.0.0.1:{}", local_port)]);
+    let local_target = format!("localhost:{}", local_port);
+    cmd.args(&[
+        "/C",
+        "npx",
+        "-y",
+        "--package=cloudflared",
+        "cloudflared",
+        "tunnel",
+        "--metrics",
+        "localhost:0",
+        "--no-autoupdate",
+        "--url",
+        &format!("http://{}", local_target),
+        "--http-host-header",
+        &local_target,
+    ]);
     cmd.stderr(std::process::Stdio::piped());
-    
+
     let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn cloudflared: {}", e))?;
     let stderr = child.stderr.take().ok_or("Failed to open cloudflared stderr".to_string())?;
-    
-    let mut reader = tokio::io::BufReader::new(stderr).lines();
-    
-    let timeout_duration = std::time::Duration::from_secs(20);
-    let read_url_task = async {
-        while let Some(line) = reader.next_line().await.unwrap_or(None) {
-            if line.contains(".trycloudflare.com") {
-                if let Some(start_idx) = line.find("https://") {
-                    let rest = &line[start_idx..];
-                    let url = rest.split_whitespace()
-                        .next()
-                        .unwrap_or("")
-                        .trim_matches(|c| c == '|' || c == ' ' || c == '\r' || c == '\n')
-                        .to_string();
-                    if !url.is_empty() {
-                        return Ok(url);
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    tokio::spawn(async move {
+        let mut reader = tokio::io::BufReader::new(stderr).lines();
+        let mut tx_opt = Some(tx);
+        while let Ok(Some(line)) = reader.next_line().await {
+            if let Some(tx_sender) = tx_opt.take() {
+                if line.contains(".trycloudflare.com") {
+                    if let Some(start_idx) = line.find("https://") {
+                        let rest = &line[start_idx..];
+                        let url = rest
+                            .split_whitespace()
+                            .next()
+                            .unwrap_or("")
+                            .trim_matches(|c| c == '|' || c == ' ' || c == '\r' || c == '\n')
+                            .to_string();
+                        if !url.is_empty() {
+                            let _ = tx_sender.send(Ok(url));
+                            continue;
+                        }
                     }
                 }
+                tx_opt = Some(tx_sender);
             }
         }
-        Err("cloudflared exited or timed out without returning a URL".to_string())
-    };
-    
-    let url = match tokio::time::timeout(timeout_duration, read_url_task).await {
-        Ok(Ok(resolved_url)) => {
-            resolved_url
+        if let Some(tx_sender) = tx_opt {
+            let _ = tx_sender.send(Err("cloudflared process exited without returning URL".to_string()));
         }
-        Ok(Err(e)) => {
+    });
+
+    let timeout_duration = std::time::Duration::from_secs(25);
+    let url = match tokio::time::timeout(timeout_duration, rx).await {
+        Ok(Ok(Ok(resolved_url))) => resolved_url,
+        Ok(Ok(Err(err))) => {
             let _ = child.kill().await;
-            return Err(e);
+            return Err(err);
         }
-        Err(_) => {
+        _ => {
             let _ = child.kill().await;
             return Err("Timed out waiting for trycloudflare URL".to_string());
         }
     };
-    
+
     let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
     lt_procs.insert(tunnel_id.clone(), child);
-    
+
     let tunnel_id_clone = tunnel_id.clone();
     let app_clone = app.clone();
     tokio::spawn(async move {
@@ -384,7 +428,7 @@ pub async fn open_cloudflare_tunnel(
             }
         }
     });
-    
+
     Ok(url)
 }
 

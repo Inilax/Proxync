@@ -22,6 +22,7 @@ export function ProcessView({
   onStopLocalShare,
   onCopy,
   onImportStarterRequests,
+  onRefreshConfig,
 }: {
   workspace: WorkspaceConfig | null;
   process: ProcessCandidate | null;
@@ -38,6 +39,7 @@ export function ProcessView({
   onStopLocalShare: () => void;
   onCopy: (value: string, message: string) => void;
   onImportStarterRequests: () => void;
+  onRefreshConfig?: (process: ProcessCandidate | ProcessProfile) => void;
 }) {
   if (!process && !profile) {
     return (
@@ -72,23 +74,27 @@ export function ProcessView({
     uptime: profile?.lastSharedAt ? 'saved configuration' : 'saved',
   };
 
+  // Dynamic directory resolution
   const resolvedDirectory = (processLike.directory && processLike.directory !== 'unknown')
     ? processLike.directory
-    : (workspace?.projectRootPath || 'unknown');
+    : (workspace?.projectRootPath && workspace.projectRootPath !== 'unknown' && workspace.projectRootPath !== '')
+      ? workspace.projectRootPath
+      : 'Directory undetected';
 
+  // Dynamic executable resolution (never default to java for JS/TS apps!)
   let resolvedExecutable = processLike.executable;
   if (!resolvedExecutable || resolvedExecutable === 'unknown') {
-    const lang = (workspace?.languageHint || '').toLowerCase();
-    if (lang.includes('ts') || lang.includes('js') || lang.includes('react') || lang.includes('node')) {
+    const hint = `${workspace?.languageHint || ''} ${processLike.name || ''} ${processLike.command || ''} ${processLike.framework || ''}`.toLowerCase();
+    if (hint.includes('node') || hint.includes('next') || hint.includes('vite') || hint.includes('react') || hint.includes('express') || hint.includes('script') || hint.includes('npm') || hint.includes('yarn') || hint.includes('pnpm') || hint.includes('bun')) {
       resolvedExecutable = 'node';
-    } else if (lang.includes('py') || lang.includes('django') || lang.includes('flask')) {
+    } else if (hint.includes('py') || hint.includes('django') || hint.includes('flask') || hint.includes('python')) {
       resolvedExecutable = 'python';
-    } else if (lang.includes('go')) {
+    } else if (hint.includes('go')) {
       resolvedExecutable = 'go';
-    } else if (lang.includes('java')) {
+    } else if (hint.includes('java') && !hint.includes('javascript')) {
       resolvedExecutable = 'java';
     } else {
-      resolvedExecutable = 'unknown';
+      resolvedExecutable = 'node';
     }
   }
 
@@ -203,7 +209,19 @@ export function ProcessView({
 
           {/* Executable Details */}
           <div className="p-5 bg-surface-container border border-outline-variant/30 rounded-xl space-y-4">
-            <h3 className="font-headline-sm text-xs font-bold text-on-surface uppercase tracking-wider">Process Configuration</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="font-headline-sm text-xs font-bold text-on-surface uppercase tracking-wider">Process Configuration</h3>
+              {onRefreshConfig && (
+                <button
+                  onClick={() => onRefreshConfig(processLike)}
+                  className="text-xs text-primary hover:text-primary-fixed-dim font-mono flex items-center gap-1 cursor-pointer transition-colors"
+                  title="Re-scan directory & process config"
+                >
+                  <span className="material-symbols-outlined text-[14px]">refresh</span>
+                  <span>Re-scan Directory</span>
+                </button>
+              )}
+            </div>
             <div className="space-y-3">
               <InfoTile label="Command" value={processLike.command ?? processLike.name} monospace />
               <InfoTile label="Directory" value={resolvedDirectory} monospace />

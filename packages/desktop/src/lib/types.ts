@@ -1,11 +1,13 @@
 export type MainView =
   | 'lobby'
   | 'welcome'
+  | 'workspace_dashboard'
   | 'process'
   | 'traffic'
   | 'postman'
   | 'swagger'
   | 'observability'
+  | 'workbench'
   | 'docs'
   | 'settings';
 
@@ -46,6 +48,10 @@ export interface RequestLog {
   bodyPreview?: string;
   responseHeaders?: Record<string, string>;
   capturedAt?: string;
+  workspaceId?: string;
+  workspaceName?: string;
+  port?: number;
+  serverName?: string;
 }
 
 export interface SavedRequest {
@@ -125,4 +131,29 @@ export interface AppSettings {
   telemetry?: 'enhanced' | 'basic';
   enableDevTools?: boolean;
 }
+
+export interface ExecutionRun {
+  id: string;
+  runIndex: number;
+  timestamp: string;
+  status: number;
+  durationMs: number;
+  headers: Record<string, string>;
+  body: string;
+  note?: string;
+}
+
+export interface WorkbenchTab {
+  id: string;
+  title: string;
+  method: string;
+  path: string;
+  requestLog?: RequestLog;
+  draftRequest: SavedRequest;
+  activeSubTab: 'replay' | 'traffic' | 'telemetry' | 'swagger' | 'devtools';
+  executionHistory: ExecutionRun[];
+  lastResponse?: PostmanResponse | null;
+  bypassCache?: boolean;
+}
+
 
