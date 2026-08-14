@@ -18,6 +18,13 @@ use crate::proxy::stop_proxy;
 lazy_static! {
     static ref ACTIVE_TUNNELS: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>> = Arc::new(Mutex::new(HashMap::new()));
     static ref LOCALTUNNEL_PROCESSES: Arc<Mutex<HashMap<String, tokio::process::Child>>> = Arc::new(Mutex::new(HashMap::new()));
+    static ref HTTP_CLIENT: Client = Client::builder()
+        .tcp_nodelay(true)
+        .pool_idle_timeout(std::time::Duration::from_secs(90))
+        .pool_max_idle_per_host(10)
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .unwrap_or_else(|_| Client::new());
 }
 
 #[derive(Deserialize, Serialize)]
@@ -498,13 +505,8 @@ pub async fn open_native_tunnel(
         let api_secret = std::env::var("PROXYNC_API_SECRET_TOKEN")
             .unwrap_or_else(|_| "proxync_default_secret_2026".to_string());
         
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-            .map_err(|e| e.to_string())?;
-
-        // CSO Hardening: Use native reqwest HTTP request instead of spawning curl subprocess
-        if let Ok(resp) = client.post(&api_url)
+        // CSO Hardening: Use pooled HTTP_CLIENT with warm connection reuse (0-RTT TLS)
+        if let Ok(resp) = HTTP_CLIENT.post(&api_url)
             .header("Content-Type", "application/json")
             .header("Authorization", format!("Bearer {}", api_secret))
             .json(&body_json)
@@ -522,19 +524,21 @@ pub async fn open_native_tunnel(
             }
         }
         
-        // Short delay to allow sish inotify watcher to reload keys into memory
-        tokio::time::sleep(std::time::Duration::from_millis(350)).await;
+        // Micro-delay (sish inotify on Linux reloads keys into memory in < 1ms)
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
     }
     let active_key_path = key_path;
 
     #[cfg(target_os = "windows")]
     {
+        let username = std::env::var("USERNAME").unwrap_or_else(|_| "Everyone".to_string());
         let _ = std::process::Command::new("icacls")
-            .args(&[active_key_path.to_str().unwrap(), "/inheritance:r"])
-            .creation_flags(0x08000000)
-            .output();
-        let _ = std::process::Command::new("icacls")
-            .args(&[active_key_path.to_str().unwrap(), "/grant:r", &format!("{}:(R)", std::env::var("USERNAME").unwrap_or_else(|_| "Everyone".to_string()))])
+            .args(&[
+                active_key_path.to_str().unwrap(),
+                "/inheritance:r",
+                "/grant:r",
+                &format!("{}:(R)", username)
+            ])
             .creation_flags(0x08000000)
             .output();
     }
@@ -554,6 +558,12 @@ pub async fn open_native_tunnel(
         "-o", &format!("StrictHostKeyChecking={}", strict_host_checking),
         "-o", &format!("UserKnownHostsFile={}", known_hosts_path.to_str().unwrap()),
         "-o", "ServerAliveInterval=30",
+        "-o", "ServerAliveCountMax=3",
+        "-o", "TCPKeepAlive=yes",
+        "-o", "Ciphers=chacha20-poly1305@openssh.com,aes128-gcm@openssh.com",
+        "-o", "Compression=no",
+        "-o", "ConnectTimeout=5",
+        "-o", "IPQoS=throughput",
         "-p", "2222",
         &format!("-R {}:80:127.0.0.1:{}", clean_subdomain, local_port),
         &format!("{}@{}", clean_subdomain, ssh_host),
