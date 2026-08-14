@@ -2,6 +2,23 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [feature/proxync-native-tunnel] - 2026-08-14 (Proxync Native Tunnel Speed Optimization, High-Throughput SSH & Rust Backend Modularization)
+- **Feature Summary**:
+  - **Tunnel Speed & Connection Optimization**: Replaced per-request HTTP client creation with a global pooled `HTTP_CLIENT` (`tcp_nodelay(true)`, 90s idle pool, connection reuse) for zero-RTT TLS JIT certificate signing requests.
+  - **Micro-Delay Key Reload**: Reduced post-signing filesystem synchronization delay from 350ms to 25ms to take advantage of sub-millisecond inotify key reloading on Linux edge servers.
+  - **High-Throughput SSH Ciphers & QoS**: Configured native SSH connection with high-speed, hardware-accelerated cipher suites (`chacha20-poly1305@openssh.com,aes128-gcm@openssh.com`), disabled compression CPU overhead (`Compression=no`), enforced `IPQoS=throughput`, and tuned keepalive parameters (`TCPKeepAlive=yes`, `ServerAliveCountMax=3`, `ConnectTimeout=5`).
+  - **Windows ACL Permission Optimization**: Streamlined Windows file permissions into a single-pass `icacls` invocation (`/inheritance:r /grant:r %USERNAME%:(R)`).
+  - **Modular Rust Backend Architecture**: Refactored monolithic `lib.rs` (1000+ lines) into clean, decoupled domain modules: `http.rs` (CORS-bypassing HTTP executor & decompression), `proxy.rs` (local TCP proxy & event emitters), `recon.rs` (process recognition & directory resolution), `storage.rs` (local data serialization), and `tunnel.rs` (Proxync Native SSH, Localtunnel & Cloudflare tunnel managers).
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/http.rs`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
 ## [fix/security-cve-hardening] - 2026-08-14 [SECURITY-CVE] (Security CVE Remediation, Content Security Policy & CI/CD Workflow Hardening)
 - **Feature Summary**:
   - **Dependency CVE Remediation [TYPE: CVE-PATCH]**: Patched transitive `nanoid` build dependency vulnerability ([GHSA-2v37-7h3g-55p8](https://github.com/advisories/GHSA-2v37-7h3g-55p8)) via `npm audit fix`, resolving all npm audit security warnings (0 vulnerabilities).
