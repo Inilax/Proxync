@@ -1013,7 +1013,7 @@ export default function App() {
       return;
     }
     if (!process.directory || process.directory === 'unknown') {
-      await refreshProcessDirectory(process);
+      void refreshProcessDirectory(process);
     }
     setProcesses((curr) => [process, ...curr.filter((p) => p.id !== process.id)]);
     const starterScan = buildStarterRequests(process);
@@ -1030,9 +1030,10 @@ export default function App() {
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
       const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
       const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
-      await invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined);
-
-      const proxyPort = await invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port);
+      const [, proxyPort] = await Promise.all([
+        invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined),
+        invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port),
+      ]);
       showToast('Starting Cloudflare Tunnel service...', 'info');
       const cfTunnelUrl = await invoke<string>('open_cloudflare_tunnel', { tunnelId: tunnel.id, localPort: proxyPort });
 
@@ -1071,8 +1072,10 @@ function generateRandomSubdomain(prefix = 'px'): string {
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
       const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
       const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
-      await invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined);
-      const proxyPort = await invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port);
+      const [, proxyPort] = await Promise.all([
+        invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined),
+        invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port),
+      ]);
       const suggestedSub = generateRandomSubdomain('px');
       showToast('Starting Proxync Native SSH tunnel...', 'info');
       const nativeTunnelUrl = await invoke<string>('open_native_tunnel', { tunnelId: tunnel.id, localPort: proxyPort, subdomain: suggestedSub });
@@ -1094,7 +1097,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
       return;
     }
     if (!process.directory || process.directory === 'unknown') {
-      await refreshProcessDirectory(process);
+      void refreshProcessDirectory(process);
     }
     setProcesses((curr) => [process, ...curr.filter((p) => p.id !== process.id)]);
     const starterScan = buildStarterRequests(process);
@@ -1111,8 +1114,10 @@ function generateRandomSubdomain(prefix = 'px'): string {
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
       const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
       const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
-      await invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined);
-      const proxyPort = await invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port);
+      const [, proxyPort] = await Promise.all([
+        invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined),
+        invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port),
+      ]);
       const suggestedSub = customSubdomain || `${activeWorkspace.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${process.port}`;
       showToast('Starting localtunnel service...', 'info');
       const localtunnelUrl = await invoke<string>('open_localtunnel', { tunnelId: tunnel.id, localPort: proxyPort, subdomain: suggestedSub });
