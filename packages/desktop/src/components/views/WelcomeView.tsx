@@ -11,6 +11,7 @@ export function WelcomeView({
   onDiscover,
   onNavigateToCustomDomains,
   onStopTunnel,
+  onStopAllTunnels,
 }: {
   tunnels: Tunnel[];
   requests: RequestLog[];
@@ -18,6 +19,7 @@ export function WelcomeView({
   onDiscover: () => void;
   onNavigateToCustomDomains: () => void;
   onStopTunnel: (tunnel: Tunnel) => void;
+  onStopAllTunnels?: () => void;
 }) {
   const [activeMenuTunnelId, setActiveMenuTunnelId] = useState<string | null>(null);
   const activeTunnels = tunnels.filter((t) => t.status === 'ACTIVE');
@@ -173,9 +175,29 @@ export function WelcomeView({
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between mb-2">
             <h3 className="font-headline-sm text-headline-sm text-on-surface">Active Tunnels</h3>
-            <span className="font-code-sm text-code-sm text-on-surface-variant px-2 py-0.5 bg-surface-container rounded border border-outline-variant">
-              {activeTunnels.length} {activeTunnels.length === 1 ? 'Session' : 'Sessions'}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="font-code-sm text-code-sm text-on-surface-variant px-2 py-0.5 bg-surface-container rounded border border-outline-variant">
+                {activeTunnels.length} {activeTunnels.length === 1 ? 'Session' : 'Sessions'}
+              </span>
+              {activeTunnels.length > 0 && (
+                <button
+                  onClick={() => {
+                    if (onStopAllTunnels) {
+                      onStopAllTunnels();
+                    } else {
+                      activeTunnels.forEach((t) => onStopTunnel(t));
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-md border border-error/40 bg-error/10 hover:bg-error/20 text-error font-body-sm text-xs font-semibold transition-all cursor-pointer shadow-xs active:scale-95"
+                  title="Stop all active tunnel sessions"
+                >
+                  <span className="material-symbols-outlined text-[15px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                    stop_circle
+                  </span>
+                  <span>Stop All</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {activeTunnels.length === 0 ? (

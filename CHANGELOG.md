@@ -17,6 +17,17 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - `.agents/changelog.json`
   - `CHANGELOG.md`
 
+## [feature/develop-batch-tunnel-teardown] - 2026-08-14 (Batch Tunnel Teardown & One-Click Stop All UI)
+- **Feature Summary**:
+  - **Batch Multi-Tunnel Teardown**: Added a prominent "Stop All" action button beside the active session counter in the Explore screen (`WelcomeView.tsx`) and Workspace Dashboard (`WorkspaceDashboardView.tsx`), conditionally displayed when active sessions exist.
+  - **Concurrent Teardown Handler**: Implemented `stopAllTunnels` in `App.tsx` executing concurrent native `close_tunnel` invocations and remote API terminations via `Promise.all` with resilient per-tunnel error handling, synchronous state pruning, and toast notifications.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
 ## [feature/proxync-native-tunnel] - 2026-08-14 (Proxync Native Tunnel Speed Optimization, High-Throughput SSH & Rust Backend Modularization)
 - **Feature Summary**:
   - **Tunnel Speed & Connection Optimization**: Replaced per-request HTTP client creation with a global pooled `HTTP_CLIENT` (`tcp_nodelay(true)`, 90s idle pool, connection reuse) for zero-RTT TLS JIT certificate signing requests.
