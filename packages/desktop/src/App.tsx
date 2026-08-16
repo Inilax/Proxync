@@ -249,6 +249,20 @@ export default function App() {
   }, [workbenchTabs]);
   const [discovering, setDiscovering] = useState(false);
   const [sharingPort, setSharingPort] = useState<number | null>(null);
+  const [spawningPorts, setSpawningPorts] = useState<number[]>([]);
+
+  const addSpawningPort = useCallback((port: number) => {
+    setSpawningPorts((prev) => (prev.includes(port) ? prev : [...prev, port]));
+    setSharingPort(port);
+  }, []);
+
+  const removeSpawningPort = useCallback((port: number) => {
+    setSpawningPorts((prev) => {
+      const next = prev.filter((p) => p !== port);
+      setSharingPort(next[0] ?? null);
+      return next;
+    });
+  }, []);
   const [sendingRequest, setSendingRequest] = useState(false);
   const [starterSuggestions, setStarterSuggestions] = useState<SavedRequest[]>([]);
   const [scanningProject, setScanningProject] = useState(false);
@@ -964,6 +978,17 @@ export default function App() {
       showToast('Select or create a workspace first before sharing a port', 'info');
       return;
     }
+    const existingActive = tunnels.find((t) => t.localPort === process.port && t.status === 'ACTIVE');
+    if (existingActive) {
+      showToast(`Tunnel is already active for port ${process.port} (${existingActive.publicUrl}). Stop the existing tunnel first.`, 'warning');
+      setActiveTunnel(existingActive);
+      setSelectedProcessId(process.id);
+      return;
+    }
+    if (spawningPorts.includes(process.port) || sharingPort === process.port) {
+      showToast(`A tunnel is currently launching for port ${process.port}. Please wait...`, 'info');
+      return;
+    }
     setSharingProcessCandidate(process);
   }
 
@@ -1007,6 +1032,17 @@ export default function App() {
 
   async function shareProcessCloudflare(process: ProcessCandidate) {
     if (!activeWorkspace) return;
+    const existingActive = tunnels.find((t) => t.localPort === process.port && t.status === 'ACTIVE');
+    if (existingActive) {
+      showToast(`Tunnel is already active for port ${process.port} (${existingActive.publicUrl}). Stop the existing tunnel first.`, 'warning');
+      setActiveTunnel(existingActive);
+      setSelectedProcessId(process.id);
+      return;
+    }
+    if (spawningPorts.includes(process.port) || sharingPort === process.port) {
+      showToast(`A tunnel is currently launching for port ${process.port}. Please wait...`, 'info');
+      return;
+    }
     const isConnected = await checkRealInternetConnection();
     if (!isConnected) {
       showToast('⚠️ No internet connection detected. Cloudflare Tunnel requires an active internet connection. Please connect to the internet and try again.', 'error');
@@ -1015,6 +1051,7 @@ export default function App() {
     if (!process.directory || process.directory === 'unknown') {
       void refreshProcessDirectory(process);
     }
+    addSpawningPort(process.port);
     setProcesses((curr) => [process, ...curr.filter((p) => p.id !== process.id)]);
     const starterScan = buildStarterRequests(process);
     setStarterSuggestions(starterScan);
@@ -1024,7 +1061,6 @@ export default function App() {
     const targetWorkspaceId = activeWorkspace.remoteWorkspaceId || activeWorkspace.id;
     const token = getToken();
 
-    setSharingPort(process.port);
     try {
       localStorage.setItem('proxync_workspace', targetWorkspaceId);
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
@@ -1044,7 +1080,7 @@ export default function App() {
       showToast(`Cloudflare Tunnel is active! URL: ${cfTunnelUrl}`, 'success');
       updateActiveWorkspace((ws) => ({ ...ws, profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: cfTunnelUrl } : p) }));
     } catch (error) { showToast(error instanceof Error ? error.message : String(error), 'error'); }
-    finally { setSharingPort(null); }
+    finally { removeSpawningPort(process.port); }
   }
 
 function generateRandomSubdomain(prefix = 'px'): string {
@@ -1058,6 +1094,18 @@ function generateRandomSubdomain(prefix = 'px'): string {
 
   async function shareProcessNative(process: ProcessCandidate) {
     if (!activeWorkspace) return;
+    const existingActive = tunnels.find((t) => t.localPort === process.port && t.status === 'ACTIVE');
+    if (existingActive) {
+      showToast(`Tunnel is already active for port ${process.port} (${existingActive.publicUrl}). Stop the existing tunnel first.`, 'warning');
+      setActiveTunnel(existingActive);
+      setSelectedProcessId(process.id);
+      return;
+    }
+    if (spawningPorts.includes(process.port) || sharingPort === process.port) {
+      showToast(`A tunnel is currently launching for port ${process.port}. Please wait...`, 'info');
+      return;
+    }
+    addSpawningPort(process.port);
     const starterScan = buildStarterRequests(process);
     setStarterSuggestions(starterScan);
     setSavedRequests((current) => mergeRequests(current, starterScan));
@@ -1066,7 +1114,6 @@ function generateRandomSubdomain(prefix = 'px'): string {
     const targetWorkspaceId = activeWorkspace.remoteWorkspaceId || activeWorkspace.id;
     const token = getToken();
 
-    setSharingPort(process.port);
     try {
       localStorage.setItem('proxync_workspace', targetWorkspaceId);
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
@@ -1086,11 +1133,22 @@ function generateRandomSubdomain(prefix = 'px'): string {
       showToast(`Tunnel is active! URL: ${nativeTunnelUrl}`, 'success');
       updateActiveWorkspace((ws) => ({ ...ws, profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: nativeTunnelUrl } : p) }));
     } catch (error) { showToast(error instanceof Error ? error.message : String(error), 'error'); }
-    finally { setSharingPort(null); }
+    finally { removeSpawningPort(process.port); }
   }
 
   async function shareProcessLocaltunnel(process: ProcessCandidate, customSubdomain?: string) {
     if (!activeWorkspace) return;
+    const existingActive = tunnels.find((t) => t.localPort === process.port && t.status === 'ACTIVE');
+    if (existingActive) {
+      showToast(`Tunnel is already active for port ${process.port} (${existingActive.publicUrl}). Stop the existing tunnel first.`, 'warning');
+      setActiveTunnel(existingActive);
+      setSelectedProcessId(process.id);
+      return;
+    }
+    if (spawningPorts.includes(process.port) || sharingPort === process.port) {
+      showToast(`A tunnel is currently launching for port ${process.port}. Please wait...`, 'info');
+      return;
+    }
     const isConnected = await checkRealInternetConnection();
     if (!isConnected) {
       showToast('⚠️ No internet connection detected. Localtunnel service requires an active internet connection. Please connect to the internet and try again.', 'error');
@@ -1099,6 +1157,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
     if (!process.directory || process.directory === 'unknown') {
       void refreshProcessDirectory(process);
     }
+    addSpawningPort(process.port);
     setProcesses((curr) => [process, ...curr.filter((p) => p.id !== process.id)]);
     const starterScan = buildStarterRequests(process);
     setStarterSuggestions(starterScan);
@@ -1108,7 +1167,6 @@ function generateRandomSubdomain(prefix = 'px'): string {
     const targetWorkspaceId = activeWorkspace.remoteWorkspaceId || activeWorkspace.id;
     const token = getToken();
 
-    setSharingPort(process.port);
     try {
       localStorage.setItem('proxync_workspace', targetWorkspaceId);
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
@@ -1128,17 +1186,28 @@ function generateRandomSubdomain(prefix = 'px'): string {
       showToast(`Localtunnel is active! URL: ${localtunnelUrl}`, 'success');
       updateActiveWorkspace((ws) => ({ ...ws, profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: localtunnelUrl } : p) }));
     } catch (error) { showToast(error instanceof Error ? error.message : String(error), 'error'); }
-    finally { setSharingPort(null); }
+    finally { removeSpawningPort(process.port); }
   }
 
   async function shareProcess(process: ProcessCandidate, customDomain?: string) {
     if (!activeWorkspace) return;
+    const existingActive = tunnels.find((t) => t.localPort === process.port && t.status === 'ACTIVE');
+    if (existingActive) {
+      showToast(`Tunnel is already active for port ${process.port} (${existingActive.publicUrl}). Stop the existing tunnel first.`, 'warning');
+      setActiveTunnel(existingActive);
+      setSelectedProcessId(process.id);
+      return;
+    }
+    if (spawningPorts.includes(process.port) || sharingPort === process.port) {
+      showToast(`A tunnel is currently launching for port ${process.port}. Please wait...`, 'info');
+      return;
+    }
 
+    addSpawningPort(process.port);
     setProcesses((curr) => [process, ...curr.filter((p) => p.id !== process.id)]);
     const targetWorkspaceId = activeWorkspace.remoteWorkspaceId || activeWorkspace.id;
     const token = getToken();
 
-    setSharingPort(process.port);
     try {
       localStorage.setItem('proxync_workspace', targetWorkspaceId);
 
@@ -1193,7 +1262,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
       }));
       showToast(`Tunnel active on ${tunnel.publicUrl}. Traffic interception enabled!`, 'success');
     } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to share process', 'error'); }
-    finally { setSharingPort(null); }
+    finally { removeSpawningPort(process.port); }
   }
 
   function shareProcessLocal(process: ProcessCandidate) {
@@ -1781,6 +1850,8 @@ function generateRandomSubdomain(prefix = 'px'): string {
                 activeTunnel={activeTunnel}
                 processes={processes}
                 discovering={discovering}
+                sharingPort={sharingPort}
+                spawningPorts={spawningPorts}
                 onScan={() => void discoverProcesses(true)}
                 onSelectProcess={(processId) => {
                   setSelectedProcessId(processId);

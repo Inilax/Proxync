@@ -2,6 +2,20 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [feature/develop-workspace-card-redesign-and-concurrency] - 2026-08-17 (Workspace Hub Card Redesign, Multi-Service Concurrent Tunnel Spawning & Responsive Layout)
+- **Feature Summary**:
+  - **Multi-Service Concurrent Tunnel Spawning**: Replaced scalar `sharingPort` with `spawningPorts: number[]` in `App.tsx` and integrated `addSpawningPort` / `removeSpawningPort` across all sharing handlers (`shareProcessNative`, `shareProcessCloudflare`, `shareProcessLocaltunnel`, `shareProcess`), enabling simultaneous tunnel launches without UI state collisions.
+  - **Instantaneous Spawning State**: When clicking tunnel launch options, action buttons are immediately replaced with an active animated loading indicator `[ 🔄 Spawning Tunnel Connection... ]`, preventing double-clicks and duplicate backend spawner execution.
+  - **Workspace Hub Card Redesign**: Overhauled `WorkspaceDashboardView.tsx` with Emerald code avatars, normalized framework subtitles, and isolated Local Endpoint container matching design mockups.
+  - **Action Button Styling & Containment**: Styled `⚡ Expose (Proxync)` with theme periwinkle purple (`#7c82ff`), `Cloudflare` and `LAN` with dark slate containers (`#20293d`), and added `min-w-0` / `truncate` text containment.
+  - **Responsive Layout & Screen Adaptation**: Tuned grid breakpoint to `grid-cols-1 md:grid-cols-2 2xl:grid-cols-3` to ensure generous card width on standard desktop window sizes with sidebar.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `packages/desktop/src/index.css`
+  - `CHANGELOG.md`
+
+
 ## [feature/proxync-native-tunnel] - 2026-08-15 (Direct Origin Port 2222 Routing, Strict HTTPS JIT Security, Host Key Pinning & Parallel Startup)
 - **Feature Summary**:
   - **Direct Port 2222 Origin Routing**: Resolved SSH tunnel connection timeout and public URL 404 issue by configuring default `PROXYNC_SSH_HOST` to connect directly to origin IP `104.208.83.199:2222`, bypassing Cloudflare CDN's non-HTTP port dropping on `api.proxync.dev:2222`.
