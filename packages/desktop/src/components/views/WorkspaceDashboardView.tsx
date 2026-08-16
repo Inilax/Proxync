@@ -3,6 +3,20 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import type { Tunnel, RequestLog } from './SharedComponents';
 import type { ProcessCandidate, WorkspaceConfig } from '../../lib/types';
 import { showToast } from '../../lib/toast';
+function getFrameworkSubtitle(proc: ProcessCandidate): string {
+  if (proc.framework && proc.framework !== 'unknown') {
+    const raw = proc.framework.replace(/app$/i, '').trim();
+    return `${raw} App`;
+  }
+  const text = `${proc.name || ''} ${proc.command || ''} ${proc.directory || ''}`.toLowerCase();
+  if (text.includes('node') || text.includes('express')) return 'Node.js App';
+  if (text.includes('vite')) return 'Vite App';
+  if (text.includes('next')) return 'Next.js App';
+  if (text.includes('react')) return 'React App';
+  if (text.includes('python') || text.includes('fastapi') || text.includes('django')) return 'Python App';
+  if (text.includes('go')) return 'Go App';
+  return 'HTTP Service';
+}
 
 export function WorkspaceDashboardView({
   workspace,
@@ -11,6 +25,8 @@ export function WorkspaceDashboardView({
   activeTunnel,
   processes,
   discovering,
+  sharingPort,
+  spawningPorts = [],
   onScan,
   onSelectProcess,
   onSharePublic,
@@ -25,6 +41,8 @@ export function WorkspaceDashboardView({
   activeTunnel: Tunnel | null;
   processes: ProcessCandidate[];
   discovering: boolean;
+  sharingPort?: number | null;
+  spawningPorts?: number[];
   onScan: () => void;
   onSelectProcess: (processId: string) => void;
   onSharePublic: (process: ProcessCandidate) => void;
@@ -89,7 +107,10 @@ export function WorkspaceDashboardView({
 
     void measureAll();
     const interval = setInterval(() => void measureAll(), 10000);
-    return () => { active = false; clearInterval(interval); };
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, [tunnels]);
 
   function formatBytes(bytes: number): string {
@@ -108,7 +129,7 @@ export function WorkspaceDashboardView({
     const hours = Math.floor(totalSecs / 3600);
     const minutes = Math.floor((totalSecs % 3600) / 60);
     const seconds = totalSecs % 60;
-    return [hours, minutes, seconds].map(v => v.toString().padStart(2, '0')).join(':');
+    return [hours, minutes, seconds].map((v) => v.toString().padStart(2, '0')).join(':');
   }
 
   const getTrafficStats = (tunnelId: string) => {
@@ -123,315 +144,454 @@ export function WorkspaceDashboardView({
 
   return (
     <>
-    <div className="hidden" style={{ display: 'none' }}>{tick}</div>
-    <div className="workspace-dashboard-view max-w-6xl mx-auto space-y-8 fade-in select-none">
-      {/* Hero Workspace Header */}
-      <section className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 bg-surface-container-low p-8 rounded-xl border border-outline-variant relative overflow-hidden">
-        <div className="relative z-10 space-y-2">
-          <div className="flex items-center gap-3">
-            <span className="flex h-2.5 w-2.5 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-secondary opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-secondary"></span>
-            </span>
-            <span className="font-label-md text-label-md text-secondary uppercase tracking-widest">
-              Active Workspace
-            </span>
-          </div>
-          <h2 className="font-display-sm text-display-sm text-on-surface">
-            {workspace?.name ?? 'Workspace Dashboard'}
-          </h2>
-          <p className="text-on-surface-variant max-w-lg text-xs leading-relaxed">
-            Detected {processes.length} local development {processes.length === 1 ? 'server' : 'servers'} running on localhost ports. Select any server card below to configure and launch a public tunnel.
-          </p>
-        </div>
-        <button
-          onClick={onScan}
-          disabled={discovering}
-          className="btn-primary relative z-10 flex items-center gap-2 cursor-pointer"
-        >
-          <span className={`material-symbols-outlined ${discovering ? 'animate-spin' : ''}`}>
-            {discovering ? 'sync' : 'search'}
-          </span>
-          <span>{discovering ? 'Scanning Local Ports...' : 'Full Scan Local Ports'}</span>
-        </button>
-        <div className="absolute -right-20 -top-20 w-64 h-64 bg-secondary/5 rounded-full blur-3xl"></div>
-      </section>
-
-      {/* Main Grid Section */}
-      <div className="space-y-8">
-        {/* Section 1: Detected Local Servers */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <h3 className="font-headline-sm text-headline-sm text-on-surface">Detected Local Servers</h3>
-              <span className="font-code-sm text-code-sm text-on-surface-variant px-2 py-0.5 bg-surface-container rounded border border-outline-variant">
-                {processes.length} Running
+      <div className="hidden" style={{ display: 'none' }}>{tick}</div>
+      <div className="workspace-dashboard-view max-w-6xl mx-auto space-y-8 fade-in select-none">
+        {/* Hero Workspace Header */}
+        <section className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 bg-surface-container-low p-8 rounded-xl border border-outline-variant relative overflow-hidden">
+          <div className="relative z-10 space-y-2">
+            <div className="flex items-center gap-3">
+              <span className="flex h-2.5 w-2.5 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-secondary opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-secondary"></span>
+              </span>
+              <span className="font-label-md text-label-md text-secondary uppercase tracking-widest">
+                Active Workspace
               </span>
             </div>
-            <button
-              onClick={onScan}
-              disabled={discovering}
-              className="text-xs text-primary hover:text-primary-fixed-dim font-mono flex items-center gap-1 cursor-pointer transition-colors"
-              title="Trigger full scan of local ports"
-            >
-              <span className={`material-symbols-outlined text-[14px] ${discovering ? 'animate-spin' : ''}`}>refresh</span>
-              <span>{discovering ? 'Scanning...' : 'Scan Ports'}</span>
-            </button>
+            <h2 className="font-display-sm text-display-sm text-on-surface">
+              {workspace?.name ?? 'Workspace Dashboard'}
+            </h2>
+            <p className="text-on-surface-variant max-w-lg text-xs leading-relaxed">
+              Detected {processes.length} local development {processes.length === 1 ? 'server' : 'servers'} running on localhost ports. Select any server card below to configure and launch a public tunnel.
+            </p>
           </div>
+          <button
+            onClick={onScan}
+            disabled={discovering}
+            className="btn-primary relative z-10 flex items-center gap-2 cursor-pointer"
+          >
+            <span className={`material-symbols-outlined ${discovering ? 'animate-spin' : ''}`}>
+              {discovering ? 'sync' : 'search'}
+            </span>
+            <span>{discovering ? 'Scanning Local Ports...' : 'Full Scan Local Ports'}</span>
+          </button>
+          <div className="absolute -right-20 -top-20 w-64 h-64 bg-secondary/5 rounded-full blur-3xl"></div>
+        </section>
 
-          {processes.length === 0 ? (
-            <div
-              onClick={onScan}
-              className="border-2 border-dashed border-outline-variant hover:border-primary/50 hover:bg-surface-container-low/30 rounded-xl p-8 flex flex-col items-center justify-center gap-4 transition-all cursor-pointer group py-12"
-            >
-              <div className="w-12 h-12 rounded-full bg-surface-container-high flex items-center justify-center group-hover:bg-primary/10 transition-colors">
-                <span className="material-symbols-outlined text-[28px] text-outline group-hover:text-primary transition-colors">
-                  dns
+        {/* Main Grid Section */}
+        <div className="space-y-8">
+          {/* Section 1: Detected Local Servers */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <h3 className="font-headline-sm text-headline-sm text-on-surface">Detected Local Servers</h3>
+                <span className="font-code-sm text-code-sm text-on-surface-variant px-2 py-0.5 bg-surface-container rounded border border-outline-variant">
+                  {processes.length} Running
                 </span>
               </div>
-              <div className="text-center">
-                <p className="font-headline-sm text-sm font-semibold text-on-surface-variant group-hover:text-on-surface transition-colors">
-                  No Local Servers Detected
-                </p>
-                <p className="text-xs text-outline mt-0.5">
-                  Click here to run a full scan of localhost development ports
-                </p>
-              </div>
+              <button
+                onClick={onScan}
+                disabled={discovering}
+                className="text-xs text-primary hover:text-primary-fixed-dim font-mono flex items-center gap-1 cursor-pointer transition-colors"
+                title="Trigger full scan of local ports"
+              >
+                <span className={`material-symbols-outlined text-[14px] ${discovering ? 'animate-spin' : ''}`}>refresh</span>
+                <span>{discovering ? 'Scanning...' : 'Scan Ports'}</span>
+              </button>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {processes.map((proc) => {
-                const activeT = tunnels.find(t => t.localPort === proc.port && t.status === 'ACTIVE');
-                const isLive = Boolean(activeT);
-                const displayDir = proc.directory && proc.directory !== 'unknown' ? proc.directory : (proc.command ?? 'Local process');
 
-                return (
-                  <div
-                    key={proc.id}
-                    onClick={() => onSelectProcess(proc.id)}
-                    className="p-5 bg-surface-container border border-outline-variant hover:border-primary/60 rounded-xl flex flex-col justify-between gap-4 transition-all cursor-pointer group shadow-sm hover:shadow-md"
-                  >
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className={`badge ${isLive ? 'accent' : 'muted'}`}>
-                          {isLive ? '🟢 Public Tunnel' : '⚡ Local'}
-                        </span>
-                        <span className="font-mono text-xs font-bold text-primary px-2.5 py-0.5 bg-primary/10 rounded-full border border-primary/20">
-                          Port {proc.port}
-                        </span>
-                      </div>
-
-                      <div>
-                        <h4 className="font-body-lg text-base font-bold text-on-surface group-hover:text-primary transition-colors truncate">
-                          {proc.name}
-                        </h4>
-                        <p className="font-mono text-xs text-on-surface-variant/80 truncate mt-1" title={displayDir}>
-                          {displayDir}
-                        </p>
-                      </div>
-                    </div>
-
-                    {activeT && (
-                      <div className="p-2.5 bg-surface-container-high rounded-lg border border-outline-variant/40 space-y-1">
-                        <p className="text-[10px] font-bold text-primary uppercase tracking-wider">Public URL</p>
-                        <p className="font-mono text-xs text-on-surface truncate select-all">{activeT.publicUrl}</p>
-                      </div>
-                    )}
-
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-3 border-t border-outline-variant/30 gap-2">
-                      <span className="text-xs font-semibold text-on-surface-variant group-hover:text-primary transition-colors flex items-center gap-1 shrink-0 whitespace-nowrap">
-                        Expose
-                        <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
-                      </span>
-                      <div className="flex items-center gap-1.5 shrink-0 flex-wrap" onClick={(e) => e.stopPropagation()}>
-                        {onShareNative && (
-                          <button
-                            onClick={() => onShareNative(proc)}
-                            className="btn-primary compact text-[11px] py-1 px-2.5 font-semibold whitespace-nowrap"
-                            title="Share via Proxync Native SSH Tunnel"
-                          >
-                            ⚡ Proxync
-                          </button>
-                        )}
-                        <button
-                          onClick={() => onSharePublic(proc)}
-                          className="btn-secondary compact text-[11px] py-1 px-2 whitespace-nowrap"
-                          title="Share Public Cloudflare Tunnel"
-                        >
-                          Cloudflare
-                        </button>
-                        <button
-                          onClick={() => onShareLocal(proc)}
-                          className="btn-secondary compact text-[11px] py-1 px-2 whitespace-nowrap"
-                          title="Share LAN Link"
-                        >
-                          LAN
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Section 2: Active Tunnels for Workspace */}
-        <div className="space-y-4 pt-6 border-t border-outline-variant/30">
-          <div className="flex items-center justify-between">
-            <h3 className="font-headline-sm text-headline-sm text-on-surface">Active Workspace Tunnels</h3>
-            <div className="flex items-center gap-2">
-              <span className="font-code-sm text-code-sm text-on-surface-variant px-2 py-0.5 bg-surface-container rounded border border-outline-variant">
-                {activeTunnels.length} Active
-              </span>
-              {activeTunnels.length > 0 && (
-                <button
-                  onClick={() => {
-                    if (onStopAllTunnels) {
-                      onStopAllTunnels();
-                    } else {
-                      activeTunnels.forEach((t) => onStopTunnel(t));
-                    }
-                  }}
-                  className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-md border border-error/40 bg-error/10 hover:bg-error/20 text-error font-body-sm text-xs font-semibold transition-all cursor-pointer shadow-xs active:scale-95"
-                  title="Stop all active tunnels"
-                >
-                  <span className="material-symbols-outlined text-[15px]" style={{ fontVariationSettings: "'FILL' 1" }}>
-                    stop_circle
+            {processes.length === 0 ? (
+              <div
+                onClick={onScan}
+                className="border-2 border-dashed border-outline-variant hover:border-primary/50 hover:bg-surface-container-low/30 rounded-xl p-8 flex flex-col items-center justify-center gap-4 transition-all cursor-pointer group py-12"
+              >
+                <div className="w-12 h-12 rounded-full bg-surface-container-high flex items-center justify-center group-hover:bg-primary/10 transition-colors">
+                  <span className="material-symbols-outlined text-[28px] text-outline group-hover:text-primary transition-colors">
+                    dns
                   </span>
-                  <span>Stop All</span>
-                </button>
-              )}
-            </div>
+                </div>
+                <div className="text-center">
+                  <p className="font-headline-sm text-sm font-semibold text-on-surface-variant group-hover:text-on-surface transition-colors">
+                    No Local Servers Detected
+                  </p>
+                  <p className="text-xs text-outline mt-0.5">
+                    Click here to run a full scan of localhost development ports
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4 lg:gap-5">
+                {processes.map((proc) => {
+                  const activeT = tunnels.find((t) => t.localPort === proc.port && t.status === 'ACTIVE');
+                  const isLive = Boolean(activeT);
+                  const isSpawning = spawningPorts.includes(proc.port) || sharingPort === proc.port;
+                  const displayDir = proc.directory && proc.directory !== 'unknown' ? proc.directory : `localhost:${proc.port}`;
+
+                  return (
+                    <div
+                      key={proc.id}
+                      onClick={() => onSelectProcess(proc.id)}
+                      className={`p-4 sm:p-5 bg-surface-container border rounded-2xl flex flex-col justify-between gap-4 transition-all cursor-pointer group shadow-sm hover:shadow-md ${
+                        isLive
+                          ? 'border-emerald-500/60 shadow-emerald-500/10'
+                          : isSpawning
+                            ? 'border-primary/50 ring-1 ring-primary/30'
+                            : 'border-outline-variant/60 hover:border-primary/50'
+                      }`}
+                    >
+                      <div className="space-y-3.5">
+                        {/* Top Header: Icon + Name + Subtitle + Status Pills */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            {/* Icon Box */}
+                            <div className="w-10 h-10 rounded-lg bg-emerald-950/40 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0 shadow-inner">
+                              <span className="material-symbols-outlined text-[20px]">
+                                code
+                              </span>
+                            </div>
+
+                            {/* Title & Subtitle */}
+                            <div className="min-w-0">
+                              <h4 className="font-bold text-sm text-on-surface truncate">
+                                {proc.name}
+                              </h4>
+                              <p className="text-xs text-on-surface-variant/70 font-mono mt-0.5 truncate">
+                                {getFrameworkSubtitle(proc)}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Top Right Badges */}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="px-2.5 py-1 bg-surface-container-high rounded-full border border-outline-variant/50 text-[11px] font-mono text-on-surface-variant font-medium flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-outline"></span>
+                              LOCAL
+                            </span>
+                            <span className="px-2.5 py-1 bg-surface-container-high rounded-full border border-outline-variant/50 text-[11px] font-mono font-bold text-primary">
+                              :{proc.port}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Directory Row */}
+                        <div className="flex items-center gap-2 text-on-surface-variant/70 font-mono text-xs">
+                          <span className="material-symbols-outlined text-[16px] text-outline shrink-0">
+                            folder
+                          </span>
+                          <span className="truncate" title={displayDir}>
+                            {displayDir}
+                          </span>
+                        </div>
+
+                        {/* Local Endpoint / Public Endpoint Box */}
+                        {isLive && activeT ? (
+                          <div className="bg-surface-container-lowest/80 p-3 rounded-lg border border-emerald-500/30 space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-400 font-bold">
+                                PUBLIC ENDPOINT
+                              </span>
+                              <span className="px-1.5 py-0.5 bg-emerald-500/15 text-[10px] font-mono text-emerald-400 rounded">
+                                Live
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="font-mono text-xs font-bold text-on-surface truncate select-all">{activeT.publicUrl}</p>
+                              <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(activeT.publicUrl);
+                                    showToast('Public URL copied!', 'success');
+                                  }}
+                                  className="p-1 rounded text-outline hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer"
+                                  title="Copy URL"
+                                >
+                                  <span className="material-symbols-outlined text-[14px]">content_copy</span>
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    openUrl(activeT.publicUrl).catch(() => window.open(activeT.publicUrl, '_blank'));
+                                  }}
+                                  className="p-1 rounded text-outline hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer"
+                                  title="Open in Browser"
+                                >
+                                  <span className="material-symbols-outlined text-[14px]">open_in_new</span>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="bg-surface-container-lowest/80 p-3 rounded-lg border border-outline-variant/40 space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-mono uppercase tracking-wider text-outline font-semibold">
+                                LOCAL ENDPOINT
+                              </span>
+                              <span className="px-1.5 py-0.5 bg-surface-container-high text-[10px] font-mono text-outline rounded">
+                                Ready
+                              </span>
+                            </div>
+                            <p className="font-mono text-xs font-bold text-on-surface truncate">
+                              http://localhost:{proc.port}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Bottom Action Row */}
+                      <div className="pt-3 border-t border-outline-variant/30 flex items-center">
+                        {isSpawning ? (
+                          /* Spawning State matching Image 2 */
+                          <div
+                            className="w-full py-2 px-4 bg-surface-container-high/70 border border-outline-variant/60 rounded-lg text-xs font-medium text-on-surface flex items-center justify-center gap-2 shadow-xs"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <span className="material-symbols-outlined text-[16px] text-on-surface-variant animate-spin">
+                              sync
+                            </span>
+                            <span className="font-mono text-on-surface-variant font-semibold">
+                              Spawning Tunnel Connection...
+                            </span>
+                          </div>
+                        ) : isLive && activeT ? (
+                          /* Live State */
+                          <div className="flex items-center justify-between w-full gap-2" onClick={(e) => e.stopPropagation()}>
+                            <span className="text-xs font-semibold text-on-surface-variant group-hover:text-primary transition-colors flex items-center gap-1">
+                              Inspect Traffic
+                              <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                            </span>
+                            <button
+                              onClick={() => onStopTunnel(activeT)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-error/40 bg-error/10 hover:bg-error/20 text-error font-body-sm text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+                              title="Stop active tunnel"
+                            >
+                              <span className="material-symbols-outlined text-[14px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                                stop_circle
+                              </span>
+                              <span>Stop Tunnel</span>
+                            </button>
+                          </div>
+                        ) : (
+                          /* Local / Ready State matching Image 1 */
+                          <div className="flex items-center gap-1.5 w-full min-w-0" onClick={(e) => e.stopPropagation()}>
+                            {onShareNative && (
+                              <button
+                                onClick={() => onShareNative(proc)}
+                                className="btn-expose-proxync flex-1 min-w-0"
+                                style={{
+                                  backgroundColor: '#7c82ff',
+                                  color: '#ffffff',
+                                  fontWeight: 700,
+                                  fontSize: '11px',
+                                  padding: '6px 8px',
+                                  borderRadius: '8px',
+                                  border: '1px solid rgba(255, 255, 255, 0.25)',
+                                  boxShadow: '0 2px 8px rgba(124, 130, 255, 0.3)',
+                                }}
+                                title="Share via Proxync Native SSH Tunnel"
+                              >
+                                <span className="material-symbols-outlined text-[15px] text-white shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>
+                                  bolt
+                                </span>
+                                <span className="truncate">Expose (Proxync)</span>
+                              </button>
+                            )}
+                            <button
+                              onClick={() => onSharePublic(proc)}
+                              className="btn-cloud-option shrink-0"
+                              style={{
+                                backgroundColor: '#20293d',
+                                color: '#ffffff',
+                                fontWeight: 700,
+                                fontSize: '11px',
+                                padding: '6px 8px',
+                                borderRadius: '8px',
+                                border: '1px solid #334155',
+                              }}
+                              title="Share Public Cloudflare Tunnel"
+                            >
+                              Cloudflare
+                            </button>
+                            <button
+                              onClick={() => onShareLocal(proc)}
+                              className="btn-lan-option shrink-0"
+                              style={{
+                                backgroundColor: '#20293d',
+                                color: '#ffffff',
+                                fontWeight: 700,
+                                fontSize: '11px',
+                                padding: '6px 8px',
+                                borderRadius: '8px',
+                                border: '1px solid #334155',
+                              }}
+                              title="Share LAN Link"
+                            >
+                              LAN
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          {activeTunnels.length === 0 ? (
-            <div className="border border-outline-variant/60 rounded-xl p-6 text-center text-on-surface-variant text-xs">
-              No active public tunnels for this workspace. Select any detected local server card above to launch a tunnel.
+          {/* Section 2: Active Tunnels for Workspace */}
+          <div className="space-y-4 pt-6 border-t border-outline-variant/30">
+            <div className="flex items-center justify-between">
+              <h3 className="font-headline-sm text-headline-sm text-on-surface">Active Workspace Tunnels</h3>
+              <div className="flex items-center gap-2">
+                <span className="font-code-sm text-code-sm text-on-surface-variant px-2 py-0.5 bg-surface-container rounded border border-outline-variant">
+                  {activeTunnels.length} Active
+                </span>
+                {activeTunnels.length > 0 && (
+                  <button
+                    onClick={() => {
+                      if (onStopAllTunnels) {
+                        onStopAllTunnels();
+                      } else {
+                        activeTunnels.forEach((t) => onStopTunnel(t));
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-md border border-error/40 bg-error/10 hover:bg-error/20 text-error font-body-sm text-xs font-semibold transition-all cursor-pointer shadow-xs active:scale-95"
+                    title="Stop all active tunnels"
+                  >
+                    <span className="material-symbols-outlined text-[15px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                      stop_circle
+                    </span>
+                    <span>Stop All</span>
+                  </button>
+                )}
+              </div>
             </div>
-          ) : (
-            <div className="space-y-4">
-              {activeTunnels.map((tunnel, idx) => (
-                <div
-                  key={tunnel.id}
-                  className="p-5 bg-surface-container border border-outline-variant rounded-lg flex flex-col gap-4 hover:border-primary/50 transition-colors"
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded bg-surface-container-high border border-outline-variant flex items-center justify-center">
-                        <span className={`material-symbols-outlined ${idx % 2 === 0 ? 'text-primary' : 'text-secondary'}`}>
-                          {idx % 2 === 0 ? 'link' : 'cloud_queue'}
-                        </span>
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1.5 group/url">
-                          <h4 className="font-body-lg text-body-lg text-on-surface truncate max-w-[200px]" title={new URL(tunnel.publicUrl).hostname}>
-                            {new URL(tunnel.publicUrl).hostname}
-                          </h4>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigator.clipboard.writeText(tunnel.publicUrl);
-                              showToast('Public URL copied!', 'success');
-                            }}
-                            className="p-1 rounded text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer flex items-center justify-center opacity-0 group-hover/url:opacity-100 focus:opacity-100"
-                            title="Copy URL"
-                          >
-                            <span className="material-symbols-outlined text-[14px]">content_copy</span>
-                          </button>
+
+            {activeTunnels.length === 0 ? (
+              <div className="border border-outline-variant/60 rounded-xl p-6 text-center text-on-surface-variant text-xs">
+                No active public tunnels for this workspace. Select any detected local server card above to launch a tunnel.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {activeTunnels.map((tunnel, idx) => (
+                  <div
+                    key={tunnel.id}
+                    className="p-5 bg-surface-container border border-outline-variant rounded-lg flex flex-col gap-4 hover:border-primary/50 transition-colors"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded bg-surface-container-high border border-outline-variant flex items-center justify-center">
+                          <span className={`material-symbols-outlined ${idx % 2 === 0 ? 'text-primary' : 'text-secondary'}`}>
+                            {idx % 2 === 0 ? 'link' : 'cloud_queue'}
+                          </span>
                         </div>
-                        <p className="font-code-sm text-code-sm text-on-surface-variant">
-                          {idx % 2 === 0 ? 'Relay Subdomain' : 'Cloudflare'} • Port {tunnel.localPort}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="relative">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveMenuTunnelId(activeMenuTunnelId === tunnel.id ? null : tunnel.id);
-                        }}
-                        className="p-1.5 text-on-surface-variant hover:text-on-surface rounded-full hover:bg-surface-container-high transition-all cursor-pointer flex items-center justify-center"
-                        title="Actions"
-                      >
-                        <span className="material-symbols-outlined text-[18px]">more_vert</span>
-                      </button>
-
-                      {activeMenuTunnelId === tunnel.id && (
-                        <>
-                          <div className="fixed inset-0 z-40" onClick={() => setActiveMenuTunnelId(null)} />
-                          <div className="absolute right-0 mt-1 w-44 rounded-lg bg-surface-container border border-outline-variant shadow-xl py-1 z-50 animate-scale-in">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveMenuTunnelId(null);
-                                openUrl(tunnel.publicUrl).catch(() => window.open(tunnel.publicUrl, '_blank'));
-                              }}
-                              className="flex items-center gap-2 px-4 py-2 w-full text-left text-xs text-primary font-medium hover:bg-surface-container-highest transition-colors cursor-pointer"
-                            >
-                              <span className="material-symbols-outlined text-[16px]">open_in_new</span>
-                              Open in Browser
-                            </button>
-
+                        <div>
+                          <div className="flex items-center gap-1.5 group/url">
+                            <h4 className="font-body-lg text-body-lg text-on-surface truncate max-w-[200px]" title={new URL(tunnel.publicUrl).hostname}>
+                              {new URL(tunnel.publicUrl).hostname}
+                            </h4>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 navigator.clipboard.writeText(tunnel.publicUrl);
-                                setActiveMenuTunnelId(null);
                                 showToast('Public URL copied!', 'success');
                               }}
-                              className="flex items-center gap-2 px-4 py-2 w-full text-left text-xs text-on-surface hover:bg-surface-container-highest transition-colors cursor-pointer"
+                              className="p-1 rounded text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer flex items-center justify-center opacity-0 group/url:opacity-100 focus:opacity-100"
+                              title="Copy URL"
                             >
-                              <span className="material-symbols-outlined text-[16px]">content_copy</span>
-                              Copy Public URL
-                            </button>
-
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onStopTunnel(tunnel);
-                                setActiveMenuTunnelId(null);
-                              }}
-                              className="flex items-center gap-2 px-4 py-2 w-full text-left text-xs text-error hover:bg-error/10 transition-colors cursor-pointer border-t border-outline-variant/30"
-                            >
-                              <span className="material-symbols-outlined text-[16px]">power_settings_new</span>
-                              Stop Tunnel
+                              <span className="material-symbols-outlined text-[14px]">content_copy</span>
                             </button>
                           </div>
-                        </>
-                      )}
+                          <p className="font-code-sm text-code-sm text-on-surface-variant">
+                            {idx % 2 === 0 ? 'Relay Subdomain' : 'Cloudflare'} • Port {tunnel.localPort}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="relative">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveMenuTunnelId(activeMenuTunnelId === tunnel.id ? null : tunnel.id);
+                          }}
+                          className="p-1.5 text-on-surface-variant hover:text-on-surface rounded-full hover:bg-surface-container-high transition-all cursor-pointer flex items-center justify-center"
+                          title="Actions"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">more_vert</span>
+                        </button>
+
+                        {activeMenuTunnelId === tunnel.id && (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={() => setActiveMenuTunnelId(null)} />
+                            <div className="absolute right-0 mt-1 w-44 rounded-lg bg-surface-container border border-outline-variant shadow-xl py-1 z-50 animate-scale-in">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveMenuTunnelId(null);
+                                  openUrl(tunnel.publicUrl).catch(() => window.open(tunnel.publicUrl, '_blank'));
+                                }}
+                                className="flex items-center gap-2 px-4 py-2 w-full text-left text-xs text-primary font-medium hover:bg-surface-container-highest transition-colors cursor-pointer"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+                                Open in Browser
+                              </button>
+
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard.writeText(tunnel.publicUrl);
+                                  setActiveMenuTunnelId(null);
+                                  showToast('Public URL copied!', 'success');
+                                }}
+                                className="flex items-center gap-2 px-4 py-2 w-full text-left text-xs text-on-surface hover:bg-surface-container-highest transition-colors cursor-pointer"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">content_copy</span>
+                                Copy Public URL
+                              </button>
+
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onStopTunnel(tunnel);
+                                  setActiveMenuTunnelId(null);
+                                }}
+                                className="flex items-center gap-2 px-4 py-2 w-full text-left text-xs text-error hover:bg-error/10 transition-colors cursor-pointer border-t border-outline-variant/30"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">power_settings_new</span>
+                                Stop Tunnel
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4 border-t border-outline-variant/30 pt-4">
+                      <div>
+                        <p className="text-[10px] text-on-surface-variant uppercase font-bold tracking-tighter">Latency</p>
+                        <p className="font-code-sm text-code-sm text-secondary">
+                          {tunnelLatencies[tunnel.id] !== undefined
+                            ? (tunnelLatencies[tunnel.id] === Infinity ? 'offline' : `${Math.round(tunnelLatencies[tunnel.id])}ms`)
+                            : 'measuring...'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-on-surface-variant uppercase font-bold tracking-tighter">Traffic (Up/Down)</p>
+                        <p className="font-code-sm text-code-sm text-on-surface">
+                          {getTrafficStats(tunnel.id)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-on-surface-variant uppercase font-bold tracking-tighter">Uptime</p>
+                        <p className="font-code-sm text-code-sm text-on-surface">
+                          {formatUptime(tunnel.createdAt)}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-4 border-t border-outline-variant/30 pt-4">
-                    <div>
-                      <p className="text-[10px] text-on-surface-variant uppercase font-bold tracking-tighter">Latency</p>
-                      <p className="font-code-sm text-code-sm text-secondary">
-                        {tunnelLatencies[tunnel.id] !== undefined
-                          ? (tunnelLatencies[tunnel.id] === Infinity ? 'offline' : `${Math.round(tunnelLatencies[tunnel.id])}ms`)
-                          : 'measuring...'}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-on-surface-variant uppercase font-bold tracking-tighter">Traffic (Up/Down)</p>
-                      <p className="font-code-sm text-code-sm text-on-surface">
-                        {getTrafficStats(tunnel.id)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-on-surface-variant uppercase font-bold tracking-tighter">Uptime</p>
-                      <p className="font-code-sm text-code-sm text-on-surface">
-                        {formatUptime(tunnel.createdAt)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
     </>
   );
 }

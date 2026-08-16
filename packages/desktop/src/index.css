@@ -1002,3 +1002,104 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   background: rgba(255, 255, 255, 0.02);
 }
 
+/* ══════════════════════════════════════════════
+   WORKSPACE HUB SERVER CARD BUTTONS
+   ══════════════════════════════════════════════ */
+.btn-expose-proxync {
+  background-color: #7c82ff !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  font-family: var(--font-mono), monospace !important;
+  font-size: 11px !important;
+  padding: 6px 8px !important;
+  border-radius: 8px !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  cursor: pointer !important;
+  box-shadow: 0 2px 8px rgba(124, 130, 255, 0.3) !important;
+  transition: all 0.15s ease !important;
+  white-space: nowrap !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+.btn-expose-proxync:hover {
+  background-color: #6d74ff !important;
+  box-shadow: 0 4px 12px rgba(124, 130, 255, 0.45) !important;
+  transform: translateY(-1px);
+}
+
+.btn-expose-proxync:active {
+  background-color: #5d65f5 !important;
+  transform: translateY(0);
+}
+
+.btn-cloud-option {
+  background-color: #20293d !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  font-family: var(--font-mono), monospace !important;
+  font-size: 11px !important;
+  padding: 6px 8px !important;
+  border-radius: 8px !important;
+  border: 1px solid #334155 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+  transition: all 0.15s ease !important;
+  white-space: nowrap !important;
+  min-width: 0 !important;
+  shrink: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+.btn-cloud-option:hover {
+  background-color: #2a3650 !important;
+  border-color: #475569 !important;
+  color: #ffffff !important;
+}
+
+.btn-cloud-option:active {
+  background-color: #1a2233 !important;
+}
+
+.btn-lan-option {
+  background-color: #20293d !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  font-family: var(--font-mono), monospace !important;
+  font-size: 11px !important;
+  padding: 6px 8px !important;
+  border-radius: 8px !important;
+  border: 1px solid #334155 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+  transition: all 0.15s ease !important;
+  white-space: nowrap !important;
+  min-width: 0 !important;
+  shrink: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+.btn-lan-option:hover {
+  background-color: #2a3650 !important;
+  border-color: #475569 !important;
+  color: #ffffff !important;
+}
+
+.btn-lan-option:active {
+  background-color: #1a2233 !important;
+}
+
+
