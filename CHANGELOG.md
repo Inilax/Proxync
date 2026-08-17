@@ -2,7 +2,19 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
-## [feature/develop-workspace-card-redesign-and-concurrency] - 2026-08-17 (Workspace Hub Card Redesign, Multi-Service Concurrent Tunnel Spawning & Responsive Layout)
+## [feature/develop-dynamic-netstat-service-discovery] - 2026-08-17 (Dynamic Netstat Full-Port Service Discovery, Single Bulk WMI Recon & In-Memory Directory Engine)
+- **Feature Summary**:
+  - **Dynamic Full-Port Netstat Discovery**: Completely eliminated the legacy hardcoded 9-port list (`3000, 3001, 4000, 4200, 5000, 5173, 8000, 8080, 8888`) in favor of a single `netstat -ano -p tcp` scan dynamically capturing all listening dev services across `80, 443, 1024..=49151` while filtering out Windows RPC and system port ranges (`135, 445, 2869, 5040, 6463, 5357, 49152..=49157`).
+  - **Single Bulk WMI Process Recon**: Replaced slow $O(N)$ per-port/per-PID PowerShell process queries with a single batch `Get-CimInstance Win32_Process` query executed with `Text` output format to suppress CLIXML stream overhead.
+  - **System & Infrastructure Classification**: Implemented multi-layered process filtering to block Windows background services, IDE daemons, and system noise (`svchost`, `System`, `lsass`, `Discord`, `Teams`, `SearchIndexer`, `Antigravity IDE`, `language_server`) while surfacing active dev runtimes (`node`, `python`, `deno`, `bun`, `go`, `cargo`, `java`, `ruby`, `php`, `dotnet`, `proxync`).
+  - **Dynamic Framework Fingerprinting**: Integrated command-line argument analysis to identify `Next.js`, `Vite`, `NestJS`, `FastAPI`, `Django`, `Flask`, `Express / Node.js`, `Nuxt`, `Remix`, `Astro`, `Spring Boot`, etc.
+  - **In-Memory Directory Tree Resolution**: Re-architected directory resolution to walk parent process hierarchies up to 5 levels directly in memory (zero additional external process spawns) with fallback checks for relative script invocations (`node server.js`).
+  - **Frontend Clean-up**: Pruned dead `PORT_NAMES` constant map in `App.tsx` and refined `getFrameworkSubtitle` in `WorkspaceDashboardView.tsx` for cleaner framework display.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `CHANGELOG.md`
 - **Feature Summary**:
   - **Multi-Service Concurrent Tunnel Spawning**: Replaced scalar `sharingPort` with `spawningPorts: number[]` in `App.tsx` and integrated `addSpawningPort` / `removeSpawningPort` across all sharing handlers (`shareProcessNative`, `shareProcessCloudflare`, `shareProcessLocaltunnel`, `shareProcess`), enabling simultaneous tunnel launches without UI state collisions.
   - **Instantaneous Spawning State**: When clicking tunnel launch options, action buttons are immediately replaced with an active animated loading indicator `[ 🔄 Spawning Tunnel Connection... ]`, preventing double-clicks and duplicate backend spawner execution.

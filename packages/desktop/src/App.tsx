@@ -55,12 +55,6 @@ import type { WorkbenchTab } from './lib/types';
    CONSTANTS
    ══════════════════════════════════════════════ */
 
-const PORT_NAMES: Record<number, string> = {
-  3000: 'Node app', 3001: 'Node app', 4000: 'GraphQL service',
-  4200: 'Angular app', 5000: 'Flask or .NET app', 5173: 'Vite server',
-  8000: 'Django or FastAPI app', 8080: 'HTTP service', 8888: 'Notebook server',
-};
-
 const DEFAULT_GUARDRAILS: Guardrails = {
   authMode: 'guest', piiRedaction: true, captureBodies: true,
   autoUpdateSwagger: true, rateLimit: '250 req/min',
@@ -2132,8 +2126,8 @@ async function readNativeProcesses(bypassCache: boolean = false): Promise<Proces
   } catch { /* fall back */ }
   const ports = await invoke<number[]>('scan_ports').catch(() => []);
   return ports.map((port) => ({
-    id: `port-${port}`, name: PORT_NAMES[port] ?? 'Development server', port,
-    framework: PORT_NAMES[port] ?? 'HTTP', command: `localhost:${port}`,
+    id: `port-${port}`, name: `Port ${port}`, port,
+    framework: 'HTTP Service', command: `localhost:${port}`,
     directory: 'unknown', executable: 'unknown', access: 'ready', uptime: 'live',
   }));
 }
