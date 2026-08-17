@@ -68,15 +68,22 @@ fn get_listening_ports_map() -> (HashMap<u16, u32>, HashMap<u32, Vec<u16>>) {
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000);
 
-    if let Ok(output) = cmd.args(&["-ano", "-p", "tcp"]).output() {
+    // Note: Use `netstat -ano` without `-p tcp` because `-p tcp` restricts Windows netstat to IPv4 only,
+    // which misses services listening on IPv6 localhost (e.g. `[::1]:5173` or `[::]:5173` for Vite/Node).
+    if let Ok(output) = cmd.args(&["-ano"]).output() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         for line in stdout.lines() {
             if line.contains("LISTENING") {
                 let parts: Vec<&str> = line.split_whitespace().collect();
                 if parts.len() >= 5 {
+                    let proto = parts[0];
+                    if !proto.eq_ignore_ascii_case("TCP") {
+                        continue;
+                    }
                     let local_addr = parts[1];
                     if let Some(port_str) = local_addr.split(':').last() {
-                        if let (Ok(port), Ok(pid)) = (port_str.parse::<u16>(), parts[parts.len() - 1].parse::<u32>()) {
+                        let clean_port = port_str.trim_matches(|c: char| !c.is_ascii_digit());
+                        if let (Ok(port), Ok(pid)) = (clean_port.parse::<u16>(), parts[parts.len() - 1].parse::<u32>()) {
                             if is_dev_port(port) {
                                 port_to_pid.insert(port, pid);
                                 pid_to_ports.entry(pid).or_insert_with(Vec::new).push(port);
