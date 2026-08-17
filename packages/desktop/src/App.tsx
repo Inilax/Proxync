@@ -2138,7 +2138,7 @@ async function measureLocalPortLatency(port: number): Promise<number> {
   const timeoutId = setTimeout(() => controller.abort(), 1000);
 
   try {
-    await fetch(`http://127.0.0.1:${port}`, {
+    await fetch(`http://localhost:${port}`, {
       method: 'GET',
       mode: 'no-cors',
       cache: 'no-store',

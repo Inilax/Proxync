@@ -8,10 +8,11 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Single Bulk WMI Process Recon**: Replaced slow $O(N)$ per-port/per-PID PowerShell process queries with a single batch `Get-CimInstance Win32_Process` query executed with `Text` output format to suppress CLIXML stream overhead.
   - **System & Infrastructure Classification**: Implemented multi-layered process filtering to block Windows background services, IDE daemons, and system noise (`svchost`, `System`, `lsass`, `Discord`, `Teams`, `SearchIndexer`, `Antigravity IDE`, `language_server`) while surfacing active dev runtimes (`node`, `python`, `deno`, `bun`, `go`, `cargo`, `java`, `ruby`, `php`, `dotnet`, `proxync`).
   - **Dynamic Framework Fingerprinting**: Integrated command-line argument analysis to identify `Next.js`, `Vite`, `NestJS`, `FastAPI`, `Django`, `Flask`, `Express / Node.js`, `Nuxt`, `Remix`, `Astro`, `Spring Boot`, etc.
-  - **In-Memory Directory Tree Resolution**: Re-architected directory resolution to walk parent process hierarchies up to 5 levels directly in memory (zero additional external process spawns) with fallback checks for relative script invocations (`node server.js`).
-  - **Frontend Clean-up**: Pruned dead `PORT_NAMES` constant map in `App.tsx` and refined `getFrameworkSubtitle` in `WorkspaceDashboardView.tsx` for cleaner framework display.
+  - **IPv6 Target Connectivity & Host Header Normalization in Local Proxy**: Refactored `start_proxy` in `proxy.rs` to connect to `127.0.0.1` with automatic fallback to `[::1]` (IPv6 localhost), resolving the 502 Bad Gateway issue on IPv6-bound servers like Vite. Added automatic `Host: localhost:{port}` header normalization so dev servers with strict host validation (e.g. Vite 5/6, Next.js) accept incoming public tunnel traffic without 403 / Bad Gateway errors.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/recon.rs`
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
   - `CHANGELOG.md`
