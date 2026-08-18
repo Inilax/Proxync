@@ -5,8 +5,11 @@ import type { ProcessCandidate, WorkspaceConfig } from '../../lib/types';
 import { showToast } from '../../lib/toast';
 function getFrameworkSubtitle(proc: ProcessCandidate): string {
   if (proc.framework && proc.framework !== 'unknown') {
-    const raw = proc.framework.replace(/app$/i, '').trim();
-    return `${raw} App`;
+    const fw = proc.framework.trim();
+    if (fw.toLowerCase().endsWith('app') || fw.toLowerCase().endsWith('server') || fw.toLowerCase().endsWith('service')) {
+      return fw;
+    }
+    return `${fw} App`;
   }
   const text = `${proc.name || ''} ${proc.command || ''} ${proc.directory || ''}`.toLowerCase();
   if (text.includes('node') || text.includes('express')) return 'Node.js App';

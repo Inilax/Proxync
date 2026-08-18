@@ -43,8 +43,12 @@ pub async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, 
         while let Ok((mut client_stream, _)) = listener.accept().await {
             let app_clone = app.clone();
             tokio::spawn(async move {
-                let target_addr = format!("127.0.0.1:{}", local_port);
-                let mut target_stream = match TcpStream::connect(&target_addr).await {
+                // Connect to target service on 127.0.0.1 with fallback to [::1] (for IPv6-only servers like Vite)
+                let target_stream_res = match TcpStream::connect(format!("127.0.0.1:{}", local_port)).await {
+                    Ok(s) => Ok(s),
+                    Err(_) => TcpStream::connect(format!("[::1]:{}", local_port)).await,
+                };
+                let mut target_stream = match target_stream_res {
                     Ok(stream) => stream,
                     Err(_) => return,
                 };
@@ -102,6 +106,21 @@ pub async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, 
                 let _ = app_clone.emit("request:log", req_meta);
 
                 let mut modified_req = req_str.to_string();
+
+                // Normalize Host header so frameworks like Vite / Next with strict host validation accept tunnel traffic
+                if let Some(parts) = parts_split.get(0) {
+                    let mut new_headers = Vec::new();
+                    for line in parts.lines() {
+                        if line.to_lowercase().starts_with("host:") {
+                            new_headers.push(format!("Host: localhost:{}", local_port));
+                        } else {
+                            new_headers.push(line.to_string());
+                        }
+                    }
+                    let body_suffix = if parts_split.len() > 1 { parts_split[1] } else { "" };
+                    modified_req = format!("{}\r\n\r\n{}", new_headers.join("\r\n"), body_suffix);
+                }
+
                 if modified_req.contains("Connection: keep-alive") || modified_req.contains("connection: keep-alive") {
                     modified_req = modified_req
                         .replace("Connection: keep-alive", "Connection: close")

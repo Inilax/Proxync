@@ -100,11 +100,11 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
         let mut failures = 0;
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-            let addr = format!("127.0.0.1:{}", local_port);
-            if tokio::time::timeout(
-                std::time::Duration::from_millis(100),
-                tokio::net::TcpStream::connect(&addr)
-            ).await.is_err() {
+            // Check service liveness on 127.0.0.1 with fallback to [::1] (IPv6)
+            let is_alive = tokio::net::TcpStream::connect(format!("127.0.0.1:{}", local_port)).await.is_ok()
+                || tokio::net::TcpStream::connect(format!("[::1]:{}", local_port)).await.is_ok();
+
+            if !is_alive {
                 failures += 1;
                 if failures >= 3 {
                     let mut tunnels = ACTIVE_TUNNELS.lock().await;
