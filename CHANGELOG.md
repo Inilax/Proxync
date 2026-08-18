@@ -2,6 +2,22 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/swagger-multi-tunnel-traffic-segregation-probe-filtering] - 2026-08-19 (Multi-Tunnel Traffic Segregation, Malicious Bot Probe Filtering & Incremental OpenAPI Spec Ingestion)
+- **Feature Summary**:
+  - **Multi-Tunnel & Multi-Server Port Attribution Pipeline**: Refactored Rust proxy (`proxy.rs`) and WebSocket tunnel relay (`tunnel.rs`) to attach deterministic `port`, `tunnelId`, and `requestId` metadata to every emitted `request:log` event. Enriched `App.tsx` request ingestion to dynamically resolve matching public tunnels (`tunnelUrl`, `subdomain`) and process services (`port`, `serverName`), eliminating cross-port misattribution.
+  - **Automated Security Scanner & Bot Probe Filtering**: Implemented `isNoiseOrScannerProbe` in `openApiGenerator.ts` to detect and filter out automated internet vulnerability probes (`/.env`, `/.git`, `/.ssh`, `*.pem`, `*.key`, `*.bak`, `*.sql`, `/wp-admin`, `/geoserver/`, `/minio/`, `/admin`) and SPA `index.html` fallback catch-all responses returning `text/html` on arbitrary non-root URLs.
+  - **Dynamic URL Path Parameterization**: Built `parameterizePath` helper to generalize dynamic path segments (IDs e.g. `todo-1787085033407-5x3gn`, UUIDs, numerical IDs, Mongo ObjectIDs) into standard OpenAPI path parameters (e.g. `/api/todos/{id}`) with matching OpenAPI `in: path` parameter definitions.
+  - **Incremental OpenAPI Spec Ingestion (Endpoint Persistence)**: Enhanced `generateOpenApiSpec` to accept `existingDoc` and deep-merge newly captured traffic with previously generated routes (`GET`, `POST`, `PUT`, `DELETE`), preventing spec overwrites when testing endpoints sequentially.
+  - **Swagger Studio UI & Server Filter Refinement**: Overhauled server dropdown in `SwaggerView.tsx` with clear public tunnel URLs and ports (`⚡ Port :4000 — px-subdomain (https://...)`), added clickable tunnel URL badges on endpoint cards, and streamlined the filter header by removing redundant tag filter pills while keeping semantic tag badges on cards.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/SwaggerView.tsx`
+  - `packages/desktop/src/lib/openApiGenerator.ts`
+  - `packages/desktop/src/lib/types.ts`
+  - `CHANGELOG.md`
+
 ## [feature/develop-dynamic-netstat-service-discovery] - 2026-08-17 (Dynamic Netstat Full-Port Service Discovery, Single Bulk WMI Recon & In-Memory Directory Engine)
 - **Feature Summary**:
   - **Dynamic Full-Port Netstat Discovery**: Completely eliminated the legacy hardcoded 9-port list (`3000, 3001, 4000, 4200, 5000, 5173, 8000, 8080, 8888`) in favor of a single `netstat -ano` scan dynamically capturing all listening dev services across both IPv4 and IPv6 (`[::1]:5173`, `[::]:3000`, `80, 443, 1024..=49151`) while filtering out Windows RPC and system port ranges (`135, 445, 2869, 5040, 6463, 5357, 49152..=49157`).

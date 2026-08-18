@@ -140,6 +140,7 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
                             let client = client.clone();
                             let tx = tx.clone();
                             let app_clone = app.clone();
+                            let tunnel_id_clone = tunnel_id.clone();
                             
                             tokio::spawn(async move {
                                 let mut safe_headers = HashMap::new();
@@ -157,6 +158,8 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
                                     "requestId": req_data.request_id,
                                     "method": req_data.method,
                                     "path": req_data.path,
+                                    "port": local_port,
+                                    "tunnelId": tunnel_id_clone,
                                     "headers": safe_headers,
                                     "bodyPreview": req_data.body,
                                     "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()
