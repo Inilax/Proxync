@@ -52,6 +52,10 @@ export interface RequestLog {
   workspaceName?: string;
   port?: number;
   serverName?: string;
+  tunnelUrl?: string;
+  subdomain?: string;
+  tunnelId?: string;
+  isProbe?: boolean;
 }
 
 export interface SavedRequest {

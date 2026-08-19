@@ -99,6 +99,7 @@ pub async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, 
                     "id": req_id.clone(),
                     "method": method,
                     "path": path,
+                    "port": local_port,
                     "headers": headers,
                     "bodyPreview": body_preview,
                     "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()

@@ -8,7 +8,7 @@ import { relaunch } from '@tauri-apps/plugin-process';
 import './index.css';
 import { ToastContainer, showToast, dismissToast } from './lib/toast';
 import { scanCodebaseEndpoints, type ScannedEndpoint } from './lib/codebaseScanner';
-import { generateOpenApiSpec, importSwaggerToSavedRequests } from './lib/openApiGenerator';
+import { generateOpenApiSpec, importSwaggerToSavedRequests, isNoiseOrScannerProbe } from './lib/openApiGenerator';
 import {
   api,
   ensureLocalWorkspace,
@@ -127,11 +127,11 @@ async function checkRealInternetConnection(timeoutMs = 1200): Promise<boolean> {
       cache: 'no-store',
       signal: controller.signal,
     });
-    clearTimeout(timer);
     return true;
-  } catch (e) {
-    clearTimeout(timer);
+  } catch {
     return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -301,7 +301,7 @@ export default function App() {
   );
   const [generatingSwagger, setGeneratingSwagger] = useState<boolean>(false);
 
-  const handleGenerateSwaggerSpec = async () => {
+  const handleGenerateSwaggerSpec = async (targetPort?: number) => {
     setGeneratingSwagger(true);
     try {
       let endpoints: ScannedEndpoint[] = scannedEndpoints;
@@ -309,20 +309,78 @@ export default function App() {
         endpoints = await scanCodebaseEndpoints(activeWorkspace.projectRootPath, activeWorkspace.scannedFiles);
         setScannedEndpoints(endpoints);
       }
+
+      // Filter requests if targetPort is specified and exclude noise/bot scanner probes
+      const filteredByPort = targetPort
+        ? requests.filter((r) => r.port === targetPort || (!r.port && activeTunnel?.localPort === targetPort))
+        : requests;
+
+      const validTargetRequests = filteredByPort.filter(
+        (r) => !isNoiseOrScannerProbe(r.path, r.bodyPreview, r.headers) && r.status !== 'pending' && r.status !== 502 && r.status !== 503 && r.status !== 404 && r.status !== '404' && r.status !== '502'
+      );
+
+      console.log(
+        `[Swagger Engine] Generating OpenAPI Spec for Port :${targetPort || 'ALL'} — ` +
+        `Processing ${validTargetRequests.length} valid requests (Filtered ${filteredByPort.length - validTargetRequests.length} scanner probes/errors).`
+      );
+
+      // Construct live server URLs dynamically
+      const serverList: { url: string; description: string }[] = [];
+
+      if (targetPort) {
+        const matchingTunnel = tunnels.find((t) => t.localPort === targetPort && t.status === 'ACTIVE') || (activeTunnel?.localPort === targetPort ? activeTunnel : null);
+        if (matchingTunnel?.publicUrl) {
+          serverList.push({ url: matchingTunnel.publicUrl, description: `Proxync Tunnel (${matchingTunnel.subdomain || `Port ${targetPort}`})` });
+        }
+        serverList.push({ url: `http://localhost:${targetPort}`, description: `Local Dev Server (Port ${targetPort})` });
+      } else {
+        // Multi-server: add all active tunnels
+        tunnels.filter((t) => t.status === 'ACTIVE').forEach((t) => {
+          serverList.push({ url: t.publicUrl, description: `Proxync Tunnel (Port ${t.localPort}${t.subdomain ? ` - ${t.subdomain}` : ''})` });
+        });
+        // Add discovered processes
+        processes.forEach((p) => {
+          serverList.push({ url: `http://localhost:${p.port}`, description: `${p.name || 'Local Server'} (Port ${p.port})` });
+        });
+      }
+
       const spec = generateOpenApiSpec(
         endpoints,
-        requests,
+        validTargetRequests,
         activeWorkspace?.name ?? 'Proxync Workspace',
-        effectiveLanguageHint
+        effectiveLanguageHint,
+        serverList,
+        openApiDocument
       );
       setOpenApiDocument(spec);
       const pathCount = Object.keys((spec.paths as any) || {}).length;
-      showToast(`Generated OpenAPI Spec (${pathCount} path${pathCount === 1 ? '' : 's'})`, 'success');
+      showToast(
+        `Generated OpenAPI Spec (${pathCount} endpoint${pathCount === 1 ? '' : 's'}${targetPort ? ` for Port :${targetPort}` : ''})`,
+        'success'
+      );
     } catch (err: any) {
       showToast(err instanceof Error ? err.message : 'Failed to generate OpenAPI spec', 'error');
     } finally {
       setGeneratingSwagger(false);
     }
+  };
+
+  const handleClearSwaggerSpec = () => {
+    const activeServerList: { url: string; description: string }[] = [];
+    if (activeTunnel?.publicUrl) {
+      activeServerList.push({
+        url: activeTunnel.publicUrl,
+        description: `Active Proxync Tunnel (${activeTunnel.subdomain || `Port ${activeTunnel.localPort}`})`,
+      });
+      activeServerList.push({
+        url: `http://localhost:${activeTunnel.localPort}`,
+        description: `Local Server (Port ${activeTunnel.localPort})`,
+      });
+    }
+    setOpenApiDocument(
+      generateOpenApiSpec([], [], activeWorkspace?.name ?? 'Proxync Workspace', effectiveLanguageHint, activeServerList)
+    );
+    showToast('OpenAPI specification cleared — ready for new routes', 'info');
   };
 
 
@@ -697,6 +755,17 @@ export default function App() {
         if (isHmrNoise) return;
 
         const rawRequestId = payload.id || payload.requestId || '';
+        const portNum = payload.port || activeTunnel?.localPort || selectedProcess?.port || undefined;
+
+        // Resolve matching tunnel and process dynamically
+        const matchingTunnel = tunnels.find(
+          (t) => (payload.tunnelId && t.id === payload.tunnelId) || (portNum && t.localPort === portNum && t.status === 'ACTIVE')
+        ) || (activeTunnel?.localPort === portNum ? activeTunnel : null);
+
+        const matchingProcess = processes.find((p) => portNum && p.port === portNum) || (selectedProcess?.port === portNum ? selectedProcess : null);
+
+        const isProbe = isNoiseOrScannerProbe(path, payload.bodyPreview || payload.body, payload.headers);
+
         const item: RequestLog & { rawRequestId?: string } = {
           id: crypto.randomUUID(),
           rawRequestId,
@@ -709,17 +778,29 @@ export default function App() {
           capturedAt: new Date().toISOString(),
           workspaceId: activeWorkspaceId || undefined,
           workspaceName: activeWorkspace?.name || undefined,
-          port: activeTunnel?.localPort || selectedProcess?.port || undefined,
-          serverName: selectedProcess?.name || undefined,
+          port: portNum,
+          serverName: matchingProcess?.name || matchingTunnel?.subdomain || (portNum ? `Port :${portNum}` : undefined),
+          tunnelUrl: matchingTunnel?.publicUrl,
+          subdomain: matchingTunnel?.subdomain,
+          tunnelId: payload.tunnelId || matchingTunnel?.id,
+          isProbe,
         };
+
+        // Developer Console Logger for rich operational context
+        console.log(
+          `[Proxync Logger] ${isProbe ? '🛡️ [Probe Ignored]' : '⚡ [Traffic]'} ${method} ${path} | Port: :${portNum || 'unknown'} | Tunnel: ${matchingTunnel?.subdomain || 'direct'} | Status: ${payload.status || 'pending'}`
+        );
+
         setRequests((current) => [item, ...current].slice(0, 150));
         setTerminalLogs((current) => [
           {
             id: item.id,
             timestamp: item.capturedAt!,
             source: 'proxy' as const,
-            level: 'info' as const,
-            message: `Intercepted ${method} ${path} (${payload.status || 'pending'})`,
+            level: isProbe ? ('warn' as const) : ('info' as const),
+            message: isProbe
+              ? `[Security Filter] Filtered scanner probe ${method} ${path} on Port :${portNum || '?'}`
+              : `Intercepted ${method} ${path} (${payload.status || 'pending'})${item.tunnelUrl ? ` via ${item.subdomain || 'tunnel'}` : ''}`,
           },
           ...current,
         ].slice(0, 300));
@@ -728,6 +809,7 @@ export default function App() {
         const payload = event.payload;
         const targetId = payload.id || payload.requestId;
         if (!targetId) return;
+        console.log(`[Proxync Response] Req ID ${targetId} -> Status ${payload.status} (${payload.durationMs || 0}ms)`);
         setRequests((current) =>
           current.map((r: any) => (r.id === targetId || r.rawRequestId === targetId) ? { ...r, status: payload.status, durationMs: payload.durationMs || r.durationMs } : r),
         );
@@ -1878,8 +1960,13 @@ function generateRandomSubdomain(prefix = 'px'): string {
                 workspace={activeWorkspace}
                 languageHint={effectiveLanguageHint}
                 scannedEndpoints={scannedEndpoints}
+                tunnels={tunnels}
+                processes={processes}
+                requests={requests}
+                activeTunnel={activeTunnel}
                 generating={generatingSwagger}
                 onGenerateSpec={handleGenerateSwaggerSpec}
+                onClearSpec={handleClearSwaggerSpec}
                 onChangePanel={setSwaggerPanel}
                 onCopy={(content, msg) => copyText(content || JSON.stringify(openApiDocument, null, 2), msg || 'OpenAPI JSON copied')}
                 onExportPostman={(_collection) => {
@@ -1904,7 +1991,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
                   setOpenApiDocument(importedDoc);
                   showToast('Imported OpenAPI Spec', 'success');
                 }}
-                onOpenWorkbench={openRequestInWorkbench}
+                onOpenWorkbench={(ep) => openRequestInWorkbench({ method: ep.method, path: ep.path })}
               />
             )}
             {mainView === 'workbench' && (
