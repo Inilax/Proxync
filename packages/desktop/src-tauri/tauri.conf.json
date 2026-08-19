@@ -26,8 +26,9 @@
     "active": true,
     "publisher": "Inilax",
     "copyright": "Copyright © 2026 Inilax",
+    "licenseFile": "LICENSE",
     "shortDescription": "Developer Tunneling Workspace Studio",
-    "longDescription": "Proxync — Developer Tunneling Workspace Studio",
+    "longDescription": "Proxync — Instant Local-First Tunneling, API Inspection & Developer Workspace Studio",
     "targets": [
       "nsis",
       "msi"

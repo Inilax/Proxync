@@ -2,6 +2,18 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [feature/develop-installer-wizard-branding-and-license] - 2026-08-19 (NSIS Setup Wizard High-DPI Visual Assets & Open-Source License Integration)
+- **Feature Summary**:
+  - **NSIS Setup Wizard High-DPI Visual Assets**: Replaced legacy prototype installer graphics with high-definition 24-bit RGB Windows bitmaps: `nsis-sidebar.bmp` (164×314 px, 154 KB) featuring 3D isometric server nodes and neon fiber-optic conduits on deep midnight slate (`#0b0f19`) with zero smartphone bezels or text artifacts, and `nsis-header.bmp` (150×57 px, 25.8 KB) featuring a high-contrast glowing network proxy hub.
+  - **Open-Source License Agreement Integration**: Embedded the root MIT License agreement (`LICENSE`, Copyright © 2026 Inilax) into the Tauri installer bundle via `licenseFile: "LICENSE"`.
+  - **Enhanced App Description & Metadata**: Updated `longDescription` in `tauri.conf.json` to `"Proxync — Instant Local-First Tunneling, API Inspection & Developer Workspace Studio"` for Windows Installed Apps & Tooltips.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/icons/nsis-header.bmp`
+  - `packages/desktop/src-tauri/icons/nsis-sidebar.bmp`
+  - `packages/desktop/src-tauri/LICENSE`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `CHANGELOG.md`
+
 ## [feature/develop-pro-debugger-dual-stream-logging] - 2026-08-19 (Pro Debugger & Dual-Stream Support Logging Engine, LLM Diagnostic Grammar & Support Bundle Exporter)
 - **Feature Summary**:
   - **Cross-Platform Native Rust Logging Engine**: Built `storage.rs` disk logging pipeline in Tauri/Rust supporting Windows (`%APPDATA%/Proxync/logs`), macOS (`~/Library/Application Support/Proxync/logs`), and Linux (`~/.config/Proxync/logs`). Implemented `append_log_entry`, `clear_log_files`, `open_logs_folder` (`explorer.exe`, `open`, `xdg-open`), and `read_logs_summary` IPC handlers registered in `lib.rs`.
