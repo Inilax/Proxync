@@ -469,7 +469,7 @@ export function ConfirmPurgeDialog({
         </div>
 
         <p className="text-xs text-on-surface-variant leading-relaxed">
-          Are you sure you want to clear all Proxync app data? This action will permanently remove all local workspaces, saved process profiles, captured request logs, and app settings. <strong className="text-error">This action cannot be undone.</strong>
+          Are you sure you want to clear all Proxync app data? This action will permanently remove all local workspaces, saved process profiles, diagnostic log files (<code className="font-mono text-error">app.log</code>, <code className="font-mono text-error">traffic.log</code>), captured requests, and app settings. <strong className="text-error">This action cannot be undone.</strong>
         </p>
 
         <div className="flex items-center justify-end gap-3 pt-2">
