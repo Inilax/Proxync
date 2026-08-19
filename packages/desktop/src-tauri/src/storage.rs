@@ -1,15 +1,131 @@
-fn get_data_filepath() -> std::path::PathBuf {
+fn get_base_data_dir() -> std::path::PathBuf {
     let mut dir = if let Ok(appdata) = std::env::var("APPDATA") {
         std::path::PathBuf::from(appdata)
     } else if let Ok(home) = std::env::var("HOME") {
-        std::path::PathBuf::from(home).join(".config")
+        #[cfg(target_os = "macos")]
+        {
+            std::path::PathBuf::from(home).join("Library").join("Application Support")
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            std::path::PathBuf::from(home).join(".config")
+        }
     } else {
         std::env::current_dir().unwrap_or_default()
     };
     dir.push("Proxync");
     let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+fn get_data_filepath() -> std::path::PathBuf {
+    let mut dir = get_base_data_dir();
     dir.push("data.json");
     dir
+}
+
+fn get_logs_dir() -> std::path::PathBuf {
+    let mut dir = get_base_data_dir();
+    dir.push("logs");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct LogsSummary {
+    pub logs_dir: String,
+    pub app_log_bytes: u64,
+    pub traffic_log_bytes: u64,
+    pub app_log_lines: usize,
+    pub traffic_log_lines: usize,
+}
+
+#[tauri::command]
+pub async fn append_log_entry(category: String, line: String) -> Result<(), String> {
+    use std::io::Write;
+    let logs_dir = get_logs_dir();
+    let filename = match category.as_str() {
+        "traffic" => "traffic.log",
+        _ => "app.log",
+    };
+    let file_path = logs_dir.join(filename);
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&file_path)
+        .map_err(|e| e.to_string())?;
+    
+    writeln!(file, "{}", line).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn clear_log_files() -> Result<(), String> {
+    let logs_dir = get_logs_dir();
+    let app_log = logs_dir.join("app.log");
+    let traffic_log = logs_dir.join("traffic.log");
+    let _ = std::fs::write(&app_log, "");
+    let _ = std::fs::write(&traffic_log, "");
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn open_logs_folder() -> Result<(), String> {
+    let logs_dir = get_logs_dir();
+    let path_str = logs_dir.to_string_lossy().to_string();
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(&path_str)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&path_str)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&path_str)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn read_logs_summary() -> Result<LogsSummary, String> {
+    let logs_dir = get_logs_dir();
+    let app_log_path = logs_dir.join("app.log");
+    let traffic_log_path = logs_dir.join("traffic.log");
+
+    let app_bytes = std::fs::metadata(&app_log_path).map(|m| m.len()).unwrap_or(0);
+    let traffic_bytes = std::fs::metadata(&traffic_log_path).map(|m| m.len()).unwrap_or(0);
+
+    let app_lines = if app_bytes > 0 {
+        std::fs::read_to_string(&app_log_path).map(|s| s.lines().count()).unwrap_or(0)
+    } else {
+        0
+    };
+
+    let traffic_lines = if traffic_bytes > 0 {
+        std::fs::read_to_string(&traffic_log_path).map(|s| s.lines().count()).unwrap_or(0)
+    } else {
+        0
+    };
+
+    Ok(LogsSummary {
+        logs_dir: logs_dir.to_string_lossy().to_string(),
+        app_log_bytes: app_bytes,
+        traffic_log_bytes: traffic_bytes,
+        app_log_lines: app_lines,
+        traffic_log_lines: traffic_lines,
+    })
 }
 
 #[tauri::command]

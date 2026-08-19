@@ -134,6 +134,26 @@ export interface AppSettings {
   autoUpdate: boolean;
   telemetry?: 'enhanced' | 'basic';
   enableDevTools?: boolean;
+  debugLogging?: boolean;
+  appLogging?: boolean;
+  trafficLogging?: boolean;
+}
+
+export interface AppLogEntry {
+  seq: number;
+  timestamp: string;
+  level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG';
+  source: 'SYSTEM' | 'RECON' | 'TUNNEL' | 'PROXY' | 'HTTP' | 'SCANNER' | 'UPDATER';
+  message: string;
+  details?: string;
+}
+
+export interface LogsSummary {
+  logs_dir: string;
+  app_log_bytes: number;
+  traffic_log_bytes: number;
+  app_log_lines: number;
+  traffic_log_lines: number;
 }
 
 export interface ExecutionRun {

@@ -7,7 +7,10 @@ mod tunnel;
 use recon::{scan_ports, scan_processes, resolve_process_directory};
 use tunnel::{open_tunnel, close_tunnel, open_localtunnel, open_cloudflare_tunnel, open_native_tunnel};
 use proxy::start_proxy;
-use storage::{scan_directory, read_file_content, get_local_ip, save_app_state, load_app_state};
+use storage::{
+    scan_directory, read_file_content, get_local_ip, save_app_state, load_app_state,
+    append_log_entry, clear_log_files, open_logs_folder, read_logs_summary
+};
 use http::execute_http_request;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -32,7 +35,11 @@ pub fn run() {
             save_app_state,
             load_app_state,
             start_proxy,
-            execute_http_request
+            execute_http_request,
+            append_log_entry,
+            clear_log_files,
+            open_logs_folder,
+            read_logs_summary
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

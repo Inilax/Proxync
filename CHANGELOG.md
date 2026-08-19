@@ -2,6 +2,25 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [feature/develop-pro-debugger-dual-stream-logging] - 2026-08-19 (Pro Debugger & Dual-Stream Support Logging Engine, LLM Diagnostic Grammar & Support Bundle Exporter)
+- **Feature Summary**:
+  - **Cross-Platform Native Rust Logging Engine**: Built `storage.rs` disk logging pipeline in Tauri/Rust supporting Windows (`%APPDATA%/Proxync/logs`), macOS (`~/Library/Application Support/Proxync/logs`), and Linux (`~/.config/Proxync/logs`). Implemented `append_log_entry`, `clear_log_files`, `open_logs_folder` (`explorer.exe`, `open`, `xdg-open`), and `read_logs_summary` IPC handlers registered in `lib.rs`.
+  - **Dual-Stream Independent Logging with Split Defaults**: Created lightweight TypeScript logging engine (`logger.ts`) with bounded in-memory ring buffers (1,000 app entries, 2,000 traffic entries, $<500\text{ KB}$ max RAM). Application Diagnostics (`app.log`) is **enabled by default** to capture engine lifecycle, recon scans, proxy binds, tunnel spawn/closures, and crashes. Traffic Stream (`traffic.log`) is **disabled by default** to capture full HTTP request/response payloads, headers, and latencies on demand.
+  - **AI Agent & LLM Diagnostic Directives**: Embedded structured session headers with schema definitions in `app.log` and `traffic.log`. Built `logError(source, summary, error, hint, target)` providing deterministic `reason`, `target`, and `hint` attributes for automated AI troubleshooting. Structured `traffic.log` as single-line JSONL with status `errorReason` descriptions (e.g. `502 Bad Gateway: Upstream local service port unreachable`).
+  - **Automatic Credential & PII Redaction**: Built sensitive key sanitizer that automatically redacts `Authorization`, `Bearer`, `Cookie`, `Set-Cookie`, `Password`, `Token`, `ApiKey`, and `Secret` tokens to `[REDACTED]` across logs and support bundles.
+  - **1-Click Support Diagnostic Bundle Exporter**: Created `exportSupportBundle()` to package active workspace state, settings, active tunnels, discovered processes, and sanitized diagnostic logs into `proxync-support-bundle.json`.
+  - **360° Event Instrumentation & StrictMode Idempotency**: Hooked logging across all app operations (OpenAPI generation, Postman requests, replays, scans, workspaces, domains, settings) with active lifecycle listener cleanup in `App.tsx` preventing duplicate log emissions on hot reloads.
+  - **Settings Danger Zone UI & Purge Integration**: Overhauled Settings Danger Zone (`SettingsView.tsx`) with side-by-side stream cards, glowing monospaced badges (`● Enabled (Default)` / `● Active • Recording`), disk metrics, path copy pill, and integrated `clearLogs()` into the Purge All Data confirmation dialog (`Dialogs.tsx`).
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/lib/logger.ts`
+  - `packages/desktop/src/lib/types.ts`
+  - `CHANGELOG.md`
+
 ## [fix/swagger-multi-tunnel-traffic-segregation-probe-filtering] - 2026-08-19 (Multi-Tunnel Traffic Segregation, Malicious Bot Probe Filtering & Incremental OpenAPI Spec Ingestion)
 - **Feature Summary**:
   - **Multi-Tunnel & Multi-Server Port Attribution Pipeline**: Refactored Rust proxy (`proxy.rs`) and WebSocket tunnel relay (`tunnel.rs`) to attach deterministic `port`, `tunnelId`, and `requestId` metadata to every emitted `request:log` event. Enriched `App.tsx` request ingestion to dynamically resolve matching public tunnels (`tunnelUrl`, `subdomain`) and process services (`port`, `serverName`), eliminating cross-port misattribution.
