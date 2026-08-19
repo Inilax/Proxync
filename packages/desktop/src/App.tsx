@@ -50,6 +50,14 @@ import { DiscoverDialog, DomainSelectDialog, RequestDetailDialog, ConfirmDeleteD
 import { RequestWorkbenchDialog } from './components/views/RequestWorkbenchDialog';
 import { TerminalDrawer, type TerminalLogEntry } from './components/ui/TerminalDrawer';
 import type { WorkbenchTab } from './lib/types';
+import {
+  initLogger,
+  setAppLogging,
+  setTrafficLogging,
+  logApp,
+  logError,
+  logTraffic,
+} from './lib/logger';
 
 /* ══════════════════════════════════════════════
    CONSTANTS
@@ -72,6 +80,8 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   autoUpdate: true,
   telemetry: 'enhanced',
   enableDevTools: false,
+  appLogging: true,
+  trafficLogging: false,
 };
 
 const LOCAL_WORKSPACES_KEY = 'proxync_local_workspaces_v1';
@@ -354,11 +364,13 @@ export default function App() {
       );
       setOpenApiDocument(spec);
       const pathCount = Object.keys((spec.paths as any) || {}).length;
+      logApp('SCANNER', 'INFO', `Generated OpenAPI spec (${pathCount} endpoint${pathCount === 1 ? '' : 's'}${targetPort ? ` for Port :${targetPort}` : ''})`);
       showToast(
         `Generated OpenAPI Spec (${pathCount} endpoint${pathCount === 1 ? '' : 's'}${targetPort ? ` for Port :${targetPort}` : ''})`,
         'success'
       );
     } catch (err: any) {
+      logApp('SCANNER', 'ERROR', 'Failed to generate OpenAPI spec', err);
       showToast(err instanceof Error ? err.message : 'Failed to generate OpenAPI spec', 'error');
     } finally {
       setGeneratingSwagger(false);
@@ -380,6 +392,7 @@ export default function App() {
     setOpenApiDocument(
       generateOpenApiSpec([], [], activeWorkspace?.name ?? 'Proxync Workspace', effectiveLanguageHint, activeServerList)
     );
+    logApp('SCANNER', 'INFO', 'Cleared OpenAPI specification routes');
     showToast('OpenAPI specification cleared — ready for new routes', 'info');
   };
 
@@ -652,7 +665,18 @@ export default function App() {
 
   /* ── Network Online/Offline Status Notification ── */
   useEffect(() => {
+    initLogger({
+      appLogging: appSettings.appLogging ?? true,
+      trafficLogging: appSettings.trafficLogging ?? false,
+    });
+    logApp(
+      'SYSTEM',
+      'INFO',
+      `Proxync studio initialized (Theme: ${appSettings.theme || 'slate'}, Telemetry: ${appSettings.telemetry || 'enhanced'}, AppLogging: ${appSettings.appLogging ?? true ? 'ON' : 'OFF'}, TrafficLogging: ${appSettings.trafficLogging ?? false ? 'ON' : 'OFF'})`
+    );
+
     if (!navigator.onLine) {
+      logApp('SYSTEM', 'WARN', 'Application started while offline');
       showToast(
         '⚠️ You are currently offline. Cloud tunnels (Cloudflare & Localtunnel) require internet connection. Local network sharing is active.',
         'warning'
@@ -660,6 +684,7 @@ export default function App() {
     }
 
     const handleOffline = () => {
+      logApp('SYSTEM', 'WARN', 'Network connection disconnected — offline');
       showToast(
         '⚠️ Network disconnected: You are offline. Cloud tunnels require internet connection.',
         'warning'
@@ -667,6 +692,7 @@ export default function App() {
     };
 
     const handleOnline = () => {
+      logApp('SYSTEM', 'INFO', 'Network connection restored — online');
       showToast(
         '🌐 Network connected: Back online! Cloud tunnels (Cloudflare & Localtunnel) are ready.',
         'success'
@@ -735,8 +761,10 @@ export default function App() {
     let unlistenRequest: (() => void) | undefined;
     let unlistenResponse: (() => void) | undefined;
     let unlistenClosed: (() => void) | undefined;
+    let active = true;
+
     async function bindEvents() {
-      unlistenRequest = await listen<any>('request:log', (event) => {
+      const uReq = await listen<any>('request:log', (event) => {
         const payload = event.payload;
         let method = (payload.method || 'GET').toUpperCase();
         let path = payload.path || '/';
@@ -791,6 +819,14 @@ export default function App() {
           `[Proxync Logger] ${isProbe ? '🛡️ [Probe Ignored]' : '⚡ [Traffic]'} ${method} ${path} | Port: :${portNum || 'unknown'} | Tunnel: ${matchingTunnel?.subdomain || 'direct'} | Status: ${payload.status || 'pending'}`
         );
 
+        logTraffic(item);
+        logApp(
+          'HTTP',
+          isProbe ? 'WARN' : 'INFO',
+          `${method} ${path} -> ${payload.status || 'pending'} (Port :${portNum || '?'}${matchingTunnel?.subdomain ? ` via ${matchingTunnel.subdomain}` : ''})`,
+          { isProbe, port: portNum, tunnelUrl: matchingTunnel?.publicUrl }
+        );
+
         setRequests((current) => [item, ...current].slice(0, 150));
         setTerminalLogs((current) => [
           {
@@ -805,23 +841,35 @@ export default function App() {
           ...current,
         ].slice(0, 300));
       });
-      unlistenResponse = await listen<any>('request:log:response', (event) => {
+      if (!active) { uReq(); } else { unlistenRequest = uReq; }
+
+      const uRes = await listen<any>('request:log:response', (event) => {
         const payload = event.payload;
         const targetId = payload.id || payload.requestId;
         if (!targetId) return;
         console.log(`[Proxync Response] Req ID ${targetId} -> Status ${payload.status} (${payload.durationMs || 0}ms)`);
+        logApp('HTTP', 'DEBUG', `Response received for req ${targetId} -> Status ${payload.status} (${payload.durationMs || 0}ms)`);
         setRequests((current) =>
           current.map((r: any) => (r.id === targetId || r.rawRequestId === targetId) ? { ...r, status: payload.status, durationMs: payload.durationMs || r.durationMs } : r),
         );
       });
-      unlistenClosed = await listen<{ tunnelId: string }>('tunnel:auto-closed', (event) => {
+      if (!active) { uRes(); } else { unlistenResponse = uRes; }
+
+      const uClose = await listen<{ tunnelId: string }>('tunnel:auto-closed', (event) => {
+        logApp('TUNNEL', 'WARN', `Tunnel ${event.payload.tunnelId} auto-closed (local process stopped)`);
         setTunnels((current) => current.map((t) => t.id === event.payload.tunnelId ? { ...t, status: 'CLOSED' } : t));
         setActiveTunnel((current) => current?.id === event.payload.tunnelId ? null : current);
         showToast('Local process stopped. Tunnel closed.', 'info');
       });
+      if (!active) { uClose(); } else { unlistenClosed = uClose; }
     }
     void bindEvents();
-    return () => { unlistenRequest?.(); unlistenResponse?.(); unlistenClosed?.(); };
+    return () => {
+      active = false;
+      unlistenRequest?.();
+      unlistenResponse?.();
+      unlistenClosed?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -886,6 +934,7 @@ export default function App() {
     try {
       const discovered = await readNativeProcesses(bypassCache);
       setProcesses(discovered);
+      logApp('RECON', 'INFO', `Scanned and discovered ${discovered.length} local services: [${discovered.map((p) => `:${p.port} (${p.framework || p.name})`).join(', ')}]`);
       if (!selectedProcessId && discovered[0]) setSelectedProcessId(discovered[0].id);
       if (!silent) {
         showToast(discovered.length > 0 ? `Discovered ${discovered.length} local process${discovered.length === 1 ? '' : 'es'}` : 'No local development ports found', discovered.length > 0 ? 'success' : 'info');
@@ -895,11 +944,15 @@ export default function App() {
       const withLatency = await Promise.all(
         discovered.map(async (p) => {
           const latency = await measureLocalPortLatency(p.port);
+          if (latency !== Infinity) {
+            logApp('RECON', 'DEBUG', `Port :${p.port} reachable -> latency ${Math.round(latency)}ms`);
+          }
           return { ...p, latency };
         })
       );
       setProcesses(withLatency);
     } catch (error) {
+      logError('RECON', 'Process discovery scan failed', error, 'Verify OS network permissions and CIM/WMI availability');
       if (!silent) {
         showToast(error instanceof Error ? error.message : 'Process discovery failed', 'error');
       }
@@ -918,6 +971,7 @@ export default function App() {
     setActiveWorkspaceId(workspace.id);
     setNewWorkspaceName('');
     setMainView('workspace_dashboard');
+    logApp('SYSTEM', 'INFO', `Created workspace "${name}" (${workspace.id})`);
     void discoverProcesses(false, true);
     showToast(`Workspace "${name}" created`, 'success');
   }
@@ -935,6 +989,8 @@ export default function App() {
       setActiveTunnel(null);
       void discoverProcesses(false, true);
     }
+    const ws = workspaces.find((w) => w.id === workspaceId);
+    logApp('SYSTEM', 'INFO', `Switched active workspace to "${ws?.name || workspaceId}" (${workspaceId})`);
     touchWorkspaceActivity(workspaceId);
     setMainView('workspace_dashboard');
   }
@@ -989,6 +1045,7 @@ export default function App() {
         setMainView('lobby');
       }
     }
+    logApp('SYSTEM', 'WARN', `Deleted workspace "${ws.name}" (${workspaceId})`);
     showToast(`Workspace "${ws.name}" completely deleted`, 'success');
   }
 
@@ -1005,6 +1062,8 @@ export default function App() {
         console.error('Error stopping active tunnel on purge:', error);
       }
     }
+
+    logApp('SYSTEM', 'WARN', `Purged workspace "${ws.name}" (${workspaceId})`);
 
     const updated = workspaces.map((w) => {
       if (w.id === workspaceId) {
@@ -1138,6 +1197,7 @@ export default function App() {
     const token = getToken();
 
     try {
+      logApp('TUNNEL', 'INFO', `Initiating Cloudflare Tunnel for port :${process.port}...`);
       localStorage.setItem('proxync_workspace', targetWorkspaceId);
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
       const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
@@ -1146,6 +1206,7 @@ export default function App() {
         invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined),
         invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port),
       ]);
+      logApp('PROXY', 'INFO', `Bound ephemeral proxy to 127.0.0.1:${proxyPort} -> :${process.port}`);
       showToast('Starting Cloudflare Tunnel service...', 'info');
       const cfTunnelUrl = await invoke<string>('open_cloudflare_tunnel', { tunnelId: tunnel.id, localPort: proxyPort });
 
@@ -1153,9 +1214,13 @@ export default function App() {
       setActiveTunnel(cloudflareBoundTunnel);
       setTunnels((current) => [cloudflareBoundTunnel, ...current.filter((item) => item.id !== tunnel.id)]);
       setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false); setRequests([]);
+      logApp('TUNNEL', 'INFO', `Cloudflare Tunnel online: ${cfTunnelUrl} (Port :${process.port})`);
       showToast(`Cloudflare Tunnel is active! URL: ${cfTunnelUrl}`, 'success');
       updateActiveWorkspace((ws) => ({ ...ws, profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: cfTunnelUrl } : p) }));
-    } catch (error) { showToast(error instanceof Error ? error.message : String(error), 'error'); }
+    } catch (error) {
+      logApp('TUNNEL', 'ERROR', `Failed to open Cloudflare Tunnel on port :${process.port}`, error);
+      showToast(error instanceof Error ? error.message : String(error), 'error');
+    }
     finally { removeSpawningPort(process.port); }
   }
 
@@ -1191,6 +1256,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
     const token = getToken();
 
     try {
+      logApp('TUNNEL', 'INFO', `Initiating Proxync Native SSH Tunnel for port :${process.port}...`);
       localStorage.setItem('proxync_workspace', targetWorkspaceId);
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
       const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
@@ -1199,6 +1265,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
         invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined),
         invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port),
       ]);
+      logApp('PROXY', 'INFO', `Bound ephemeral proxy to 127.0.0.1:${proxyPort} -> :${process.port}`);
       const suggestedSub = generateRandomSubdomain('px');
       showToast('Starting Proxync Native SSH tunnel...', 'info');
       const nativeTunnelUrl = await invoke<string>('open_native_tunnel', { tunnelId: tunnel.id, localPort: proxyPort, subdomain: suggestedSub });
@@ -1206,9 +1273,13 @@ function generateRandomSubdomain(prefix = 'px'): string {
       setActiveTunnel(boundTunnel);
       setTunnels((current) => [boundTunnel, ...current.filter((item) => item.id !== tunnel.id)]);
       setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false); setRequests([]);
+      logApp('TUNNEL', 'INFO', `Proxync Native Tunnel online: ${nativeTunnelUrl} (Port :${process.port})`);
       showToast(`Tunnel is active! URL: ${nativeTunnelUrl}`, 'success');
       updateActiveWorkspace((ws) => ({ ...ws, profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: nativeTunnelUrl } : p) }));
-    } catch (error) { showToast(error instanceof Error ? error.message : String(error), 'error'); }
+    } catch (error) {
+      logApp('TUNNEL', 'ERROR', `Failed to open Proxync Native Tunnel on port :${process.port}`, error);
+      showToast(error instanceof Error ? error.message : String(error), 'error');
+    }
     finally { removeSpawningPort(process.port); }
   }
 
@@ -1337,7 +1408,10 @@ function generateRandomSubdomain(prefix = 'px'): string {
         profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: tunnel.publicUrl } : p)
       }));
       showToast(`Tunnel active on ${tunnel.publicUrl}. Traffic interception enabled!`, 'success');
-    } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to share process', 'error'); }
+    } catch (error) {
+      logError('TUNNEL', `Unable to share process on Port :${process.port}`, error, 'Check if local server is listening and port is available', `Port :${process.port}`);
+      showToast(error instanceof Error ? error.message : 'Unable to share process', 'error');
+    }
     finally { removeSpawningPort(process.port); }
   }
 
@@ -1358,6 +1432,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
   async function stopTunnel(tunnel: Tunnel) {
     if (!activeWorkspace) return;
     touchWorkspaceActivity(activeWorkspace.id);
+    logApp('TUNNEL', 'INFO', `Stopping tunnel ${tunnel.id} (Port :${tunnel.localPort})`);
     try {
       await invoke('close_tunnel', { tunnelId: tunnel.id, localPort: tunnel.localPort }).catch(() => undefined);
       if (!tunnel.id.startsWith('lt-') && activeWorkspace.remoteWorkspaceId) {
@@ -1365,8 +1440,10 @@ function generateRandomSubdomain(prefix = 'px'): string {
       }
       setTunnels((current) => current.filter((item) => item.id !== tunnel.id));
       setActiveTunnel((current) => (current?.id === tunnel.id ? null : current));
+      logApp('TUNNEL', 'INFO', `Closed tunnel ${tunnel.id} on port :${tunnel.localPort}`);
       showToast('Tunnel stopped', 'info');
     } catch (error) {
+      logError('TUNNEL', `Failed to stop tunnel ${tunnel.id}`, error, 'Verify if tunnel process was already killed', tunnel.id);
       showToast(error instanceof Error ? error.message : 'Unable to stop tunnel', 'error');
     }
   }
@@ -1377,6 +1454,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
     if (activeWorkspace) {
       touchWorkspaceActivity(activeWorkspace.id);
     }
+    logApp('TUNNEL', 'INFO', `Stopping all active tunnels (${activeTunnelsList.length})`);
     try {
       await Promise.all(
         activeTunnelsList.map(async (tunnel) => {
@@ -1388,8 +1466,10 @@ function generateRandomSubdomain(prefix = 'px'): string {
       );
       setTunnels((current) => current.filter((item) => item.status !== 'ACTIVE'));
       setActiveTunnel(null);
+      logApp('TUNNEL', 'INFO', `All ${activeTunnelsList.length} tunnels closed`);
       showToast(`Stopped all active tunnels (${activeTunnelsList.length})`, 'info');
     } catch (error) {
+      logError('TUNNEL', 'Failed to stop all tunnels cleanly', error, 'Some tunnel subprocesses may require manual termination');
       showToast(error instanceof Error ? error.message : 'Unable to stop all tunnels', 'error');
     }
   }
@@ -1447,9 +1527,11 @@ function generateRandomSubdomain(prefix = 'px'): string {
         capturedAt: new Date().toISOString(),
       };
 
+      logApp('HTTP', 'INFO', `Replayed request: ${request.method} ${request.path} -> Status ${status} (${durationMs}ms)`);
       setRequests((current) => [replayedLog, ...current].slice(0, 150));
       showToast(`Replayed ${request.method} ${request.path} (${status})`, 'success');
     } catch (error) {
+      logApp('HTTP', 'ERROR', `Replay failed: ${request.method} ${request.path}`, error);
       showToast(error instanceof Error ? error.message : 'Replay failed', 'error');
     }
   }
@@ -1524,9 +1606,11 @@ function generateRandomSubdomain(prefix = 'px'): string {
         bodyPreview: draftRequest.body,
         capturedAt: new Date().toISOString(),
       };
+      logApp('HTTP', 'INFO', `Manual request: ${draftRequest.method} ${targetUrl} -> Status ${status} (${durationMs}ms)`);
       setRequests((current) => [newLog, ...current].slice(0, 150));
       showToast(`Request to ${targetUrl} completed (${status})`, 'success');
     } catch (error) {
+      logApp('HTTP', 'ERROR', `Manual request failed: ${draftRequest.method} ${targetUrl}`, error);
       showToast(error instanceof Error ? error.message : 'Request failed', 'error');
     } finally {
       setSendingRequest(false);
@@ -1611,21 +1695,65 @@ function generateRandomSubdomain(prefix = 'px'): string {
           profiles: nextProfiles,
         };
       });
+      logApp('SCANNER', 'INFO', `Scanned ${files.length} project files. Language hint: ${inferredLanguage}`);
       showToast(`Scanned ${files.length} files. Language hint updated to ${inferredLanguage}.`, 'success');
       void discoverProcesses(true);
-    } catch (error) { showToast(error instanceof Error ? error.message : 'Project scan failed', 'error'); }
+    } catch (error) {
+      logApp('SCANNER', 'ERROR', 'Project folder scan failed', error);
+      showToast(error instanceof Error ? error.message : 'Project scan failed', 'error');
+    }
     finally { setScanningProject(false); }
   }
 
   function updateAppNotes(notes: string) { setAppSettings((current) => ({ ...current, notes })); }
 
-  function updateTheme(theme: string) { setAppSettings((current) => ({ ...current, theme })); }
+  function updateTheme(theme: string) {
+    logApp('SYSTEM', 'INFO', `Theme changed to "${theme}"`);
+    setAppSettings((current) => ({ ...current, theme }));
+  }
 
-  function updateAutoUpdate(enabled: boolean) { setAppSettings((current) => ({ ...current, autoUpdate: enabled })); }
+  function updateAutoUpdate(enabled: boolean) {
+    logApp('UPDATER', 'INFO', `Auto-update background checking ${enabled ? 'enabled' : 'disabled'}`);
+    setAppSettings((current) => ({ ...current, autoUpdate: enabled }));
+  }
 
-  function updateEnableDevTools(enabled: boolean) { setAppSettings((current) => ({ ...current, enableDevTools: enabled })); }
+  function updateEnableDevTools(enabled: boolean) {
+    logApp('SYSTEM', 'INFO', `Developer Inspect Tools ${enabled ? 'enabled' : 'disabled'}`);
+    setAppSettings((current) => ({ ...current, enableDevTools: enabled }));
+  }
 
-  function updateTelemetry(telemetry: 'enhanced' | 'basic') { setAppSettings((current) => ({ ...current, telemetry })); }
+  function updateTelemetry(telemetry: 'enhanced' | 'basic') {
+    logApp('SYSTEM', 'INFO', `Telemetry mode changed to "${telemetry}"`);
+    setAppSettings((current) => ({ ...current, telemetry }));
+  }
+
+  async function updateAppLogging(enabled: boolean) {
+    setAppSettings((current) => ({ ...current, appLogging: enabled }));
+    await setAppLogging(enabled, {
+      appVersion: 'v0.2.1-stable',
+      theme: appSettings.theme,
+      platform: typeof navigator !== 'undefined' ? navigator.platform : 'desktop',
+    });
+    showToast(
+      enabled
+        ? '🛡️ Application engine logging enabled (%APPDATA%\\Proxync\\logs\\app.log)'
+        : 'Application engine logging disabled',
+      enabled ? 'success' : 'info'
+    );
+  }
+
+  async function updateTrafficLogging(enabled: boolean) {
+    setAppSettings((current) => ({ ...current, trafficLogging: enabled }));
+    await setTrafficLogging(enabled, {
+      appVersion: 'v0.2.1-stable',
+    });
+    showToast(
+      enabled
+        ? '⚡ Traffic stream logging enabled (%APPDATA%\\Proxync\\logs\\traffic.log)'
+        : 'Traffic stream logging disabled',
+      enabled ? 'success' : 'info'
+    );
+  }
 
   async function addDomain() {
     if (!domainDraft.trim()) { showToast('Enter a domain name first', 'info'); return; }
@@ -1641,8 +1769,10 @@ function generateRandomSubdomain(prefix = 'px'): string {
         return next;
       });
       setDomainDraft('');
+      logApp('SYSTEM', 'INFO', `Added custom domain: "${domainDraft.trim()}"`);
       showToast('Domain added successfully!', 'success');
     } catch (error) {
+      logApp('SYSTEM', 'ERROR', `Failed to add domain "${domainDraft.trim()}"`, error);
       showToast(error instanceof Error ? error.message : 'Unable to add domain', 'error');
     } finally {
       setBusyDomainId(null);
@@ -1661,6 +1791,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
         }
         return next;
       });
+      logApp('SYSTEM', 'INFO', `Verified domain: ${domainId}`);
       showToast('Domain verification succeeded!', 'success');
     } catch (error) {
       const refreshed = await api.domains.list(wsId).catch(() => []);
@@ -1670,6 +1801,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
           updateActiveWorkspace((ws) => ({ ...ws, domains: refreshed }));
         }
       }
+      logApp('SYSTEM', 'WARN', `Domain verification check failed for ${domainId}`, error);
       showToast(error instanceof Error ? error.message : 'Verification failed', 'error');
     } finally {
       setBusyDomainId(null);
@@ -1688,8 +1820,10 @@ function generateRandomSubdomain(prefix = 'px'): string {
         }
         return next;
       });
+      logApp('SYSTEM', 'WARN', `Removed domain: ${domainId}`);
       showToast('Domain removed', 'success');
     } catch (error) {
+      logApp('SYSTEM', 'ERROR', `Failed to remove domain ${domainId}`, error);
       showToast(error instanceof Error ? error.message : 'Unable to remove domain', 'error');
     } finally {
       setBusyDomainId(null);
@@ -2050,7 +2184,33 @@ function generateRandomSubdomain(prefix = 'px'): string {
               />
             )}
             {mainView === 'settings' && (
-              <SettingsView workspace={activeWorkspace} appSettings={appSettings} domains={domains} domainDraft={domainDraft} loadingDomains={loadingDomains} busyDomainId={busyDomainId} scanningProject={scanningProject} onUpdateGuardrails={updateGuardrails} onUpdateAppNotes={updateAppNotes} onUpdateProjectRootPath={updateProjectRootPath} onScanProjectFolder={scanProjectFolder} onDomainDraftChange={setDomainDraft} onAddDomain={addDomain} onVerifyDomain={verifyDomain} onRemoveDomain={removeDomain} onUpdateTheme={updateTheme} onUpdateAutoUpdate={updateAutoUpdate} onUpdateTelemetry={updateTelemetry} onUpdateEnableDevTools={updateEnableDevTools} initialSection={settingsSection} />
+              <SettingsView
+                workspace={activeWorkspace}
+                appSettings={appSettings}
+                domains={domains}
+                domainDraft={domainDraft}
+                loadingDomains={loadingDomains}
+                busyDomainId={busyDomainId}
+                scanningProject={scanningProject}
+                activeTunnel={activeTunnel}
+                processes={processes}
+                tunnels={tunnels}
+                onUpdateGuardrails={updateGuardrails}
+                onUpdateAppNotes={updateAppNotes}
+                onUpdateProjectRootPath={updateProjectRootPath}
+                onScanProjectFolder={scanProjectFolder}
+                onDomainDraftChange={setDomainDraft}
+                onAddDomain={addDomain}
+                onVerifyDomain={verifyDomain}
+                onRemoveDomain={removeDomain}
+                onUpdateTheme={updateTheme}
+                onUpdateAutoUpdate={updateAutoUpdate}
+                onUpdateTelemetry={updateTelemetry}
+                onUpdateEnableDevTools={updateEnableDevTools}
+                onUpdateAppLogging={updateAppLogging}
+                onUpdateTrafficLogging={updateTrafficLogging}
+                initialSection={settingsSection}
+              />
             )}
             {mainView === 'process' && (
               <ProcessView
@@ -2278,6 +2438,9 @@ function loadAppSettings(): AppSettings {
       theme: parsed.theme ?? 'slate',
       autoUpdate: parsed.autoUpdate ?? true,
       telemetry: parsed.telemetry ?? 'enhanced',
+      enableDevTools: parsed.enableDevTools ?? false,
+      appLogging: parsed.appLogging ?? true,
+      trafficLogging: parsed.trafficLogging ?? false,
     };
   } catch { return { ...DEFAULT_APP_SETTINGS, guardrails: { ...DEFAULT_GUARDRAILS } }; }
 }
