@@ -9,11 +9,13 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Dynamic URL Path Parameterization**: Built `parameterizePath` helper to generalize dynamic path segments (IDs e.g. `todo-1787085033407-5x3gn`, UUIDs, numerical IDs, Mongo ObjectIDs) into standard OpenAPI path parameters (e.g. `/api/todos/{id}`) with matching OpenAPI `in: path` parameter definitions.
   - **Incremental OpenAPI Spec Ingestion (Endpoint Persistence)**: Enhanced `generateOpenApiSpec` to accept `existingDoc` and deep-merge newly captured traffic with previously generated routes (`GET`, `POST`, `PUT`, `DELETE`), preventing spec overwrites when testing endpoints sequentially.
   - **Swagger Studio UI & Server Filter Refinement**: Overhauled server dropdown in `SwaggerView.tsx` with clear public tunnel URLs and ports (`⚡ Port :4000 — px-subdomain (https://...)`), added clickable tunnel URL badges on endpoint cards, and streamlined the filter header by removing redundant tag filter pills while keeping semantic tag badges on cards.
+  - **CSS Flex Properties Fix**: Corrected invalid `shrink: 0` CSS properties to standard `flex-shrink: 0` in `index.css` for `.btn-cloud-option` and `.btn-lan-option`.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/proxy.rs`
   - `packages/desktop/src-tauri/src/tunnel.rs`
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/components/views/SwaggerView.tsx`
+  - `packages/desktop/src/index.css`
   - `packages/desktop/src/lib/openApiGenerator.ts`
   - `packages/desktop/src/lib/types.ts`
   - `CHANGELOG.md`
