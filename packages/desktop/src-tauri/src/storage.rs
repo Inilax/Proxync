@@ -207,3 +207,69 @@ pub async fn read_file_content(root_path: String, rel_path: String) -> Result<St
     
     std::fs::read_to_string(canonical_target).map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub async fn open_file_in_editor(file_path: String, line_number: Option<u32>, editor: Option<String>) -> Result<(), String> {
+    let ed = editor.unwrap_or_else(|| "vscode".to_string()).to_lowercase();
+    let line = line_number.unwrap_or(1);
+    let binary_name = if ed == "cursor" { "cursor" } else { "code" };
+    let goto_arg = format!("{}:{}", file_path, line);
+
+    #[cfg(target_os = "windows")]
+    {
+        // 1. Try direct code.cmd / cursor.cmd CLI launcher
+        let mut cmd = std::process::Command::new("cmd");
+        cmd.args(&["/c", binary_name, "-g", &goto_arg]);
+        if let Ok(mut child) = cmd.spawn() {
+            if let Ok(status) = child.wait() {
+                if status.success() {
+                    return Ok(());
+                }
+            }
+        }
+
+        // 2. Fallback: Windows Shell Execute via registered URI protocol
+        let scheme = if ed == "cursor" { "cursor" } else { "vscode" };
+        let norm_path = file_path.replace('\\', "/");
+        let uri = format!("{}://file/{}:{}", scheme, norm_path, line);
+        
+        let mut uri_cmd = std::process::Command::new("cmd");
+        uri_cmd.args(&["/c", "start", "", &uri]);
+        if let Ok(_) = uri_cmd.spawn() {
+            return Ok(());
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let mut cmd = std::process::Command::new(binary_name);
+        cmd.args(&["-g", &goto_arg]);
+        if let Ok(_) = cmd.spawn() {
+            return Ok(());
+        }
+
+        let scheme = if ed == "cursor" { "cursor" } else { "vscode" };
+        let norm_path = file_path.replace('\\', "/");
+        let uri = format!("{}://file/{}:{}", scheme, norm_path, line);
+        let _ = std::process::Command::new("open").arg(&uri).spawn();
+        return Ok(());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let mut cmd = std::process::Command::new(binary_name);
+        cmd.args(&["-g", &goto_arg]);
+        if let Ok(_) = cmd.spawn() {
+            return Ok(());
+        }
+
+        let scheme = if ed == "cursor" { "cursor" } else { "vscode" };
+        let norm_path = file_path.replace('\\', "/");
+        let uri = format!("{}://file/{}:{}", scheme, norm_path, line);
+        let _ = std::process::Command::new("xdg-open").arg(&uri).spawn();
+        return Ok(());
+    }
+
+    Ok(())
+}
+

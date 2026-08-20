@@ -450,6 +450,26 @@ fn resolve_directory_in_memory(
                 if let Ok(user_profile) = std::env::var("USERPROFILE") {
                     search_roots.push(std::path::PathBuf::from(user_profile));
                 }
+
+                // Check mounted Windows drive roots and immediate workspace subfolders
+                #[cfg(target_os = "windows")]
+                {
+                    for drive in ['E', 'D', 'C', 'F'] {
+                        let drive_root = std::path::PathBuf::from(format!("{}:\\", drive));
+                        if drive_root.exists() {
+                            search_roots.push(drive_root.clone());
+                            if let Ok(entries) = std::fs::read_dir(&drive_root) {
+                                for entry in entries.flatten() {
+                                    let p = entry.path();
+                                    if p.is_dir() {
+                                        search_roots.push(p);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 for root in search_roots {
                     let script_path = root.join(script);
                     if script_path.exists() {
