@@ -49,3 +49,7 @@ Thumbs.db
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# GStack local reports
+.gstack/
+
