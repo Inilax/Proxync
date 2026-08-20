@@ -2,8 +2,11 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
-## [feature/develop-multi-tunnel-workbench-scanner] - 2026-08-20 (Multi-Tunnel Workbench Studio & Codebase Scanner, Native IDE Jumping & Process UX Polish)
+## [feature/develop-multi-tunnel-workbench-scanner] - 2026-08-21 (Proxy Lifecycle Optimization, Fast WebSocket Relay Timeout & Multi-Tunnel Workbench Studio)
 - **Feature Summary**:
+  - **Ephemeral Proxy Listener Lifecycle & TCP Half-Close**: Refactored `start_proxy` in `proxy.rs` to always abort stale task handles and re-bind fresh listeners per invocation, plus added explicit `client_write.shutdown().await` and `target_write.shutdown().await` on TCP streams to cleanly complete responses without hanging.
+  - **Fast WebSocket Relay Connection Timeout**: Added a 2-second timeout to `open_tunnel` WebSocket connection (`tunnel.rs`) so client initialization fails fast when no local loopback relay is active instead of blocking on OS TCP timeouts.
+  - **Instant In-Memory Recon Resolution**: Streamlined `recon.rs` by eliminating blocking filesystem drive scanning loops during project directory lookup.
   - **Multi-Tunnel & Multi-Process Dynamic Project Root Synchronization**: Refactored `RequestWorkbenchDialog.tsx` and `App.tsx` to automatically resolve project root directories per-tab based on the originating request's port or tunnel metadata, eliminating cross-process misattribution when running multiple tunnels simultaneously.
   - **Native 1-Click IDE Navigation**: Implemented `open_file_in_editor` native command in Rust (`storage.rs`, `lib.rs`) and TypeScript (`interopUtils.ts`) to jump directly to exact line numbers in VS Code (`code -g <file>:<line>`), Cursor, or the OS default editor.
   - **Dynamic Next.js App Router & Arrow Function Scanner**: Enhanced `codebaseScanner.ts` to normalize Windows backslash file paths and parse both function declarations (`export async function GET`) and arrow function exports (`export const POST = async () =>`).
