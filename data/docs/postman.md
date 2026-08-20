@@ -3,12 +3,13 @@ title: Playground
 description: REST client with Generic Replay Engine, native Rust HTTP executor, glass right-click context menus, and Target Route Badges.
 ---
 
-In Proxync v0.2.0, the REST client view is **Playground** — featuring a native Rust HTTP executor, Generic Replay Engine, glass context menus, and Target Route Badges.
+In Proxync v0.2.1, the REST client view is **Playground** — featuring a native Rust HTTP executor, Generic Replay Engine, glass context menus, and Target Route Badges.
 
-## Key Features in v0.2.0
+## Key Features in v0.2.1
 
 - **Generic Replay Engine** — Replay any HTTP method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) via native Rust HTTP executor (`execute_http_request`), bypassing browser CORS limitations and automatically appending results to Traffic Logs.
 - **Target Route Badges** — A pill-shaped badge next to the Send button displays the active route target:
+  - `Proxync Native` — Traffic routed through high-throughput Native SSH tunnels (Direct Origin Port 2222).
   - `Cloudflare Edge` — Traffic routed through public Cloudflare edge tunnels.
   - `Public Tunnel` — Traffic routed through public Localtunnel edge proxies.
   - `Local Loopback` — Traffic routed through local dev server ports.

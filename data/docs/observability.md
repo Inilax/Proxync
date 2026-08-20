@@ -3,7 +3,7 @@ title: Observability Hub
 description: Zero-config runtime analytics, latency percentiles (P50/P90/P99), bandwidth metrics, public Webhook stream replay, and Error Center.
 ---
 
-Proxync v0.2.0 introduces the **Observability Hub**, a zero-config, real-time performance dashboard for monitoring your local servers, edge tunnels, and public webhooks.
+Proxync features the **Observability Hub**, a zero-config, real-time performance dashboard for monitoring your local servers, edge tunnels, and public webhooks.
 
 ## Overview
 
