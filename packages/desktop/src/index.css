@@ -812,9 +812,8 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   transition: all 150ms ease;
 }
 .discovery-row:hover { border-color: var(--color-outline); }
-.discovery-row strong, .discovery-row span, .discovery-row small { display: block; }
-.discovery-row span, .discovery-row small { color: var(--color-on-surface-variant); font-size: 12px; }
-.discovery-row small { font-size: 11px; }
+.discovery-row strong { display: block; }
+.discovery-row small { display: block; color: var(--color-on-surface-variant); font-size: 11px; }
 
 .dialog-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
 .dialog-footer {
