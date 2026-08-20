@@ -9,7 +9,7 @@ import { useCloudflareLatency } from "./latency";
 
 const STATS = [
   { value: "12MB", label: "Binary Size" },
-  { value: "—", label: "Cloud Latency" },
+  { value: "—", label: "Edge Ping" },
   { value: "100%", label: "Local Storage" },
 ];
 
@@ -93,10 +93,10 @@ export function Hero() {
             {STATS.map((stat) => (
               <div key={stat.label} className="flex flex-col gap-1.5 px-4 first:pl-0">
                 <span className="text-2xl font-semibold text-on-surface">
-                  {stat.label === "Cloud Latency" ? latencyValue : stat.value}
+                  {stat.label === "Edge Ping" ? latencyValue : stat.value}
                 </span>
                 <span className="font-mono text-[11px] uppercase tracking-widest text-outline">
-                  {stat.label === "Cloud Latency" && latency.status !== "pinging"
+                  {stat.label === "Edge Ping" && latency.status !== "pinging"
                     ? `${stat.label} (live)`
                     : stat.label}
                 </span>

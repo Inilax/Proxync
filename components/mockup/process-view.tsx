@@ -10,7 +10,7 @@ export function ProcessView() {
         <div>
           <h1 className="text-lg font-bold text-on-surface">Tunnels &amp; Process Recon</h1>
           <p className="text-xs text-on-surface-variant font-mono mt-0.5">
-            Netstat &amp; WMI process scanner · Ephemeral local TCP proxy forwarding
+            Dynamic Netstat IPv4/IPv6 full-port discovery · Proxync Native SSH (Port 2222) &amp; Cloudflare
           </p>
         </div>
         <button

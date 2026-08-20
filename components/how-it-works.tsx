@@ -20,7 +20,7 @@ const steps: Step[] = [
     number: "02",
     icon: Radar,
     title: "Point it at localhost",
-    body: "Proxync auto-detects running Vite, Node, or Django instances. One click starts the proxy.",
+    body: "Proxync dynamically scans all listening dev ports via netstat & WMI recon. One click launches high-speed tunnels.",
   },
   {
     number: "03",
@@ -62,9 +62,15 @@ export function HowItWorks() {
         </div>
 
         <Reveal delay={0.3} className="mt-12 flex justify-center">
-          <div className="glass rounded-lg px-5 py-3.5 font-mono text-sm text-on-surface-variant">
-            <span className="text-tertiary">$</span> proxync tunnel --port 5173
-            <span className="ml-1 animate-pulse-dot text-primary">▍</span>
+          <div className="glass rounded-lg px-5 py-3.5 font-mono text-sm text-on-surface-variant flex flex-wrap items-center justify-center gap-3">
+            <div className="flex items-center">
+              <span className="text-tertiary mr-1.5">$</span>
+              <span>proxync tunnel --port 5173</span>
+              <span className="ml-1 animate-pulse-dot text-primary">▍</span>
+            </div>
+            <span className="rounded-full border border-secondary/40 bg-secondary/10 px-2.5 py-0.5 font-mono text-[10px] font-bold text-secondary uppercase tracking-wider">
+              CLI Coming Soon
+            </span>
           </div>
         </Reveal>
       </Container>

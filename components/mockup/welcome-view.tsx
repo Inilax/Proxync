@@ -81,8 +81,19 @@ export function WelcomeView({
         {/* Active Tunnels */}
         <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-3.5">
           <div className="flex items-center justify-between border-b border-outline-variant/20 pb-2.5">
-            <span className="font-mono text-xs font-bold uppercase tracking-wider text-on-surface">Active Workspace Tunnels</span>
-            <span className="font-mono text-[10px] text-tertiary font-bold">1 Active Tunnel</span>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-xs font-bold uppercase tracking-wider text-on-surface">Active Workspace Tunnels</span>
+              <span className="font-mono text-[10px] text-tertiary font-bold px-2 py-0.5 rounded bg-tertiary/10 border border-tertiary/30">
+                1 Active Tunnel
+              </span>
+            </div>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-lg border border-error/40 bg-error/10 px-2.5 py-1 font-mono text-[11px] font-bold text-error hover:bg-error/20 transition-all cursor-pointer"
+              title="Stop All Active Tunnels"
+            >
+              Stop All
+            </button>
           </div>
           <div className="mt-2.5 flex flex-col sm:flex-row sm:items-center justify-between rounded-xl border border-outline-variant/30 bg-surface-container-low p-3 gap-2">
             <div className="flex items-center gap-3 min-w-0">
@@ -90,13 +101,13 @@ export function WelcomeView({
                 <Globe className="h-4 w-4" />
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-bold text-on-surface">Vite dev server</div>
-                <div className="font-mono text-xs text-secondary truncate">{TUNNEL_URL}</div>
+                <div className="text-xs font-bold text-on-surface">Vite dev server (:5173)</div>
+                <div className="font-mono text-xs text-secondary truncate">https://px-a1b2c3d4.proxync.dev</div>
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className="rounded-full border border-tertiary/40 bg-tertiary/10 px-2.5 py-0.5 font-mono text-[10px] font-bold text-tertiary">
-                Cloudflare Edge
+              <span className="rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 font-mono text-[10px] font-bold text-primary">
+                Proxync Native SSH
               </span>
               <a
                 href={TUNNEL_URL}

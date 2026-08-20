@@ -13,19 +13,22 @@ const SWAGGER_ENDPOINTS = [
 
 export function SwaggerView() {
   return (
-    <div className="space-y-6 p-6 fade-in select-none">
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-outline-variant/30 pb-4">
+    <div className="space-y-5 p-5 fade-in select-none">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/30 pb-3">
         <div>
-          <h1 className="text-xl font-bold text-on-surface">Swagger &amp; OpenAPI Studio</h1>
-          <p className="text-xs text-on-surface-variant mt-1 font-mono">
-            Multi-Framework Codebase Scanner (Express, NestJS, FastAPI, Go)
+          <h1 className="text-lg font-bold text-on-surface">Swagger &amp; OpenAPI Studio</h1>
+          <p className="text-xs text-on-surface-variant mt-0.5 font-mono">
+            Incremental Spec Ingestion · Dynamic Path Parameterization (/users/&#123;id&#125;)
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <span className="rounded-full border border-secondary/40 bg-secondary/10 px-2.5 py-0.5 font-mono text-[11px] font-bold text-secondary">
+            Bot Probe Filter Active
+          </span>
           <span className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-1 font-mono text-xs font-bold text-primary">
             OpenAPI 3.0
           </span>
-          <button className="inline-flex items-center gap-1 rounded-lg border border-outline-variant/40 px-3 py-1.5 font-mono text-xs font-bold text-on-surface hover:bg-surface-container cursor-pointer">
+          <button className="inline-flex items-center gap-1 rounded-lg border border-outline-variant/40 px-3 py-1 font-mono text-xs font-bold text-on-surface hover:bg-surface-container cursor-pointer">
             <Copy className="h-3 w-3" />
             Copy JSON
           </button>
@@ -33,17 +36,19 @@ export function SwaggerView() {
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-outline-variant/30 bg-surface-container p-4">
-          <span className="font-mono text-[10px] uppercase tracking-wider text-outline">Codebase Scanner</span>
-          <div className="mt-1 text-sm font-bold text-on-surface">FastAPI + Vite (TypeScript)</div>
+        <div className="rounded-xl border border-outline-variant/30 bg-surface-container p-3.5">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-outline font-bold">Codebase Recon</span>
+          <div className="mt-1 text-xs font-bold text-on-surface truncate">FastAPI (:8000) + Vite (:5173)</div>
         </div>
-        <div className="rounded-xl border border-outline-variant/30 bg-surface-container p-4">
-          <span className="font-mono text-[10px] uppercase tracking-wider text-outline">Export Target</span>
-          <div className="mt-1 text-sm font-bold text-tertiary">2-Way Playground Export</div>
+        <div className="rounded-xl border border-outline-variant/30 bg-surface-container p-3.5">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-outline font-bold">Route Attribution</span>
+          <div className="mt-1 text-xs font-bold text-tertiary">Incremental Deep-Merge</div>
         </div>
-        <div className="rounded-xl border border-outline-variant/30 bg-surface-container p-4">
-          <span className="font-mono text-[10px] uppercase tracking-wider text-outline">Server Endpoint</span>
-          <div className="mt-1 font-mono text-xs font-bold text-primary truncate">{TUNNEL_URL}</div>
+        <div className="rounded-xl border border-outline-variant/30 bg-surface-container p-3.5">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-outline font-bold">Active Server Tunnel</span>
+          <div className="mt-1 font-mono text-xs font-bold text-primary truncate">
+            https://px-a1b2c3d4.proxync.dev
+          </div>
         </div>
       </div>
 
@@ -52,20 +57,25 @@ export function SwaggerView() {
           <div
             key={`${endpoint.method}-${endpoint.path}`}
             className={cn(
-              "rounded-xl border border-outline-variant/30 border-l-4 bg-surface-container-lowest p-4",
+              "rounded-xl border border-outline-variant/30 border-l-4 bg-surface-container-lowest p-3.5",
               METHOD_EDGE[endpoint.method],
             )}
           >
-            <div className="flex items-center gap-2">
-              <span
-                className={cn(
-                  "rounded px-2 py-0.5 font-mono text-[10px] font-bold",
-                  METHOD_BADGE[endpoint.method],
-                )}
-              >
-                {endpoint.method}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span
+                  className={cn(
+                    "rounded px-2 py-0.5 font-mono text-[10px] font-bold",
+                    METHOD_BADGE[endpoint.method],
+                  )}
+                >
+                  {endpoint.method}
+                </span>
+                <code className="truncate font-mono text-xs font-bold text-on-surface">{endpoint.path}</code>
+              </div>
+              <span className="font-mono text-[10px] text-tertiary bg-tertiary/10 px-2 py-0.5 rounded shrink-0">
+                px-a1b2c3d4
               </span>
-              <code className="truncate font-mono text-xs font-bold text-on-surface">{endpoint.path}</code>
             </div>
             <p className="mt-2 text-xs text-on-surface-variant">{endpoint.summary}</p>
             <small className="font-mono text-[10px] text-outline mt-1 block">{endpoint.responses}</small>

@@ -125,9 +125,9 @@ export default function TermsPage() {
               Terms governing the download, installation, and operation of Proxync, a developer workspace studio product by <strong className="text-on-surface">Inilax</strong>.
             </p>
             <div className="mt-6 inline-flex items-center gap-2 font-mono text-xs text-on-surface-muted">
-              <span>Last Updated: August 7, 2026</span>
+              <span>Last Updated: August 20, 2026</span>
               <span>•</span>
-              <span className="text-primary font-medium">Effective Version 0.2.0+ (Free &amp; Enterprise)</span>
+              <span className="text-primary font-medium">Effective Version 0.2.1+ (Free &amp; Enterprise)</span>
             </div>
           </div>
 

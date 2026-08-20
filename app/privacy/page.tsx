@@ -126,9 +126,9 @@ export default function PrivacyPage() {
               Proxync is developed by <strong className="text-on-surface">Inilax</strong>. Engineered local-first for standalone developers, with end-to-end encrypted collaboration for Enterprise teams.
             </p>
             <div className="mt-6 inline-flex items-center gap-2 font-mono text-xs text-on-surface-muted">
-              <span>Last Updated: August 7, 2026</span>
+              <span>Last Updated: August 20, 2026</span>
               <span>•</span>
-              <span className="text-primary font-medium">Effective Version 0.2.0+ (Free &amp; Enterprise)</span>
+              <span className="text-primary font-medium">Effective Version 0.2.1+ (Free &amp; Enterprise)</span>
             </div>
           </div>
 

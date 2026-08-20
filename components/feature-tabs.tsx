@@ -27,32 +27,32 @@ const tabs: { id: TabId; label: string; icon: typeof Globe }[] = [
 
 const bullets: Record<TabId, string[]> = {
   tunnels: [
-    "Active Internet Connectivity Guard with edge pings",
-    "One-click Cloudflare & Localtunnel public HTTPS URLs",
-    "Target Route Badges (Edge, Public Tunnel, Loopback)",
+    "Proxync Native SSH High-Throughput Tunnels (Ed25519, 2222 direct origin)",
+    "Active Internet Connectivity Guard with live edge ping verification",
+    "Zero-Trace TempDirGuard security & 1-click Stop All batch teardown",
   ],
   traffic: [
-    "Immutable request ID tracking — zero dropdown collapse",
-    "Headers HashMap, body previews, and status code matching",
-    "1-click send to Playground & Observability",
+    "Multi-tunnel traffic segregation with deterministic port & server attribution",
+    "Automated bot probe & vulnerability scanner noise filter (/.env, /.git)",
+    "Headers HashMap, body preview, and 1-click Playground request replay",
   ],
   postman: [
-    "Generic Replay Engine executing native Rust HTTP requests",
-    "Glass context menus, hotkeys modal (Ctrl+/), and collections rail",
-    "Target Route Badges next to Send button",
+    "Generic Replay Engine executing native Rust HTTP requests across all methods",
+    "Target Route Badges (Proxync Native, Cloudflare Edge, Public Tunnel, Local Loopback)",
+    "Glass right-click context menu, collections rail, and hotkeys modal (Ctrl+/)",
   ],
   swagger: [
-    "Multi-Framework Codebase Scanner (Express, NestJS, FastAPI, Go, etc.)",
-    "Traffic-driven OpenAPI 3.0 schema inference",
-    "2-way collection export & code snippet generator",
+    "Dynamic Netstat Full-Port Discovery across IPv4/IPv6 & single bulk WMI recon",
+    "Incremental OpenAPI 3.0 spec ingestion with dynamic URL path parameterization",
+    "Multi-framework scanner (Next.js, Vite, FastAPI, NestJS, Go, Spring Boot)",
   ],
 };
 
 const chips: { icon: typeof Globe; label: string }[] = [
-  { icon: Radar, label: "Codebase Route Scanner" },
-  { icon: Settings2, label: "Active Connectivity Guard" },
+  { icon: Radar, label: "Dynamic Netstat Port Scanner" },
+  { icon: Globe, label: "Native SSH & Cloudflare Tunnels" },
   { icon: Send, label: "Playground Replay Engine" },
-  { icon: Cpu, label: "Rust-Powered Speed" },
+  { icon: Cpu, label: "Pro Debugger & Rust Core" },
 ];
 
 function Bullets({ items }: { items: string[] }) {
@@ -72,11 +72,11 @@ function TunnelsMockup() {
   return (
     <div className="flex min-h-[260px] w-full min-w-0 flex-col justify-center rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-4 sm:p-5">
       <div className="flex items-center gap-2 font-mono text-[11px] tracking-wide text-on-surface-muted min-w-0">
-        <span className="h-2 w-2 shrink-0 rounded-full bg-tertiary animate-pulse-dot" />
-        <span className="truncate">cloudflared tunnel · running</span>
+        <span className="h-2 w-2 shrink-0 rounded-full bg-primary animate-pulse-dot" />
+        <span className="truncate">proxync native ssh · running (origin :2222)</span>
       </div>
       <div className="mt-3 font-mono text-xs font-semibold text-primary break-all sm:text-sm md:text-base max-w-full leading-tight">
-        https://proxync-1cf8-7a4e.trycloudflare.com
+        https://px-a1b2c3d4.proxync.dev/
       </div>
       <div className="mt-2 font-mono text-[11px] tracking-wide text-on-surface-muted">
         1,284 req · 40 req/min
@@ -238,7 +238,7 @@ function SwaggerMockup() {
         </div>
         <div className="pl-8">
           <span className="text-on-surface-muted">servers:</span>{" "}
-          <span className="text-tertiary">https://*.trycloudflare.com</span>
+          <span className="text-tertiary">https://px-*.proxync.dev</span>
         </div>
         <div>
           <span className="text-on-surface-variant">paths:</span>
