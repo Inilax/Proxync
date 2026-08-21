@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import type { SavedRequest, PostmanResponse, Tunnel } from './SharedComponents';
+import type { SavedRequest, PostmanResponse, Tunnel, ProcessCandidate } from './SharedComponents';
 import { formatHeaders, stripMethodPrefix } from './SharedComponents';
 import { showToast } from '../../lib/toast';
 import { importSwaggerToSavedRequests, importPostmanToOpenApi } from '../../lib/openApiGenerator';
@@ -11,7 +11,11 @@ export function PostmanView({
   sending,
   starterSuggestions,
   activeTunnel,
+  tunnels = [],
+  processes = [],
   selectedProcessPort,
+  onSelectTunnel,
+  onSelectProcessPort,
   onDraftChange,
   onHeaderTextChange,
   onRun,
@@ -21,6 +25,7 @@ export function PostmanView({
   onDeleteRequest,
   onUpdateSavedRequests,
   onOpenWorkbench,
+  onClearResponse,
 }: {
   draft: SavedRequest;
   savedRequests: SavedRequest[];
@@ -28,7 +33,12 @@ export function PostmanView({
   sending: boolean;
   starterSuggestions: SavedRequest[];
   activeTunnel: Tunnel | null;
+  tunnels?: Tunnel[];
+  processes?: ProcessCandidate[];
   selectedProcessPort?: number;
+  onSelectTunnel?: (tunnel: Tunnel | null) => void;
+  onSelectProcessPort?: (port: number | null) => void;
+  onClearResponse?: () => void;
   onDraftChange: (request: SavedRequest) => void;
   onHeaderTextChange: (value: string) => void;
   onRun: () => void;
@@ -39,12 +49,6 @@ export function PostmanView({
   onUpdateSavedRequests?: (next: SavedRequest[]) => void;
   onOpenWorkbench?: (request: SavedRequest) => void;
 }) {
-  const routeTarget = activeTunnel
-    ? activeTunnel.publicUrl.includes('trycloudflare.com')
-      ? 'Cloudflare Edge'
-      : 'Public Tunnel'
-    : 'Local Loopback';
-
   // Request Sub-Tabs: 'body' | 'headers' | 'auth' | 'response'
   const [requestTab, setRequestTab] = useState<'body' | 'headers' | 'auth' | 'response'>('body');
   const [responseSubTab, setResponseSubTab] = useState<'body' | 'headers'>('body');
@@ -767,13 +771,79 @@ export function PostmanView({
             aria-label="Request URL or path"
           />
 
-          <span
-            className={`route-badge ${activeTunnel ? 'route-tunnel' : 'route-local'}`}
-            title={activeTunnel?.publicUrl ?? `http://localhost:${selectedProcessPort ?? 3000}`}
-          >
-            <span className="route-dot" aria-hidden="true" />
-            {routeTarget}
-          </span>
+          {/* Target Environment & Public Tunnel Dropdown Selector */}
+          <div className="relative shrink-0 flex items-center">
+            <select
+              className={`route-badge cursor-pointer appearance-none pr-6 pl-2.5 py-1 font-mono text-[11px] font-bold rounded-lg border focus:outline-none transition-all ${
+                activeTunnel
+                  ? 'route-tunnel border-primary/50 bg-primary/10 text-primary hover:bg-primary/15'
+                  : 'route-local border-outline-variant/40 bg-surface-container-high text-on-surface hover:border-primary/40'
+              }`}
+              value={
+                activeTunnel
+                  ? `tunnel-${activeTunnel.id}`
+                  : selectedProcessPort
+                  ? `local-${selectedProcessPort}`
+                  : 'local-default'
+              }
+              onChange={(e) => {
+                const val = e.target.value;
+                if (onClearResponse) onClearResponse();
+                if (val.startsWith('tunnel-')) {
+                  const tId = val.replace('tunnel-', '');
+                  const chosen = tunnels.find((t) => t.id === tId) || null;
+                  if (chosen && onSelectTunnel) {
+                    onSelectTunnel(chosen);
+                    showToast(`Target switched to Public Tunnel: ${chosen.publicUrl}`, 'info');
+                  }
+                } else if (val.startsWith('local-')) {
+                  const portStr = val.replace('local-', '');
+                  const port = parseInt(portStr, 10);
+                  if (onSelectTunnel) onSelectTunnel(null);
+                  if (onSelectProcessPort && !isNaN(port)) {
+                    onSelectProcessPort(port);
+                    showToast(`Target switched to Localhost (:${port})`, 'info');
+                  }
+                }
+              }}
+              title={`Target Base URL: ${activeTunnel ? activeTunnel.publicUrl : `http://localhost:${selectedProcessPort || 3000}`}\n(Click to switch target public tunnel or local server)`}
+            >
+              {tunnels.length > 0 && (
+                <optgroup label="── Active Public Tunnels ──">
+                  {tunnels.map((t) => {
+                    let displayHost = t.subdomain || '';
+                    try {
+                      displayHost = new URL(t.publicUrl).hostname;
+                    } catch {
+                      displayHost = t.publicUrl;
+                    }
+                    return (
+                      <option key={t.id} value={`tunnel-${t.id}`} className="bg-surface-container-high text-primary font-mono">
+                        🌐 {displayHost} (:{t.localPort})
+                      </option>
+                    );
+                  })}
+                </optgroup>
+              )}
+
+              <optgroup label="── Local Servers ──">
+                {processes.length > 0 ? (
+                  processes.map((p) => (
+                    <option key={p.id} value={`local-${p.port}`} className="bg-surface-container-high text-on-surface font-mono">
+                      ⚡ Localhost (:{p.port}) {p.name ? `[${p.name}]` : ''}
+                    </option>
+                  ))
+                ) : (
+                  <option value="local-default" className="bg-surface-container-high text-on-surface font-mono">
+                    ⚡ Localhost (:{selectedProcessPort || 3000})
+                  </option>
+                )}
+              </optgroup>
+            </select>
+            <span className="material-symbols-outlined absolute right-1.5 pointer-events-none text-[13px] text-outline">
+              unfold_more
+            </span>
+          </div>
 
           <button
             className="btn-primary shrink-0 font-bold px-4 py-2 rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-md hover:scale-[1.01] transition-transform"
