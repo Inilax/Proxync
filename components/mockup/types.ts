@@ -8,23 +8,51 @@ import {
   LayoutGrid,
   Send,
   Settings,
+  Zap,
 } from "lucide-react";
 
-export const TUNNEL_URL = "https://proxync.dev";
+export const TUNNEL_URL = "https://px-a1b2c3d4.proxync.dev";
 
-export const NAV_ITEMS = [
-  { view: "welcome", label: "Explore", icon: Compass },
-  { view: "lobby", label: "Workspaces", icon: LayoutGrid },
-  { view: "process", label: "Tunnels", icon: Globe },
-  { view: "traffic", label: "Traffic", icon: Activity },
-  { view: "postman", label: "Playground", icon: Send },
-  { view: "swagger", label: "Swagger", icon: Code2 },
-  { view: "docs", label: "Docs", icon: BookOpen },
-  { view: "observability", label: "Observability", icon: BarChart3 },
-  { view: "settings", label: "Settings", icon: Settings },
+export const NAV_CATEGORIES = [
+  {
+    category: "OVERVIEW",
+    items: [
+      { view: "welcome", label: "Explore", icon: Compass },
+      { view: "lobby", label: "Workspace Hub", icon: LayoutGrid },
+    ],
+  },
+  {
+    category: "DEVELOPMENT & NETWORK",
+    items: [
+      { view: "process", label: "Tunnels", icon: Globe },
+      { view: "traffic", label: "Traffic", icon: Activity },
+      { view: "postman", label: "Playground", icon: Send },
+      { view: "workbench", label: "Workbench", icon: Zap },
+      { view: "swagger", label: "Swagger", icon: Code2 },
+    ],
+  },
+  {
+    category: "OBSERVABILITY & TOOLS",
+    items: [
+      { view: "observability", label: "Observability", icon: BarChart3 },
+      { view: "docs", label: "Docs", icon: BookOpen },
+      { view: "settings", label: "Settings", icon: Settings },
+    ],
+  },
 ] as const;
 
-export type ViewId = (typeof NAV_ITEMS)[number]["view"];
+export type ViewId =
+  | "welcome"
+  | "lobby"
+  | "process"
+  | "traffic"
+  | "postman"
+  | "workbench"
+  | "swagger"
+  | "observability"
+  | "docs"
+  | "settings";
+
 export type ThemeId = "slate" | "dracula" | "cyberpunk" | "emerald";
 
 export interface Process {
@@ -35,9 +63,10 @@ export interface Process {
 }
 
 export const PROCESSES: Process[] = [
-  { name: "Vite server", port: 5173, pid: 14292, framework: "Vite / React" },
-  { name: "FastAPI app", port: 8000, pid: 8921, framework: "FastAPI / Python" },
-  { name: "Next.js app", port: 3000, pid: 1104, framework: "Next.js / Node" },
+  { name: "Vite dev server", port: 5173, pid: 14292, framework: "Vite / React" },
+  { name: "FastAPI backend", port: 8000, pid: 8921, framework: "FastAPI / Python" },
+  { name: "Next.js app", port: 3000, pid: 1104, framework: "Next.js / TypeScript" },
+  { name: "NestJS microservice", port: 4000, pid: 6520, framework: "NestJS / Node" },
 ];
 
 export interface Row {
@@ -46,16 +75,18 @@ export interface Row {
   path: string;
   status: number;
   latency: string;
-  targetBadge: "Cloudflare Edge" | "Public Tunnel" | "Local Loopback";
+  port: number;
+  serverName: string;
+  targetBadge: "Proxync Native" | "Cloudflare Edge" | "Public Tunnel" | "Local Loopback";
   active?: boolean;
 }
 
 export const ROWS: Row[] = [
-  { id: "req-1", method: "GET", path: "/api/v1/users", status: 200, latency: "14ms", targetBadge: "Cloudflare Edge", active: true },
-  { id: "req-2", method: "POST", path: "/api/v1/session", status: 201, latency: "42ms", targetBadge: "Cloudflare Edge" },
-  { id: "req-3", method: "GET", path: "/api/v1/health", status: 200, latency: "2ms", targetBadge: "Local Loopback" },
-  { id: "req-4", method: "PUT", path: "/api/v1/users/42", status: 200, latency: "31ms", targetBadge: "Public Tunnel" },
-  { id: "req-5", method: "DELETE", path: "/api/v1/users/42", status: 404, latency: "11ms", targetBadge: "Cloudflare Edge" },
+  { id: "req-1", method: "GET", path: "/api/v1/users", status: 200, latency: "14ms", port: 5173, serverName: "Vite (:5173)", targetBadge: "Proxync Native", active: true },
+  { id: "req-2", method: "POST", path: "/api/v1/session", status: 201, latency: "42ms", port: 8000, serverName: "FastAPI (:8000)", targetBadge: "Cloudflare Edge" },
+  { id: "req-3", method: "GET", path: "/api/v1/health", status: 200, latency: "2ms", port: 5173, serverName: "Vite (:5173)", targetBadge: "Local Loopback" },
+  { id: "req-4", method: "PUT", path: "/api/v1/users/42", status: 200, latency: "31ms", port: 4000, serverName: "NestJS (:4000)", targetBadge: "Proxync Native" },
+  { id: "req-5", method: "DELETE", path: "/api/v1/users/42", status: 404, latency: "11ms", port: 8000, serverName: "FastAPI (:8000)", targetBadge: "Cloudflare Edge" },
 ];
 
 export const METHOD_STYLE: Record<Row["method"], string> = {

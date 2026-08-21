@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, Search, Send, Trash2, XCircle } from "lucide-react";
+import { CheckCircle2, Search, Send, Trash2, XCircle, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { METHOD_BADGE, METHOD_STYLE, ROWS, STATUS_STYLE } from "./types";
 
@@ -10,7 +10,7 @@ export function TrafficView() {
   const selectedRow = ROWS.find((r) => r.id === selectedId) || ROWS[0];
 
   return (
-    <div className="flex h-[490px] w-full p-4 gap-3 fade-in select-none items-stretch">
+    <div className="flex h-full w-full p-3.5 gap-3 fade-in select-none items-stretch overflow-hidden font-mono">
       {/* Left Table Panel */}
       <div className="min-w-0 flex-1 flex flex-col justify-between rounded-xl border border-outline-variant/30 bg-surface-container p-4 space-y-3">
         {/* Header */}
@@ -37,19 +37,27 @@ export function TrafficView() {
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-2 p-2 bg-surface-container-lowest rounded-xl border border-outline-variant/30">
-          <div className="flex-1 min-w-[160px] relative">
+          <div className="flex-1 min-w-[140px] relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-outline h-3.5 w-3.5" />
             <input
               type="text"
               className="w-full bg-surface-container-low border border-outline-variant/30 rounded-lg pl-8 pr-2 py-1 text-xs text-on-surface placeholder:text-outline focus:outline-none"
-              placeholder="Filter requests by path or status..."
+              placeholder="Filter by path, port or status..."
               defaultValue="/api/v1"
             />
           </div>
           <select className="text-xs bg-surface-container-low border border-outline-variant/30 rounded-lg px-2 py-1 text-on-surface font-mono cursor-pointer">
+            <option>All Servers</option>
+            <option>Vite (:5173)</option>
+            <option>FastAPI (:8000)</option>
+            <option>NestJS (:4000)</option>
+          </select>
+          <select className="text-xs bg-surface-container-low border border-outline-variant/30 rounded-lg px-2 py-1 text-on-surface font-mono cursor-pointer">
             <option>All Methods</option>
             <option>GET</option>
             <option>POST</option>
+            <option>PUT</option>
+            <option>DELETE</option>
           </select>
           <select className="text-xs bg-surface-container-low border border-outline-variant/30 rounded-lg px-2 py-1 text-on-surface font-mono cursor-pointer">
             <option>All Statuses</option>
@@ -64,7 +72,8 @@ export function TrafficView() {
             <div className="w-16 shrink-0">Method</div>
             <div className="w-20 shrink-0">Status</div>
             <div className="flex-1 min-w-0">Request Path</div>
-            <div className="w-16 shrink-0 text-right">Time</div>
+            <div className="w-24 shrink-0 text-right">Server</div>
+            <div className="w-14 shrink-0 text-right">Time</div>
             <div className="w-28 shrink-0 text-right">Target</div>
           </div>
 
@@ -88,7 +97,10 @@ export function TrafficView() {
                   {row.status}
                 </div>
                 <div className="flex-1 min-w-0 truncate text-on-surface">{row.path}</div>
-                <div className="w-16 shrink-0 text-right text-on-surface-variant text-[11px]">{row.latency}</div>
+                <div className="w-24 shrink-0 text-right text-primary text-[11px] font-bold truncate">
+                  {row.serverName}
+                </div>
+                <div className="w-14 shrink-0 text-right text-on-surface-variant text-[11px]">{row.latency}</div>
                 <div className="w-28 shrink-0 text-right font-bold text-tertiary text-[10px] truncate">
                   {row.targetBadge}
                 </div>
@@ -97,8 +109,8 @@ export function TrafficView() {
           </div>
 
           <div className="border-t border-outline-variant/20 bg-surface-container-low px-3 py-1.5 font-mono text-[10px] text-outline flex items-center justify-between gap-2">
-            <span className="truncate">5 requests intercepted on port 5173</span>
-            <span className="hidden md:inline text-secondary font-bold shrink-0">● Live Inspector Active</span>
+            <span className="truncate">5 requests intercepted across ports 5173, 8000, 4000</span>
+            <span className="hidden md:inline text-secondary font-bold shrink-0">● Multi-Tunnel Segregation Active</span>
           </div>
         </div>
       </div>
@@ -124,7 +136,7 @@ export function TrafficView() {
             <div className="bg-surface-container p-2.5 rounded-lg space-y-1 text-[11px]">
               <div><span className="text-outline">content-type:</span> <span className="text-on-surface">application/json</span></div>
               <div><span className="text-outline">authorization:</span> <span className="text-on-surface">Bearer ••••••••</span></div>
-              <div><span className="text-outline">user-agent:</span> <span className="text-on-surface">Proxync-Desktop/0.2.0</span></div>
+              <div><span className="text-outline">user-agent:</span> <span className="text-on-surface">Proxync-Desktop/0.2.1</span></div>
             </div>
           </div>
 
@@ -136,13 +148,22 @@ export function TrafficView() {
           </div>
         </div>
 
-        <button
-          type="button"
-          className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 font-mono text-xs font-bold text-on-primary hover:bg-primary/90 transition-all shadow-sm shadow-primary/25 cursor-pointer"
-        >
-          <Send className="h-3.5 w-3.5" />
-          Send to Playground
-        </button>
+        <div className="flex flex-col gap-1.5 pt-2">
+          <button
+            type="button"
+            className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 font-mono text-xs font-bold text-on-primary hover:bg-primary/90 transition-all shadow-sm shadow-primary/25 cursor-pointer"
+          >
+            <Zap className="h-3.5 w-3.5" />
+            Replay in Workbench
+          </button>
+          <button
+            type="button"
+            className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-outline-variant/40 bg-surface-container px-3 py-1.5 font-mono text-[11px] font-medium text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all cursor-pointer"
+          >
+            <Send className="h-3 w-3" />
+            Send to Playground
+          </button>
+        </div>
       </aside>
     </div>
   );

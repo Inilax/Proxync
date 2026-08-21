@@ -9,7 +9,7 @@ import { useCloudflareLatency } from "./latency";
 
 const STATS = [
   { value: "12MB", label: "Binary Size" },
-  { value: "—", label: "Cloud Latency" },
+  { value: "—", label: "Edge Ping" },
   { value: "100%", label: "Local Storage" },
 ];
 
@@ -93,10 +93,10 @@ export function Hero() {
             {STATS.map((stat) => (
               <div key={stat.label} className="flex flex-col gap-1.5 px-4 first:pl-0">
                 <span className="text-2xl font-semibold text-on-surface">
-                  {stat.label === "Cloud Latency" ? latencyValue : stat.value}
+                  {stat.label === "Edge Ping" ? latencyValue : stat.value}
                 </span>
                 <span className="font-mono text-[11px] uppercase tracking-widest text-outline">
-                  {stat.label === "Cloud Latency" && latency.status !== "pinging"
+                  {stat.label === "Edge Ping" && latency.status !== "pinging"
                     ? `${stat.label} (live)`
                     : stat.label}
                 </span>
@@ -114,7 +114,7 @@ export function Hero() {
             </span>
           </div>
 
-          <div className="glass absolute -bottom-5 left-4 z-20 hidden animate-float items-center gap-2 rounded-full border border-secondary/30 bg-surface-container-low/90 px-3.5 py-2 font-mono text-[11px] text-on-surface-variant shadow-xl backdrop-blur-md md:flex lg:-left-8 [animation-delay:2.5s]">
+          <div className="glass absolute -bottom-4 left-4 z-20 hidden animate-float items-center gap-2 rounded-full border border-secondary/30 bg-surface-container-low/90 px-3.5 py-2 font-mono text-[11px] text-on-surface-variant shadow-xl backdrop-blur-md md:flex lg:-left-4 lg:-bottom-4 [animation-delay:2.5s]">
             <Zap className="h-3.5 w-3.5 text-secondary" />
             <span>
               <strong className="font-bold text-secondary">● Real-Time Traffic Inspector</strong> — Monitoring :5173

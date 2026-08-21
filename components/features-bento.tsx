@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Eye, FileCode, Layers, Lock, Zap } from "lucide-react";
+import { Bug, Cpu, FileCode, Globe, Layers, Lock, Radar, ShieldCheck, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Card, Container, Eyebrow } from "@/components/ui";
 import { Reveal } from "@/components/reveal";
@@ -51,14 +51,14 @@ function YamlSnippet() {
         <span className="text-secondary">paths:</span>
       </div>
       <div className="pl-4">
-        <span className="text-on-surface-variant">/users:</span>
+        <span className="text-on-surface-variant">/users/&#123;id&#125;:</span>
       </div>
       <div className="pl-8">
         <span className="text-tertiary">get:</span>
       </div>
       <div className="pl-12">
         <span className="text-on-surface-muted">summary:</span>{" "}
-        <span className="text-on-surface">Get users</span>
+        <span className="text-on-surface">Get user by ID</span>
       </div>
       <div className="pl-12">
         <span className="text-on-surface-muted">responses:</span>
@@ -105,10 +105,10 @@ export function FeaturesBento() {
           <Reveal delay={0} className="md:col-span-2 lg:col-span-4">
             <Card className="group flex h-full flex-col p-6 md:p-8">
               <IconTile icon={Layers} tone="primary" />
-              <CardHeading>Unified Workspace</CardHeading>
+              <CardHeading>Unified Developer Workspace</CardHeading>
               <CardCopy>
-                Proxync replaces ngrok, Postman, Wireshark, and half your terminal tabs with a
-                single, high-performance engine.
+                Proxync replaces ngrok, Postman, Wireshark, and terminal tabs with a single,
+                high-performance local-first studio.
               </CardCopy>
               <div className="mt-auto pt-8">
                 <div className="flex items-end gap-3 translate-y-4 transition-transform duration-500 group-hover:translate-y-0">
@@ -125,19 +125,19 @@ export function FeaturesBento() {
 
           <Reveal delay={0.08} className="lg:col-span-2">
             <Card className="group flex h-full flex-col p-6 md:p-8">
-              <IconTile icon={Lock} tone="tertiary" />
-              <CardHeading>Local-First & Configurable</CardHeading>
+              <IconTile icon={Radar} tone="tertiary" />
+              <CardHeading>Dynamic Netstat Discovery</CardHeading>
               <CardCopy>
-                Your API keys, secrets, and traffic data stay on your machine. Choose Enhanced or Basic Low-CPU local telemetry.
+                Scans all listening services across IPv4 and IPv6 on any port. Single bulk WMI recon identifies frameworks with zero port hardcoding.
               </CardCopy>
               <div className="mt-auto pt-8">
-                <div className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3">
-                  <div className="flex items-center gap-2 font-mono text-[11px] font-semibold tracking-[0.14em] text-tertiary">
-                    <span className="h-1.5 w-1.5 rounded-full bg-tertiary animate-pulse-dot" />
-                    Data Residency — Local Storage
+                <div className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3 font-mono text-[11px]">
+                  <div className="flex items-center justify-between text-tertiary">
+                    <span className="font-bold">netstat -ano</span>
+                    <span className="text-[10px] text-outline">IPv4 + IPv6</span>
                   </div>
-                  <div className="mt-2.5 h-1 w-full overflow-hidden rounded-full bg-surface-variant">
-                    <div className="h-full w-full rounded-full bg-tertiary" />
+                  <div className="mt-2 text-on-surface truncate">
+                    → Next.js (:3000), Vite (:5173), FastAPI (:8000)
                   </div>
                 </div>
               </div>
@@ -146,34 +146,41 @@ export function FeaturesBento() {
 
           <Reveal delay={0.16} className="lg:col-span-2">
             <Card className="group flex h-full flex-col p-6 md:p-8">
-              <IconTile icon={Eye} tone="secondary" />
-              <CardHeading>Deep Visibility</CardHeading>
+              <IconTile icon={Bug} tone="secondary" />
+              <CardHeading>Pro Debugger & Dual-Stream Logs</CardHeading>
               <CardCopy>
-                Live intercepting TCP proxy that captures every byte. Search, filter, and replay
-                requests instantly.
+                Native Rust disk logging with structured AI diagnostic directives, automatic PII token redaction, and 1-click support bundle export.
               </CardCopy>
+              <div className="mt-auto pt-6">
+                <div className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-2.5 font-mono text-[10px] space-y-1">
+                  <div className="text-secondary font-bold">● app.log (Diagnostics Enabled)</div>
+                  <div className="text-outline">● traffic.log (Stream On-Demand)</div>
+                </div>
+              </div>
             </Card>
           </Reveal>
 
           <Reveal delay={0.24} className="md:col-span-2 lg:col-span-4">
             <Card className="group flex h-full flex-col p-6 md:p-8 lg:flex-row lg:items-center">
               <div className="lg:mr-12 lg:flex-1">
-                <IconTile icon={FileCode} tone="primary" />
-                <CardHeading>Auto-OpenAPI Gen</CardHeading>
+                <IconTile icon={Zap} tone="primary" />
+                <CardHeading>Request Workbench &amp; 1-Click IDE Jumping</CardHeading>
                 <CardCopy>
-                  Don&apos;t write docs. Proxync observes your local traffic and automatically builds
-                  live, interactive OpenAPI specifications as you develop.
+                  Stage multi-tab HTTP drafts, benchmark latency in milliseconds, diff live replay payloads against captured production traffic, and jump directly to the controller source code in VS Code or Cursor at the exact line number.
                 </CardCopy>
               </div>
               <div className="mt-8 hidden shrink-0 lg:mt-0 lg:block">
-                <div className="rotate-2 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4 font-mono text-[11px] opacity-80 shadow-card">
-                  <div className="mb-3 flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-error/50" />
-                    <span className="h-2 w-2 rounded-full bg-secondary/50" />
-                    <span className="h-2 w-2 rounded-full bg-tertiary/50" />
-                    <span className="ml-2 text-on-surface-muted">openapi.yaml</span>
+                <div className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4 font-mono text-[11px] opacity-90 shadow-card space-y-2">
+                  <div className="flex items-center justify-between text-secondary font-bold">
+                    <span>⚡ Replay #3 (200 OK · 18ms)</span>
+                    <span className="text-[10px] text-outline">VS Code :42</span>
                   </div>
-                  <YamlSnippet />
+                  <div className="text-[10px] text-outline">
+                    Diff: <span className="text-secondary">+ &quot;refreshed&quot;: true</span>
+                  </div>
+                  <div className="text-[10px] text-primary">
+                    Export: cURL · Fetch · Python · Go · Rust
+                  </div>
                 </div>
               </div>
             </Card>
@@ -185,16 +192,15 @@ export function FeaturesBento() {
                 <IconTile icon={Zap} tone="primary" />
               </div>
               <div className="lg:mr-auto">
-                <CardHeading>Rust-Powered Speed</CardHeading>
+                <CardHeading>Modular Rust Engine & Native SSH Tunnels</CardHeading>
                 <CardCopy>
-                  Built with Tauri v2. Consumes 90% less RAM than traditional Electron-based API
-                  clients.
+                  Built with Tauri v2 and decoupled domain modules. Direct origin port 2222 routing, Ed25519 JIT TLS certs, and 90% less RAM than Electron.
                 </CardCopy>
               </div>
               <div className="grid shrink-0 grid-cols-3 gap-3">
                 <Stat value="90%" label="less RAM" />
-                <Stat value="Rust" label="core engine" />
-                <Stat value="Local" label="only" />
+                <Stat value="Ed25519" label="Zero-Trace SSH" />
+                <Stat value="v0.2.1" label="Modular Core" />
               </div>
             </Card>
           </Reveal>

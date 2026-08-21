@@ -1,6 +1,4 @@
-"use client";
-
-import { Key } from "lucide-react";
+import { Bug, Download, FileText, FolderOpen, Key, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeId, TUNNEL_URL } from "./types";
 
@@ -12,12 +10,87 @@ export function SettingsView({
   onThemeChange: (t: ThemeId) => void;
 }) {
   return (
-    <div className="space-y-6 p-6 fade-in select-none">
-      <div className="flex items-center justify-between border-b border-outline-variant/30 pb-4">
-        <h1 className="text-xl font-bold text-on-surface">Settings &amp; Engine Preferences</h1>
-        <span className="rounded-full border border-primary/40 bg-primary/10 px-3 py-1 font-mono text-xs font-bold text-primary">
-          Smart Auto-Updater Active
-        </span>
+    <div className="space-y-3.5 p-4 fade-in select-none h-full overflow-y-auto">
+      <div className="flex items-center justify-between border-b border-outline-variant/30 pb-3">
+        <div>
+          <h1 className="text-lg font-bold text-on-surface">Settings &amp; Engine Preferences</h1>
+          <p className="text-xs text-on-surface-variant mt-0.5">
+            System configuration, theme selection, diagnostics &amp; security radar
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full border border-tertiary/40 bg-tertiary/10 px-2.5 py-0.5 font-mono text-[11px] font-bold text-tertiary flex items-center gap-1">
+            <ShieldCheck className="h-3 w-3" />
+            CVE Radar Active
+          </span>
+        </div>
+      </div>
+
+      {/* Pro Debugger & Dual-Stream Logging Engine (v0.2.1) */}
+      <div className="rounded-xl border border-secondary/30 bg-surface-container p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Bug className="h-4 w-4 text-secondary" />
+            <span className="font-mono text-xs font-bold uppercase tracking-wider text-on-surface">
+              Pro Debugger &amp; Dual-Stream Logging Engine
+            </span>
+          </div>
+          <span className="font-mono text-[10px] text-secondary font-bold">Native Rust storage.rs</span>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-3 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-xs font-bold text-primary">app.log</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/30 font-bold">
+                ✓ Enabled (Default)
+              </span>
+            </div>
+            <p className="text-[11px] text-on-surface-variant">
+              Engine lifecycle, recon scans, proxy binds, tunnel events &amp; crashes.
+            </p>
+            <div className="font-mono text-[10px] text-outline pt-1">
+              Ring buffer: 1,000 entries · PII Redacted
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-3 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-xs font-bold text-on-surface">traffic.log</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-surface-container-high text-on-surface-variant border border-outline-variant/40 font-bold">
+                Stream On-Demand
+              </span>
+            </div>
+            <p className="text-[11px] text-on-surface-variant">
+              Full HTTP request/response payloads, headers, and JSONL latencies.
+            </p>
+            <div className="font-mono text-[10px] text-outline pt-1">
+              Ring buffer: 2,000 entries · Zero overhead
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between pt-1 gap-2 border-t border-outline-variant/20">
+          <div className="font-mono text-[10px] text-outline truncate">
+            Path: %APPDATA%/Proxync/logs (42.8 KB)
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-lg border border-outline-variant/40 bg-surface-container-low px-2.5 py-1 font-mono text-[11px] font-bold text-on-surface hover:bg-surface-container-high transition-all cursor-pointer"
+            >
+              <FolderOpen className="h-3 w-3 text-outline" />
+              Open Folder
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1 font-mono text-[11px] font-bold text-on-primary hover:bg-primary/90 transition-all shadow-sm shadow-primary/25 cursor-pointer"
+            >
+              <Download className="h-3 w-3" />
+              Export Support Bundle
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Theme Selector */}
@@ -56,20 +129,20 @@ export function SettingsView({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {[
           { label: "Active Workspace", value: "proxync-workspace" },
           { label: "Telemetry Mode", value: "Enhanced (P50/P90/P99)" },
-          { label: "Active Tunnel", value: TUNNEL_URL, mono: true },
+          { label: "Active Tunnel", value: "https://px-a1b2c3d4.proxync.dev", mono: true },
         ].map((tile) => (
-          <div key={tile.label} className="rounded-xl border border-outline-variant/30 bg-surface-container p-4">
+          <div key={tile.label} className="rounded-xl border border-outline-variant/30 bg-surface-container p-3.5">
             <span className="font-mono text-[10px] uppercase tracking-wider text-outline font-bold">
               {tile.label}
             </span>
             <div
               className={cn(
-                "mt-1 truncate text-sm font-bold text-on-surface",
-                tile.mono && "font-mono text-xs text-secondary",
+                "mt-1 truncate text-xs font-bold text-on-surface",
+                tile.mono && "font-mono text-secondary",
               )}
             >
               {tile.value}
@@ -106,7 +179,7 @@ export function SettingsView({
             </div>
           </div>
           <span className="rounded border border-primary/40 bg-primary/20 px-3 py-1 font-mono text-xs font-bold text-primary">
-            v0.2.0 Enterprise Preview
+            v0.2.1 Enterprise Preview
           </span>
         </div>
       </div>

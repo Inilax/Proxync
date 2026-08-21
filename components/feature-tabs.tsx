@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import {
   Activity,
   Check,
+  Code2,
   Copy,
   Cpu,
   FileCode,
@@ -12,47 +13,55 @@ import {
   Radar,
   Send,
   Settings2,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Container, SectionHeader } from "@/components/ui";
 
-type TabId = "tunnels" | "traffic" | "postman" | "swagger";
+type TabId = "tunnels" | "traffic" | "postman" | "workbench" | "swagger";
 
 const tabs: { id: TabId; label: string; icon: typeof Globe }[] = [
   { id: "tunnels", label: "Tunnels", icon: Globe },
   { id: "traffic", label: "Traffic", icon: Activity },
   { id: "postman", label: "Playground", icon: Send },
+  { id: "workbench", label: "Workbench", icon: Zap },
   { id: "swagger", label: "Swagger", icon: FileCode },
 ];
 
 const bullets: Record<TabId, string[]> = {
   tunnels: [
-    "Active Internet Connectivity Guard with edge pings",
-    "One-click Cloudflare & Localtunnel public HTTPS URLs",
-    "Target Route Badges (Edge, Public Tunnel, Loopback)",
+    "Proxync Native SSH High-Throughput Tunnels (Ed25519, 2222 direct origin)",
+    "Active Internet Connectivity Guard with live edge ping verification",
+    "Zero-Trace TempDirGuard security & 1-click Stop All batch teardown",
   ],
   traffic: [
-    "Immutable request ID tracking — zero dropdown collapse",
-    "Headers HashMap, body previews, and status code matching",
-    "1-click send to Playground & Observability",
+    "Multi-tunnel traffic segregation with deterministic port & server attribution",
+    "Automated bot probe & vulnerability scanner noise filter (/.env, /.git)",
+    "Headers HashMap, body preview, and 1-click Playground & Workbench request replay",
   ],
   postman: [
-    "Generic Replay Engine executing native Rust HTTP requests",
-    "Glass context menus, hotkeys modal (Ctrl+/), and collections rail",
-    "Target Route Badges next to Send button",
+    "Generic Replay Engine executing native Rust HTTP requests across all methods",
+    "Target Route Badges (Proxync Native, Cloudflare Edge, Public Tunnel, Local Loopback)",
+    "Glass right-click context menu, collections rail, and hotkeys modal (Ctrl+/)",
+  ],
+  workbench: [
+    "Multi-tab live execution engine with ms-precision latency & status benchmarking",
+    "Side-by-side & unified visual response diffing comparing captured vs live replay payloads",
+    "1-Click IDE jumping (VS Code / Cursor at exact file:line) & 5-language code export (cURL, Fetch, Python, Go, Rust)",
   ],
   swagger: [
-    "Multi-Framework Codebase Scanner (Express, NestJS, FastAPI, Go, etc.)",
-    "Traffic-driven OpenAPI 3.0 schema inference",
-    "2-way collection export & code snippet generator",
+    "Dynamic Netstat Full-Port Discovery across IPv4/IPv6 & single bulk WMI recon",
+    "Incremental OpenAPI 3.0 spec ingestion with dynamic URL path parameterization",
+    "Multi-framework scanner (Next.js, Vite, FastAPI, NestJS, Go, Spring Boot)",
   ],
 };
 
 const chips: { icon: typeof Globe; label: string }[] = [
-  { icon: Radar, label: "Codebase Route Scanner" },
-  { icon: Settings2, label: "Active Connectivity Guard" },
+  { icon: Radar, label: "Dynamic Netstat Port Scanner" },
+  { icon: Globe, label: "Native SSH & Cloudflare Tunnels" },
+  { icon: Zap, label: "Request Workbench & Live Diff" },
   { icon: Send, label: "Playground Replay Engine" },
-  { icon: Cpu, label: "Rust-Powered Speed" },
+  { icon: Cpu, label: "Pro Debugger & Rust Core" },
 ];
 
 function Bullets({ items }: { items: string[] }) {
@@ -72,11 +81,11 @@ function TunnelsMockup() {
   return (
     <div className="flex min-h-[260px] w-full min-w-0 flex-col justify-center rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-4 sm:p-5">
       <div className="flex items-center gap-2 font-mono text-[11px] tracking-wide text-on-surface-muted min-w-0">
-        <span className="h-2 w-2 shrink-0 rounded-full bg-tertiary animate-pulse-dot" />
-        <span className="truncate">cloudflared tunnel · running</span>
+        <span className="h-2 w-2 shrink-0 rounded-full bg-primary animate-pulse-dot" />
+        <span className="truncate">proxync native ssh · running (origin :2222)</span>
       </div>
       <div className="mt-3 font-mono text-xs font-semibold text-primary break-all sm:text-sm md:text-base max-w-full leading-tight">
-        https://proxync-1cf8-7a4e.trycloudflare.com
+        https://px-a1b2c3d4.proxync.dev/
       </div>
       <div className="mt-2 font-mono text-[11px] tracking-wide text-on-surface-muted">
         1,284 req · 40 req/min
@@ -238,7 +247,7 @@ function SwaggerMockup() {
         </div>
         <div className="pl-8">
           <span className="text-on-surface-muted">servers:</span>{" "}
-          <span className="text-tertiary">https://*.trycloudflare.com</span>
+          <span className="text-tertiary">https://px-*.proxync.dev</span>
         </div>
         <div>
           <span className="text-on-surface-variant">paths:</span>
@@ -258,6 +267,55 @@ function SwaggerMockup() {
   );
 }
 
+function WorkbenchMockup() {
+  return (
+    <div className="flex min-h-[260px] flex-col justify-between rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-4 font-mono text-[11px]">
+      <div className="flex items-center justify-between border-b border-outline-variant/20 pb-2.5">
+        <div className="flex items-center gap-2">
+          <span className="rounded bg-tertiary/20 text-tertiary border border-tertiary/30 px-2 py-0.5 font-bold text-[10px]">
+            GET
+          </span>
+          <span className="font-semibold text-on-surface">/api/v1/user/profile</span>
+        </div>
+        <div className="flex items-center gap-1.5 text-[10px] text-secondary font-bold">
+          <Check size={12} />
+          <span>HTTP 200 OK · 38ms</span>
+        </div>
+      </div>
+
+      {/* Controller & Architecture Node Conduit */}
+      <div className="my-2.5 space-y-2">
+        <div className="flex items-center justify-between rounded-lg border border-outline-variant/20 bg-surface-container p-2">
+          <div className="flex items-center gap-2">
+            <FileCode size={13} className="text-primary" />
+            <span className="text-on-surface font-bold text-[10.5px]">server.js:1</span>
+            <span className="text-outline text-[9px]">getProfile(req, res)</span>
+          </div>
+          <span className="rounded bg-primary/20 text-primary border border-primary/30 px-2 py-0.5 text-[9px] font-bold">
+            ● INFERRED NEAR-MISS
+          </span>
+        </div>
+
+        {/* Mini Architecture Flow */}
+        <div className="flex items-center justify-between px-2 py-1 bg-surface-container/50 rounded-lg text-[9px] text-outline">
+          <span className="text-primary font-bold">(INGRESS :4000)</span>
+          <span>&rarr;</span>
+          <span className="text-amber-400 font-semibold">authMiddleware</span>
+          <span>&rarr;</span>
+          <span className="text-tertiary font-semibold">:1 Controller</span>
+          <span>&rarr;</span>
+          <span className="text-secondary font-bold">200 Entity: User</span>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between border-t border-outline-variant/20 pt-2 text-[10px] text-on-surface-variant">
+        <span>1-Click IDE Jump: <strong className="text-primary">VS Code &middot; Cursor</strong></span>
+        <span className="rounded bg-surface-container px-2 py-0.5 text-outline">cURL &middot; Fetch &middot; Python &middot; Rust</span>
+      </div>
+    </div>
+  );
+}
+
 function Mockup({ id }: { id: TabId }) {
   switch (id) {
     case "tunnels":
@@ -266,6 +324,8 @@ function Mockup({ id }: { id: TabId }) {
       return <TrafficMockup />;
     case "postman":
       return <PostmanMockup />;
+    case "workbench":
+      return <WorkbenchMockup />;
     case "swagger":
       return <SwaggerMockup />;
   }
@@ -280,6 +340,7 @@ export function FeatureTabs() {
       if (hash === "tunnels") setActive("tunnels");
       else if (hash === "traffic") setActive("traffic");
       else if (hash === "playground" || hash === "postman") setActive("postman");
+      else if (hash === "workbench") setActive("workbench");
       else if (hash === "swagger") setActive("swagger");
       else if (hash === "product") setActive("tunnels");
     };
@@ -295,6 +356,7 @@ export function FeatureTabs() {
       <div id="traffic" className="absolute -top-24" />
       <div id="playground" className="absolute -top-24" />
       <div id="postman" className="absolute -top-24" />
+      <div id="workbench" className="absolute -top-24" />
       <div id="swagger" className="absolute -top-24" />
       <Container>
         <SectionHeader

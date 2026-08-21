@@ -9,32 +9,37 @@ const faqs = [
   {
     question: "Is Proxync really local-first?",
     answer:
-      "Yes. Workspaces, saved request collections, traffic history, and custom settings are serialized locally in a JSON store (%APPDATA%\\Proxync\\data.json). There is no cloud sign-up or forced cloud account required.",
+      "Yes. Workspaces, saved request collections, traffic history, and custom settings are serialized locally in a JSON store (%APPDATA%\\Proxync\\data.json on Windows, ~/.config/Proxync on Linux/macOS). There is no cloud account or forced cloud sign-up required.",
   },
   {
-    question: "How does Telemetry work in v0.2.0?",
+    question: "What is the Pro Debugger & Dual-Stream Logging Engine in v0.2.1?",
     answer:
-      "Telemetry is processed 100% on-device. You can choose Enhanced Telemetry (live P50/P90/P99 latency calculations and bandwidth meters for the Observability Hub) or Basic Telemetry (low CPU mode that bypasses percentile sorting to save system resources).",
+      "Proxync v0.2.1 introduces native Rust disk logging (%APPDATA%/Proxync/logs) with independent dual streams: Application Diagnostics (app.log, enabled by default) and Traffic Stream (traffic.log, on-demand). It features structured AI diagnostic directives, automatic PII/credential redaction, and a 1-click Support Diagnostic Bundle Exporter (proxync-support-bundle.json).",
   },
   {
-    question: "What is the Active Internet Connectivity Guard?",
+    question: "How does Dynamic Netstat Full-Port Service Discovery work?",
     answer:
-      "Before launching Cloudflare or Localtunnel edge tunnels, Proxync performs real edge pings (checkRealInternetConnection) to verify internet connectivity, preventing CLI timeout hangs when working offline.",
+      "Rather than checking a static list of ports, Proxync v0.2.1 executes a single dynamic netstat -ano scan across all IPv4 and IPv6 ports combined with a single bulk WMI/CIM process query. It automatically identifies dev frameworks (Next.js, Vite, FastAPI, NestJS, Go, Spring Boot, Django, Bun) while filtering OS daemons.",
   },
   {
-    question: "Does the OpenAPI generator support my framework?",
+    question: "How do Proxync Native SSH High-Throughput Tunnels work?",
     answer:
-      "Yes! The v0.2.0 Automatic Multi-Framework Codebase Scanner supports Express, Fastify, Next.js, NestJS, FastAPI, Spring Boot, and Go codebases to infer OpenAPI 3.0 specs and export 2-way Playground collections.",
+      "Proxync Native Tunnels connect over port 2222 with high-speed hardware-accelerated ciphers (chacha20-poly1305, aes128-gcm) and JIT Ed25519 certificate signing. Temporary keys are securely destroyed on close via Rust TempDirGuard, and secure random subdomains (e.g. px-a1b2c3d4.proxync.dev) are auto-generated.",
   },
   {
-    question: "Which platforms are supported?",
+    question: "What is the Emergency CVE Security Update Radar?",
     answer:
-      "A native Windows x64 installer (Proxync_0.2.0_x64-setup.exe) ships today via Tauri v2 with built-in Smart Version-Aware Auto-Updates. macOS and Linux support is currently in development.",
+      "An unconditional pre-flight security scan runs on startup to detect critical CVE release tags ([SECURITY-CVE], [TYPE: CVE-PATCH]). It automatically alerts you and streams the update with live progress tracking, ensuring zero-day vulnerabilities are patched immediately.",
   },
   {
-    question: "What are Target Route Badges in Playground?",
+    question: "How does the Request Workbench and 1-Click IDE jumping work?",
     answer:
-      "Playground request builders feature visual Target Route Badges (Cloudflare Edge, Public Tunnel, or Local Loopback) next to the Send button so you immediately know where your traffic is traveling.",
+      "Workbench allows you to stage multi-tab HTTP requests, send live replays against local endpoints with millisecond duration tracking, and view side-by-side visual diffs between original captured traffic and new responses. A native Tauri IPC command also allows 1-click jumping straight to the exact endpoint controller file and line number inside VS Code or Cursor (e.g. src/routes/users.ts:42).",
+  },
+  {
+    question: "Which platforms and installer versions are supported?",
+    answer:
+      "A native Windows x64 installer (Proxync_0.2.1_x64-setup.exe) ships today via Tauri v2 with built-in version-aware auto-updates and High-DPI setup wizards. macOS and Linux support is currently in development.",
   },
 ];
 
