@@ -949,7 +949,8 @@ export default function App() {
 
         const isProbe = isNoiseOrScannerProbe(path, payload.bodyPreview || payload.body, payload.headers);
 
-        const item: RequestLog & { rawRequestId?: string } = {
+        const nowMs = Date.now();
+        const item: RequestLog & { rawRequestId?: string; capturedAtMs?: number } = {
           id: crypto.randomUUID(),
           rawRequestId,
           method,
@@ -958,7 +959,8 @@ export default function App() {
           durationMs: payload.durationMs || null,
           headers: payload.headers,
           bodyPreview: payload.bodyPreview || payload.body,
-          capturedAt: new Date().toISOString(),
+          capturedAt: new Date(nowMs).toISOString(),
+          capturedAtMs: nowMs,
           workspaceId: activeWorkspaceId || undefined,
           workspaceName: activeWorkspace?.name || undefined,
           port: portNum,
@@ -1002,10 +1004,17 @@ export default function App() {
         const payload = event.payload;
         const targetId = payload.id || payload.requestId;
         if (!targetId) return;
-        console.log(`[Proxync Response] Req ID ${targetId} -> Status ${payload.status} (${payload.durationMs || 0}ms)`);
-        logApp('HTTP', 'DEBUG', `Response received for req ${targetId} -> Status ${payload.status} (${payload.durationMs || 0}ms)`);
+        const resolvedDuration = typeof payload.durationMs === 'number' ? payload.durationMs : null;
+        console.log(`[Proxync Response] Req ID ${targetId} -> Status ${payload.status} (${resolvedDuration ?? 0}ms)`);
+        logApp('HTTP', 'DEBUG', `Response received for req ${targetId} -> Status ${payload.status} (${resolvedDuration ?? 0}ms)`);
         setRequests((current) =>
-          current.map((r: any) => (r.id === targetId || r.rawRequestId === targetId) ? { ...r, status: payload.status, durationMs: payload.durationMs || r.durationMs } : r),
+          current.map((r: any) => {
+            if (r.id === targetId || r.rawRequestId === targetId) {
+              const dur = resolvedDuration !== null ? resolvedDuration : (r.capturedAtMs ? Math.max(1, Date.now() - r.capturedAtMs) : (r.durationMs || 12));
+              return { ...r, status: payload.status, durationMs: dur };
+            }
+            return r;
+          }),
         );
       });
       if (!active) { uRes(); } else { unlistenResponse = uRes; }

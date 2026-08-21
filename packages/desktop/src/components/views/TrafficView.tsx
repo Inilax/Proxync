@@ -261,10 +261,10 @@ export function TrafficView({
         <div className="flex items-center border-b border-outline-variant bg-surface-container-low font-label-md text-on-surface-variant py-2.5 px-4 text-xs font-bold uppercase tracking-wider">
           <div className="w-20 shrink-0">Method</div>
           <div className="w-24 shrink-0">Status</div>
-          <div className="w-48 shrink-0">Scope / Server</div>
-          <div className="flex-1 min-w-0 pr-2">Request Path</div>
-          <div className="w-20 shrink-0 text-right pr-4">Duration</div>
-          <div className="w-60 shrink-0 text-right">Actions</div>
+          <div className="w-44 shrink-0">Scope / Server</div>
+          <div className="flex-1 min-w-0 pr-4">Request Path</div>
+          <div className="w-28 shrink-0 text-right pr-6">Duration</div>
+          <div className="w-72 shrink-0 text-right">Actions</div>
         </div>
 
         {filteredRequests.length === 0 ? (
@@ -292,16 +292,15 @@ export function TrafficView({
               const isGet = reqMethod === 'GET';
               const isPost = ['POST', 'PUT', 'PATCH'].includes(reqMethod);
               const methodColor = isGet ? 'text-primary' : isPost ? 'text-secondary' : 'text-error';
-              
+
               const isExpanded = expandedRequestId === request.id;
 
               return (
                 <div key={request.id}>
                   <div
                     onClick={() => onOpen(request)}
-                    className={`flex items-center py-3 px-4 hover:bg-surface-container-highest cursor-pointer transition-colors group ${
-                      isExpanded ? 'bg-surface-container-high/60' : ''
-                    }`}
+                    className={`flex items-center py-2.5 px-4 hover:bg-surface-container-highest cursor-pointer transition-colors group ${isExpanded ? 'bg-surface-container-high/60' : ''
+                      }`}
                   >
                     {/* Method Column */}
                     <div className={`w-20 shrink-0 font-bold font-mono text-xs truncate ${methodColor} flex items-center gap-1.5`}>
@@ -329,7 +328,7 @@ export function TrafficView({
                     </div>
 
                     {/* Scope / Server Column */}
-                    <div className="w-48 shrink-0 flex items-center gap-1.5 truncate pr-2 font-mono text-[11px]">
+                    <div className="w-44 shrink-0 flex items-center gap-1.5 truncate pr-2 font-mono text-[11px]">
                       {request.workspaceName ? (
                         <span className="px-1.5 py-0.5 bg-surface-container-high border border-outline-variant/40 rounded text-on-surface-variant font-sans truncate max-w-[100px]" title={request.workspaceName}>
                           {request.workspaceName}
@@ -345,21 +344,31 @@ export function TrafficView({
                     </div>
 
                     {/* Request Path Column */}
-                    <div className="flex-1 min-w-0 pr-2 font-mono text-xs text-on-surface truncate" title={request.path}>
+                    <div className="flex-1 min-w-0 pr-4 font-mono text-xs text-on-surface truncate" title={request.path}>
                       {request.path || '/'}
                     </div>
 
-                    {/* Duration Column */}
-                    <div className="w-20 shrink-0 text-right pr-4 font-mono text-xs text-on-surface-variant opacity-80">
-                      {request.durationMs ? `${request.durationMs}ms` : 'pending'}
+                    {/* Duration Column (Fixed width & right-aligned with clear right padding) */}
+                    <div className="w-28 shrink-0 text-right pr-6 font-mono text-xs">
+                      {request.durationMs ? (
+                        <span className="inline-flex items-center gap-0.5 text-amber-400 font-semibold">
+                          <span className="text-[12px]">⚡</span>
+                          {request.durationMs}ms
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-outline italic text-[11px]">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                          in flight
+                        </span>
+                      )}
                     </div>
 
-                    {/* Actions Column */}
-                    <div className="w-60 shrink-0 flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    {/* Actions Column (Dedicated width with compact isolated buttons) */}
+                    <div className="w-72 shrink-0 flex items-center justify-end gap-2 pl-2" onClick={(e) => e.stopPropagation()}>
                       {onOpenWorkbench && (
                         <button
                           onClick={() => onOpenWorkbench(request)}
-                          className="px-2 py-0.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                          className="px-2.5 py-1 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
                           title="Open 360° Request Workbench Studio"
                         >
                           <span className="material-symbols-outlined text-[13px]">bolt</span>
@@ -368,14 +377,14 @@ export function TrafficView({
                       )}
                       <button
                         onClick={() => onSendToPostman(request)}
-                        className="btn-ghost compact text-[11px]"
+                        className="px-2.5 py-1 bg-surface-container border border-outline-variant/30 hover:bg-surface-container-high rounded text-xs font-medium text-on-surface transition-colors cursor-pointer shrink-0"
                         title="Send request template to Playground"
                       >
                         Playground →
                       </button>
                       <button
                         onClick={() => (onOpenWorkbench ? onOpenWorkbench(request) : onOpen(request))}
-                        className="p-1 rounded hover:bg-surface-container-highest text-outline hover:text-on-surface transition-colors cursor-pointer"
+                        className="p-1 rounded hover:bg-surface-container-highest text-outline hover:text-on-surface transition-colors cursor-pointer shrink-0"
                         title="Open in Detail Dialog"
                       >
                         <span className="material-symbols-outlined text-sm">open_in_new</span>

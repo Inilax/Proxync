@@ -191,7 +191,9 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
                                     req_builder = req_builder.body(req_data.body);
                                 }
 
+                                let start_instant = std::time::Instant::now();
                                 let response = req_builder.send().await;
+                                let duration_ms = start_instant.elapsed().as_millis() as u64;
                                 
                                 let mut res_payload = HttpResponsePayload {
                                     request_id: req_data.request_id,
@@ -215,6 +217,7 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
                                 let res_meta = serde_json::json!({
                                     "requestId": res_payload.request_id,
                                     "status": res_payload.status,
+                                    "durationMs": duration_ms,
                                     "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()
                                 });
                                 let _ = app_clone.emit("request:log:response", res_meta);
