@@ -37,6 +37,7 @@ export function WorkspaceDashboardView({
   onShareLocal,
   onStopTunnel,
   onStopAllTunnels,
+  onInspectTraffic,
 }: {
   workspace: WorkspaceConfig | null;
   tunnels: Tunnel[];
@@ -53,6 +54,7 @@ export function WorkspaceDashboardView({
   onShareLocal: (process: ProcessCandidate) => void;
   onStopTunnel: (tunnel: Tunnel) => void;
   onStopAllTunnels?: () => void;
+  onInspectTraffic?: (proc: ProcessCandidate) => void;
 }) {
   const [activeMenuTunnelId, setActiveMenuTunnelId] = useState<string | null>(null);
   const activeTunnels = tunnels.filter((t) => t.status === 'ACTIVE');
@@ -357,19 +359,27 @@ export function WorkspaceDashboardView({
                         ) : isLive && activeT ? (
                           /* Live State */
                           <div className="flex items-center justify-between w-full gap-2" onClick={(e) => e.stopPropagation()}>
-                            <span className="text-xs font-semibold text-on-surface-variant group-hover:text-primary transition-colors flex items-center gap-1">
-                              Inspect Traffic
-                              <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
-                            </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onInspectTraffic?.(proc);
+                              }}
+                              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/40 bg-primary/10 hover:bg-primary/20 text-primary font-body-sm text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 group/btn"
+                              title="View live traffic logs for this server"
+                            >
+                              <span className="material-symbols-outlined text-[15px]">troubleshoot</span>
+                              <span>Inspect Traffic</span>
+                              <span className="material-symbols-outlined text-[14px] group-hover/btn:translate-x-0.5 transition-transform">arrow_forward</span>
+                            </button>
                             <button
                               onClick={() => onStopTunnel(activeT)}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-error/40 bg-error/10 hover:bg-error/20 text-error font-body-sm text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-error/40 bg-error/10 hover:bg-error/20 text-error font-body-sm text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
                               title="Stop active tunnel"
                             >
                               <span className="material-symbols-outlined text-[14px]" style={{ fontVariationSettings: "'FILL' 1" }}>
                                 stop_circle
                               </span>
-                              <span>Stop Tunnel</span>
+                              <span>Stop</span>
                             </button>
                           </div>
                         ) : (

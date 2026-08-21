@@ -9,7 +9,7 @@ use tunnel::{open_tunnel, close_tunnel, open_localtunnel, open_cloudflare_tunnel
 use proxy::start_proxy;
 use storage::{
     scan_directory, read_file_content, get_local_ip, save_app_state, load_app_state,
-    append_log_entry, clear_log_files, open_logs_folder, read_logs_summary
+    append_log_entry, clear_log_files, open_logs_folder, read_logs_summary, open_file_in_editor
 };
 use http::execute_http_request;
 
@@ -31,6 +31,7 @@ pub fn run() {
             open_native_tunnel,
             scan_directory,
             read_file_content,
+            open_file_in_editor,
             get_local_ip,
             save_app_state,
             load_app_state,

@@ -450,6 +450,7 @@ fn resolve_directory_in_memory(
                 if let Ok(user_profile) = std::env::var("USERPROFILE") {
                     search_roots.push(std::path::PathBuf::from(user_profile));
                 }
+
                 for root in search_roots {
                     let script_path = root.join(script);
                     if script_path.exists() {

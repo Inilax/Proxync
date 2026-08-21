@@ -2,6 +2,31 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [feature/develop-multi-tunnel-workbench-scanner] - 2026-08-21 (Proxy Lifecycle Optimization, Fast WebSocket Relay Timeout & Multi-Tunnel Workbench Studio)
+- **Feature Summary**:
+  - **Ephemeral Proxy Listener Lifecycle & TCP Half-Close**: Refactored `start_proxy` in `proxy.rs` to always abort stale task handles and re-bind fresh listeners per invocation, plus added explicit `client_write.shutdown().await` and `target_write.shutdown().await` on TCP streams to cleanly complete responses without hanging.
+  - **Fast WebSocket Relay Connection Timeout**: Added a 2-second timeout to `open_tunnel` WebSocket connection (`tunnel.rs`) so client initialization fails fast when no local loopback relay is active instead of blocking on OS TCP timeouts.
+  - **Instant In-Memory Recon Resolution**: Streamlined `recon.rs` by eliminating blocking filesystem drive scanning loops during project directory lookup.
+  - **Multi-Tunnel & Multi-Process Dynamic Project Root Synchronization**: Refactored `RequestWorkbenchDialog.tsx` and `App.tsx` to automatically resolve project root directories per-tab based on the originating request's port or tunnel metadata, eliminating cross-process misattribution when running multiple tunnels simultaneously.
+  - **Native 1-Click IDE Navigation**: Implemented `open_file_in_editor` native command in Rust (`storage.rs`, `lib.rs`) and TypeScript (`interopUtils.ts`) to jump directly to exact line numbers in VS Code (`code -g <file>:<line>`), Cursor, or the OS default editor.
+  - **Dynamic Next.js App Router & Arrow Function Scanner**: Enhanced `codebaseScanner.ts` to normalize Windows backslash file paths and parse both function declarations (`export async function GET`) and arrow function exports (`export const POST = async () =>`).
+  - **Fresh Request Log Ingestion & Execution History Runs**: Enhanced Workbench to dynamically merge newly intercepted request events into active tabs as discrete `ExecutionRun` history snapshots with automatic focus on fresh runs.
+  - **Process Discovery & Dashboard UX Polish**: Upgraded `DiscoverDialog.tsx` with an `ALREADY EXPOSED` emerald badge, streamlined actions to dedicated `[ Inspect Traffic ➔ ]` navigation, and separated dashboard server card clicks (Process view) from direct traffic inspection.
+  - **Zero Hardcoded Environment Paths Enforced**: Stripped all developer test paths and machine-specific fallbacks across UI code in compliance with new workspace Rule 8.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/RequestWorkbenchDialog.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `packages/desktop/src/index.css`
+  - `packages/desktop/src/lib/codebaseScanner.ts`
+  - `packages/desktop/src/lib/interopUtils.ts`
+  - `packages/desktop/src/lib/types.ts`
+  - `CHANGELOG.md`
+
 ## [feature/develop-installer-wizard-branding-and-license] - 2026-08-19 (NSIS Setup Wizard High-DPI Visual Assets & Open-Source License Integration)
 - **Feature Summary**:
   - **NSIS Setup Wizard High-DPI Visual Assets**: Replaced legacy prototype installer graphics with high-definition 24-bit RGB Windows bitmaps: `nsis-sidebar.bmp` (164×314 px, 154 KB) featuring 3D isometric server nodes and neon fiber-optic conduits on deep midnight slate (`#0b0f19`) with zero smartphone bezels or text artifacts, and `nsis-header.bmp` (150×57 px, 25.8 KB) featuring a high-contrast glowing network proxy hub.

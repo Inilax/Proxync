@@ -80,7 +80,11 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
     let relay_ws_url = relay_url.unwrap_or_else(|| "ws://localhost:3939/relay".to_string());
     let relay_ws_url = relay_ws_url.as_str();
     
-    let (ws_stream, _) = connect_async(relay_ws_url.to_string()).await.map_err(|e| e.to_string())?;
+    // ponytail: 2s timeout on relay WebSocket — fails fast when no local relay server is running
+    let (ws_stream, _) = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        connect_async(relay_ws_url.to_string()),
+    ).await.map_err(|_| "Relay connection timed out".to_string())?.map_err(|e| e.to_string())?;
     let (mut write, mut read) = ws_stream.split();
 
     let reg_msg = TunnelRegisterPayload {

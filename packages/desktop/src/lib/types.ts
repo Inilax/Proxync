@@ -178,6 +178,12 @@ export interface WorkbenchTab {
   executionHistory: ExecutionRun[];
   lastResponse?: PostmanResponse | null;
   bypassCache?: boolean;
+  authSyncedState?: 'unsynced' | 'synced';
+  queryParams?: { key: string; value: string; enabled: boolean }[];
+  targetEnvironment?: 'local' | 'tunnel' | 'custom';
+  customTargetUrl?: string;
+  bearerToken?: string;
 }
+
 
 

@@ -32,8 +32,8 @@ pub async fn stop_proxy(local_port: Option<u16>) -> bool {
 #[tauri::command]
 pub async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, String> {
     let mut map = PROXY_HANDLES.lock().await;
-    if let Some((existing_proxy_port, _)) = map.get(&local_port) {
-        return Ok(*existing_proxy_port);
+    if let Some((_, old_handle)) = map.remove(&local_port) {
+        old_handle.abort();
     }
 
     let listener = TcpListener::bind("127.0.0.1:0").await.map_err(|e| e.to_string())?;
@@ -166,9 +166,11 @@ pub async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, 
                     }
 
                     let _ = tokio::io::copy(&mut target_read, &mut client_write).await;
+                    let _ = client_write.shutdown().await;
                 });
 
                 let _ = tokio::io::copy(&mut client_read, &mut target_write).await;
+                let _ = target_write.shutdown().await;
             });
         }
     });

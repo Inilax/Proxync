@@ -49,7 +49,7 @@ import { DocsView } from './components/views/DocsView';
 import { DiscoverDialog, DomainSelectDialog, RequestDetailDialog, ConfirmDeleteDialog } from './components/views/Dialogs';
 import { RequestWorkbenchDialog } from './components/views/RequestWorkbenchDialog';
 import { TerminalDrawer, type TerminalLogEntry } from './components/ui/TerminalDrawer';
-import type { WorkbenchTab } from './lib/types';
+import type { WorkbenchTab, ExecutionRun } from './lib/types';
 import {
   initLogger,
   setAppLogging,
@@ -196,61 +196,73 @@ export default function App() {
   const [settingsSection, setSettingsSection] = useState<'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger'>('general');
 
   /* ── 360° Request Workbench Studio & Terminal Drawer State ── */
-  const [workbenchTabs, setWorkbenchTabs] = useState<WorkbenchTab[]>([]);
-  const [activeWorkbenchTabId, setActiveWorkbenchTabId] = useState<string | null>(null);
+  const WORKBENCH_TABS_STORAGE_KEY = 'proxync_workbench_tabs_v1';
+  const [workbenchTabs, setWorkbenchTabs] = useState<WorkbenchTab[]>(() => {
+    try {
+      const saved = localStorage.getItem(WORKBENCH_TABS_STORAGE_KEY);
+      return saved ? (JSON.parse(saved) as WorkbenchTab[]) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [activeWorkbenchTabId, setActiveWorkbenchTabId] = useState<string | null>(() => {
+    try {
+      const saved = localStorage.getItem(WORKBENCH_TABS_STORAGE_KEY);
+      const parsed = saved ? (JSON.parse(saved) as WorkbenchTab[]) : [];
+      return parsed[0]?.id || null;
+    } catch {
+      return null;
+    }
+  });
   const [terminalLogs, setTerminalLogs] = useState<TerminalLogEntry[]>([]);
 
-  const openRequestInWorkbench = useCallback((req: RequestLog | SavedRequest | { method: string; path: string }) => {
-    const method = req.method.toUpperCase();
-    const path = req.path;
+  // Security-safe persistence: strip secrets & denylist headers, omit response bodies from disk
+  useEffect(() => {
+    try {
+      const DENYLIST_HEADERS = ['cookie', 'set-cookie', 'proxy-authorization', 'x-api-key'];
+      const sanitizeHeaders = (headers: Record<string, string> = {}): Record<string, string> => {
+        const clean: Record<string, string> = {};
+        Object.entries(headers).forEach(([k, v]) => {
+          const lk = k.toLowerCase();
+          if (DENYLIST_HEADERS.includes(lk)) return;
+          if (lk === 'authorization') {
+            const parts = (v || '').trim().split(' ');
+            const scheme = parts[0] || 'Bearer';
+            clean[k] = `${scheme} [REDACTED]`;
+            return;
+          }
+          clean[k] = v;
+        });
+        return clean;
+      };
 
-    const existing = workbenchTabs.find((t) => t.method === method && t.path === path);
-    if (existing) {
-      setActiveWorkbenchTabId(existing.id);
-      setMainView('workbench');
-      return;
+      const sanitizedTabs = workbenchTabs.map((t) => ({
+        ...t,
+        draftRequest: {
+          ...t.draftRequest,
+          headers: sanitizeHeaders(t.draftRequest.headers),
+        },
+        requestLog: t.requestLog
+          ? {
+              ...t.requestLog,
+              headers: sanitizeHeaders(t.requestLog.headers),
+              responseHeaders: sanitizeHeaders(t.requestLog.responseHeaders),
+              bodyPreview: '',
+            }
+          : undefined,
+        executionHistory: t.executionHistory.map((run) => ({
+          ...run,
+          headers: sanitizeHeaders(run.headers),
+          body: '',
+        })),
+        lastResponse: null,
+      }));
+      localStorage.setItem(WORKBENCH_TABS_STORAGE_KEY, JSON.stringify(sanitizedTabs));
+    } catch {
+      // Ignore localStorage write quota exceptions
     }
-
-    const tabId = crypto.randomUUID();
-    const requestLog: RequestLog | undefined = 'capturedAt' in req ? req : undefined;
-    const draftRequest: SavedRequest = 'source' in req ? req : {
-      id: `draft-${tabId}`,
-      name: `${method} ${path}`,
-      method,
-      path,
-      headers: 'headers' in req && req.headers ? req.headers : { 'Content-Type': 'application/json' },
-      body: 'bodyPreview' in req ? req.bodyPreview ?? '' : 'body' in req ? String(req.body ?? '') : '',
-      source: 'captured',
-    };
-
-    const newTab: WorkbenchTab = {
-      id: tabId,
-      title: `${method} ${path}`,
-      method,
-      path,
-      requestLog,
-      draftRequest,
-      activeSubTab: 'replay',
-      executionHistory: requestLog
-        ? [
-          {
-            id: `run-${tabId}-1`,
-            runIndex: 1,
-            timestamp: requestLog.capturedAt || new Date().toISOString(),
-            status: typeof requestLog.status === 'number' ? requestLog.status : parseInt(String(requestLog.status || 200), 10),
-            durationMs: requestLog.durationMs || 12,
-            headers: requestLog.responseHeaders || { 'Content-Type': 'application/json' },
-            body: requestLog.bodyPreview || '{\n  "status": "initial captured log"\n}',
-            note: 'Captured Log Intercept',
-          },
-        ]
-        : [],
-    };
-
-    setWorkbenchTabs((current) => [...current, newTab]);
-    setActiveWorkbenchTabId(tabId);
-    setMainView('workbench');
   }, [workbenchTabs]);
+
   const [discovering, setDiscovering] = useState(false);
   const [sharingPort, setSharingPort] = useState<number | null>(null);
   const [spawningPorts, setSpawningPorts] = useState<number[]>([]);
@@ -305,20 +317,163 @@ export default function App() {
     return activeWorkspace?.languageHint ?? 'Undetermined';
   }, [activeWorkspace, selectedProcess, selectedProfile]);
 
+  const effectiveProjectRoot = useMemo(() => {
+    if (selectedProcess?.directory && selectedProcess.directory.trim() !== '' && selectedProcess.directory !== 'unknown') {
+      return selectedProcess.directory.trim();
+    }
+    if (selectedProfile?.directory && selectedProfile.directory.trim() !== '' && selectedProfile.directory !== 'unknown') {
+      return selectedProfile.directory.trim();
+    }
+    if (activeWorkspace?.projectRootPath && activeWorkspace.projectRootPath.trim() !== '') {
+      return activeWorkspace.projectRootPath.trim();
+    }
+    return '';
+  }, [activeWorkspace, selectedProcess, selectedProfile]);
+
   const [scannedEndpoints, setScannedEndpoints] = useState<ScannedEndpoint[]>([]);
   const [openApiDocument, setOpenApiDocument] = useState<Record<string, unknown>>(() =>
     generateOpenApiSpec([], [], 'Proxync Workspace', 'HTTP Server')
   );
   const [generatingSwagger, setGeneratingSwagger] = useState<boolean>(false);
 
+  // Auto-scan codebase endpoints when effective project root is detected or changed
+  useEffect(() => {
+    if (!effectiveProjectRoot) return;
+    scanCodebaseEndpoints(effectiveProjectRoot, activeWorkspace?.scannedFiles)
+      .then((eps) => {
+        if (eps && eps.length > 0) {
+          setScannedEndpoints(eps);
+          console.log(`[Codebase Scanner] Auto-scanned ${eps.length} endpoints for ${effectiveProjectRoot}`);
+        }
+      })
+      .catch(() => {});
+  }, [effectiveProjectRoot, activeWorkspace?.scannedFiles]);
+
+  const openRequestInWorkbench = useCallback((req: RequestLog | SavedRequest | { method: string; path: string }) => {
+    const method = req.method.toUpperCase();
+    const path = req.path;
+
+    const targetPort =
+      'port' in req && req.port
+        ? req.port
+        : 'tunnelId' in req && req.tunnelId
+        ? tunnels.find((t) => t.id === req.tunnelId)?.localPort
+        : undefined;
+
+    if (targetPort) {
+      const matchingProc = processes.find((p) => p.port === targetPort);
+      if (matchingProc) {
+        setSelectedProcessId(matchingProc.id);
+      }
+    }
+
+    const existing = workbenchTabs.find((t) => t.method === method && t.path === path);
+    const requestLog: RequestLog | undefined = 'capturedAt' in req ? req : undefined;
+
+    if (existing) {
+      if (requestLog) {
+        const rawStatus = typeof requestLog.status === 'number' ? requestLog.status : parseInt(String(requestLog.status || 200), 10);
+        const newRun: ExecutionRun = {
+          id: `run-${existing.id}-${Date.now()}`,
+          runIndex: existing.executionHistory.length + 1,
+          timestamp: requestLog.capturedAt || new Date().toISOString(),
+          status: rawStatus,
+          durationMs: requestLog.durationMs || 12,
+          headers: requestLog.responseHeaders || { 'Content-Type': 'application/json' },
+          body: requestLog.bodyPreview || `[Captured HTTP ${rawStatus} Log]`,
+          note: `Captured Traffic Log (${rawStatus})`,
+        };
+
+        setWorkbenchTabs((current) =>
+          current.map((t) =>
+            t.id === existing.id
+              ? {
+                  ...t,
+                  requestLog,
+                  draftRequest: {
+                    ...t.draftRequest,
+                    headers: requestLog.headers || t.draftRequest.headers,
+                    body: requestLog.bodyPreview !== undefined ? requestLog.bodyPreview : t.draftRequest.body,
+                  },
+                  executionHistory: [newRun, ...t.executionHistory.filter((r) => r.id !== newRun.id)],
+                  lastResponse: {
+                    status: rawStatus,
+                    duration: requestLog.durationMs || 12,
+                    headers: requestLog.responseHeaders || {},
+                    body: requestLog.bodyPreview || '',
+                  },
+                }
+              : t
+          )
+        );
+      }
+      setActiveWorkbenchTabId(existing.id);
+      setMainView('workbench');
+      return;
+    }
+
+
+    const tabId = crypto.randomUUID();
+    const draftRequest: SavedRequest = 'source' in req ? req : {
+      id: `draft-${tabId}`,
+      name: `${method} ${path}`,
+      method,
+      path,
+      headers: 'headers' in req && req.headers ? req.headers : { 'Content-Type': 'application/json' },
+      body: 'bodyPreview' in req ? req.bodyPreview ?? '' : 'body' in req ? String(req.body ?? '') : '',
+      source: 'captured',
+    };
+
+    const newTab: WorkbenchTab = {
+      id: tabId,
+      title: `${method} ${path}`,
+      method,
+      path,
+      requestLog,
+      draftRequest,
+      activeSubTab: 'devtools',
+      authSyncedState: 'unsynced',
+      executionHistory: requestLog
+        ? [
+          {
+            id: `run-${tabId}-1`,
+            runIndex: 1,
+            timestamp: requestLog.capturedAt || new Date().toISOString(),
+            status: typeof requestLog.status === 'number' ? requestLog.status : parseInt(String(requestLog.status || 200), 10),
+            durationMs: requestLog.durationMs || 12,
+            headers: requestLog.responseHeaders || { 'Content-Type': 'application/json' },
+            body: requestLog.bodyPreview || '{\n  "status": "initial captured log"\n}',
+            note: 'Captured Log Intercept',
+          },
+        ]
+        : [],
+    };
+
+    setWorkbenchTabs((current) => [...current, newTab]);
+    setActiveWorkbenchTabId(tabId);
+    setMainView('workbench');
+
+    if (effectiveProjectRoot && scannedEndpoints.length === 0) {
+      scanCodebaseEndpoints(effectiveProjectRoot, activeWorkspace?.scannedFiles)
+        .then((eps) => {
+          if (eps && eps.length > 0) {
+            setScannedEndpoints(eps);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [workbenchTabs, effectiveProjectRoot, scannedEndpoints, activeWorkspace]);
+
   const handleGenerateSwaggerSpec = async (targetPort?: number) => {
+
     setGeneratingSwagger(true);
     try {
       let endpoints: ScannedEndpoint[] = scannedEndpoints;
-      if (activeWorkspace?.projectRootPath && activeWorkspace?.scannedFiles?.length > 0) {
-        endpoints = await scanCodebaseEndpoints(activeWorkspace.projectRootPath, activeWorkspace.scannedFiles);
+      if (effectiveProjectRoot) {
+        endpoints = await scanCodebaseEndpoints(effectiveProjectRoot, activeWorkspace?.scannedFiles);
         setScannedEndpoints(endpoints);
       }
+
 
       // Filter requests if targetPort is specified and exclude noise/bot scanner probes
       const filteredByPort = targetPort
@@ -2079,6 +2234,18 @@ function generateRandomSubdomain(prefix = 'px'): string {
                 onShareLocal={shareProcessLocal}
                 onStopTunnel={stopTunnel}
                 onStopAllTunnels={stopAllTunnels}
+                onInspectTraffic={(proc) => {
+                  if (proc) {
+                    setSelectedProcessId(proc.id);
+                    if (activeWorkspace) {
+                      updateActiveWorkspace((ws) => ({
+                        ...ws,
+                        selectedProfileId: ws.profiles.find((prof) => prof.port === proc.port)?.id,
+                      }));
+                    }
+                  }
+                  setMainView('traffic');
+                }}
               />
             )}
             {mainView === 'traffic' && (
@@ -2135,16 +2302,22 @@ function generateRandomSubdomain(prefix = 'px'): string {
                 tabs={workbenchTabs}
                 activeTabId={activeWorkbenchTabId}
                 workspace={activeWorkspace}
+                projectRootPath={effectiveProjectRoot}
                 scannedEndpoints={scannedEndpoints}
                 trafficLogs={requests}
                 terminalLogs={terminalLogs}
+                processes={processes}
+                tunnels={tunnels}
                 activeProcessPort={selectedProcess?.port}
+                activeTunnelUrl={activeTunnel?.publicUrl}
                 onClose={() => setMainView('traffic')}
                 onTabsChange={(updatedTabs, nextActiveId) => {
                   setWorkbenchTabs(updatedTabs);
                   setActiveWorkbenchTabId(nextActiveId);
                 }}
                 onSaveRequestToCollection={saveDraftRequest}
+                onUpdateProjectRoot={updateProjectRootPath}
+                onScannedEndpointsUpdate={setScannedEndpoints}
               />
             )}
             {mainView === 'docs' && (
@@ -2162,25 +2335,6 @@ function generateRandomSubdomain(prefix = 'px'): string {
                 onSendToPostman={sendToPostman}
                 onReplayRequest={replayRequest}
                 onOpenWorkbench={openRequestInWorkbench}
-              />
-            )}
-            {mainView === 'workbench' && (
-              <RequestWorkbenchDialog
-                isOpen={true}
-                isFullView={true}
-                tabs={workbenchTabs}
-                activeTabId={activeWorkbenchTabId}
-                workspace={activeWorkspace}
-                scannedEndpoints={scannedEndpoints}
-                trafficLogs={requests}
-                terminalLogs={terminalLogs}
-                activeProcessPort={selectedProcess?.port}
-                onClose={() => setMainView('traffic')}
-                onTabsChange={(updatedTabs, nextActiveId) => {
-                  setWorkbenchTabs(updatedTabs);
-                  setActiveWorkbenchTabId(nextActiveId);
-                }}
-                onSaveRequestToCollection={saveDraftRequest}
               />
             )}
             {mainView === 'settings' && (
@@ -2294,10 +2448,15 @@ function generateRandomSubdomain(prefix = 'px'): string {
           processes={processes}
           discovering={discovering}
           sharingPort={sharingPort}
+          tunnels={tunnels}
           onClose={() => setDiscoverOpen(false)}
           onRefresh={discoverProcesses}
           onShare={initiatePublicShare}
           onShareLocal={shareProcessLocal}
+          onInspectTraffic={(p) => {
+            setSelectedProcessId(p.id);
+            setMainView('traffic');
+          }}
           onSelectProcess={(p) => {
             setSelectedProcessId(p.id);
             setMainView('process');

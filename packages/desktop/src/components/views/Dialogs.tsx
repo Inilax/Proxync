@@ -4,7 +4,7 @@
  * with animated backdrop and slide-up animations.
  */
 import { useState, useEffect } from 'react';
-import type { ProcessCandidate, RequestLog } from './SharedComponents';
+import type { ProcessCandidate, RequestLog, Tunnel } from './SharedComponents';
 import { Icons, SignalBars, useEscape } from './SharedComponents';
 
 /* ────────────────── Discover Dialog ────────────────── */
@@ -13,20 +13,24 @@ export function DiscoverDialog({
   processes,
   discovering,
   sharingPort,
+  tunnels = [],
   onClose,
   onRefresh,
   onShare,
   onShareLocal,
   onSelectProcess,
+  onInspectTraffic,
 }: {
   processes: ProcessCandidate[];
   discovering: boolean;
   sharingPort: number | null;
+  tunnels?: Tunnel[];
   onClose: () => void;
   onRefresh: () => void;
   onShare: (process: ProcessCandidate) => void;
   onShareLocal: (process: ProcessCandidate) => void;
   onSelectProcess?: (process: ProcessCandidate) => void;
+  onInspectTraffic?: (process: ProcessCandidate) => void;
 }) {
   useEscape(onClose);
 
@@ -47,59 +51,104 @@ export function DiscoverDialog({
           </button>
         </div>
         <div className="discovery-list">
-          {processes.map((process) => (
-            <article key={process.id} className="discovery-row hover:bg-surface-container-high/50 cursor-pointer transition-colors" onClick={() => { onSelectProcess?.(process); onClose(); }}>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-3">
-                  <strong className="text-on-surface font-semibold">{process.name}</strong>
-                  {process.latency !== undefined && (
-                    <SignalBars latency={process.latency} />
+          {processes.map((process) => {
+            const activeTunnel = tunnels.find(
+              (t) => t.localPort === process.port && t.status === 'ACTIVE'
+            );
+            const isExposed = Boolean(activeTunnel);
+
+            return (
+              <article
+                key={process.id}
+                className={`discovery-row transition-colors cursor-pointer ${
+                  isExposed
+                    ? 'bg-emerald-500/5 border border-emerald-500/20 hover:bg-emerald-500/10'
+                    : 'hover:bg-surface-container-high/50'
+                }`}
+                onClick={() => {
+                  onSelectProcess?.(process);
+                  onClose();
+                }}
+              >
+                <div className="flex-1 min-w-0 space-y-1">
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <strong className="text-on-surface font-semibold text-sm leading-none">{process.name}</strong>
+                    {isExposed && (
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
+                        <span className="uppercase tracking-wider text-[9.5px]">Already Exposed</span>
+                      </div>
+                    )}
+                    {process.latency !== undefined && !isExposed && (
+                      <SignalBars latency={process.latency} />
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-on-surface-variant">
+                    <span>Port {process.port} | {process.framework ?? 'HTTP service'}</span>
+                    {process.latency !== undefined && !isExposed && (
+                      <span className="text-[10px] font-mono opacity-80">
+                        ({process.latency === Infinity ? 'offline' : `${Math.round(process.latency)}ms`})
+                      </span>
+                    )}
+                  </div>
+                  <small className="text-[11px] text-on-surface-variant/80 truncate block">
+                    {process.directory && process.directory !== 'unknown'
+                      ? process.directory
+                      : (process.command ?? 'local process')}
+                  </small>
+                </div>
+
+                <div style={{ display: 'flex', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
+                  {isExposed && activeTunnel ? (
+                    <button
+                      className="btn-primary compact flex items-center gap-1 font-bold"
+                      onClick={() => {
+                        onInspectTraffic ? onInspectTraffic(process) : onSelectProcess?.(process);
+                        onClose();
+                      }}
+                      title="View live traffic logs for this exposed service"
+                    >
+                      <span>Inspect Traffic</span>
+                      <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        className="btn-secondary compact"
+                        onClick={() => {
+                          onSelectProcess?.(process);
+                          onClose();
+                        }}
+                        title="Configure process tunnels"
+                      >
+                        Configure
+                      </button>
+                      <button
+                        className="btn-secondary compact"
+                        disabled={sharingPort === process.port}
+                        onClick={() => {
+                          onShareLocal(process);
+                          onClose();
+                        }}
+                      >
+                        {Icons.wifi} Local
+                      </button>
+                      <button
+                        className="btn-primary compact"
+                        disabled={sharingPort === process.port}
+                        onClick={() => {
+                          onShare(process);
+                          onClose();
+                        }}
+                      >
+                        {Icons.globe} Public
+                      </button>
+                    </>
                   )}
                 </div>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  Port {process.port} | {process.framework ?? 'HTTP service'}
-                  {process.latency !== undefined && (
-                    <span style={{ fontSize: '10px', fontFamily: 'monospace', opacity: 0.8 }}>
-                      ({process.latency === Infinity ? 'offline' : `${Math.round(process.latency)}ms`})
-                    </span>
-                  )}
-                </span>
-                <small>{process.directory && process.directory !== 'unknown' ? process.directory : (process.command ?? 'local process')}</small>
-              </div>
-              <div style={{ display: 'flex', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
-                <button
-                  className="btn-secondary compact"
-                  onClick={() => {
-                    onSelectProcess?.(process);
-                    onClose();
-                  }}
-                  title="Configure process tunnels"
-                >
-                  Configure
-                </button>
-                <button
-                  className="btn-secondary compact"
-                  disabled={sharingPort === process.port}
-                  onClick={() => {
-                    onShareLocal(process);
-                    onClose();
-                  }}
-                >
-                  {Icons.wifi} Local
-                </button>
-                <button
-                  className="btn-primary compact"
-                  disabled={sharingPort === process.port}
-                  onClick={() => {
-                    onShare(process);
-                    onClose();
-                  }}
-                >
-                  {Icons.globe} Public
-                </button>
-              </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
           {processes.length === 0 && <div className="traffic-empty">No processes found.</div>}
         </div>
       </section>
