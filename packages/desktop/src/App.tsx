@@ -1744,14 +1744,14 @@ function generateRandomSubdomain(prefix = 'px'): string {
     }
 
     if (trimmed.startsWith('/')) {
-      if (selectedProcess?.port) {
-        return `http://localhost:${selectedProcess.port}${trimmed}`;
-      }
       if (activeTunnel?.publicUrl) {
         const base = activeTunnel.publicUrl.replace(/\/+$/, '');
         return `${base}${trimmed}`;
       }
-      return `http://localhost:4000${trimmed}`;
+      if (selectedProcess?.port) {
+        return `http://localhost:${selectedProcess.port}${trimmed}`;
+      }
+      return `http://localhost:3000${trimmed}`;
     }
 
     return `https://${trimmed}`;
@@ -2296,7 +2296,34 @@ function generateRandomSubdomain(prefix = 'px'): string {
               <TrafficView requests={requests} workspaces={workspaces} processes={processes} activeTunnel={activeTunnel} onOpen={openRequestDetail} onSendToPostman={sendToPostman} onClear={clearTrafficLogs} onOpenWorkbench={openRequestInWorkbench} />
             )}
             {mainView === 'postman' && (
-              <PostmanView draft={draftRequest} savedRequests={savedRequests} response={postmanResponse} sending={sendingRequest} starterSuggestions={starterSuggestions} activeTunnel={activeTunnel} selectedProcessPort={selectedProcess?.port} onDraftChange={setDraftRequest} onHeaderTextChange={updateDraftHeader} onRun={runPostmanRequest} onSave={saveDraftRequest} onLoad={setDraftRequest} onImportStarterRequests={importStarterRequests} onDeleteRequest={deleteSavedRequest} onUpdateSavedRequests={updateSavedRequests} onOpenWorkbench={openRequestInWorkbench} />
+              <PostmanView
+                draft={draftRequest}
+                savedRequests={savedRequests}
+                response={postmanResponse}
+                sending={sendingRequest}
+                starterSuggestions={starterSuggestions}
+                activeTunnel={activeTunnel}
+                tunnels={tunnels}
+                processes={processes}
+                onSelectTunnel={setActiveTunnel}
+                onSelectProcessPort={(port) => {
+                  if (port) {
+                    const found = processes.find((p) => p.port === port);
+                    if (found) setSelectedProcessId(found.id);
+                  }
+                }}
+                selectedProcessPort={selectedProcess?.port}
+                onDraftChange={setDraftRequest}
+                onHeaderTextChange={updateDraftHeader}
+                onRun={runPostmanRequest}
+                onClearResponse={() => setPostmanResponse(null)}
+                onSave={saveDraftRequest}
+                onLoad={setDraftRequest}
+                onImportStarterRequests={importStarterRequests}
+                onDeleteRequest={deleteSavedRequest}
+                onUpdateSavedRequests={updateSavedRequests}
+                onOpenWorkbench={openRequestInWorkbench}
+              />
             )}
             {mainView === 'swagger' && (
               <SwaggerView

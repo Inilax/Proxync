@@ -2,6 +2,18 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [feature/develop-playground-target-selector] - 2026-08-21 (Playground Interactive Target & Tunnel Selector, Instant State Purge & NSIS Uninstaller Branding)
+- **Feature Summary**:
+  - **Interactive Target Environment & Public Tunnel Dropdown**: Replaced static route badge in `PostmanView.tsx` with an interactive dropdown selector grouping active public tunnels (`🌐 <hostname> (:<port>)`) and local servers (`⚡ Localhost (:<port>)`). Developers can instantly view and switch active target environments with automatic URL resolution.
+  - **State Purge & Stale Response Clearance**: Added `onClearResponse` callback in `PostmanView.tsx` and `App.tsx` to automatically purge cached responses whenever switching target dropdown options, preventing cross-tunnel response confusion.
+  - **NSIS Uninstaller Brand Customization**: Created `hooks.nsh` and wired `"installerHooks": "hooks.nsh"` in `tauri.conf.json` defining `MUI_UNICON "icons\\icon.ico"` so the Windows uninstaller dialog displays the official Proxync branding icon instead of the default Nullsoft tin box icon.
+- **Modified Files**:
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/src-tauri/hooks.nsh`
+  - `CHANGELOG.md`
+
 ## [fix/develop-release-blocker-workspace-tunnel-isolation] - 2026-08-21 (Release Blocker: Automatic Cross-Workspace Tunnel Teardown & Process Isolation)
 - **Feature Summary**:
   - **Native Bulk Tunnel Teardown Command**: Implemented `close_all_tunnels()` in Rust (`tunnel.rs`, `lib.rs`) to cleanly drain and abort all active WebSocket relay handles, terminate all child subprocesses (`ssh`, `cloudflared`, `localtunnel`) with OS process tree killing (`taskkill /F /T /PID` on Windows), and shut down all ephemeral TCP stream proxies (`stop_proxy(None)`).
