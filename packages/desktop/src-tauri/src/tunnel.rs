@@ -466,6 +466,70 @@ pub async fn open_cloudflare_tunnel(
 
     Ok(url)
 }
+#[cfg(debug_assertions)]
+pub const DEFAULT_API_URL: &str = "https://api-staging.proxync.dev/api/tunnel/sign-jit-cert";
+#[cfg(not(debug_assertions))]
+pub const DEFAULT_API_URL: &str = "https://api.proxync.dev/api/tunnel/sign-jit-cert";
+
+#[cfg(debug_assertions)]
+pub const DEFAULT_SSH_PORT: &str = "2223";
+#[cfg(not(debug_assertions))]
+pub const DEFAULT_SSH_PORT: &str = "2222";
+
+#[cfg(debug_assertions)]
+pub const DEFAULT_TUNNEL_DOMAIN: &str = "staging.proxync.dev";
+#[cfg(not(debug_assertions))]
+pub const DEFAULT_TUNNEL_DOMAIN: &str = "proxync.dev";
+
+#[cfg(debug_assertions)]
+pub const DEFAULT_API_HOST: &str = "api-staging.proxync.dev";
+#[cfg(not(debug_assertions))]
+pub const DEFAULT_API_HOST: &str = "api.proxync.dev";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TunnelEnvConfig {
+    pub api_url: String,
+    pub ssh_port: String,
+    pub tunnel_domain: String,
+    pub api_host: String,
+    pub ssh_host: String,
+}
+
+pub fn resolve_tunnel_env_config() -> TunnelEnvConfig {
+    let env_mode = std::env::var("PROXYNC_ENV").unwrap_or_default().to_lowercase();
+
+    let (base_api_url, base_ssh_port, base_tunnel_domain, base_api_host) =
+        if env_mode == "production" || env_mode == "prod" {
+            (
+                "https://api.proxync.dev/api/tunnel/sign-jit-cert",
+                "2222",
+                "proxync.dev",
+                "api.proxync.dev",
+            )
+        } else if env_mode == "staging" || env_mode == "dev" {
+            (
+                "https://api-staging.proxync.dev/api/tunnel/sign-jit-cert",
+                "2223",
+                "staging.proxync.dev",
+                "api-staging.proxync.dev",
+            )
+        } else {
+            (
+                DEFAULT_API_URL,
+                DEFAULT_SSH_PORT,
+                DEFAULT_TUNNEL_DOMAIN,
+                DEFAULT_API_HOST,
+            )
+        };
+
+    TunnelEnvConfig {
+        api_url: std::env::var("PROXYNC_API_URL").unwrap_or_else(|_| base_api_url.to_string()),
+        ssh_port: std::env::var("PROXYNC_SSH_PORT").unwrap_or_else(|_| base_ssh_port.to_string()),
+        tunnel_domain: std::env::var("PROXYNC_TUNNEL_DOMAIN").unwrap_or_else(|_| base_tunnel_domain.to_string()),
+        api_host: base_api_host.to_string(),
+        ssh_host: std::env::var("PROXYNC_SSH_HOST").unwrap_or_else(|_| "104.208.83.199".to_string()),
+    }
+}
 
 #[tauri::command]
 pub async fn open_native_tunnel(
@@ -518,16 +582,22 @@ pub async fn open_native_tunnel(
         return Err("Failed to generate ephemeral SSH keypair. Ensure ssh-keygen is available.".to_string());
     }
 
+    let env_config = resolve_tunnel_env_config();
     let known_hosts_path = temp_dir.join("known_hosts");
-    let ssh_host = std::env::var("PROXYNC_SSH_HOST")
-        .unwrap_or_else(|_| "104.208.83.199".to_string());
+    let ssh_host = env_config.ssh_host;
+    let ssh_port = env_config.ssh_port;
+    let api_url = env_config.api_url;
+    let tunnel_domain = env_config.tunnel_domain;
+    let api_host = env_config.api_host;
     let strict_host_checking = "yes";
 
     // Pre-seed known_hosts with official Proxync SSH host key to enforce StrictHostKeyChecking=yes
     let pinned_host_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDyV3ZNPsHhwJaW6akzFMg/KAE7F1K4WamVtMaeP/vi9 root@Proxync-tunnel";
     let seed_entry = format!(
-        "[{}]:2222 {}\n[104.208.83.199]:2222 {}\n[api.proxync.dev]:2222 {}\n",
-        ssh_host, pinned_host_key, pinned_host_key, pinned_host_key
+        "[{}]:{} {}\n[104.208.83.199]:{} {}\n[{}]:{} {}\n",
+        ssh_host, ssh_port, pinned_host_key,
+        ssh_port, pinned_host_key,
+        api_host, ssh_port, pinned_host_key
     );
     let _ = std::fs::write(&known_hosts_path, seed_entry);
 
@@ -536,9 +606,6 @@ pub async fn open_native_tunnel(
             "subdomain": clean_subdomain,
             "publicKey": pub_key.trim()
         });
-
-        let api_url = std::env::var("PROXYNC_API_URL")
-            .unwrap_or_else(|_| "https://api.proxync.dev/api/tunnel/sign-jit-cert".to_string());
 
         let api_secret = std::env::var("PROXYNC_API_SECRET_TOKEN").unwrap_or_default();
         
@@ -558,7 +625,7 @@ pub async fn open_native_tunnel(
                     jit_registered = true;
                     if let Some(host_key) = parsed.get("hostKey").and_then(|v| v.as_str()) {
                         if !host_key.trim().is_empty() {
-                            let entry = format!("[{}]:2222 {}\n", ssh_host, host_key.trim());
+                            let entry = format!("[{}]:{} {}\n[{}]:{} {}\n", ssh_host, ssh_port, host_key.trim(), api_host, ssh_port, host_key.trim());
                             let _ = std::fs::write(&known_hosts_path, entry);
                         }
                     }
@@ -614,7 +681,7 @@ pub async fn open_native_tunnel(
         "-o", "Compression=no",
         "-o", "ConnectTimeout=5",
         "-o", "IPQoS=throughput",
-        "-p", "2222",
+        "-p", &ssh_port,
         &format!("-R {}:80:127.0.0.1:{}", clean_subdomain, local_port),
         &format!("{}@{}", clean_subdomain, ssh_host),
     ]);
@@ -658,5 +725,50 @@ pub async fn open_native_tunnel(
         }
     });
     
-    Ok(format!("https://{}.proxync.dev", clean_subdomain))
+    Ok(format!("https://{}.{}", clean_subdomain, tunnel_domain))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_env_config_debug_or_release() {
+        #[cfg(debug_assertions)]
+        {
+            assert_eq!(DEFAULT_API_URL, "https://api-staging.proxync.dev/api/tunnel/sign-jit-cert");
+            assert_eq!(DEFAULT_SSH_PORT, "2223");
+            assert_eq!(DEFAULT_TUNNEL_DOMAIN, "staging.proxync.dev");
+            assert_eq!(DEFAULT_API_HOST, "api-staging.proxync.dev");
+        }
+
+        #[cfg(not(debug_assertions))]
+        {
+            assert_eq!(DEFAULT_API_URL, "https://api.proxync.dev/api/tunnel/sign-jit-cert");
+            assert_eq!(DEFAULT_SSH_PORT, "2222");
+            assert_eq!(DEFAULT_TUNNEL_DOMAIN, "proxync.dev");
+            assert_eq!(DEFAULT_API_HOST, "api.proxync.dev");
+        }
+    }
+
+    #[test]
+    fn test_resolve_tunnel_env_config_defaults() {
+        let config = resolve_tunnel_env_config();
+        #[cfg(debug_assertions)]
+        {
+            if std::env::var("PROXYNC_ENV").is_err() && std::env::var("PROXYNC_SSH_PORT").is_err() {
+                assert_eq!(config.ssh_port, "2223");
+                assert_eq!(config.tunnel_domain, "staging.proxync.dev");
+                assert_eq!(config.api_host, "api-staging.proxync.dev");
+            }
+        }
+        #[cfg(not(debug_assertions))]
+        {
+            if std::env::var("PROXYNC_ENV").is_err() && std::env::var("PROXYNC_SSH_PORT").is_err() {
+                assert_eq!(config.ssh_port, "2222");
+                assert_eq!(config.tunnel_domain, "proxync.dev");
+                assert_eq!(config.api_host, "api.proxync.dev");
+            }
+        }
+    }
 }
