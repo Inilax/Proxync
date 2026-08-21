@@ -1126,6 +1126,11 @@ export default function App() {
   async function createWorkspace() {
     const name = newWorkspaceName.trim();
     if (!name) return;
+    if (tunnels.length > 0 || activeTunnel) {
+      const prevName = activeWorkspace?.name || activeWorkspaceId || 'previous workspace';
+      logApp('TUNNEL', 'INFO', `Creating workspace: terminating all active tunnels from "${prevName}"`);
+      await stopAllTunnels(true);
+    }
     let remoteWorkspaceId: string | undefined;
     if (context && context.workspace && context.workspace.id !== 'local') {
       try { const remote = await api.workspaces.create(name); remoteWorkspaceId = remote.id; } catch { remoteWorkspaceId = undefined; }
@@ -1133,6 +1138,10 @@ export default function App() {
     const workspace = createWorkspaceConfig(name, remoteWorkspaceId, appSettings.guardrails, appSettings.defaultProjectRootPath);
     setWorkspaces((current) => [workspace, ...current]);
     setActiveWorkspaceId(workspace.id);
+    setActiveTunnel(null);
+    setTunnels([]);
+    setSelectedProcessId(null);
+    setSharingPort(null);
     setNewWorkspaceName('');
     setMainView('workspace_dashboard');
     logApp('SYSTEM', 'INFO', `Created workspace "${name}" (${workspace.id})`);
@@ -1147,10 +1156,19 @@ export default function App() {
     );
   }
 
-  function selectWorkspace(workspaceId: string) {
+  async function selectWorkspace(workspaceId: string) {
     if (activeWorkspaceId !== workspaceId) {
+      if (tunnels.length > 0 || activeTunnel) {
+        const prevName = activeWorkspace?.name || activeWorkspaceId || 'previous workspace';
+        logApp('TUNNEL', 'INFO', `Switching workspace: terminating all active tunnels from "${prevName}"`);
+        await stopAllTunnels(true);
+        showToast(`Closed tunnels from "${prevName}"`, 'info');
+      }
       setActiveWorkspaceId(workspaceId);
       setActiveTunnel(null);
+      setTunnels([]);
+      setSelectedProcessId(null);
+      setSharingPort(null);
       void discoverProcesses(false, true);
     }
     const ws = workspaces.find((w) => w.id === workspaceId);
@@ -1612,29 +1630,46 @@ function generateRandomSubdomain(prefix = 'px'): string {
     }
   }
 
-  async function stopAllTunnels() {
-    const activeTunnelsList = tunnels.filter((t) => t.status === 'ACTIVE');
-    if (activeTunnelsList.length === 0) return;
+  async function stopAllTunnels(silent = false) {
+    const listToClose = [...tunnels];
+    if (activeTunnel && !listToClose.some((t) => t.id === activeTunnel.id)) {
+      listToClose.push(activeTunnel);
+    }
+    if (listToClose.length === 0) {
+      try {
+        await invoke('close_all_tunnels');
+      } catch {}
+      setTunnels([]);
+      setActiveTunnel(null);
+      return;
+    }
     if (activeWorkspace) {
       touchWorkspaceActivity(activeWorkspace.id);
     }
-    logApp('TUNNEL', 'INFO', `Stopping all active tunnels (${activeTunnelsList.length})`);
+    logApp('TUNNEL', 'INFO', `Stopping all active tunnels (${listToClose.length})`);
     try {
       await Promise.all(
-        activeTunnelsList.map(async (tunnel) => {
+        listToClose.map(async (tunnel) => {
           await invoke('close_tunnel', { tunnelId: tunnel.id, localPort: tunnel.localPort }).catch(() => undefined);
           if (!tunnel.id.startsWith('lt-') && activeWorkspace?.remoteWorkspaceId) {
             await api.tunnels.close(activeWorkspace.remoteWorkspaceId, tunnel.id).catch(() => undefined);
           }
         })
       );
-      setTunnels((current) => current.filter((item) => item.status !== 'ACTIVE'));
+      try {
+        await invoke('close_all_tunnels');
+      } catch {}
+      setTunnels([]);
       setActiveTunnel(null);
-      logApp('TUNNEL', 'INFO', `All ${activeTunnelsList.length} tunnels closed`);
-      showToast(`Stopped all active tunnels (${activeTunnelsList.length})`, 'info');
+      logApp('TUNNEL', 'INFO', `All ${listToClose.length} tunnels closed`);
+      if (!silent) {
+        showToast(`Stopped all active tunnels (${listToClose.length})`, 'info');
+      }
     } catch (error) {
       logError('TUNNEL', 'Failed to stop all tunnels cleanly', error, 'Some tunnel subprocesses may require manual termination');
-      showToast(error instanceof Error ? error.message : 'Unable to stop all tunnels', 'error');
+      if (!silent) {
+        showToast(error instanceof Error ? error.message : 'Unable to stop all tunnels', 'error');
+      }
     }
   }
 

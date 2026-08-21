@@ -283,6 +283,35 @@ pub async fn close_tunnel(tunnel_id: String, local_port: Option<u16>) -> Result<
 }
 
 #[tauri::command]
+pub async fn close_all_tunnels() -> Result<(), String> {
+    let mut tunnels = ACTIVE_TUNNELS.lock().await;
+    for (_, handle) in tunnels.drain() {
+        handle.abort();
+    }
+
+    let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
+    for (_, mut child) in lt_procs.drain() {
+        if let Some(pid) = child.id() {
+            #[cfg(target_os = "windows")]
+            {
+                let mut cmd = std::process::Command::new("taskkill");
+                cmd.creation_flags(0x08000000);
+                let _ = cmd.args(&["/F", "/T", "/PID", &pid.to_string()]).output();
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let _ = child.kill().await;
+            }
+        } else {
+            let _ = child.kill().await;
+        }
+    }
+
+    stop_proxy(None).await;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn open_localtunnel(
     app: tauri::AppHandle,
     tunnel_id: String,
