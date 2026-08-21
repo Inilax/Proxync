@@ -2,6 +2,15 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/develop-release-blocker-process-cwd-recon] - 2026-08-21 (Release Blocker: Process Working Directory CWD Reconnaissance via OS PEB Inspection)
+- **Feature Summary**:
+  - **Stage 0 Native Process CWD Extraction**: Implemented Win32 `PEB` (Process Environment Block) inspection in `recon.rs` (`win_peb::get_process_cwd`) via `NtQueryInformationProcess` and `ReadProcessMemory` to read `RTL_USER_PROCESS_PARAMETERS.CurrentDirectory.DosPath` directly from the OS for any running process and its parent process tree.
+  - **Accurate Relative Script & NPM Dev Server Discovery**: Resolved a critical release blocker where servers launched with relative arguments (e.g. `node --watch server.js`, `node server.js`, `npm run dev`) failed directory resolution and fell back to `localhost:<port>`. Directory resolution now deterministically resolves to the exact project root (e.g. `E:\to-do`) across any drive or directory structure.
+  - **Preserved Heuristic Fallback Pipeline**: Maintained existing command-line argument parsing, parent process walking, and fallback script search as graceful secondary layers when PEB access is unavailable.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `CHANGELOG.md`
+
 ## [fix/traffic-inspector-duration-and-layout] - 2026-08-21 (Traffic Inspector Duration Capture, Column Layout Overlap Fix & Sanity Testing Isolation)
 - **Feature Summary**:
   - **Live Latency & Duration Capture**: Added `Instant::now()` elapsed duration calculation in `proxy.rs` and `tunnel.rs` to compute response round-trip latency in milliseconds (`durationMs`) and emit it inside `request:log:response`. Added `capturedAtMs` tracking and fallback computation in `App.tsx` so durations never remain in a stuck `'pending'` state.

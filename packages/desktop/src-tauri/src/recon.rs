@@ -399,10 +399,190 @@ fn extract_candidate_paths_from_cmd(cmd_line: &str) -> Vec<String> {
     paths
 }
 
+#[cfg(target_os = "windows")]
+mod win_peb {
+    use std::ffi::c_void;
+    use std::mem::size_of;
+
+    type HANDLE = *mut c_void;
+    type NTSTATUS = i32;
+
+    const PROCESS_QUERY_INFORMATION: u32 = 0x0400;
+    const PROCESS_VM_READ: u32 = 0x0010;
+
+    #[repr(C)]
+    struct ProcessBasicInformation {
+        _exit_status: *mut c_void,
+        peb_base_address: *mut c_void,
+        _affinity_mask: *mut c_void,
+        _base_priority: *mut c_void,
+        _unique_process_id: *mut c_void,
+        _inherited_from_unique_process_id: *mut c_void,
+    }
+
+    extern "system" {
+        fn OpenProcess(dwDesiredAccess: u32, bInheritHandle: i32, dwProcessId: u32) -> HANDLE;
+        fn CloseHandle(hObject: HANDLE) -> i32;
+        fn ReadProcessMemory(
+            hProcess: HANDLE,
+            lpBaseAddress: *const c_void,
+            lpBuffer: *mut c_void,
+            nSize: usize,
+            lpNumberOfBytesRead: *mut usize,
+        ) -> i32;
+        fn GetModuleHandleA(lpModuleName: *const u8) -> *mut c_void;
+        fn GetProcAddress(hModule: *mut c_void, lpProcName: *const u8) -> *mut c_void;
+    }
+
+    type NtQueryInformationProcessFn = unsafe extern "system" fn(
+        process_handle: HANDLE,
+        process_information_class: i32,
+        process_information: *mut c_void,
+        process_information_length: u32,
+        return_length: *mut u32,
+    ) -> NTSTATUS;
+
+    pub fn get_process_cwd(pid: u32) -> Option<String> {
+        unsafe {
+            let ntdll = GetModuleHandleA(b"ntdll.dll\0".as_ptr());
+            if ntdll.is_null() {
+                return None;
+            }
+            let func_ptr = GetProcAddress(ntdll, b"NtQueryInformationProcess\0".as_ptr());
+            if func_ptr.is_null() {
+                return None;
+            }
+            let nt_query_info_proc: NtQueryInformationProcessFn = std::mem::transmute(func_ptr);
+
+            let handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, pid);
+            if handle.is_null() {
+                return None;
+            }
+
+            let mut pbi = std::mem::zeroed::<ProcessBasicInformation>();
+            let mut ret_len = 0u32;
+            let status = nt_query_info_proc(
+                handle,
+                0, // ProcessBasicInformation
+                &mut pbi as *mut _ as *mut c_void,
+                size_of::<ProcessBasicInformation>() as u32,
+                &mut ret_len,
+            );
+
+            if status != 0 || pbi.peb_base_address.is_null() {
+                CloseHandle(handle);
+                return None;
+            }
+
+            // In 64-bit Windows: PEB.ProcessParameters offset is 0x20
+            // In 32-bit Windows: PEB.ProcessParameters offset is 0x10
+            let params_offset = if size_of::<usize>() == 8 { 0x20 } else { 0x10 };
+            let mut process_params_ptr: usize = 0;
+            let mut bytes_read = 0usize;
+
+            let read_ok = ReadProcessMemory(
+                handle,
+                (pbi.peb_base_address as usize + params_offset) as *const c_void,
+                &mut process_params_ptr as *mut _ as *mut c_void,
+                size_of::<usize>(),
+                &mut bytes_read,
+            );
+
+            if read_ok == 0 || process_params_ptr == 0 {
+                CloseHandle(handle);
+                return None;
+            }
+
+            // In RTL_USER_PROCESS_PARAMETERS:
+            // 64-bit: CurrentDirectory.DosPath is UNICODE_STRING at offset 0x38 (Length: u16, MaxLen: u16, Pad: 4 bytes, Buffer: usize at 0x40)
+            // 32-bit: CurrentDirectory.DosPath is UNICODE_STRING at offset 0x24 (Length: u16, MaxLen: u16, Buffer: usize at 0x28)
+            let (cur_dir_offset, buf_ptr_offset) = if size_of::<usize>() == 8 {
+                (0x38, 0x40)
+            } else {
+                (0x24, 0x28)
+            };
+
+            let mut length: u16 = 0;
+            let read_len_ok = ReadProcessMemory(
+                handle,
+                (process_params_ptr + cur_dir_offset) as *const c_void,
+                &mut length as *mut _ as *mut c_void,
+                2,
+                &mut bytes_read,
+            );
+
+            if read_len_ok == 0 || length == 0 || length > 4096 {
+                CloseHandle(handle);
+                return None;
+            }
+
+            let mut buffer_ptr: usize = 0;
+            let read_buf_ptr_ok = ReadProcessMemory(
+                handle,
+                (process_params_ptr + buf_ptr_offset) as *const c_void,
+                &mut buffer_ptr as *mut _ as *mut c_void,
+                size_of::<usize>(),
+                &mut bytes_read,
+            );
+
+            if read_buf_ptr_ok == 0 || buffer_ptr == 0 {
+                CloseHandle(handle);
+                return None;
+            }
+
+            let char_count = (length / 2) as usize;
+            let mut utf16_buf: Vec<u16> = vec![0u16; char_count];
+            let read_path_ok = ReadProcessMemory(
+                handle,
+                buffer_ptr as *const c_void,
+                utf16_buf.as_mut_ptr() as *mut c_void,
+                length as usize,
+                &mut bytes_read,
+            );
+
+            CloseHandle(handle);
+
+            if read_path_ok != 0 {
+                let raw_str = String::from_utf16_lossy(&utf16_buf);
+                let trimmed = raw_str.trim_matches('\0').trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_string());
+                }
+            }
+
+            None
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+mod win_peb {
+    pub fn get_process_cwd(_pid: u32) -> Option<String> {
+        #[cfg(target_os = "linux")]
+        {
+            if let Ok(path) = std::fs::read_link(format!("/proc/{}/cwd", _pid)) {
+                return Some(path.to_string_lossy().to_string());
+            }
+        }
+        None
+    }
+}
+
 fn resolve_directory_in_memory(
     proc: &RawProcess,
     all_procs: &HashMap<u32, RawProcess>,
 ) -> String {
+    // Stage 0: Direct Process CWD via OS PEB inspection (primary high-precision resolver)
+    if let Some(cwd) = win_peb::get_process_cwd(proc.pid) {
+        let path = std::path::Path::new(&cwd);
+        if let Some(root) = walk_up_to_project_root(path) {
+            return root;
+        }
+        if path.exists() && path.is_dir() && !is_system_installation_dir(&cwd) {
+            return cwd.trim_end_matches('\\').trim_end_matches('/').to_string();
+        }
+    }
+
     // Stage 1: Inspect process's own command line for direct paths
     if let Some(ref cmd) = proc.cmd_line {
         for p in extract_candidate_paths_from_cmd(cmd) {
@@ -417,6 +597,17 @@ fn resolve_directory_in_memory(
     let mut depth = 0;
     while let Some(pid) = curr_pid {
         if depth >= 5 { break; }
+
+        if let Some(parent_cwd) = win_peb::get_process_cwd(pid) {
+            let path = std::path::Path::new(&parent_cwd);
+            if let Some(root) = walk_up_to_project_root(path) {
+                return root;
+            }
+            if path.exists() && path.is_dir() && !is_system_installation_dir(&parent_cwd) {
+                return parent_cwd.trim_end_matches('\\').trim_end_matches('/').to_string();
+            }
+        }
+
         if let Some(parent) = all_procs.get(&pid) {
             if let Some(ref pcmd) = parent.cmd_line {
                 for p in extract_candidate_paths_from_cmd(pcmd) {
