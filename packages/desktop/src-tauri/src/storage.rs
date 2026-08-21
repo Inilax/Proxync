@@ -1,3 +1,6 @@
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 fn get_base_data_dir() -> std::path::PathBuf {
     let mut dir = if let Ok(appdata) = std::env::var("APPDATA") {
         std::path::PathBuf::from(appdata)
@@ -210,6 +213,11 @@ pub async fn read_file_content(root_path: String, rel_path: String) -> Result<St
 
 #[tauri::command]
 pub async fn open_file_in_editor(file_path: String, line_number: Option<u32>, editor: Option<String>) -> Result<(), String> {
+    // Validate file_path against control characters and null bytes
+    if file_path.chars().any(|c| c.is_control() || c == '\0') {
+        return Err("Invalid file path: contains control characters".to_string());
+    }
+
     let ed = editor.unwrap_or_else(|| "vscode".to_string()).to_lowercase();
     let line = line_number.unwrap_or(1);
     let binary_name = if ed == "cursor" { "cursor" } else { "code" };
@@ -217,9 +225,11 @@ pub async fn open_file_in_editor(file_path: String, line_number: Option<u32>, ed
 
     #[cfg(target_os = "windows")]
     {
-        // 1. Try direct code.cmd / cursor.cmd CLI launcher
+        // 1. Try direct code.cmd / cursor.cmd CLI launcher with CREATE_NO_WINDOW and quoted path
         let mut cmd = std::process::Command::new("cmd");
-        cmd.args(&["/c", binary_name, "-g", &goto_arg]);
+        cmd.creation_flags(0x08000000);
+        let quoted_goto = format!("\"{}\"", goto_arg);
+        cmd.args(&["/c", binary_name, "-g", &quoted_goto]);
         if let Ok(mut child) = cmd.spawn() {
             if let Ok(status) = child.wait() {
                 if status.success() {
@@ -232,9 +242,11 @@ pub async fn open_file_in_editor(file_path: String, line_number: Option<u32>, ed
         let scheme = if ed == "cursor" { "cursor" } else { "vscode" };
         let norm_path = file_path.replace('\\', "/");
         let uri = format!("{}://file/{}:{}", scheme, norm_path, line);
+        let quoted_uri = format!("\"{}\"", uri);
         
         let mut uri_cmd = std::process::Command::new("cmd");
-        uri_cmd.args(&["/c", "start", "", &uri]);
+        uri_cmd.creation_flags(0x08000000);
+        uri_cmd.args(&["/c", "start", "", &quoted_uri]);
         if let Ok(_) = uri_cmd.spawn() {
             return Ok(());
         }
@@ -272,4 +284,23 @@ pub async fn open_file_in_editor(file_path: String, line_number: Option<u32>, ed
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_open_file_in_editor_control_chars_rejection() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let res = open_file_in_editor("malicious\npath".to_string(), Some(1), None).await;
+            assert!(res.is_err());
+            assert_eq!(res.unwrap_err(), "Invalid file path: contains control characters");
+
+            let res_null = open_file_in_editor("malicious\0path".to_string(), Some(1), None).await;
+            assert!(res_null.is_err());
+        });
+    }
+}
+
 

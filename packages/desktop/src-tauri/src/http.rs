@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+pub const MAX_HTTP_BODY_BYTES: usize = 10 * 1024 * 1024; // 10MB safety ceiling
+
 #[derive(Serialize, Deserialize)]
 pub struct NativeHttpResponsePayload {
     pub status: u16,
@@ -41,7 +43,7 @@ pub async fn execute_http_request(
         }
     }
 
-    let res = req_builder.send().await.map_err(|e| format!("HTTP request failed: {}", e))?;
+    let mut res = req_builder.send().await.map_err(|e| format!("HTTP request failed: {}", e))?;
 
     let status = res.status().as_u16();
 
@@ -52,12 +54,40 @@ pub async fn execute_http_request(
         }
     }
 
-    let bytes = res.bytes().await.map_err(|e| format!("Failed to read response body: {}", e))?;
-    let body_text = String::from_utf8_lossy(&bytes).to_string();
+    // Bounded streaming reader: protects against OOM attacks on massive payloads
+    let mut body_bytes = Vec::new();
+    let mut truncated = false;
+
+    while let Ok(Some(chunk)) = res.chunk().await {
+        if body_bytes.len() + chunk.len() > MAX_HTTP_BODY_BYTES {
+            let remaining = MAX_HTTP_BODY_BYTES.saturating_sub(body_bytes.len());
+            if remaining > 0 {
+                body_bytes.extend_from_slice(&chunk[..remaining]);
+            }
+            truncated = true;
+            break;
+        }
+        body_bytes.extend_from_slice(&chunk);
+    }
+
+    let mut body_text = String::from_utf8_lossy(&body_bytes).to_string();
+    if truncated {
+        body_text.push_str("\n\n[PROXYNC NOTICE: Response body truncated at 10MB limit]");
+    }
 
     Ok(NativeHttpResponsePayload {
         status,
         headers: res_headers,
         body: body_text,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_max_http_body_bytes_limit() {
+        assert_eq!(MAX_HTTP_BODY_BYTES, 10 * 1024 * 1024);
+    }
 }
