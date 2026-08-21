@@ -2,6 +2,17 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/develop-release-blocker-workspace-tunnel-isolation] - 2026-08-21 (Release Blocker: Automatic Cross-Workspace Tunnel Teardown & Process Isolation)
+- **Feature Summary**:
+  - **Native Bulk Tunnel Teardown Command**: Implemented `close_all_tunnels()` in Rust (`tunnel.rs`, `lib.rs`) to cleanly drain and abort all active WebSocket relay handles, terminate all child subprocesses (`ssh`, `cloudflared`, `localtunnel`) with OS process tree killing (`taskkill /F /T /PID` on Windows), and shut down all ephemeral TCP stream proxies (`stop_proxy(None)`).
+  - **Cross-Workspace Tunnel Teardown on Switch & Create**: Updated `selectWorkspace` and `createWorkspace` in `App.tsx` to automatically invoke `stopAllTunnels(true)` and `close_all_tunnels` whenever switching between workspaces or creating new workspaces. This guarantees running public tunnels from previous workspaces are never orphaned or left accessible in the background.
+  - **Frontend State Containment**: Automatically resets `tunnels`, `activeTunnel`, `selectedProcessId`, and `sharingPort` upon workspace switching with informative transition toasts (e.g. `Closed tunnels from "Workspace A"`).
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src/App.tsx`
+  - `CHANGELOG.md`
+
 ## [fix/develop-release-blocker-process-cwd-recon] - 2026-08-21 (Release Blocker: Process Working Directory CWD Reconnaissance via OS PEB Inspection)
 - **Feature Summary**:
   - **Stage 0 Native Process CWD Extraction**: Implemented Win32 `PEB` (Process Environment Block) inspection in `recon.rs` (`win_peb::get_process_cwd`) via `NtQueryInformationProcess` and `ReadProcessMemory` to read `RTL_USER_PROCESS_PARAMETERS.CurrentDirectory.DosPath` directly from the OS for any running process and its parent process tree.
