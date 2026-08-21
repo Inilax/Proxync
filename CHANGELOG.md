@@ -2,6 +2,19 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/traffic-inspector-duration-and-layout] - 2026-08-21 (Traffic Inspector Duration Capture, Column Layout Overlap Fix & Sanity Testing Isolation)
+- **Feature Summary**:
+  - **Live Latency & Duration Capture**: Added `Instant::now()` elapsed duration calculation in `proxy.rs` and `tunnel.rs` to compute response round-trip latency in milliseconds (`durationMs`) and emit it inside `request:log:response`. Added `capturedAtMs` tracking and fallback computation in `App.tsx` so durations never remain in a stuck `'pending'` state.
+  - **Column Width & Spacing Isolation**: Restructured the Traffic table layout in `TrafficView.tsx` by expanding the `DURATION` column to `w-28` (`112px`) with `pr-6` right-padding, and the `ACTIONS` column to `w-72` (`288px`). Replaced oversized global `.btn-ghost` classes with isolated compact button tokens (`px-2.5 py-1`) to completely eliminate horizontal collision between the latency badge and the Workbench / Playground action triggers.
+  - **Sanity & POC Sandbox Isolation**: Added `sanity/` to `.gitignore` and relocated experimental Proof-of-Concept folders to `sanity/POC/` to maintain a pristine, production-clean repository root.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/TrafficView.tsx`
+  - `.gitignore`
+  - `CHANGELOG.md`
+
 ## [feature/develop-multi-tunnel-workbench-scanner] - 2026-08-21 (Proxy Lifecycle Optimization, Fast WebSocket Relay Timeout & Multi-Tunnel Workbench Studio)
 - **Feature Summary**:
   - **Ephemeral Proxy Listener Lifecycle & TCP Half-Close**: Refactored `start_proxy` in `proxy.rs` to always abort stale task handles and re-bind fresh listeners per invocation, plus added explicit `client_write.shutdown().await` and `target_write.shutdown().await` on TCP streams to cleanly complete responses without hanging.

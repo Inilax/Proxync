@@ -137,11 +137,13 @@ pub async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, 
                 let (mut client_read, mut client_write) = client_stream.into_split();
                 let (mut target_read, mut target_write) = target_stream.into_split();
 
+                let start_instant = std::time::Instant::now();
                 let app_c = app_clone.clone();
                 let req_id_c = req_id.clone();
                 tokio::spawn(async move {
                     let mut res_buf = vec![0u8; 16384];
                     if let Ok(n_res) = target_read.read(&mut res_buf).await {
+                        let duration_ms = start_instant.elapsed().as_millis() as u64;
                         if n_res > 0 {
                             let res_str = String::from_utf8_lossy(&res_buf[..n_res]);
                             let mut status: u16 = 200;
@@ -157,6 +159,7 @@ pub async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, 
                             let res_meta = serde_json::json!({
                                 "requestId": req_id_c,
                                 "status": status,
+                                "durationMs": duration_ms,
                                 "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()
                             });
                             let _ = app_c.emit("request:log:response", res_meta);
