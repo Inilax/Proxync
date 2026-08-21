@@ -25,8 +25,8 @@ const steps: Step[] = [
   {
     number: "03",
     icon: Activity,
-    title: "Watch the stream",
-    body: "Live traffic flows into an inspector you can search, filter, replay, and export to OpenAPI.",
+    title: "Watch the stream & replay",
+    body: "Live traffic flows into an inspector you can filter, replay in Workbench with visual diffs, and jump straight to code.",
   },
 ];
 

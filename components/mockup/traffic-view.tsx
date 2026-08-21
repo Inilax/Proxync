@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, Search, Send, Trash2, XCircle } from "lucide-react";
+import { CheckCircle2, Search, Send, Trash2, XCircle, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { METHOD_BADGE, METHOD_STYLE, ROWS, STATUS_STYLE } from "./types";
 
@@ -10,7 +10,7 @@ export function TrafficView() {
   const selectedRow = ROWS.find((r) => r.id === selectedId) || ROWS[0];
 
   return (
-    <div className="flex h-[490px] w-full p-4 gap-3 fade-in select-none items-stretch">
+    <div className="flex h-full w-full p-3.5 gap-3 fade-in select-none items-stretch overflow-hidden font-mono">
       {/* Left Table Panel */}
       <div className="min-w-0 flex-1 flex flex-col justify-between rounded-xl border border-outline-variant/30 bg-surface-container p-4 space-y-3">
         {/* Header */}
@@ -148,13 +148,22 @@ export function TrafficView() {
           </div>
         </div>
 
-        <button
-          type="button"
-          className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 font-mono text-xs font-bold text-on-primary hover:bg-primary/90 transition-all shadow-sm shadow-primary/25 cursor-pointer"
-        >
-          <Send className="h-3.5 w-3.5" />
-          Send to Playground
-        </button>
+        <div className="flex flex-col gap-1.5 pt-2">
+          <button
+            type="button"
+            className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 font-mono text-xs font-bold text-on-primary hover:bg-primary/90 transition-all shadow-sm shadow-primary/25 cursor-pointer"
+          >
+            <Zap className="h-3.5 w-3.5" />
+            Replay in Workbench
+          </button>
+          <button
+            type="button"
+            className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-outline-variant/40 bg-surface-container px-3 py-1.5 font-mono text-[11px] font-medium text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all cursor-pointer"
+          >
+            <Send className="h-3 w-3" />
+            Send to Playground
+          </button>
+        </div>
       </aside>
     </div>
   );

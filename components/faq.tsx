@@ -32,6 +32,11 @@ const faqs = [
       "An unconditional pre-flight security scan runs on startup to detect critical CVE release tags ([SECURITY-CVE], [TYPE: CVE-PATCH]). It automatically alerts you and streams the update with live progress tracking, ensuring zero-day vulnerabilities are patched immediately.",
   },
   {
+    question: "How does the Request Workbench and 1-Click IDE jumping work?",
+    answer:
+      "Workbench allows you to stage multi-tab HTTP requests, send live replays against local endpoints with millisecond duration tracking, and view side-by-side visual diffs between original captured traffic and new responses. A native Tauri IPC command also allows 1-click jumping straight to the exact endpoint controller file and line number inside VS Code or Cursor (e.g. src/routes/users.ts:42).",
+  },
+  {
     question: "Which platforms and installer versions are supported?",
     answer:
       "A native Windows x64 installer (Proxync_0.2.1_x64-setup.exe) ships today via Tauri v2 with built-in version-aware auto-updates and High-DPI setup wizards. macOS and Linux support is currently in development.",

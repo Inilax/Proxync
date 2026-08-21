@@ -1,148 +1,217 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, Plus } from "lucide-react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  Code2,
+  Folder,
+  Globe,
+  Layers,
+  Network,
+  Plus,
+  RefreshCw,
+  Search,
+  Server,
+  Zap,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const WORKSPACES = [
+interface LocalServer {
+  id: string;
+  runtime: string;
+  framework: string;
+  port: number;
+  directory: string;
+  endpoint: string;
+  status: "Ready" | "Exposed";
+}
+
+const LOCAL_SERVERS: LocalServer[] = [
   {
-    name: "proxync-workspace",
-    language: "TypeScript / Node",
-    shares: 1,
-    requests: 24,
-    notes: "React + Vite client with a FastAPI backend. Tunneling dev server for webhook testing.",
-    activity: "Just now",
-    status: "active",
+    id: "srv-1",
+    runtime: "node",
+    framework: "Vite Dev Server",
+    port: 5173,
+    directory: "~/projects/web-frontend",
+    endpoint: "http://localhost:5173",
+    status: "Ready",
   },
   {
-    name: "ecommerce-api",
-    language: "Python (FastAPI)",
-    shares: 0,
-    requests: 14,
-    notes: "Storefront API. Playground collection seeded from starter scan.",
-    activity: "18h ago",
-    status: "active",
+    id: "srv-2",
+    runtime: "node",
+    framework: "Next.js App",
+    port: 3000,
+    directory: "~/projects/portal-ui",
+    endpoint: "http://localhost:3000",
+    status: "Ready",
   },
   {
-    name: "legacy-portal",
-    language: "Go (Gin)",
-    shares: 0,
-    requests: 8,
-    notes: "Dormant legacy backend automatically filtered by 7-day inactivity rule.",
-    activity: "12d ago",
-    status: "inactive",
+    id: "srv-3",
+    runtime: "python",
+    framework: "FastAPI Backend",
+    port: 8000,
+    directory: "~/projects/backend-api",
+    endpoint: "http://localhost:8000",
+    status: "Ready",
+  },
+  {
+    id: "srv-4",
+    runtime: "node",
+    framework: "NestJS Microservice",
+    port: 4000,
+    directory: "~/projects/microservice-gateway",
+    endpoint: "http://localhost:4000",
+    status: "Ready",
   },
 ];
 
 export function LobbyView() {
-  const [tab, setTab] = useState<"active" | "inactive">("active");
-  const filteredWorkspaces = WORKSPACES.filter((w) =>
-    tab === "active" ? w.status === "active" : w.status === "inactive",
-  );
+  const [servers, setServers] = useState<LocalServer[]>(LOCAL_SERVERS);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 2500);
+  };
+
+  const handleExpose = (server: LocalServer, type: "Proxync" | "Cloudflare" | "LAN") => {
+    showToast(`Launched ${type} Tunnel for ${server.framework} on port :${server.port}`);
+  };
 
   return (
-    <div className="space-y-4 p-5 fade-in select-none">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-outline-variant/30 pb-3 gap-3">
-        <div>
-          <h1 className="text-lg font-bold text-on-surface">Workspaces Hub</h1>
-          <p className="text-xs text-on-surface-variant mt-0.5">
-            Isolated contexts per project. Features dynamic activity tracking &amp; 7-day inactivity filtering.
-          </p>
+    <div className="flex h-full w-full flex-col bg-surface-container p-3.5 gap-3 fade-in select-none font-mono text-xs overflow-y-auto">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-12 right-6 z-50 rounded-lg border border-primary/40 bg-surface-container-high/95 backdrop-blur-md px-3.5 py-2 text-primary shadow-xl animate-in fade-in slide-in-from-bottom-2 text-xs flex items-center gap-2 font-bold">
+          <Zap className="h-3.5 w-3.5" />
+          <span>{toastMessage}</span>
         </div>
-        <div className="flex items-center rounded-lg border border-outline-variant/30 bg-surface-container p-1 self-start sm:self-auto shrink-0">
+      )}
+
+      {/* ── 1. Active Workspace Header Card ── */}
+      <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-4 space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-1">
+            <span className="text-[9.5px] uppercase font-bold text-primary flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+              ACTIVE WORKSPACE
+            </span>
+            <h1 className="text-lg font-bold text-on-surface">Local Workspace</h1>
+            <p className="text-[10.5px] text-outline max-w-xl">
+              Detected 4 local development servers running on localhost ports. Select any server card below to configure and launch a public tunnel.
+            </p>
+          </div>
+
           <button
-            type="button"
-            onClick={() => setTab("active")}
-            className={cn(
-              "rounded-md px-2.5 py-1 font-mono text-xs font-bold transition-all cursor-pointer",
-              tab === "active" ? "bg-primary text-on-primary shadow-sm" : "text-on-surface-variant hover:text-on-surface",
-            )}
+            onClick={() => showToast("Full scan complete: 4 listening dev ports found")}
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-primary to-secondary px-4 py-2.5 text-xs font-bold text-white shadow-md hover:opacity-95 transition-all cursor-pointer shrink-0"
           >
-            Active (2)
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("inactive")}
-            className={cn(
-              "rounded-md px-2.5 py-1 font-mono text-xs font-bold transition-all cursor-pointer",
-              tab === "inactive" ? "bg-primary text-on-primary shadow-sm" : "text-on-surface-variant hover:text-on-surface",
-            )}
-          >
-            Inactive (1)
+            <Search className="h-4 w-4" />
+            <span>Full Scan Local Ports</span>
           </button>
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-xl border border-outline-variant/30 bg-surface-container p-3.5 gap-3">
-        <div>
-          <div className="text-xs font-bold text-on-surface">Create a new workspace</div>
-          <p className="text-[11px] text-on-surface-variant mt-0.5">
-            Inline creation with global Esc key dismissal.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            defaultValue="microservice-gateway"
-            className="flex-1 sm:w-44 bg-surface-container-low border border-outline-variant/40 rounded-lg px-2.5 py-1.5 text-xs text-on-surface focus:outline-none focus:border-primary font-mono min-w-0"
-          />
+      {/* ── 2. Detected Local Servers Grid ── */}
+      <div className="space-y-2.5">
+        <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2">
+            <h2 className="font-bold text-on-surface">Detected Local Servers</h2>
+            <span className="rounded bg-surface-container-high border border-outline-variant/30 px-2 py-0.5 text-[10px] font-bold text-on-surface-variant">
+              4 Running
+            </span>
+          </div>
+
           <button
-            type="button"
-            className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-primary px-3.5 py-1.5 font-mono text-xs font-bold text-on-primary transition-all hover:bg-primary/90 shadow-sm shadow-primary/25 cursor-pointer"
+            onClick={() => showToast("Scanning localhost ports via netstat -ano...")}
+            className="flex items-center gap-1 text-[11px] text-outline hover:text-primary transition-colors cursor-pointer"
           >
-            <Plus className="h-3.5 w-3.5" />
-            Create
+            <RefreshCw className="h-3 w-3" />
+            <span>Scan Ports</span>
           </button>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        {filteredWorkspaces.map((workspace) => (
-          <div
-            key={workspace.name}
-            className={cn(
-              "rounded-xl border p-3.5 transition-all",
-              workspace.status === "active"
-                ? "border-primary/40 bg-surface-container-lowest hover:border-primary"
-                : "border-outline-variant/20 bg-surface-container-low/50 opacity-75",
-            )}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="text-sm font-bold text-on-surface">{workspace.name}</div>
-                <div className="mt-0.5 font-mono text-[11px] text-on-surface-variant">
-                  {workspace.language}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {servers.map((srv) => (
+            <div
+              key={srv.id}
+              className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-3 space-y-2.5 hover:border-primary/40 transition-all shadow-sm flex flex-col justify-between"
+            >
+              <div className="space-y-2">
+                {/* Top Row: Runtime, Framework, Port */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-6 rounded bg-surface-container flex items-center justify-center text-primary font-bold text-[10px]">
+                      &lt;&gt;
+                    </div>
+                    <div>
+                      <div className="font-bold text-xs text-on-surface">{srv.runtime}</div>
+                      <div className="text-[10px] text-outline">{srv.framework}</div>
+                    </div>
+                  </div>
+
+                  <span className="rounded bg-surface-container-high border border-outline-variant/30 px-2 py-0.5 text-[9.5px] font-bold text-outline">
+                    ● LOCAL :{srv.port}
+                  </span>
+                </div>
+
+                {/* Directory */}
+                <div className="flex items-center gap-1.5 text-[10px] text-outline bg-surface-container px-2 py-1 rounded truncate">
+                  <Folder className="h-3 w-3 text-secondary shrink-0" />
+                  <span className="truncate">{srv.directory}</span>
+                </div>
+
+                {/* Endpoint & Status */}
+                <div className="flex items-center justify-between text-[10.5px]">
+                  <div className="space-y-0.5">
+                    <span className="text-[8.5px] text-outline uppercase font-bold block">LOCAL ENDPOINT</span>
+                    <span className="font-bold text-on-surface">{srv.endpoint}</span>
+                  </div>
+                  <span className="rounded bg-secondary/15 text-secondary border border-secondary/30 px-2 py-0.5 text-[9px] font-bold">
+                    {srv.status}
+                  </span>
                 </div>
               </div>
-              <span
-                className={cn(
-                  "shrink-0 rounded-full border px-2.5 py-0.5 font-mono text-[10px] font-bold",
-                  workspace.status === "active"
-                    ? "border-tertiary/40 bg-tertiary/10 text-tertiary"
-                    : "border-outline-variant/40 text-on-surface-muted",
-                )}
-              >
-                Active {workspace.activity}
-              </span>
+
+              {/* Bottom Actions */}
+              <div className="flex items-center gap-1.5 pt-2 border-t border-outline-variant/20">
+                <button
+                  onClick={() => handleExpose(srv, "Proxync")}
+                  className="flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary/20 text-primary border border-primary/40 text-[10px] font-bold hover:bg-primary/30 transition-all cursor-pointer"
+                >
+                  <Zap className="h-3 w-3" />
+                  <span>Expose (Proxync)</span>
+                </button>
+
+                <button
+                  onClick={() => handleExpose(srv, "Cloudflare")}
+                  className="px-2 py-1.5 rounded-lg bg-surface-container border border-outline-variant/30 text-outline hover:text-on-surface text-[10px] font-semibold transition-all cursor-pointer"
+                >
+                  Cloudflare
+                </button>
+
+                <button
+                  onClick={() => handleExpose(srv, "LAN")}
+                  className="px-2 py-1.5 rounded-lg bg-surface-container border border-outline-variant/30 text-outline hover:text-on-surface text-[10px] font-semibold transition-all cursor-pointer"
+                >
+                  LAN
+                </button>
+              </div>
             </div>
-            <div className="mt-2 flex gap-3 font-mono text-[11px] text-on-surface-variant">
-              <span>{workspace.shares} saved shares</span>
-              <span>{workspace.requests} requests</span>
-            </div>
-            <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-on-surface-variant">
-              {workspace.notes}
-            </p>
-            <div className="mt-3 flex items-center gap-2">
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1 font-mono text-xs font-bold text-on-primary transition-all hover:bg-primary/90 cursor-pointer"
-              >
-                Open workspace
-                <ArrowRight className="h-3 w-3" />
-              </button>
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
+      </div>
+
+      {/* ── 3. Active Workspace Tunnels Section ── */}
+      <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-3 space-y-1.5">
+        <div className="flex items-center justify-between text-xs">
+          <h2 className="font-bold text-on-surface">Active Workspace Tunnels</h2>
+          <span className="rounded bg-surface-container-high border border-outline-variant/30 px-2 py-0.5 text-[10px] font-bold text-outline">
+            0 Active
+          </span>
+        </div>
+        <p className="text-[10px] text-outline">No public tunnels active. Click &quot;Expose (Proxync)&quot; on any server above to start a secure tunnel.</p>
       </div>
     </div>
   );

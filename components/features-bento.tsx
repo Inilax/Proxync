@@ -163,21 +163,24 @@ export function FeaturesBento() {
           <Reveal delay={0.24} className="md:col-span-2 lg:col-span-4">
             <Card className="group flex h-full flex-col p-6 md:p-8 lg:flex-row lg:items-center">
               <div className="lg:mr-12 lg:flex-1">
-                <IconTile icon={FileCode} tone="primary" />
-                <CardHeading>Incremental Auto-OpenAPI 3.0</CardHeading>
+                <IconTile icon={Zap} tone="primary" />
+                <CardHeading>Request Workbench &amp; 1-Click IDE Jumping</CardHeading>
                 <CardCopy>
-                  Don&apos;t write docs. Proxync observes local traffic, filters malicious bot probes (/.env, /.git), parameterizes dynamic paths (/users/&#123;id&#125;), and builds interactive OpenAPI specs.
+                  Stage multi-tab HTTP drafts, benchmark latency in milliseconds, diff live replay payloads against captured production traffic, and jump directly to the controller source code in VS Code or Cursor at the exact line number.
                 </CardCopy>
               </div>
               <div className="mt-8 hidden shrink-0 lg:mt-0 lg:block">
-                <div className="rotate-2 rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4 font-mono text-[11px] opacity-80 shadow-card">
-                  <div className="mb-3 flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-error/50" />
-                    <span className="h-2 w-2 rounded-full bg-secondary/50" />
-                    <span className="h-2 w-2 rounded-full bg-tertiary/50" />
-                    <span className="ml-2 text-on-surface-muted">openapi.yaml</span>
+                <div className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-4 font-mono text-[11px] opacity-90 shadow-card space-y-2">
+                  <div className="flex items-center justify-between text-secondary font-bold">
+                    <span>⚡ Replay #3 (200 OK · 18ms)</span>
+                    <span className="text-[10px] text-outline">VS Code :42</span>
                   </div>
-                  <YamlSnippet />
+                  <div className="text-[10px] text-outline">
+                    Diff: <span className="text-secondary">+ &quot;refreshed&quot;: true</span>
+                  </div>
+                  <div className="text-[10px] text-primary">
+                    Export: cURL · Fetch · Python · Go · Rust
+                  </div>
                 </div>
               </div>
             </Card>

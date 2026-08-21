@@ -10,7 +10,7 @@ export function SettingsView({
   onThemeChange: (t: ThemeId) => void;
 }) {
   return (
-    <div className="space-y-5 p-5 fade-in select-none">
+    <div className="space-y-3.5 p-4 fade-in select-none h-full overflow-y-auto">
       <div className="flex items-center justify-between border-b border-outline-variant/30 pb-3">
         <div>
           <h1 className="text-lg font-bold text-on-surface">Settings &amp; Engine Preferences</h1>

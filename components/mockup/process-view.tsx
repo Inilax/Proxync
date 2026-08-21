@@ -5,7 +5,7 @@ import { PROCESSES, TUNNEL_URL } from "./types";
 
 export function ProcessView() {
   return (
-    <div className="p-5 space-y-4 fade-in select-none">
+    <div className="p-4 space-y-3.5 fade-in select-none h-full overflow-y-auto">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-outline-variant/30 pb-3 gap-2">
         <div>
           <h1 className="text-lg font-bold text-on-surface">Tunnels &amp; Process Recon</h1>

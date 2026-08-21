@@ -8,23 +8,51 @@ import {
   LayoutGrid,
   Send,
   Settings,
+  Zap,
 } from "lucide-react";
 
 export const TUNNEL_URL = "https://px-a1b2c3d4.proxync.dev";
 
-export const NAV_ITEMS = [
-  { view: "welcome", label: "Explore", icon: Compass },
-  { view: "lobby", label: "Workspaces", icon: LayoutGrid },
-  { view: "process", label: "Tunnels", icon: Globe },
-  { view: "traffic", label: "Traffic", icon: Activity },
-  { view: "postman", label: "Playground", icon: Send },
-  { view: "swagger", label: "Swagger", icon: Code2 },
-  { view: "docs", label: "Docs", icon: BookOpen },
-  { view: "observability", label: "Observability", icon: BarChart3 },
-  { view: "settings", label: "Settings", icon: Settings },
+export const NAV_CATEGORIES = [
+  {
+    category: "OVERVIEW",
+    items: [
+      { view: "welcome", label: "Explore", icon: Compass },
+      { view: "lobby", label: "Workspace Hub", icon: LayoutGrid },
+    ],
+  },
+  {
+    category: "DEVELOPMENT & NETWORK",
+    items: [
+      { view: "process", label: "Tunnels", icon: Globe },
+      { view: "traffic", label: "Traffic", icon: Activity },
+      { view: "postman", label: "Playground", icon: Send },
+      { view: "workbench", label: "Workbench", icon: Zap },
+      { view: "swagger", label: "Swagger", icon: Code2 },
+    ],
+  },
+  {
+    category: "OBSERVABILITY & TOOLS",
+    items: [
+      { view: "observability", label: "Observability", icon: BarChart3 },
+      { view: "docs", label: "Docs", icon: BookOpen },
+      { view: "settings", label: "Settings", icon: Settings },
+    ],
+  },
 ] as const;
 
-export type ViewId = (typeof NAV_ITEMS)[number]["view"];
+export type ViewId =
+  | "welcome"
+  | "lobby"
+  | "process"
+  | "traffic"
+  | "postman"
+  | "workbench"
+  | "swagger"
+  | "observability"
+  | "docs"
+  | "settings";
+
 export type ThemeId = "slate" | "dracula" | "cyberpunk" | "emerald";
 
 export interface Process {

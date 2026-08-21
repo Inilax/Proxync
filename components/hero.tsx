@@ -114,7 +114,7 @@ export function Hero() {
             </span>
           </div>
 
-          <div className="glass absolute -bottom-5 left-4 z-20 hidden animate-float items-center gap-2 rounded-full border border-secondary/30 bg-surface-container-low/90 px-3.5 py-2 font-mono text-[11px] text-on-surface-variant shadow-xl backdrop-blur-md md:flex lg:-left-8 [animation-delay:2.5s]">
+          <div className="glass absolute -bottom-4 left-4 z-20 hidden animate-float items-center gap-2 rounded-full border border-secondary/30 bg-surface-container-low/90 px-3.5 py-2 font-mono text-[11px] text-on-surface-variant shadow-xl backdrop-blur-md md:flex lg:-left-4 lg:-bottom-4 [animation-delay:2.5s]">
             <Zap className="h-3.5 w-3.5 text-secondary" />
             <span>
               <strong className="font-bold text-secondary">● Real-Time Traffic Inspector</strong> — Monitoring :5173

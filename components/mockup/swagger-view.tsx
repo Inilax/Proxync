@@ -13,7 +13,7 @@ const SWAGGER_ENDPOINTS = [
 
 export function SwaggerView() {
   return (
-    <div className="space-y-5 p-5 fade-in select-none">
+    <div className="p-4 space-y-3.5 fade-in select-none h-full overflow-y-auto">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/30 pb-3">
         <div>
           <h1 className="text-lg font-bold text-on-surface">Swagger &amp; OpenAPI Studio</h1>
