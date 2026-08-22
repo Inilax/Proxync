@@ -215,11 +215,45 @@ pub async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, 
                 });
                 let _ = app_clone.emit("request:log", req_meta);
 
+                let start_instant = std::time::Instant::now();
+
                 if target_stream.write_all(modified_req.as_bytes()).await.is_err() {
                     return;
                 }
 
-                // Full-duplex bidirectional stream for all traffic (WebSocket HMR, HTTP/1.1 chunked, SSE, uploads)
+                // Read initial response chunk to capture HTTP status code and latency duration
+                let mut res_buf = vec![0u8; 16384];
+                let n_res = match target_stream.read(&mut res_buf).await {
+                    Ok(bytes) if bytes > 0 => bytes,
+                    _ => return,
+                };
+
+                let duration_ms = start_instant.elapsed().as_millis() as u64;
+                let res_str = String::from_utf8_lossy(&res_buf[..n_res]);
+                let mut status: u16 = 200;
+                if let Some(status_line) = res_str.lines().next() {
+                    let parts: Vec<&str> = status_line.split_whitespace().collect();
+                    if parts.len() >= 2 {
+                        if let Ok(code) = parts[1].parse::<u16>() {
+                            status = code;
+                        }
+                    }
+                }
+
+                let res_meta = serde_json::json!({
+                    "id": req_id.clone(),
+                    "requestId": req_id.clone(),
+                    "status": status,
+                    "durationMs": duration_ms,
+                    "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()
+                });
+                let _ = app_clone.emit("request:log:response", res_meta);
+
+                if client_stream.write_all(&res_buf[..n_res]).await.is_err() {
+                    return;
+                }
+
+                // Full-duplex bidirectional stream for remaining traffic (WebSocket HMR, HTTP/1.1 chunked, SSE, uploads)
                 let _ = tokio::io::copy_bidirectional(&mut client_stream, &mut target_stream).await;
             });
         }
