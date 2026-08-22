@@ -178,7 +178,7 @@ export function SwaggerView({
 
   // Copy as cURL helper
   const handleCopyCurl = (ep: (typeof endpointPreview)[0]) => {
-    const matchingTunnel = ep.port ? tunnels.find((t) => t.localPort === ep.port && t.status === 'ACTIVE') : activeTunnel;
+    const matchingTunnel = ep.port ? tunnels.find((t) => t.localPort === ep.port && (t.status === 'ACTIVE' || t.status === 'STANDBY')) : activeTunnel;
     const baseUrl = ep.tunnelUrl || matchingTunnel?.publicUrl || `http://localhost:${ep.port || 3000}`;
     let sampleBodyStr = '';
     if (['POST', 'PUT', 'PATCH'].includes(ep.method) && ep.requestBodySchema) {

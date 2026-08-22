@@ -33,7 +33,7 @@ export interface Tunnel {
   id: string;
   publicUrl: string;
   localPort: number;
-  status: string;
+  status: 'ACTIVE' | 'STANDBY' | 'CLOSED' | string;
   subdomain?: string;
   createdAt?: string;
 }

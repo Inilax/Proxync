@@ -97,32 +97,32 @@ const NAV_CATEGORIES: {
   category: string;
   items: { view: MainView; label: string; icon: string }[];
 }[] = [
-  {
-    category: 'OVERVIEW',
-    items: [
-      { view: 'welcome', label: 'Explore', icon: 'explore' },
-      { view: 'workspace_dashboard', label: 'Workspace Hub', icon: 'space_dashboard' },
-    ],
-  },
-  {
-    category: 'DEVELOPMENT & NETWORK',
-    items: [
-      { view: 'process', label: 'Tunnels', icon: 'lan' },
-      { view: 'traffic', label: 'Traffic', icon: 'terminal' },
-      { view: 'postman', label: 'Playground', icon: 'send' },
-      { view: 'workbench', label: 'Workbench', icon: 'bolt' },
-      { view: 'swagger', label: 'Swagger', icon: 'api' },
-    ],
-  },
-  {
-    category: 'OBSERVABILITY & TOOLS',
-    items: [
-      { view: 'observability', label: 'Observability', icon: 'insights' },
-      { view: 'docs', label: 'Docs', icon: 'menu_book' },
-      { view: 'settings', label: 'Settings', icon: 'settings' },
-    ],
-  },
-];
+    {
+      category: 'OVERVIEW',
+      items: [
+        { view: 'welcome', label: 'Explore', icon: 'explore' },
+        { view: 'workspace_dashboard', label: 'Workspace Hub', icon: 'space_dashboard' },
+      ],
+    },
+    {
+      category: 'DEVELOPMENT & NETWORK',
+      items: [
+        { view: 'process', label: 'Tunnels', icon: 'lan' },
+        { view: 'traffic', label: 'Traffic', icon: 'terminal' },
+        { view: 'postman', label: 'Playground', icon: 'send' },
+        { view: 'workbench', label: 'Workbench', icon: 'bolt' },
+        { view: 'swagger', label: 'Swagger', icon: 'api' },
+      ],
+    },
+    {
+      category: 'OBSERVABILITY & TOOLS',
+      items: [
+        { view: 'observability', label: 'Observability', icon: 'insights' },
+        { view: 'docs', label: 'Docs', icon: 'menu_book' },
+        { view: 'settings', label: 'Settings', icon: 'settings' },
+      ],
+    },
+  ];
 
 async function checkRealInternetConnection(timeoutMs = 1200): Promise<boolean> {
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -255,7 +255,7 @@ export default function App() {
       if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
         try {
           localStorage.setItem(SIDEBAR_DESKTOP_PREF_KEY, String(next));
-        } catch {}
+        } catch { }
       }
       return next;
     });
@@ -347,11 +347,11 @@ export default function App() {
         },
         requestLog: t.requestLog
           ? {
-              ...t.requestLog,
-              headers: sanitizeHeaders(t.requestLog.headers),
-              responseHeaders: sanitizeHeaders(t.requestLog.responseHeaders),
-              bodyPreview: '',
-            }
+            ...t.requestLog,
+            headers: sanitizeHeaders(t.requestLog.headers),
+            responseHeaders: sanitizeHeaders(t.requestLog.responseHeaders),
+            bodyPreview: '',
+          }
           : undefined,
         executionHistory: t.executionHistory.map((run) => ({
           ...run,
@@ -449,7 +449,7 @@ export default function App() {
           console.log(`[Codebase Scanner] Auto-scanned ${eps.length} endpoints for ${effectiveProjectRoot}`);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [effectiveProjectRoot, activeWorkspace?.scannedFiles]);
 
   const openRequestInWorkbench = useCallback((req: RequestLog | SavedRequest | { method: string; path: string }) => {
@@ -460,8 +460,8 @@ export default function App() {
       'port' in req && req.port
         ? req.port
         : 'tunnelId' in req && req.tunnelId
-        ? tunnels.find((t) => t.id === req.tunnelId)?.localPort
-        : undefined;
+          ? tunnels.find((t) => t.id === req.tunnelId)?.localPort
+          : undefined;
 
     if (targetPort) {
       const matchingProc = processes.find((p) => p.port === targetPort);
@@ -491,21 +491,21 @@ export default function App() {
           current.map((t) =>
             t.id === existing.id
               ? {
-                  ...t,
-                  requestLog,
-                  draftRequest: {
-                    ...t.draftRequest,
-                    headers: requestLog.headers || t.draftRequest.headers,
-                    body: requestLog.bodyPreview !== undefined ? requestLog.bodyPreview : t.draftRequest.body,
-                  },
-                  executionHistory: [newRun, ...t.executionHistory.filter((r) => r.id !== newRun.id)],
-                  lastResponse: {
-                    status: rawStatus,
-                    duration: requestLog.durationMs || 12,
-                    headers: requestLog.responseHeaders || {},
-                    body: requestLog.bodyPreview || '',
-                  },
-                }
+                ...t,
+                requestLog,
+                draftRequest: {
+                  ...t.draftRequest,
+                  headers: requestLog.headers || t.draftRequest.headers,
+                  body: requestLog.bodyPreview !== undefined ? requestLog.bodyPreview : t.draftRequest.body,
+                },
+                executionHistory: [newRun, ...t.executionHistory.filter((r) => r.id !== newRun.id)],
+                lastResponse: {
+                  status: rawStatus,
+                  duration: requestLog.durationMs || 12,
+                  headers: requestLog.responseHeaders || {},
+                  body: requestLog.bodyPreview || '',
+                },
+              }
               : t
           )
         );
@@ -563,7 +563,7 @@ export default function App() {
             setScannedEndpoints(eps);
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     }
   }, [workbenchTabs, effectiveProjectRoot, scannedEndpoints, activeWorkspace]);
 
@@ -1042,6 +1042,7 @@ export default function App() {
     let unlistenRequest: (() => void) | undefined;
     let unlistenResponse: (() => void) | undefined;
     let unlistenClosed: (() => void) | undefined;
+    let unlistenStatus: (() => void) | undefined;
     let active = true;
 
     async function bindEvents() {
@@ -1075,7 +1076,7 @@ export default function App() {
 
         // Resolve matching tunnel and process dynamically
         const matchingTunnel = currentTunnels.find(
-          (t) => (payload.tunnelId && t.id === payload.tunnelId) || (portNum && t.localPort === portNum && t.status === 'ACTIVE')
+          (t) => (payload.tunnelId && t.id === payload.tunnelId) || (portNum && t.localPort === portNum && (t.status === 'ACTIVE' || t.status === 'STANDBY'))
         ) || (currentActiveTunnel?.localPort === portNum ? currentActiveTunnel : null);
 
         const matchingProcess = currentProcesses.find((p) => portNum && p.port === portNum) || (currentSelectedProcess?.port === portNum ? currentSelectedProcess : null);
@@ -1153,12 +1154,25 @@ export default function App() {
       if (!active) { uRes(); } else { unlistenResponse = uRes; }
 
       const uClose = await listen<{ tunnelId: string }>('tunnel:auto-closed', (event) => {
-        logApp('TUNNEL', 'WARN', `Tunnel ${event.payload.tunnelId} auto-closed (local process stopped)`);
+        logApp('TUNNEL', 'WARN', `Tunnel ${event.payload.tunnelId} closed`);
         setTunnels((current) => current.map((t) => t.id === event.payload.tunnelId ? { ...t, status: 'CLOSED' } : t));
         setActiveTunnel((current) => current?.id === event.payload.tunnelId ? null : current);
-        showToast('Local process stopped. Tunnel closed.', 'info');
+        showToast('Tunnel closed.', 'info');
       });
       if (!active) { uClose(); } else { unlistenClosed = uClose; }
+
+      const uStatus = await listen<{ port: number; status: 'ACTIVE' | 'STANDBY'; tunnelId?: string }>('tunnel:status-changed', (event) => {
+        const { port, status, tunnelId } = event.payload;
+        logApp('TUNNEL', status === 'STANDBY' ? 'WARN' : 'INFO', `Tunnel on port :${port} status changed to ${status}`);
+        setTunnels((current) => current.map((t) => (t.localPort === port || (tunnelId && t.id === tunnelId)) ? { ...t, status } : t));
+        setActiveTunnel((current) => (current && (current.localPort === port || (tunnelId && current.id === tunnelId))) ? { ...current, status } : current);
+        if (status === 'STANDBY') {
+          showToast(`Local server on :${port} stopped — tunnel in standby mode (URL preserved)`, 'warning');
+        } else if (status === 'ACTIVE') {
+          showToast(`Local server on :${port} resumed — tunnel is active!`, 'success');
+        }
+      });
+      if (!active) { uStatus(); } else { unlistenStatus = uStatus; }
     }
     void bindEvents();
     return () => {
@@ -1166,6 +1180,7 @@ export default function App() {
       unlistenRequest?.();
       unlistenResponse?.();
       unlistenClosed?.();
+      unlistenStatus?.();
     };
   }, []);
 
@@ -1546,14 +1561,14 @@ export default function App() {
     finally { removeSpawningPort(process.port); }
   }
 
-function generateRandomSubdomain(prefix = 'px'): string {
-  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  let rand = '';
-  for (let i = 0; i < 8; i++) {
-    rand += chars.charAt(Math.floor(Math.random() * chars.length));
+  function generateRandomSubdomain(prefix = 'px'): string {
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    let rand = '';
+    for (let i = 0; i < 8; i++) {
+      rand += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return `${prefix}-${rand}`;
   }
-  return `${prefix}-${rand}`;
-}
 
   async function shareProcessNative(process: ProcessCandidate) {
     if (!activeWorkspace) return;
@@ -1784,7 +1799,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
     if (listToClose.length === 0) {
       try {
         await invoke('close_all_tunnels');
-      } catch {}
+      } catch { }
       setTunnels([]);
       setActiveTunnel(null);
       return;
@@ -1804,7 +1819,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
       );
       try {
         await invoke('close_all_tunnels');
-      } catch {}
+      } catch { }
       setTunnels([]);
       setActiveTunnel(null);
       logApp('TUNNEL', 'INFO', `All ${listToClose.length} tunnels closed`);
@@ -2334,9 +2349,8 @@ function generateRandomSubdomain(prefix = 'px'): string {
             )}
             <div
               onClick={() => setMainView('workspace_dashboard')}
-              className={`workspace-selector flex items-center border border-outline-variant/60 bg-surface-container hover:border-primary/50 hover:bg-surface-container-high rounded-lg cursor-pointer transition-all text-sm text-on-surface select-none group shadow-sm ${
-                sidebarCollapsed ? 'p-1.5 justify-center' : 'px-3.5 py-2.5'
-              }`}
+              className={`workspace-selector flex items-center border border-outline-variant/60 bg-surface-container hover:border-primary/50 hover:bg-surface-container-high rounded-lg cursor-pointer transition-all text-sm text-on-surface select-none group shadow-sm ${sidebarCollapsed ? 'p-1.5 justify-center' : 'px-3.5 py-2.5'
+                }`}
               title={`Active Workspace: ${activeWorkspace?.name ?? 'Select Workspace'}`}
             >
               <div className={`flex items-center gap-2.5 truncate ${sidebarCollapsed ? 'justify-center' : ''}`}>
@@ -2371,11 +2385,10 @@ function generateRandomSubdomain(prefix = 'px'): string {
                       key={item.view}
                       disabled={isDisabled}
                       title={item.label}
-                      className={`nav-item flex items-center ${sidebarCollapsed ? 'collapsed justify-center px-1.5 py-2 mx-auto w-[42px] rounded-xl' : 'gap-3 px-6 py-2'} w-full text-left transition-colors font-label-md text-sm ${
-                        isSelected
+                      className={`nav-item flex items-center ${sidebarCollapsed ? 'collapsed justify-center px-1.5 py-2 mx-auto w-[42px] rounded-xl' : 'gap-3 px-6 py-2'} w-full text-left transition-colors font-label-md text-sm ${isSelected
                           ? 'active text-on-surface border-secondary-container bg-surface-container-high font-semibold'
                           : 'text-on-surface-variant hover:bg-surface-container-highest border-l-2 border-transparent'
-                      } ${isDisabled ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'cursor-pointer'}`}
+                        } ${isDisabled ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'cursor-pointer'}`}
                       onClick={() => {
                         if (item.view === 'settings') {
                           setSettingsSection('general');
@@ -2635,7 +2648,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
                 workspace={activeWorkspace}
                 process={selectedProcess}
                 profile={selectedProfile}
-                tunnel={tunnels.find((t) => t.localPort === (selectedProcess?.port || selectedProfile?.port) && t.status === 'ACTIVE') || null}
+                tunnel={tunnels.find((t) => t.localPort === (selectedProcess?.port || selectedProfile?.port) && (t.status === 'ACTIVE' || t.status === 'STANDBY')) || null}
                 sharingPort={sharingPort}
                 suggestions={starterSuggestions}
                 hasVerifiedDomain={domains.some((d) => d.verified)}
@@ -2676,10 +2689,18 @@ function generateRandomSubdomain(prefix = 'px'): string {
       <footer className="app-footer h-6 min-h-6 w-full flex justify-between items-center px-3 border-t border-outline-variant bg-surface-container-lowest text-code-sm select-none z-50 overflow-hidden whitespace-nowrap">
         <div className="flex items-center gap-2 sm:gap-3 text-secondary min-w-0 overflow-hidden shrink">
           <span className="flex items-center gap-1.5 min-w-0 shrink truncate">
-            <span className={`w-2 h-2 rounded-full shrink-0 ${tunnels.some((t) => t.status === 'ACTIVE') ? 'bg-primary animate-pulse' : 'bg-outline'}`} />
+            {tunnels.some((t) => t.status === 'ACTIVE') ? (
+              <span className="w-2 h-2 rounded-full shrink-0 bg-primary animate-pulse" />
+            ) : tunnels.some((t) => t.status === 'STANDBY') ? (
+              <span className="w-2 h-2 rounded-full shrink-0 bg-amber-400" />
+            ) : (
+              <span className="w-2 h-2 rounded-full shrink-0 bg-outline" />
+            )}
             <span className="truncate max-w-[130px] sm:max-w-[240px] md:max-w-[360px] lg:max-w-none font-mono">
               {tunnels.filter((t) => t.status === 'ACTIVE').length > 0
-                ? `${tunnels.filter((t) => t.status === 'ACTIVE').length} Live ${tunnels.filter((t) => t.status === 'ACTIVE').length === 1 ? 'Tunnel' : 'Tunnels'} (${tunnels.filter((t) => t.status === 'ACTIVE').map((t) => `:${t.localPort}`).join(', ')})`
+                ? `${tunnels.filter((t) => t.status === 'ACTIVE').length} Live ${tunnels.filter((t) => t.status === 'ACTIVE').length === 1 ? 'Tunnel' : 'Tunnels'} (${tunnels.filter((t) => t.status === 'ACTIVE').map((t) => `:${t.localPort}`).join(', ')})${tunnels.some((t) => t.status === 'STANDBY') ? ` + ${tunnels.filter((t) => t.status === 'STANDBY').length} Standby` : ''}`
+                : tunnels.filter((t) => t.status === 'STANDBY').length > 0
+                ? `${tunnels.filter((t) => t.status === 'STANDBY').length} Standby (${tunnels.filter((t) => t.status === 'STANDBY').map((t) => `:${t.localPort}`).join(', ')})`
                 : 'No Active Tunnels'}
             </span>
           </span>
