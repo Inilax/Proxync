@@ -43,6 +43,7 @@ export function ProcessView({
   onCopy,
   onImportStarterRequests,
   onRefreshConfig,
+  onInspectTraffic,
 }: {
   workspace: WorkspaceConfig | null;
   process: ProcessCandidate | null;
@@ -60,6 +61,7 @@ export function ProcessView({
   onCopy: (value: string, message: string) => void;
   onImportStarterRequests: () => void;
   onRefreshConfig?: (process: ProcessCandidate | ProcessProfile) => void;
+  onInspectTraffic?: () => void;
 }) {
   if (!process && !profile) {
     return (
@@ -149,21 +151,43 @@ export function ProcessView({
         </div>
         <div className="flex gap-2">
           {isActive && tunnel ? (
-            <button
-              className="btn-danger"
-              onClick={() => onStop(tunnel)}
-            >
-              <span className="material-symbols-outlined text-[16px]">stop</span>
-              Stop Tunnel
-            </button>
+            <div className="flex gap-2">
+              {onInspectTraffic && (
+                <button
+                  className="btn-secondary"
+                  onClick={onInspectTraffic}
+                  title="Inspect real-time HTTP traffic and payloads"
+                >
+                  Inspect Traffic
+                </button>
+              )}
+              <button
+                className="btn-danger"
+                onClick={() => onStop(tunnel)}
+              >
+                <span className="material-symbols-outlined text-[16px]">stop</span>
+                Stop Tunnel
+              </button>
+            </div>
           ) : sharingPort === processLike.port ? (
-            <button
-              className="btn-danger"
-              onClick={onStopLocalShare}
-            >
-              <span className="material-symbols-outlined text-[16px]">stop</span>
-              Stop Sharing
-            </button>
+            <div className="flex gap-2">
+              {onInspectTraffic && (
+                <button
+                  className="btn-secondary"
+                  onClick={onInspectTraffic}
+                  title="Inspect local traffic"
+                >
+                  Inspect Traffic
+                </button>
+              )}
+              <button
+                className="btn-danger"
+                onClick={onStopLocalShare}
+              >
+                <span className="material-symbols-outlined text-[16px]">stop</span>
+                Stop Sharing
+              </button>
+            </div>
           ) : process ? (
             <div className="flex gap-2">
               <button

@@ -564,6 +564,23 @@ export function WorkspaceDashboardView({
                                 Copy Public URL
                               </button>
 
+                              {onInspectTraffic && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveMenuTunnelId(null);
+                                    const matchingProc = processes.find((p) => p.port === tunnel.localPort);
+                                    if (matchingProc) {
+                                      onInspectTraffic(matchingProc);
+                                    }
+                                  }}
+                                  className="flex items-center gap-2 px-4 py-2 w-full text-left text-xs text-on-surface hover:bg-surface-container-highest transition-colors cursor-pointer"
+                                >
+                                  <span className="material-symbols-outlined text-[16px]">visibility</span>
+                                  Inspect Traffic
+                                </button>
+                              )}
+
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();

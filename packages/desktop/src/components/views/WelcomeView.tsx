@@ -12,6 +12,7 @@ export function WelcomeView({
   onNavigateToCustomDomains,
   onStopTunnel,
   onStopAllTunnels,
+  onInspectTraffic,
 }: {
   tunnels: Tunnel[];
   requests: RequestLog[];
@@ -20,6 +21,7 @@ export function WelcomeView({
   onNavigateToCustomDomains: () => void;
   onStopTunnel: (tunnel: Tunnel) => void;
   onStopAllTunnels?: () => void;
+  onInspectTraffic?: (tunnel?: Tunnel) => void;
 }) {
   const [activeMenuTunnelId, setActiveMenuTunnelId] = useState<string | null>(null);
   const activeTunnels = tunnels.filter((t) => t.status === 'ACTIVE');
@@ -296,6 +298,20 @@ export function WelcomeView({
                               <span className="material-symbols-outlined text-[16px]">content_copy</span>
                               Copy Public URL
                             </button>
+
+                            {onInspectTraffic && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveMenuTunnelId(null);
+                                  onInspectTraffic(tunnel);
+                                }}
+                                className="flex items-center gap-2 px-4 py-2 w-full text-left text-xs text-on-surface hover:bg-surface-container-highest transition-colors cursor-pointer"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">visibility</span>
+                                Inspect Traffic
+                              </button>
+                            )}
 
                             <button
                               onClick={(e) => {
