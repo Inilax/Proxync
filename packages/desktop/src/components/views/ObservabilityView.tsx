@@ -224,7 +224,7 @@ export function ObservabilityView({
   ];
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 fade-in select-none">
+    <div className="w-full max-w-[1600px] mx-auto space-y-6 sm:space-y-8 fade-in select-none">
       {/* Basic Mode Low CPU Hint Banner */}
       {telemetryMode === 'basic' && (
         <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 flex items-center justify-between gap-4">
@@ -245,11 +245,11 @@ export function ObservabilityView({
       )}
 
       {/* Page Heading & Quick Actions */}
-      <div className="border-b border-outline-variant/30 pb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="border-b border-outline-variant/30 pb-5 sm:pb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3">
-            <h1 className="font-display-sm text-display-sm text-on-surface">Observability Hub</h1>
-            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 ${
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <h1 className="font-display-sm text-xl sm:text-display-sm text-on-surface">Observability Hub</h1>
+            <span className={`px-2.5 py-0.5 rounded-full text-[11px] sm:text-xs font-semibold flex items-center gap-1.5 ${
               telemetryMode === 'enhanced'
                 ? 'bg-primary/10 text-primary border border-primary/20'
                 : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
@@ -259,29 +259,29 @@ export function ObservabilityView({
               </span>
               {telemetryMode === 'enhanced' ? 'Enhanced Telemetry' : 'Basic (Low CPU)'}
             </span>
-            <span className="text-xs font-mono text-secondary px-2.5 py-0.5 bg-secondary/10 rounded-full border border-secondary/20 flex items-center gap-1.5">
+            <span className="text-[11px] sm:text-xs font-mono text-secondary px-2.5 py-0.5 bg-secondary/10 rounded-full border border-secondary/20 flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse" />
               Real-Time Telemetry
             </span>
           </div>
-          <p className="text-on-surface-variant font-body-md mt-1">
+          <p className="text-on-surface-variant font-body-md mt-1 text-xs sm:text-sm">
             Zero-config local performance metrics, public tunnel health, log soup elimination, and webhook stream.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-between md:justify-end">
           {onNavigateView && (
             <>
               <button
                 onClick={() => onNavigateView('traffic')}
-                className="px-3 py-1.5 bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/40 rounded-lg text-xs font-medium text-on-surface flex items-center gap-1.5 transition-colors"
+                className="px-3 py-1.5 bg-surface-container-high hover:bg-surface-container-highest border border-outline-variant/40 rounded-lg text-xs font-medium text-on-surface flex items-center gap-1.5 transition-colors flex-1 md:flex-initial justify-center"
               >
                 <span className="material-symbols-outlined text-[16px] text-primary">traffic</span>
                 Inspect Traffic Logs
               </button>
               <button
                 onClick={() => onNavigateView('postman')}
-                className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors flex-1 md:flex-initial justify-center"
               >
                 <span className="material-symbols-outlined text-[16px]">send</span>
                 Open REST Client
@@ -329,7 +329,7 @@ export function ObservabilityView({
       </div>
 
       {/* Tab Selector Navigation */}
-      <div className="flex items-center gap-2 border-b border-outline-variant/30 pb-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-outline-variant/30 pb-3 overflow-x-auto">
         <button
           onClick={() => setActiveTab('overview')}
           className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${
@@ -528,21 +528,23 @@ export function ObservabilityView({
                 return (
                   <div
                     key={req.id}
-                    className="p-4 bg-surface-container-low rounded-lg border border-outline-variant/20 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:border-outline-variant/40 transition-colors"
+                    className="p-3.5 sm:p-4 bg-surface-container-low rounded-lg border border-outline-variant/20 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:border-outline-variant/40 transition-colors"
                   >
-                    <div className="space-y-1 font-mono text-xs">
-                      <div className="flex items-center gap-2.5">
+                    <div className="space-y-1 font-mono text-xs min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 min-w-0">
                         <span
-                          className={`px-2 py-0.5 rounded font-bold ${
+                          className={`px-2 py-0.5 rounded font-bold shrink-0 ${
                             is5xx ? 'bg-error/20 text-error border border-error/30' : 'bg-tertiary/20 text-tertiary border border-tertiary/30'
                           }`}
                         >
                           {req.status ?? 500}
                         </span>
-                        <span className="px-2 py-0.5 bg-surface-container-highest text-on-surface rounded font-bold">
+                        <span className="px-2 py-0.5 bg-surface-container-highest text-on-surface rounded font-bold shrink-0">
                           {req.method}
                         </span>
-                        <span className="text-on-surface font-semibold text-sm">{req.path}</span>
+                        <span className="text-on-surface font-semibold text-xs sm:text-sm truncate max-w-[240px] sm:max-w-none" title={req.path}>
+                          {req.path}
+                        </span>
                       </div>
                       <div className="text-[11px] text-outline flex items-center gap-3">
                         <span>Duration: {req.durationMs ?? 0} ms</span>
@@ -551,7 +553,7 @@ export function ObservabilityView({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex flex-wrap items-center gap-2 shrink-0 self-end md:self-auto">
                       {onOpenWorkbench && (
                         <button
                           onClick={() => onOpenWorkbench(req)}
@@ -623,26 +625,28 @@ export function ObservabilityView({
               {telemetry.webhookLogs.map((req) => (
                 <div
                   key={req.id}
-                  className="p-4 bg-surface-container-low rounded-lg border border-outline-variant/20 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:border-outline-variant/40 transition-colors"
+                  className="p-3.5 sm:p-4 bg-surface-container-low rounded-lg border border-outline-variant/20 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:border-outline-variant/40 transition-colors"
                 >
-                  <div className="space-y-1 font-mono text-xs">
-                    <div className="flex items-center gap-2.5">
-                      <span className="px-2 py-0.5 bg-secondary/20 text-secondary border border-secondary/30 rounded font-bold uppercase text-[10px]">
+                  <div className="space-y-1 font-mono text-xs min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 min-w-0">
+                      <span className="px-2 py-0.5 bg-secondary/20 text-secondary border border-secondary/30 rounded font-bold uppercase text-[10px] shrink-0">
                         Webhook
                       </span>
-                      <span className="px-2 py-0.5 bg-surface-container-highest text-on-surface rounded font-bold">
+                      <span className="px-2 py-0.5 bg-surface-container-highest text-on-surface rounded font-bold shrink-0">
                         {req.method}
                       </span>
-                      <span className="text-on-surface font-semibold text-sm">{req.path}</span>
+                      <span className="text-on-surface font-semibold text-xs sm:text-sm truncate max-w-[240px] sm:max-w-none" title={req.path}>
+                        {req.path}
+                      </span>
                     </div>
-                    <div className="text-[11px] text-outline flex items-center gap-3">
-                      <span>User-Agent: {req.headers?.['user-agent'] || req.headers?.['User-Agent'] || 'Webhook Source'}</span>
-                      <span>•</span>
-                      <span>Captured: {req.capturedAt ? new Date(req.capturedAt).toLocaleTimeString() : 'Recent'}</span>
+                    <div className="text-[11px] text-outline flex items-center gap-3 truncate">
+                      <span className="truncate">User-Agent: {req.headers?.['user-agent'] || req.headers?.['User-Agent'] || 'Webhook Source'}</span>
+                      <span className="shrink-0">•</span>
+                      <span className="shrink-0">Captured: {req.capturedAt ? new Date(req.capturedAt).toLocaleTimeString() : 'Recent'}</span>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex flex-wrap items-center gap-2 shrink-0 self-end md:self-auto">
                     {onReplayRequest && (
                       <button
                         onClick={() => onReplayRequest(req)}

@@ -61,6 +61,7 @@ export function PostmanView({
     const saved = localStorage.getItem('postman_collections_width');
     return saved ? Math.max(240, Math.min(500, parseInt(saved, 10))) : 280;
   });
+  const [isCollectionsCollapsed, setIsCollectionsCollapsed] = useState<boolean>(false);
 
   const [isResizingLeft, setIsResizingLeft] = useState<boolean>(false);
   const [bannerDismissed, setBannerDismissed] = useState<boolean>(false);
@@ -417,68 +418,87 @@ export function PostmanView({
   }, [response]);
 
   return (
-    <div className="flex h-[calc(100vh-140px)] gap-3 fade-in items-stretch">
+    <div className="flex h-[calc(100dvh-120px)] gap-3 fade-in items-stretch">
       {/* ── 1. Left Collections Rail ── */}
       <div 
-        style={{ width: `${collectionsWidth}px` }} 
-        className="shrink-0 bg-surface-container border border-outline-variant/30 rounded-2xl p-4 flex flex-col gap-3 overflow-y-auto transition-none select-none"
+        style={{ width: isCollectionsCollapsed ? '52px' : `${collectionsWidth}px` }} 
+        className={`shrink-0 bg-surface-container border border-outline-variant/30 rounded-2xl ${isCollectionsCollapsed ? 'p-2 items-center' : 'p-4'} flex flex-col gap-3 overflow-y-auto transition-all select-none`}
       >
         {/* Rail Header */}
-        <div className="flex items-center justify-between border-b border-outline-variant/20 pb-3">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary text-base">folder_open</span>
-            <h2 className="font-bold text-xs uppercase tracking-wider text-on-surface">Collections</h2>
-          </div>
+        <div className={`flex items-center ${isCollectionsCollapsed ? 'flex-col gap-2' : 'justify-between'} border-b border-outline-variant/20 pb-3 w-full`}>
+          {!isCollectionsCollapsed ? (
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary text-base">folder_open</span>
+              <h2 className="font-bold text-xs uppercase tracking-wider text-on-surface">Collections</h2>
+            </div>
+          ) : (
+            <span className="material-symbols-outlined text-primary text-base" title="Collections">folder_open</span>
+          )}
 
-          <div className="flex items-center gap-1">
+          <div className={`flex items-center gap-1 ${isCollectionsCollapsed ? 'flex-col' : ''}`}>
+            {!isCollectionsCollapsed && (
+              <>
+                <button
+                  onClick={() => setImportSwaggerModalOpen(true)}
+                  className="p-1 rounded-lg hover:bg-surface-container-high text-outline hover:text-primary transition-colors text-xs font-bold flex items-center gap-1"
+                  title="Import Swagger / OpenAPI Spec"
+                >
+                  <span className="material-symbols-outlined text-base">file_upload</span>
+                </button>
+                <button
+                  onClick={() => setIsCreatingFolder(true)}
+                  className="p-1 rounded-lg hover:bg-surface-container-high text-outline hover:text-primary transition-colors text-xs font-bold flex items-center gap-1"
+                  title="Create new collection folder"
+                >
+                  <span className="material-symbols-outlined text-base">create_new_folder</span>
+                </button>
+              </>
+            )}
             <button
-              onClick={() => setImportSwaggerModalOpen(true)}
-              className="p-1 rounded-lg hover:bg-surface-container-high text-outline hover:text-primary transition-colors text-xs font-bold flex items-center gap-1"
-              title="Import Swagger / OpenAPI Spec"
+              onClick={() => setIsCollectionsCollapsed(!isCollectionsCollapsed)}
+              className="p-1 rounded-lg hover:bg-surface-container-high text-outline hover:text-primary transition-colors text-xs font-bold flex items-center justify-center"
+              title={isCollectionsCollapsed ? "Expand Collections Pane" : "Collapse Collections Pane"}
             >
-              <span className="material-symbols-outlined text-base">file_upload</span>
-            </button>
-            <button
-              onClick={() => setIsCreatingFolder(true)}
-              className="p-1 rounded-lg hover:bg-surface-container-high text-outline hover:text-primary transition-colors text-xs font-bold flex items-center gap-1"
-              title="Create new collection folder"
-            >
-              <span className="material-symbols-outlined text-base">create_new_folder</span>
+              <span className="material-symbols-outlined text-base">
+                {isCollectionsCollapsed ? 'dock_to_right' : 'dock_to_left'}
+              </span>
             </button>
           </div>
         </div>
 
-        {/* Create Folder Input */}
-        {isCreatingFolder && (
-          <div className="p-2.5 bg-surface-container-high rounded-xl border border-primary/40 space-y-2 fade-in">
-            <input
-              type="text"
-              value={newFolderNameInput}
-              onChange={(e) => setNewFolderNameInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleCreateFolder();
-                else if (e.key === 'Escape') setIsCreatingFolder(false);
-              }}
-              placeholder="Collection name..."
-              className="w-full bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-2.5 py-1.5 text-xs text-on-surface focus:outline-none focus:border-primary font-sans"
-              autoFocus
-            />
-            <div className="flex justify-end gap-1.5 text-xs">
-              <button
-                onClick={() => setIsCreatingFolder(false)}
-                className="px-2.5 py-1 rounded text-outline hover:text-on-surface"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateFolder}
-                className="px-3 py-1 rounded bg-primary text-white font-bold hover:bg-primary/90 transition-colors shadow-sm shadow-primary/25 cursor-pointer"
-              >
-                Create
-              </button>
-            </div>
-          </div>
-        )}
+        {!isCollectionsCollapsed && (
+          <>
+            {/* Create Folder Input */}
+            {isCreatingFolder && (
+              <div className="p-2.5 bg-surface-container-high rounded-xl border border-primary/40 space-y-2 fade-in">
+                <input
+                  type="text"
+                  value={newFolderNameInput}
+                  onChange={(e) => setNewFolderNameInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleCreateFolder();
+                    else if (e.key === 'Escape') setIsCreatingFolder(false);
+                  }}
+                  placeholder="Collection name..."
+                  className="w-full bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-2.5 py-1.5 text-xs text-on-surface focus:outline-none focus:border-primary font-sans"
+                  autoFocus
+                />
+                <div className="flex justify-end gap-1.5 text-xs">
+                  <button
+                    onClick={() => setIsCreatingFolder(false)}
+                    className="px-2.5 py-1 rounded text-outline hover:text-on-surface"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleCreateFolder}
+                    className="px-3 py-1 rounded bg-primary text-white font-bold hover:bg-primary/90 transition-colors shadow-sm shadow-primary/25 cursor-pointer"
+                  >
+                    Create
+                  </button>
+                </div>
+              </div>
+            )}
 
         {/* Static Tree Folders & Request Items */}
         <div className="flex flex-col gap-3 flex-1 overflow-y-auto pr-1">
@@ -663,20 +683,24 @@ export function PostmanView({
             </div>
           )}
         </div>
+        </>
+        )}
       </div>
 
       {/* Left Resizer Handle */}
-      <div
-        onMouseDown={handleCollectionsMouseDown}
-        className={`w-2.5 -mx-1.5 z-20 cursor-col-resize flex items-center justify-center group transition-colors select-none ${
-          isResizingLeft ? 'bg-primary/20' : 'hover:bg-primary/10'
-        }`}
-        title="Drag left/right to resize Collections pane"
-      >
-        <div className={`w-1 h-10 rounded-full transition-colors ${
-          isResizingLeft ? 'bg-primary' : 'bg-outline-variant/40 group-hover:bg-primary'
-        }`} />
-      </div>
+      {!isCollectionsCollapsed && (
+        <div
+          onMouseDown={handleCollectionsMouseDown}
+          className={`w-2.5 -mx-1.5 z-20 cursor-col-resize flex items-center justify-center group transition-colors select-none ${
+            isResizingLeft ? 'bg-primary/20' : 'hover:bg-primary/10'
+          }`}
+          title="Drag left/right to resize Collections pane"
+        >
+          <div className={`w-1 h-10 rounded-full transition-colors ${
+            isResizingLeft ? 'bg-primary' : 'bg-outline-variant/40 group-hover:bg-primary'
+          }`} />
+        </div>
+      )}
 
       {/* ── 2. Main Request & Response Workspace (Flex-1) ── */}
       <div className="flex-1 min-w-0 bg-surface-container border border-outline-variant/30 rounded-2xl p-5 flex flex-col gap-4 overflow-y-auto shadow-sm select-none">
@@ -750,119 +774,123 @@ export function PostmanView({
         </div>
 
         {/* Unified Method + URL Toolbar */}
-        <div className="flex items-center gap-2 bg-surface-container-lowest border border-outline-variant/40 p-1.5 rounded-xl shadow-inner">
-          <select
-            className="shrink-0 font-mono font-bold text-center cursor-pointer border border-outline-variant/40 bg-surface-container-high text-primary rounded-lg py-2 text-xs focus:outline-none focus:border-primary"
-            style={{ width: '110px', minWidth: '110px' }}
-            value={draft.method}
-            onChange={(event) => onDraftChange({ ...draft, method: event.target.value })}
-            aria-label="HTTP method"
-          >
-            {['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'].map((method) => (
-              <option key={method} className="bg-surface-container-high text-on-surface font-mono">{method}</option>
-            ))}
-          </select>
-
-          <input
-            className="flex-1 min-w-0 bg-transparent border-none text-xs text-on-surface font-mono px-2 py-1.5 focus:outline-none placeholder:text-outline"
-            value={draft.path}
-            onChange={(event) => onDraftChange({ ...draft, path: event.target.value })}
-            placeholder={activeTunnel ? '/api/users' : 'https://example.com/api'}
-            aria-label="Request URL or path"
-          />
-
-          {/* Target Environment & Public Tunnel Dropdown Selector */}
-          <div className="relative shrink-0 flex items-center">
+        <div className="flex flex-wrap sm:flex-nowrap items-stretch sm:items-center gap-2 bg-surface-container-lowest border border-outline-variant/40 p-1.5 rounded-xl shadow-inner">
+          <div className="flex items-center gap-2 flex-1 min-w-[200px]">
             <select
-              className={`route-badge cursor-pointer appearance-none pr-6 pl-2.5 py-1 font-mono text-[11px] font-bold rounded-lg border focus:outline-none transition-all ${
-                activeTunnel
-                  ? 'route-tunnel border-primary/50 bg-primary/10 text-primary hover:bg-primary/15'
-                  : 'route-local border-outline-variant/40 bg-surface-container-high text-on-surface hover:border-primary/40'
-              }`}
-              value={
-                activeTunnel
-                  ? `tunnel-${activeTunnel.id}`
-                  : selectedProcessPort
-                  ? `local-${selectedProcessPort}`
-                  : 'local-default'
-              }
-              onChange={(e) => {
-                const val = e.target.value;
-                if (onClearResponse) onClearResponse();
-                if (val.startsWith('tunnel-')) {
-                  const tId = val.replace('tunnel-', '');
-                  const chosen = tunnels.find((t) => t.id === tId) || null;
-                  if (chosen && onSelectTunnel) {
-                    onSelectTunnel(chosen);
-                    showToast(`Target switched to Public Tunnel: ${chosen.publicUrl}`, 'info');
-                  }
-                } else if (val.startsWith('local-')) {
-                  const portStr = val.replace('local-', '');
-                  const port = parseInt(portStr, 10);
-                  if (onSelectTunnel) onSelectTunnel(null);
-                  if (onSelectProcessPort && !isNaN(port)) {
-                    onSelectProcessPort(port);
-                    showToast(`Target switched to Localhost (:${port})`, 'info');
-                  }
-                }
-              }}
-              title={`Target Base URL: ${activeTunnel ? activeTunnel.publicUrl : `http://localhost:${selectedProcessPort || 3000}`}\n(Click to switch target public tunnel or local server)`}
+              className="shrink-0 font-mono font-bold text-center cursor-pointer border border-outline-variant/40 bg-surface-container-high text-primary rounded-lg py-2 text-xs focus:outline-none focus:border-primary"
+              style={{ width: '90px', minWidth: '90px' }}
+              value={draft.method}
+              onChange={(event) => onDraftChange({ ...draft, method: event.target.value })}
+              aria-label="HTTP method"
             >
-              {tunnels.length > 0 && (
-                <optgroup label="── Active Public Tunnels ──">
-                  {tunnels.map((t) => {
-                    let displayHost = t.subdomain || '';
-                    try {
-                      displayHost = new URL(t.publicUrl).hostname;
-                    } catch {
-                      displayHost = t.publicUrl;
-                    }
-                    return (
-                      <option key={t.id} value={`tunnel-${t.id}`} className="bg-surface-container-high text-primary font-mono">
-                        🌐 {displayHost} (:{t.localPort})
-                      </option>
-                    );
-                  })}
-                </optgroup>
-              )}
-
-              <optgroup label="── Local Servers ──">
-                {processes.length > 0 ? (
-                  processes.map((p) => (
-                    <option key={p.id} value={`local-${p.port}`} className="bg-surface-container-high text-on-surface font-mono">
-                      ⚡ Localhost (:{p.port}) {p.name ? `[${p.name}]` : ''}
-                    </option>
-                  ))
-                ) : (
-                  <option value="local-default" className="bg-surface-container-high text-on-surface font-mono">
-                    ⚡ Localhost (:{selectedProcessPort || 3000})
-                  </option>
-                )}
-              </optgroup>
+              {['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'].map((method) => (
+                <option key={method} className="bg-surface-container-high text-on-surface font-mono">{method}</option>
+              ))}
             </select>
-            <span className="material-symbols-outlined absolute right-1.5 pointer-events-none text-[13px] text-outline">
-              unfold_more
-            </span>
+
+            <input
+              className="flex-1 min-w-0 bg-transparent border-none text-xs text-on-surface font-mono px-2 py-1.5 focus:outline-none placeholder:text-outline"
+              value={draft.path}
+              onChange={(event) => onDraftChange({ ...draft, path: event.target.value })}
+              placeholder={activeTunnel ? '/api/users' : 'https://example.com/api'}
+              aria-label="Request URL or path"
+            />
           </div>
 
-          <button
-            className="btn-primary shrink-0 font-bold px-4 py-2 rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-md hover:scale-[1.01] transition-transform"
-            onClick={handleSendRequest}
-            disabled={sending}
-            title="Send request (Ctrl + Enter)"
-          >
-            {sending ? (
-              <>
-                <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
-                <span>Sending...</span>
-              </>
-            ) : (
-              <>
-                <span className="material-symbols-outlined text-sm">send</span>
-                <span>Send</span>
-              </>
-            )}
-          </button>
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+            {/* Target Environment & Public Tunnel Dropdown Selector */}
+            <div className="relative flex-1 sm:flex-initial flex items-center min-w-0">
+              <select
+                className={`route-badge cursor-pointer appearance-none pr-6 pl-2.5 py-1.5 font-mono text-[11px] font-bold rounded-lg border focus:outline-none transition-all w-full sm:max-w-[180px] truncate ${
+                  activeTunnel
+                    ? 'route-tunnel border-primary/50 bg-primary/10 text-primary hover:bg-primary/15'
+                    : 'route-local border-outline-variant/40 bg-surface-container-high text-on-surface hover:border-primary/40'
+                }`}
+                value={
+                  activeTunnel
+                    ? `tunnel-${activeTunnel.id}`
+                    : selectedProcessPort
+                    ? `local-${selectedProcessPort}`
+                    : 'local-default'
+                }
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (onClearResponse) onClearResponse();
+                  if (val.startsWith('tunnel-')) {
+                    const tId = val.replace('tunnel-', '');
+                    const chosen = tunnels.find((t) => t.id === tId) || null;
+                    if (chosen && onSelectTunnel) {
+                      onSelectTunnel(chosen);
+                      showToast(`Target switched to Public Tunnel: ${chosen.publicUrl}`, 'info');
+                    }
+                  } else if (val.startsWith('local-')) {
+                    const portStr = val.replace('local-', '');
+                    const port = parseInt(portStr, 10);
+                    if (onSelectTunnel) onSelectTunnel(null);
+                    if (onSelectProcessPort && !isNaN(port)) {
+                      onSelectProcessPort(port);
+                      showToast(`Target switched to Localhost (:${port})`, 'info');
+                    }
+                  }
+                }}
+                title={`Target Base URL: ${activeTunnel ? activeTunnel.publicUrl : `http://localhost:${selectedProcessPort || 3000}`}\n(Click to switch target public tunnel or local server)`}
+              >
+                {tunnels.length > 0 && (
+                  <optgroup label="── Active Public Tunnels ──">
+                    {tunnels.map((t) => {
+                      let displayHost = t.subdomain || '';
+                      try {
+                        displayHost = new URL(t.publicUrl).hostname;
+                      } catch {
+                        displayHost = t.publicUrl;
+                      }
+                      return (
+                        <option key={t.id} value={`tunnel-${t.id}`} className="bg-surface-container-high text-primary font-mono truncate">
+                          🌐 {displayHost} (:{t.localPort})
+                        </option>
+                      );
+                    })}
+                  </optgroup>
+                )}
+
+                <optgroup label="── Local Servers ──">
+                  {processes.length > 0 ? (
+                    processes.map((p) => (
+                      <option key={p.id} value={`local-${p.port}`} className="bg-surface-container-high text-on-surface font-mono truncate">
+                        ⚡ Localhost (:{p.port}) {p.name ? `[${p.name}]` : ''}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="local-default" className="bg-surface-container-high text-on-surface font-mono">
+                      ⚡ Localhost (:{selectedProcessPort || 3000})
+                    </option>
+                  )}
+                </optgroup>
+              </select>
+              <span className="material-symbols-outlined absolute right-1.5 pointer-events-none text-[13px] text-outline">
+                unfold_more
+              </span>
+            </div>
+
+            <button
+              className="btn-primary shrink-0 font-bold px-4 py-2 rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-md hover:scale-[1.01] transition-transform flex-1 sm:flex-initial"
+              onClick={handleSendRequest}
+              disabled={sending}
+              title="Send request (Ctrl + Enter)"
+            >
+              {sending ? (
+                <>
+                  <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+                  <span>Sending...</span>
+                </>
+              ) : (
+                <>
+                  <span className="material-symbols-outlined text-sm">send</span>
+                  <span>Send</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Workspace Sub-Tabs Switcher */}

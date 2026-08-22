@@ -224,27 +224,27 @@ export function SwaggerView({
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 fade-in select-none">
+    <div className="w-full max-w-[1600px] mx-auto space-y-6 fade-in select-none">
       {/* ── Tier 1: Hero Header & Primary Actions ── */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-outline-variant/30 pb-5">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-outline-variant/30 pb-4 sm:pb-5">
         <div className="min-w-0">
           <nav className="flex items-center gap-1.5 text-[10px] font-mono text-on-surface-variant/70 mb-1 uppercase tracking-wider">
             <span>Workspace</span>
             <span className="material-symbols-outlined text-[12px] opacity-60">chevron_right</span>
             <span className="text-primary font-semibold">OpenAPI Specification</span>
           </nav>
-          <h1 className="text-2xl md:text-3xl font-bold font-display text-on-surface tracking-tight truncate">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold font-display text-on-surface tracking-tight truncate">
             Swagger & OpenAPI Studio
           </h1>
         </div>
 
         {/* Primary Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 w-full lg:w-auto justify-between lg:justify-end">
           {onClearSpec && (
             <button
               onClick={onClearSpec}
               disabled={!hasEndpoints}
-              className="px-3 py-1.5 rounded-lg text-xs font-label-md transition-all flex items-center gap-1.5 text-on-surface-variant bg-surface-container border border-outline-variant hover:border-rose-500/40 hover:text-rose-400 cursor-pointer disabled:opacity-40"
+              className="px-3 py-1.5 rounded-lg text-xs font-label-md transition-all flex items-center gap-1.5 text-on-surface-variant bg-surface-container border border-outline-variant hover:border-rose-500/40 hover:text-rose-400 cursor-pointer disabled:opacity-40 flex-1 sm:flex-initial justify-center"
               title="Clear OpenAPI specification"
             >
               <span className="material-symbols-outlined text-[16px]">delete_sweep</span>
@@ -254,7 +254,7 @@ export function SwaggerView({
 
           <button
             onClick={() => setImportModalOpen(true)}
-            className="px-3 py-1.5 rounded-lg text-xs font-label-md transition-all flex items-center gap-1.5 text-on-surface-variant bg-surface-container border border-outline-variant hover:border-primary/50 hover:text-on-surface cursor-pointer"
+            className="px-3 py-1.5 rounded-lg text-xs font-label-md transition-all flex items-center gap-1.5 text-on-surface-variant bg-surface-container border border-outline-variant hover:border-primary/50 hover:text-on-surface cursor-pointer flex-1 sm:flex-initial justify-center"
           >
             <span className="material-symbols-outlined text-[16px]">file_upload</span>
             Import Spec
@@ -266,14 +266,14 @@ export function SwaggerView({
               onExportPostman(collection);
             }}
             disabled={!hasEndpoints}
-            className="px-3 py-1.5 rounded-lg text-xs font-label-md transition-all flex items-center gap-1.5 text-secondary bg-secondary/10 border border-secondary/30 hover:bg-secondary/20 cursor-pointer disabled:opacity-40"
+            className="px-3 py-1.5 rounded-lg text-xs font-label-md transition-all flex items-center gap-1.5 text-secondary bg-secondary/10 border border-secondary/30 hover:bg-secondary/20 cursor-pointer disabled:opacity-40 flex-1 sm:flex-initial justify-center"
           >
             <span className="material-symbols-outlined text-[16px]">output</span>
             Export to Playground
           </button>
 
           <button
-            className="btn-primary flex items-center gap-2 px-4 py-1.5 text-xs font-semibold shadow-md shadow-primary/20"
+            className="btn-primary flex items-center justify-center gap-2 px-4 py-1.5 text-xs font-semibold shadow-md shadow-primary/20 w-full sm:w-auto"
             onClick={handleGenerateClick}
             disabled={generating}
           >
@@ -310,9 +310,9 @@ export function SwaggerView({
         </div>
 
         {/* Segmented View Switchers */}
-        <div className="flex bg-surface-container p-1 rounded-lg border border-outline-variant shrink-0">
+        <div className="flex bg-surface-container p-1 rounded-lg border border-outline-variant w-full sm:w-auto">
           <button
-            className={`px-3 py-1.5 rounded-md text-xs font-label-md cursor-pointer transition-all ${
+            className={`px-3 py-1.5 rounded-md text-xs font-label-md cursor-pointer transition-all flex-1 sm:flex-initial text-center ${
               swaggerPanel === 'preview'
                 ? 'bg-surface-bright text-primary font-semibold shadow-sm'
                 : 'text-on-surface-variant hover:text-on-surface'
@@ -322,7 +322,7 @@ export function SwaggerView({
             Endpoints Preview
           </button>
           <button
-            className={`px-3 py-1.5 rounded-md text-xs font-label-md cursor-pointer transition-all ${
+            className={`px-3 py-1.5 rounded-md text-xs font-label-md cursor-pointer transition-all flex-1 sm:flex-initial text-center ${
               swaggerPanel === 'json'
                 ? 'bg-surface-bright text-primary font-semibold shadow-sm'
                 : 'text-on-surface-variant hover:text-on-surface'
@@ -332,7 +332,7 @@ export function SwaggerView({
             Raw JSON
           </button>
           <button
-            className={`px-3 py-1.5 rounded-md text-xs font-label-md cursor-pointer transition-all ${
+            className={`px-3 py-1.5 rounded-md text-xs font-label-md cursor-pointer transition-all flex-1 sm:flex-initial text-center ${
               swaggerPanel === 'yaml'
                 ? 'bg-surface-bright text-primary font-semibold shadow-sm'
                 : 'text-on-surface-variant hover:text-on-surface'
@@ -345,24 +345,24 @@ export function SwaggerView({
       </div>
 
       {/* ── Project Root & Quick Spec Download Bar ── */}
-      <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div className="p-3.5 sm:p-4 rounded-xl border border-primary/20 bg-primary/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2.5 min-w-0">
           <span className="material-symbols-outlined text-primary text-[20px] shrink-0">folder_code</span>
           <div className="text-xs truncate">
             <span className="font-semibold text-on-surface uppercase tracking-wider mr-2 text-[10px] text-on-surface-variant">Project Root:</span>
             {projectRoot ? (
-              <code className="text-primary font-mono bg-primary/10 px-2 py-0.5 rounded text-[11px]">{projectRoot}</code>
+              <code className="text-primary font-mono bg-primary/10 px-2 py-0.5 rounded text-[11px] truncate inline-block max-w-[200px] sm:max-w-none align-middle">{projectRoot}</code>
             ) : (
               <span className="text-amber-400/90 text-xs">Not set (Click Scan in Workspace Hub)</span>
             )}
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
           <button
             onClick={() => downloadSpec('json')}
             disabled={!hasEndpoints}
-            className="px-2.5 py-1 rounded text-xs font-mono transition-all flex items-center gap-1.5 text-on-surface bg-surface-container border border-outline-variant hover:border-primary cursor-pointer disabled:opacity-40"
+            className="px-2.5 py-1 rounded text-xs font-mono transition-all flex items-center gap-1.5 text-on-surface bg-surface-container border border-outline-variant hover:border-primary cursor-pointer disabled:opacity-40 flex-1 sm:flex-initial justify-center"
             title="Download openapi.json"
           >
             <span className="material-symbols-outlined text-[14px]">download</span>
@@ -371,7 +371,7 @@ export function SwaggerView({
           <button
             onClick={() => downloadSpec('yaml')}
             disabled={!hasEndpoints}
-            className="px-2.5 py-1 rounded text-xs font-mono transition-all flex items-center gap-1.5 text-on-surface bg-surface-container border border-outline-variant hover:border-primary cursor-pointer disabled:opacity-40"
+            className="px-2.5 py-1 rounded text-xs font-mono transition-all flex items-center gap-1.5 text-on-surface bg-surface-container border border-outline-variant hover:border-primary cursor-pointer disabled:opacity-40 flex-1 sm:flex-initial justify-center"
             title="Download openapi.yaml"
           >
             <span className="material-symbols-outlined text-[14px]">download</span>
@@ -380,7 +380,7 @@ export function SwaggerView({
           <button
             onClick={() => onCopy(JSON.stringify(document, null, 2), 'OpenAPI JSON copied')}
             disabled={!hasEndpoints}
-            className="px-3 py-1 rounded text-xs font-mono transition-all flex items-center gap-1.5 text-primary bg-primary/10 border border-primary/20 hover:bg-primary/20 cursor-pointer disabled:opacity-40 font-semibold"
+            className="px-3 py-1 rounded text-xs font-mono transition-all flex items-center gap-1.5 text-primary bg-primary/10 border border-primary/20 hover:bg-primary/20 cursor-pointer disabled:opacity-40 font-semibold flex-1 sm:flex-initial justify-center"
           >
             <span className="material-symbols-outlined text-[14px]">content_copy</span>
             Copy Schema
@@ -408,14 +408,16 @@ export function SwaggerView({
 
               {/* Multi-Tunnel / Multi-Server Selector Dropdown */}
               {serverOptions.length > 0 && (
-                <div className="flex items-center gap-2 shrink-0">
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container border border-outline-variant text-xs text-on-surface">
-                    <span className="material-symbols-outlined text-primary text-[16px]">dns</span>
-                    <span className="text-[10px] uppercase font-mono text-on-surface-variant font-semibold">Server / Tunnel:</span>
+                <div className="flex items-center gap-2 shrink-0 w-full md:w-auto">
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container border border-outline-variant text-xs text-on-surface w-full md:w-auto justify-between md:justify-start">
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="material-symbols-outlined text-primary text-[16px]">dns</span>
+                      <span className="text-[10px] uppercase font-mono text-on-surface-variant font-semibold">Server / Tunnel:</span>
+                    </div>
                     <select
                       value={selectedServerFilter}
                       onChange={(e) => setSelectedServerFilter(e.target.value)}
-                      className="bg-transparent text-xs text-on-surface font-mono font-medium focus:outline-none cursor-pointer pl-1 max-w-[280px] truncate"
+                      className="bg-transparent text-xs text-on-surface font-mono font-medium focus:outline-none cursor-pointer pl-1 max-w-[200px] sm:max-w-[280px] truncate"
                     >
                       <option value="ALL" className="bg-surface-container-high text-on-surface">🌐 All Tunnels & Servers ({endpointPreview.length})</option>
                       {serverOptions.map((s) => (
@@ -542,14 +544,14 @@ export function SwaggerView({
                       className="p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer hover:bg-surface-container-high/30 transition-colors"
                       onClick={() => setExpandedEndpointId(isExpanded ? null : ep.id)}
                     >
-                      <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2.5 min-w-0 flex-1">
                         {/* Method Badge */}
                         <span className={`px-2.5 py-1 rounded-md text-xs font-mono font-bold border uppercase tracking-wider shrink-0 ${colorClass}`}>
                           {ep.method}
                         </span>
 
                         {/* Path */}
-                        <span className="font-mono text-sm text-on-surface font-semibold tracking-tight truncate">
+                        <span className="font-mono text-xs sm:text-sm text-on-surface font-semibold tracking-tight truncate max-w-[220px] sm:max-w-none" title={ep.path}>
                           {ep.path}
                         </span>
 

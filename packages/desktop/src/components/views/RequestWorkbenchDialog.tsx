@@ -104,7 +104,7 @@ export function RequestWorkbenchDialog({
             onScannedEndpointsUpdate?.(eps);
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     }
   }, [
     activeTab?.id,
@@ -131,7 +131,7 @@ export function RequestWorkbenchDialog({
               onScannedEndpointsUpdate?.(eps);
             }
           })
-          .catch(() => {});
+          .catch(() => { });
       }
     }
   }, [projectRootPath]);
@@ -365,37 +365,37 @@ export function RequestWorkbenchDialog({
         authSyncedState: 'unsynced',
         draftRequest: req
           ? {
-              id: `draft-${newId}`,
-              name: `${req.method} ${req.path}`,
-              method: req.method,
-              path: req.path,
-              headers: req.headers ?? { 'Content-Type': 'application/json' },
-              body: req.bodyPreview ?? '',
-              source: 'captured',
-            }
+            id: `draft-${newId}`,
+            name: `${req.method} ${req.path}`,
+            method: req.method,
+            path: req.path,
+            headers: req.headers ?? { 'Content-Type': 'application/json' },
+            body: req.bodyPreview ?? '',
+            source: 'captured',
+          }
           : {
-              id: `draft-${newId}`,
-              name: 'GET /api/v1/user/profile',
-              method: 'GET',
-              path: '/api/v1/user/profile',
-              headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-              body: '',
-              source: 'manual',
-            },
+            id: `draft-${newId}`,
+            name: 'GET /api/v1/user/profile',
+            method: 'GET',
+            path: '/api/v1/user/profile',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: '',
+            source: 'manual',
+          },
         activeSubTab: 'devtools',
         executionHistory: req
           ? [
-              {
-                id: `run-initial-${newId}`,
-                runIndex: 1,
-                timestamp: req.capturedAt || new Date().toISOString(),
-                status: typeof req.status === 'number' ? req.status : parseInt(String(req.status || 200), 10),
-                durationMs: req.durationMs || 38,
-                headers: req.responseHeaders || { 'Content-Type': 'application/json' },
-                body: req.bodyPreview || '{\n  "id": "usr_98a7f2",\n  "name": "Dev_User",\n  "role": "engineer"\n}',
-                note: 'Initial Captured Log',
-              },
-            ]
+            {
+              id: `run-initial-${newId}`,
+              runIndex: 1,
+              timestamp: req.capturedAt || new Date().toISOString(),
+              status: typeof req.status === 'number' ? req.status : parseInt(String(req.status || 200), 10),
+              durationMs: req.durationMs || 38,
+              headers: req.responseHeaders || { 'Content-Type': 'application/json' },
+              body: req.bodyPreview || '{\n  "id": "usr_98a7f2",\n  "name": "Dev_User",\n  "role": "engineer"\n}',
+              note: 'Initial Captured Log',
+            },
+          ]
           : [],
       };
 
@@ -547,9 +547,8 @@ export function RequestWorkbenchDialog({
 
     return (
       <div
-        className={`flex-1 flex flex-col min-w-0 bg-surface text-on-surface font-sans overflow-hidden select-none ${
-          isFullView ? 'h-full' : 'w-[95vw] max-w-7xl h-[90vh] rounded-2xl shadow-2xl border border-outline-variant/30'
-        }`}
+        className={`flex-1 flex flex-col min-w-0 bg-surface text-on-surface font-sans overflow-hidden select-none ${isFullView ? 'h-full' : 'w-[95vw] max-w-7xl h-[90vh] rounded-2xl shadow-2xl border border-outline-variant/30'
+          }`}
         onClick={(e) => e.stopPropagation()}
       >
         <header className="h-11 bg-surface-container-low border-b border-outline-variant/30 flex items-center justify-between z-20 px-4 shrink-0">
@@ -627,9 +626,8 @@ export function RequestWorkbenchDialog({
 
   const modalContent = (
     <div
-      className={`flex-1 flex flex-col min-w-0 bg-surface text-on-surface font-sans overflow-hidden select-none ${
-        isFullView ? 'h-full' : 'w-[95vw] max-w-7xl h-[90vh] rounded-2xl shadow-2xl border border-outline-variant/30'
-      }`}
+      className={`flex-1 flex flex-col min-w-0 bg-surface text-on-surface font-sans overflow-hidden select-none ${isFullView ? 'h-full' : 'w-[96vw] max-w-[1600px] h-[92vh] sm:rounded-2xl shadow-2xl border border-outline-variant/30'
+        }`}
       onClick={(e) => e.stopPropagation()}
     >
       {/* ── 1. Chrome-Style Multi-Tab Rail ── */}
@@ -641,20 +639,19 @@ export function RequestWorkbenchDialog({
               t.method === 'GET'
                 ? 'text-emerald-400'
                 : t.method === 'POST'
-                ? 'text-amber-400'
-                : t.method === 'PUT'
-                ? 'text-sky-400'
-                : t.method === 'DELETE'
-                ? 'text-rose-400'
-                : 'text-purple-400';
+                  ? 'text-amber-400'
+                  : t.method === 'PUT'
+                    ? 'text-sky-400'
+                    : t.method === 'DELETE'
+                      ? 'text-rose-400'
+                      : 'text-purple-400';
 
             return (
               <div
                 key={t.id}
                 onClick={() => onTabsChange(tabs, t.id)}
-                className={`flex h-full items-center px-3 border-r border-outline-variant/20 cursor-pointer min-w-[130px] max-w-[220px] flex-1 transition-all relative ${
-                  isActive ? 'bg-surface text-on-surface font-semibold' : 'hover:bg-surface-container-high text-on-surface-variant'
-                }`}
+                className={`flex h-full items-center px-3 border-r border-outline-variant/20 cursor-pointer min-w-[130px] max-w-[220px] flex-1 transition-all relative ${isActive ? 'bg-surface text-on-surface font-semibold' : 'hover:bg-surface-container-high text-on-surface-variant'
+                  }`}
               >
                 {isActive && <span className="absolute top-0 left-0 right-0 h-[2px] bg-primary" />}
 
@@ -666,9 +663,8 @@ export function RequestWorkbenchDialog({
                 </span>
                 <span
                   onClick={(e) => handleCloseTab(t.id, e)}
-                  className={`material-symbols-outlined text-[13px] ml-1.5 opacity-40 hover:opacity-100 p-0.5 rounded hover:bg-surface-container-highest transition-opacity ${
-                    isActive ? 'opacity-80' : 'opacity-40'
-                  }`}
+                  className={`material-symbols-outlined text-[13px] ml-1.5 opacity-40 hover:opacity-100 p-0.5 rounded hover:bg-surface-container-highest transition-opacity ${isActive ? 'opacity-80' : 'opacity-40'
+                    }`}
                   title="Close tab (Ctrl+W)"
                 >
                   close
@@ -710,47 +706,45 @@ export function RequestWorkbenchDialog({
 
       {/* ── 2. Sticky Sub-Header with Segmented Control Mode Switcher ── */}
       <main className="flex-1 relative overflow-y-auto bg-surface flex flex-col font-sans">
-        <div className="px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 z-10 sticky top-0 bg-surface/90 backdrop-blur-md border-b border-outline-variant/20 shrink-0">
-          <div className="flex flex-col gap-0.5">
+        <div className="px-4 sm:px-6 py-3 sm:py-3.5 flex flex-wrap items-center justify-between gap-3 sm:gap-4 z-10 sticky top-0 bg-surface/90 backdrop-blur-md border-b border-outline-variant/20 shrink-0">
+          <div className="flex flex-col gap-0.5 min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-lg text-on-surface tracking-tight leading-none">
+              <span className="font-bold text-base sm:text-lg text-on-surface tracking-tight leading-none truncate">
                 {workbenchMode === 'devtools' ? 'DevTools & Controller Mapping' : 'Traffic Payload & Replay Garage'}
               </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 uppercase font-bold">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 uppercase font-bold shrink-0">
                 {activeTab.method}
               </span>
             </div>
-            <p className="font-mono text-xs text-on-surface-variant m-0 p-0 flex items-center gap-1.5">
-              <span className="opacity-60">TARGET:</span>
-              <span className="text-emerald-400 font-bold">{activeTab.path}</span>
+            <p className="font-mono text-xs text-on-surface-variant m-0 p-0 flex items-center gap-1.5 truncate">
+              <span className="opacity-60 shrink-0">TARGET:</span>
+              <span className="text-emerald-400 font-bold truncate">{activeTab.path}</span>
             </p>
           </div>
 
-          <div className="flex items-center gap-1 bg-surface-container-lowest p-1 rounded-xl border border-outline-variant/30 font-mono text-xs shadow-inner">
+          <div className="flex items-center gap-1 bg-surface-container-lowest p-1 rounded-xl border border-outline-variant/30 font-mono text-xs shadow-inner w-full sm:w-auto justify-center">
             <button
               onClick={() => setWorkbenchMode('devtools')}
-              className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                workbenchMode === 'devtools' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
-              }`}
+              className={`px-3 sm:px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 flex-1 sm:flex-initial justify-center ${workbenchMode === 'devtools' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
+                }`}
             >
               <span className="material-symbols-outlined text-[16px]">code_blocks</span>
               <span>DevTools & Mapping</span>
             </button>
             <button
               onClick={() => setWorkbenchMode('replay')}
-              className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                workbenchMode === 'replay' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
-              }`}
+              className={`px-3 sm:px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 flex-1 sm:flex-initial justify-center ${workbenchMode === 'replay' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
+                }`}
             >
               <span className="material-symbols-outlined text-[16px]">science</span>
               <span>Traffic & Replay</span>
             </button>
           </div>
 
-          <div className="flex items-center gap-2 font-mono text-xs">
+          <div className="flex flex-wrap items-center gap-2 font-mono text-xs w-full sm:w-auto justify-between sm:justify-end">
             <button
               onClick={() => setExportModalOpen(true)}
-              className="h-8 px-3 flex items-center justify-center gap-1.5 bg-surface-container-high hover:bg-primary-container hover:text-on-primary-container text-on-surface border border-outline-variant/30 rounded-lg transition-colors font-medium cursor-pointer shadow-sm"
+              className="h-8 px-3 flex items-center justify-center gap-1.5 bg-surface-container-high hover:bg-primary-container hover:text-on-primary-container text-on-surface border border-outline-variant/30 rounded-lg transition-colors font-medium cursor-pointer shadow-sm flex-1 sm:flex-initial"
             >
               <span className="material-symbols-outlined text-[15px]">code</span>
               Export Code
@@ -762,7 +756,7 @@ export function RequestWorkbenchDialog({
                   onSaveRequestToCollection(activeTab.draftRequest);
                   showToast('Saved request template to Postman collection', 'success');
                 }}
-                className="h-8 px-3 flex items-center justify-center gap-1.5 bg-surface-container-high hover:bg-primary-container hover:text-on-primary-container text-on-surface border border-outline-variant/30 rounded-lg transition-colors font-medium cursor-pointer shadow-sm"
+                className="h-8 px-3 flex items-center justify-center gap-1.5 bg-surface-container-high hover:bg-primary-container hover:text-on-primary-container text-on-surface border border-outline-variant/30 rounded-lg transition-colors font-medium cursor-pointer shadow-sm flex-1 sm:flex-initial"
               >
                 <span className="material-symbols-outlined text-[15px] text-amber-400">bookmark</span>
                 Save to Collection
@@ -771,7 +765,7 @@ export function RequestWorkbenchDialog({
 
             <button
               onClick={() => openInBrowser(resolvedTargetUrl)}
-              className="h-8 px-3 flex items-center justify-center gap-1.5 bg-surface-container-high hover:bg-primary-container hover:text-on-primary-container text-on-surface border border-outline-variant/30 rounded-lg transition-colors font-medium cursor-pointer shadow-sm"
+              className="h-8 px-3 flex items-center justify-center gap-1.5 bg-surface-container-high hover:bg-primary-container hover:text-on-primary-container text-on-surface border border-outline-variant/30 rounded-lg transition-colors font-medium cursor-pointer shadow-sm flex-1 sm:flex-initial"
             >
               <span className="material-symbols-outlined text-[15px]">open_in_browser</span>
               Browser
@@ -781,47 +775,46 @@ export function RequestWorkbenchDialog({
 
         {/* ── MODE 1: DEVTOOLS & CODEBASE MAPPING (COCKPIT) ── */}
         {workbenchMode === 'devtools' && (
-          <div className="flex-1 px-6 py-5 pb-10 flex flex-col gap-5">
+          <div className="flex-1 px-4 sm:px-6 py-4 sm:py-5 pb-10 flex flex-col gap-5">
             {/* Pro-Debugger Diagnostic Banner */}
             <div
-              className={`p-4 rounded-xl border font-mono text-xs flex items-center justify-between gap-4 shadow-sm ${
-                is5xx
+              className={`p-3.5 sm:p-4 rounded-xl border font-mono text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 shadow-sm ${is5xx
                   ? 'bg-rose-500/10 border-rose-500/30 text-rose-200'
                   : isAuthError
-                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-200'
-                  : is304
-                  ? 'bg-sky-500/10 border-sky-500/30 text-sky-200'
-                  : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
-              }`}
+                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+                    : is304
+                      ? 'bg-sky-500/10 border-sky-500/30 text-sky-200'
+                      : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+                }`}
             >
-              <div className="flex items-center gap-3">
-                <span className="material-symbols-outlined text-[24px]">
+              <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
+                <span className="material-symbols-outlined text-[24px] shrink-0 mt-0.5 sm:mt-0">
                   {is5xx ? 'bug_report' : isAuthError ? 'lock' : is304 ? 'cached' : 'verified'}
                 </span>
-                <div className="space-y-0.5">
-                  <span className="font-bold block uppercase">
+                <div className="space-y-0.5 min-w-0 flex-1">
+                  <span className="font-bold block uppercase truncate">
                     HTTP {statusNum} —{' '}
                     {is5xx
                       ? 'Critical Server Failure'
                       : isAuthError
-                      ? 'Authentication Required'
-                      : is304
-                      ? '304 Not Modified Cache Hit'
-                      : '200 OK Optimal Execution'}
+                        ? 'Authentication Required'
+                        : is304
+                          ? '304 Not Modified Cache Hit'
+                          : '200 OK Optimal Execution'}
                   </span>
-                  <p className="text-[11px] font-sans opacity-90">
+                  <p className="text-[11px] font-sans opacity-90 leading-relaxed">
                     {is5xx
                       ? 'Server threw an exception during controller execution. Inspect file mapping and correlated logs below.'
                       : isAuthError
-                      ? 'Endpoint returned 401/403. Switch to Replay tab and click "Sync Captured Auth & Cookies".'
-                      : is304
-                      ? 'Client ETag matched server state. No response body transferred over network.'
-                      : `Controller responded cleanly in ${routeMetrics.avgLatencyMs}ms with zero runtime errors.`}
+                        ? 'Endpoint returned 401/403. Switch to Replay tab and click "Sync Captured Auth & Cookies".'
+                        : is304
+                          ? 'Client ETag matched server state. No response body transferred over network.'
+                          : `Controller responded cleanly in ${routeMetrics.avgLatencyMs}ms with zero runtime errors.`}
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
                 <span className="text-[11px] font-mono opacity-80">
                   Heap: <strong>{routeMetrics.heapUsedMb}MB</strong> | Latency:{' '}
                   <strong>{routeMetrics.avgLatencyMs}ms</strong>
@@ -833,45 +826,44 @@ export function RequestWorkbenchDialog({
               {/* LEFT COLUMN (8 COLS) */}
               <div className="col-span-12 lg:col-span-8 flex flex-col gap-5">
                 {/* CARD 1: IDE INTEGRATION & LINE-ACCURATE JUMP */}
-                <div className="bg-surface-container rounded-xl p-5 shadow-sm flex flex-col gap-4 relative overflow-hidden border border-outline-variant/30">
-                  <div className="flex items-start justify-between z-10">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-primary-container/20 flex items-center justify-center text-primary border border-primary/20 shadow-[0_0_15px_rgba(173,198,255,0.1)]">
+                <div className="bg-surface-container rounded-xl p-4 sm:p-5 shadow-sm flex flex-col gap-4 relative overflow-hidden border border-outline-variant/30">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 z-10">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="w-10 h-10 rounded-lg bg-primary-container/20 flex items-center justify-center text-primary border border-primary/20 shadow-[0_0_15px_rgba(173,198,255,0.1)] shrink-0">
                         <span className="material-symbols-outlined text-[20px]">code_blocks</span>
                       </div>
-                      <div className="flex flex-col">
-                        <h2 className="font-bold text-lg text-on-surface m-0 p-0">IDE Integration</h2>
-                        <span className="font-mono text-xs text-on-surface-variant">
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <h2 className="font-bold text-base sm:text-lg text-on-surface m-0 p-0 truncate">IDE Integration</h2>
+                        <span className="font-mono text-xs text-on-surface-variant truncate">
                           {confidence === 'EXACT'
                             ? 'Exact Controller Signature Match'
                             : confidence === 'MOUNT_RESOLVED'
-                            ? `Mounted via ${matchedRoute?.mountSource || 'Parent Router'}`
-                            : confidence === 'MOUNT_UNRESOLVED'
-                            ? `Mount Unresolved: ${matchedRoute?.failureReason || 'Dynamic Mount'}`
-                            : 'Inferred Near-Miss Controller'}
+                              ? `Mounted via ${matchedRoute?.mountSource || 'Parent Router'}`
+                              : confidence === 'MOUNT_UNRESOLVED'
+                                ? `Mount Unresolved: ${matchedRoute?.failureReason || 'Dynamic Mount'}`
+                                : 'Inferred Near-Miss Controller'}
                         </span>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2">
                       <span
-                        className={`font-mono text-[10px] font-bold px-2.5 py-1 rounded-full border uppercase ${
-                          confidence === 'EXACT'
+                        className={`font-mono text-[10px] font-bold px-2.5 py-1 rounded-full border uppercase ${confidence === 'EXACT'
                             ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
                             : confidence === 'MOUNT_RESOLVED'
-                            ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
-                            : confidence === 'MOUNT_UNRESOLVED'
-                            ? 'bg-orange-500/10 border-orange-500/30 text-orange-400'
-                            : 'bg-sky-500/10 border-sky-500/30 text-sky-400'
-                        }`}
+                              ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                              : confidence === 'MOUNT_UNRESOLVED'
+                                ? 'bg-orange-500/10 border-orange-500/30 text-orange-400'
+                                : 'bg-sky-500/10 border-sky-500/30 text-sky-400'
+                          }`}
                       >
                         {confidence === 'EXACT'
                           ? '● EXACT MATCH'
                           : confidence === 'MOUNT_RESOLVED'
-                          ? '● MOUNT RESOLVED'
-                          : confidence === 'MOUNT_UNRESOLVED'
-                          ? '▲ MOUNT UNRESOLVED'
-                          : '◆ INFERRED NEAR-MISS'}
+                            ? '● MOUNT RESOLVED'
+                            : confidence === 'MOUNT_UNRESOLVED'
+                              ? '▲ MOUNT UNRESOLVED'
+                              : '◆ INFERRED NEAR-MISS'}
                       </span>
                     </div>
                   </div>
@@ -940,11 +932,10 @@ export function RequestWorkbenchDialog({
                                   setRootInput(r);
                                   handleScanAndLinkRoot(r);
                                 }}
-                                className={`px-2.5 py-0.5 rounded text-[10px] transition-colors cursor-pointer font-bold ${
-                                  isCurrent
+                                className={`px-2.5 py-0.5 rounded text-[10px] transition-colors cursor-pointer font-bold ${isCurrent
                                     ? 'bg-primary/25 text-primary border border-primary/30 shadow-xs'
                                     : 'bg-surface-container-high hover:bg-primary/20 hover:text-primary text-on-surface'
-                                }`}
+                                  }`}
                               >
                                 {r}
                               </button>
@@ -1105,17 +1096,15 @@ export function RequestWorkbenchDialog({
                     <div className="flex items-center gap-1.5 text-[10px]">
                       <button
                         onClick={() => setSelectedLogFilter('ALL')}
-                        className={`px-2 py-0.5 rounded cursor-pointer ${
-                          selectedLogFilter === 'ALL' ? 'bg-primary text-on-primary' : 'bg-surface-container-high text-on-surface-variant'
-                        }`}
+                        className={`px-2 py-0.5 rounded cursor-pointer ${selectedLogFilter === 'ALL' ? 'bg-primary text-on-primary' : 'bg-surface-container-high text-on-surface-variant'
+                          }`}
                       >
                         All ({correlatedLogs.length})
                       </button>
                       <button
                         onClick={() => setSelectedLogFilter('LIKELY')}
-                        className={`px-2 py-0.5 rounded cursor-pointer ${
-                          selectedLogFilter === 'LIKELY' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-surface-container-high text-on-surface-variant'
-                        }`}
+                        className={`px-2 py-0.5 rounded cursor-pointer ${selectedLogFilter === 'LIKELY' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-surface-container-high text-on-surface-variant'
+                          }`}
                       >
                         Likely ({correlatedLogs.filter((l) => l.isLikely).length})
                       </button>
@@ -1131,9 +1120,8 @@ export function RequestWorkbenchDialog({
                       correlatedLogs.map((log) => (
                         <div key={log.id} className="flex items-start gap-2 leading-relaxed">
                           <span
-                            className={`text-[9px] px-1.5 py-0.2 rounded font-bold shrink-0 ${
-                              log.isLikely ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-300'
-                            }`}
+                            className={`text-[9px] px-1.5 py-0.2 rounded font-bold shrink-0 ${log.isLikely ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-300'
+                              }`}
                           >
                             {log.tag}
                           </span>
@@ -1229,7 +1217,7 @@ export function RequestWorkbenchDialog({
 
         {/* ── MODE 2: TRAFFIC PAYLOAD & REPLAY GARAGE ── */}
         {workbenchMode === 'replay' && (
-          <div className="flex-1 px-6 py-5 pb-10 grid grid-cols-1 lg:grid-cols-2 gap-5 font-mono">
+          <div className="flex-1 px-4 sm:px-6 py-4 sm:py-5 pb-10 grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 font-mono">
             {/* LEFT COLUMN: CAPTURED BASELINE */}
             <div className="bg-surface-container rounded-xl p-5 border border-outline-variant/30 space-y-4 flex flex-col shadow-sm">
               <div className="flex items-center justify-between border-b border-outline-variant/20 pb-3">
@@ -1246,15 +1234,14 @@ export function RequestWorkbenchDialog({
 
               {/* Status Callout Box */}
               <div
-                className={`p-3 rounded-lg border text-xs space-y-1 ${
-                  is304
+                className={`p-3 rounded-lg border text-xs space-y-1 ${is304
                     ? 'bg-sky-500/10 border-sky-500/30 text-sky-200'
                     : is5xx
-                    ? 'bg-rose-500/10 border-rose-500/30 text-rose-200'
-                    : isAuthError
-                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-200'
-                    : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
-                }`}
+                      ? 'bg-rose-500/10 border-rose-500/30 text-rose-200'
+                      : isAuthError
+                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+                        : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+                  }`}
               >
                 <div className="font-bold uppercase flex items-center gap-1.5">
                   <span className="material-symbols-outlined text-[16px]">
@@ -1266,10 +1253,10 @@ export function RequestWorkbenchDialog({
                   {is304
                     ? 'Server verified client ETag validation headers. No network body payload transferred.'
                     : is5xx
-                    ? 'Server threw an exception. Inspect DevTools terminal drawer for stack traces.'
-                    : isAuthError
-                    ? 'Authentication failed. Check if session cookies expired or re-inject fresh tokens.'
-                    : 'Request executed and returned fresh response data.'}
+                      ? 'Server threw an exception. Inspect DevTools terminal drawer for stack traces.'
+                      : isAuthError
+                        ? 'Authentication failed. Check if session cookies expired or re-inject fresh tokens.'
+                        : 'Request executed and returned fresh response data.'}
                 </p>
               </div>
 
@@ -1306,9 +1293,8 @@ export function RequestWorkbenchDialog({
                       <button
                         key={run.id}
                         onClick={() => setSelectedRunId(run.id)}
-                        className={`px-2 py-0.5 rounded font-bold cursor-pointer transition-all ${
-                          currentRun?.id === run.id ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface'
-                        }`}
+                        className={`px-2 py-0.5 rounded font-bold cursor-pointer transition-all ${currentRun?.id === run.id ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface'
+                          }`}
                       >
                         #{run.runIndex}
                       </button>
@@ -1320,11 +1306,10 @@ export function RequestWorkbenchDialog({
               {/* Stateful Auth-Context Alert Banner */}
               {isAuthError && (
                 <div
-                  className={`p-3 rounded-lg border text-xs space-y-1.5 ${
-                    activeTab.authSyncedState === 'synced'
+                  className={`p-3 rounded-lg border text-xs space-y-1.5 ${activeTab.authSyncedState === 'synced'
                       ? 'bg-rose-500/10 border-rose-500/40 text-rose-200'
                       : 'bg-amber-500/10 border-amber-500/40 text-amber-200'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-bold flex items-center gap-1.5">
@@ -1360,27 +1345,24 @@ export function RequestWorkbenchDialog({
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => setTargetEnv('local')}
-                    className={`px-2.5 py-1 rounded text-[10px] font-bold cursor-pointer ${
-                      targetEnv === 'local' ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface'
-                    }`}
+                    className={`px-2.5 py-1 rounded text-[10px] font-bold cursor-pointer ${targetEnv === 'local' ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface'
+                      }`}
                   >
                     Local Port :{activeProcessPort || 3000}
                   </button>
                   {activeTunnelUrl && (
                     <button
                       onClick={() => setTargetEnv('tunnel')}
-                      className={`px-2.5 py-1 rounded text-[10px] font-bold cursor-pointer ${
-                        targetEnv === 'tunnel' ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface'
-                      }`}
+                      className={`px-2.5 py-1 rounded text-[10px] font-bold cursor-pointer ${targetEnv === 'tunnel' ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface'
+                        }`}
                     >
                       Live Tunnel
                     </button>
                   )}
                   <button
                     onClick={() => setTargetEnv('custom')}
-                    className={`px-2.5 py-1 rounded text-[10px] font-bold cursor-pointer ${
-                      targetEnv === 'custom' ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface'
-                    }`}
+                    className={`px-2.5 py-1 rounded text-[10px] font-bold cursor-pointer ${targetEnv === 'custom' ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface'
+                      }`}
                   >
                     Custom
                   </button>
@@ -1412,11 +1394,10 @@ export function RequestWorkbenchDialog({
 
                 <button
                   onClick={() => updateActiveTab((t) => ({ ...t, bypassCache: !t.bypassCache }))}
-                  className={`px-3 py-2 rounded-lg font-bold text-xs border transition-all flex items-center gap-1 cursor-pointer ${
-                    activeTab.bypassCache
+                  className={`px-3 py-2 rounded-lg font-bold text-xs border transition-all flex items-center gap-1 cursor-pointer ${activeTab.bypassCache
                       ? 'bg-sky-500/20 text-sky-300 border-sky-500/40 shadow-sm'
                       : 'bg-surface-container-high text-on-surface-variant border-outline-variant/30 hover:text-on-surface'
-                  }`}
+                    }`}
                   title="Strip cache headers on replay to force 200 OK"
                 >
                   <span className="material-symbols-outlined text-[14px]">cached</span>
@@ -1492,17 +1473,15 @@ export function RequestWorkbenchDialog({
                     <div className="flex items-center gap-1 text-[10px]">
                       <button
                         onClick={() => setDiffViewMode('side-by-side')}
-                        className={`px-2 py-0.5 rounded cursor-pointer ${
-                          diffViewMode === 'side-by-side' ? 'bg-primary text-on-primary' : 'text-on-surface-variant'
-                        }`}
+                        className={`px-2 py-0.5 rounded cursor-pointer ${diffViewMode === 'side-by-side' ? 'bg-primary text-on-primary' : 'text-on-surface-variant'
+                          }`}
                       >
                         Side-by-Side
                       </button>
                       <button
                         onClick={() => setDiffViewMode('unified')}
-                        className={`px-2 py-0.5 rounded cursor-pointer ${
-                          diffViewMode === 'unified' ? 'bg-primary text-on-primary' : 'text-on-surface-variant'
-                        }`}
+                        className={`px-2 py-0.5 rounded cursor-pointer ${diffViewMode === 'unified' ? 'bg-primary text-on-primary' : 'text-on-surface-variant'
+                          }`}
                       >
                         Unified
                       </button>
@@ -1544,9 +1523,8 @@ export function RequestWorkbenchDialog({
                 <button
                   key={lang}
                   onClick={() => setExportLanguage(lang)}
-                  className={`px-3 py-1.5 rounded-lg font-bold capitalize transition-all cursor-pointer ${
-                    exportLanguage === lang ? 'bg-primary text-on-primary' : 'bg-surface-container-lowest text-on-surface-variant'
-                  }`}
+                  className={`px-3 py-1.5 rounded-lg font-bold capitalize transition-all cursor-pointer ${exportLanguage === lang ? 'bg-primary text-on-primary' : 'bg-surface-container-lowest text-on-surface-variant'
+                    }`}
                 >
                   {lang}
                 </button>

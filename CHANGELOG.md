@@ -2,6 +2,18 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/develop-responsiveness] - 2026-08-22 (Universal Responsive Layout & Streamlined Workbench Studio Command Bar)
+- **Feature Summary**:
+  - **Streamlined Workbench Studio Command Bar**: Refactored the sticky sub-header in `RequestWorkbenchDialog.tsx` into a high-density, compact Studio Action Bar ($\sim 48\text{px}$). Consolidated the primary segmented mode switcher (`[DevTools & Mapping] [Traffic & Replay]`) and quick action triggers (`[Export Code]`, `[Save to Collection]`, `[Browser]`) onto a single balanced bar, eliminating triple information redundancy and reclaiming vertical screen real estate.
+  - **Traffic Inspector Table Isolation & Typography**: Upgraded table row typography to `text-[13px] font-mono` in `TrafficView.tsx`. Restructured column widths (`Method w-24`, `Status w-20`, `Request Path flex-1 min-w-[180px]`, `Scope w-44`, `Time w-28`, `Duration w-32 text-left`, `Actions w-72`) inside an `overflow-x-auto min-w-[1080px]` container to ensure absolute separation between latency timestamps and action triggers across all viewport sizes.
+  - **Non-Destructive Cross-Workspace Telemetry Retention**: Replaced 4 destructive global `setRequests([])` wipes in `App.tsx` with active-workspace scoped filtering (`setRequests(curr => curr.filter(r => r.workspaceId && r.workspaceId !== activeWorkspaceIdRef.current))`) to preserve historical traffic records across workspace switches.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/RequestWorkbenchDialog.tsx`
+  - `packages/desktop/src/components/views/TrafficView.tsx`
+  - `packages/desktop/src/index.css`
+  - `CHANGELOG.md`
+
 ## [feature/develop-playground-target-selector] - 2026-08-21 (Playground Interactive Target & Tunnel Selector, Instant State Purge & NSIS Uninstaller Branding)
 - **Feature Summary**:
   - **Interactive Target Environment & Public Tunnel Dropdown**: Replaced static route badge in `PostmanView.tsx` with an interactive dropdown selector grouping active public tunnels (`🌐 <hostname> (:<port>)`) and local servers (`⚡ Localhost (:<port>)`). Developers can instantly view and switch active target environments with automatic URL resolution.

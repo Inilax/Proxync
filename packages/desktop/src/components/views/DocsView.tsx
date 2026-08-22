@@ -201,7 +201,7 @@ export function DocsView() {
   const currentTopic = topics.find((t) => t.id === activeTopic) ?? topics[0];
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 fade-in select-none pb-8 font-sans">
+    <div className="w-full max-w-6xl mx-auto space-y-6 fade-in select-none pb-8 font-sans">
       {/* Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-outline-variant/30 pb-5">
         <div>
@@ -224,21 +224,21 @@ export function DocsView() {
 
       {/* Main 2-Column Content */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-start">
-        {/* Navigation Sidebar */}
-        <div className="space-y-1 bg-surface-container/40 border border-outline-variant/30 rounded-2xl p-2.5">
+        {/* Navigation Sidebar / Horizontal Scroll on Compact Viewports */}
+        <div className="flex flex-row overflow-x-auto gap-1.5 p-1 bg-surface-container/40 border border-outline-variant/30 rounded-2xl md:flex-col md:p-2.5 md:space-y-1 shrink-0">
           {topics.map((t) => {
             const isActive = t.id === activeTopic;
             return (
               <button
                 key={t.id}
                 onClick={() => setActiveTopic(t.id)}
-                className={`w-full text-left px-3.5 py-3 rounded-xl text-sm font-semibold flex items-center gap-3 transition-all ${
+                className={`whitespace-nowrap shrink-0 md:w-full text-left px-3.5 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-semibold flex items-center gap-2.5 md:gap-3 transition-all cursor-pointer ${
                   isActive
                     ? 'bg-primary/15 text-primary border border-primary/30 shadow-sm'
                     : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
                 }`}
               >
-                <span className={`material-symbols-outlined text-xl ${isActive ? 'text-primary' : 'text-outline'}`}>
+                <span className={`material-symbols-outlined text-lg md:text-xl ${isActive ? 'text-primary' : 'text-outline'}`}>
                   {t.icon}
                 </span>
                 <span>{t.title}</span>
