@@ -150,44 +150,44 @@ export function WorkspaceDashboardView({
   return (
     <>
       <div className="hidden" style={{ display: 'none' }}>{tick}</div>
-      <div className="workspace-dashboard-view max-w-6xl mx-auto space-y-8 fade-in select-none">
+      <div className="workspace-dashboard-view w-full max-w-[1600px] mx-auto space-y-6 sm:space-y-8 fade-in select-none">
         {/* Hero Workspace Header */}
-        <section className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 bg-surface-container-low p-8 rounded-xl border border-outline-variant relative overflow-hidden">
-          <div className="relative z-10 space-y-2">
-            <div className="flex items-center gap-3">
+        <section className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-6 bg-surface-container-low p-4 sm:p-6 md:p-8 rounded-2xl border border-outline-variant relative overflow-hidden">
+          <div className="relative z-10 space-y-2 max-w-xl">
+            <div className="flex items-center gap-2.5">
               <span className="flex h-2.5 w-2.5 relative">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-secondary opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-secondary"></span>
               </span>
-              <span className="font-label-md text-label-md text-secondary uppercase tracking-widest">
+              <span className="font-label-md text-label-md text-secondary uppercase tracking-widest text-[11px] sm:text-xs">
                 Active Workspace
               </span>
             </div>
             <h2 className="font-display-sm text-display-sm text-on-surface">
               {workspace?.name ?? 'Workspace Dashboard'}
             </h2>
-            <p className="text-on-surface-variant max-w-lg text-xs leading-relaxed">
+            <p className="text-on-surface-variant text-xs sm:text-sm leading-relaxed">
               Detected {processes.length} local development {processes.length === 1 ? 'server' : 'servers'} running on localhost ports. Select any server card below to configure and launch a public tunnel.
             </p>
           </div>
           <button
             onClick={onScan}
             disabled={discovering}
-            className="btn-primary relative z-10 flex items-center gap-2 cursor-pointer"
+            className="btn-primary relative z-10 flex items-center justify-center gap-2 cursor-pointer shrink-0 w-full sm:w-auto"
           >
             <span className={`material-symbols-outlined ${discovering ? 'animate-spin' : ''}`}>
               {discovering ? 'sync' : 'search'}
             </span>
             <span>{discovering ? 'Scanning Local Ports...' : 'Full Scan Local Ports'}</span>
           </button>
-          <div className="absolute -right-20 -top-20 w-64 h-64 bg-secondary/5 rounded-full blur-3xl"></div>
+          <div className="absolute -right-20 -top-20 w-64 h-64 bg-secondary/5 rounded-full blur-3xl pointer-events-none"></div>
         </section>
 
         {/* Main Grid Section */}
         <div className="space-y-8">
           {/* Section 1: Detected Local Servers */}
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <h3 className="font-headline-sm text-headline-sm text-on-surface">Detected Local Servers</h3>
                 <span className="font-code-sm text-code-sm text-on-surface-variant px-2 py-0.5 bg-surface-container rounded border border-outline-variant">
@@ -208,7 +208,7 @@ export function WorkspaceDashboardView({
             {processes.length === 0 ? (
               <div
                 onClick={onScan}
-                className="border-2 border-dashed border-outline-variant hover:border-primary/50 hover:bg-surface-container-low/30 rounded-xl p-8 flex flex-col items-center justify-center gap-4 transition-all cursor-pointer group py-12"
+                className="border-2 border-dashed border-outline-variant hover:border-primary/50 hover:bg-surface-container-low/30 rounded-xl p-6 sm:p-8 flex flex-col items-center justify-center gap-4 transition-all cursor-pointer group py-12"
               >
                 <div className="w-12 h-12 rounded-full bg-surface-container-high flex items-center justify-center group-hover:bg-primary/10 transition-colors">
                   <span className="material-symbols-outlined text-[28px] text-outline group-hover:text-primary transition-colors">
@@ -225,7 +225,7 @@ export function WorkspaceDashboardView({
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4 lg:gap-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5">
                 {processes.map((proc) => {
                   const activeT = tunnels.find((t) => t.localPort === proc.port && t.status === 'ACTIVE');
                   const isLive = Boolean(activeT);
@@ -455,7 +455,7 @@ export function WorkspaceDashboardView({
 
           {/* Section 2: Active Tunnels for Workspace */}
           <div className="space-y-4 pt-6 border-t border-outline-variant/30">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="font-headline-sm text-headline-sm text-on-surface">Active Workspace Tunnels</h3>
               <div className="flex items-center gap-2">
                 <span className="font-code-sm text-code-sm text-on-surface-variant px-2 py-0.5 bg-surface-container rounded border border-outline-variant">
@@ -491,18 +491,18 @@ export function WorkspaceDashboardView({
                 {activeTunnels.map((tunnel, idx) => (
                   <div
                     key={tunnel.id}
-                    className="p-5 bg-surface-container border border-outline-variant rounded-lg flex flex-col gap-4 hover:border-primary/50 transition-colors"
+                    className="p-4 sm:p-5 bg-surface-container border border-outline-variant rounded-xl flex flex-col gap-4 hover:border-primary/50 transition-colors"
                   >
-                    <div className="flex justify-between items-start">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded bg-surface-container-high border border-outline-variant flex items-center justify-center">
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
+                        <div className="w-10 h-10 rounded-lg bg-surface-container-high border border-outline-variant flex items-center justify-center shrink-0">
                           <span className={`material-symbols-outlined ${idx % 2 === 0 ? 'text-primary' : 'text-secondary'}`}>
                             {idx % 2 === 0 ? 'link' : 'cloud_queue'}
                           </span>
                         </div>
-                        <div>
+                        <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5 group/url">
-                            <h4 className="font-body-lg text-body-lg text-on-surface truncate max-w-[200px]" title={new URL(tunnel.publicUrl).hostname}>
+                            <h4 className="font-body-lg text-body-lg text-on-surface truncate max-w-[140px] xs:max-w-[200px] sm:max-w-[320px] md:max-w-[440px] lg:max-w-[560px]" title={new URL(tunnel.publicUrl).hostname}>
                               {new URL(tunnel.publicUrl).hostname}
                             </h4>
                             <button
@@ -511,19 +511,19 @@ export function WorkspaceDashboardView({
                                 navigator.clipboard.writeText(tunnel.publicUrl);
                                 showToast('Public URL copied!', 'success');
                               }}
-                              className="p-1 rounded text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer flex items-center justify-center opacity-0 group/url:opacity-100 focus:opacity-100"
+                              className="p-1 rounded text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer flex items-center justify-center opacity-70 sm:opacity-0 group-hover/url:opacity-100 focus:opacity-100 shrink-0"
                               title="Copy URL"
                             >
                               <span className="material-symbols-outlined text-[14px]">content_copy</span>
                             </button>
                           </div>
-                          <p className="font-code-sm text-code-sm text-on-surface-variant">
+                          <p className="font-code-sm text-code-sm text-on-surface-variant truncate">
                             {idx % 2 === 0 ? 'Relay Subdomain' : 'Cloudflare'} • Port {tunnel.localPort}
                           </p>
                         </div>
                       </div>
 
-                      <div className="relative">
+                      <div className="relative shrink-0">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -597,24 +597,24 @@ export function WorkspaceDashboardView({
                         )}
                       </div>
                     </div>
-                    <div className="grid grid-cols-3 gap-4 border-t border-outline-variant/30 pt-4">
-                      <div>
-                        <p className="text-[10px] text-on-surface-variant uppercase font-bold tracking-tighter">Latency</p>
-                        <p className="font-code-sm text-code-sm text-secondary">
+                    <div className="grid grid-cols-3 gap-2 sm:gap-4 border-t border-outline-variant/30 pt-4">
+                      <div className="min-w-0">
+                        <p className="text-[9px] sm:text-[10px] text-on-surface-variant uppercase font-bold tracking-tighter truncate">Latency</p>
+                        <p className="font-code-sm text-code-sm text-secondary truncate">
                           {tunnelLatencies[tunnel.id] !== undefined
                             ? (tunnelLatencies[tunnel.id] === Infinity ? 'offline' : `${Math.round(tunnelLatencies[tunnel.id])}ms`)
                             : 'measuring...'}
                         </p>
                       </div>
-                      <div>
-                        <p className="text-[10px] text-on-surface-variant uppercase font-bold tracking-tighter">Traffic (Up/Down)</p>
-                        <p className="font-code-sm text-code-sm text-on-surface">
+                      <div className="min-w-0">
+                        <p className="text-[9px] sm:text-[10px] text-on-surface-variant uppercase font-bold tracking-tighter truncate">Traffic (Up/Down)</p>
+                        <p className="font-code-sm text-code-sm text-on-surface truncate">
                           {getTrafficStats(tunnel.id)}
                         </p>
                       </div>
-                      <div>
-                        <p className="text-[10px] text-on-surface-variant uppercase font-bold tracking-tighter">Uptime</p>
-                        <p className="font-code-sm text-code-sm text-on-surface">
+                      <div className="min-w-0">
+                        <p className="text-[9px] sm:text-[10px] text-on-surface-variant uppercase font-bold tracking-tighter truncate">Uptime</p>
+                        <p className="font-code-sm text-code-sm text-on-surface truncate">
                           {formatUptime(tunnel.createdAt)}
                         </p>
                       </div>

@@ -142,40 +142,40 @@ export function WelcomeView({
   return (
     <>
     <div className="hidden" style={{ display: 'none' }}>{tick}</div>
-    <div className="explore-view max-w-6xl mx-auto space-y-8 fade-in select-none">
+    <div className="w-full max-w-[1600px] mx-auto space-y-6 sm:space-y-8 fade-in select-none">
       {/* Hero Section */}
-      <section className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 bg-surface-container-low p-8 rounded-xl border border-outline-variant relative overflow-hidden">
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-2">
+      <section className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-6 bg-surface-container-low p-4 sm:p-6 md:p-8 rounded-2xl border border-outline-variant relative overflow-hidden">
+        <div className="relative z-10 max-w-xl">
+          <div className="flex items-center gap-2.5 mb-2">
             <span className="flex h-2.5 w-2.5 relative">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary"></span>
             </span>
-            <span className="font-label-md text-label-md text-primary uppercase tracking-widest">
+            <span className="font-label-md text-label-md text-primary uppercase tracking-widest text-[11px] sm:text-xs">
               Service: Active
             </span>
           </div>
           <h2 className="font-display-sm text-display-sm mb-2 text-on-surface">Network Hub</h2>
-          <p className="text-on-surface-variant max-w-md">
+          <p className="text-on-surface-variant text-xs sm:text-sm leading-relaxed">
             Proxync is currently monitoring {activeTunnels.length} active {activeTunnels.length === 1 ? 'tunnel' : 'tunnels'} across global relay nodes.
           </p>
         </div>
         <button
           onClick={onDiscover}
-          className="btn-primary relative z-10"
+          className="btn-primary relative z-10 shrink-0 w-full sm:w-auto justify-center"
         >
           <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>add</span>
           <span>Expose New Process</span>
         </button>
         {/* Subtle Background Effect */}
-        <div className="absolute -right-20 -top-20 w-64 h-64 bg-primary/5 rounded-full blur-3xl"></div>
+        <div className="absolute -right-20 -top-20 w-64 h-64 bg-primary/5 rounded-full blur-3xl pointer-events-none"></div>
       </section>
 
       {/* Main Grid Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Active Tunnels Section */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between mb-2">
+      <div className="grid grid-cols-1 lg:grid-cols-3 2xl:grid-cols-4 gap-6 sm:gap-8">
+        {/* Active Tunnels Section (spans 2 on lg, 3 on 2xl) */}
+        <div className="lg:col-span-2 2xl:col-span-3 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
             <h3 className="font-headline-sm text-headline-sm text-on-surface">Active Tunnels</h3>
             <div className="flex items-center gap-2">
               <span className="font-code-sm text-code-sm text-on-surface-variant px-2 py-0.5 bg-surface-container rounded border border-outline-variant">
@@ -205,7 +205,7 @@ export function WelcomeView({
           {activeTunnels.length === 0 ? (
             <div
               onClick={onDiscover}
-              className="border-2 border-dashed border-outline-variant hover:border-primary/50 hover:bg-surface-container-low/30 rounded-xl p-8 flex flex-col items-center justify-center gap-4 transition-all cursor-pointer group py-16"
+              className="border-2 border-dashed border-outline-variant hover:border-primary/50 hover:bg-surface-container-low/30 rounded-xl p-6 sm:p-8 flex flex-col items-center justify-center gap-4 transition-all cursor-pointer group py-12 sm:py-16"
             >
               <div className="w-14 h-14 rounded-full bg-surface-container-high flex items-center justify-center group-hover:bg-primary/10 transition-colors">
                 <span className="material-symbols-outlined text-[32px] text-outline group-hover:text-primary transition-colors">
@@ -226,18 +226,18 @@ export function WelcomeView({
               {activeTunnels.map((tunnel, idx) => (
                 <div
                   key={tunnel.id}
-                  className="p-5 bg-surface-container border border-outline-variant rounded-lg flex flex-col gap-4 hover:border-primary/50 transition-colors"
+                  className="p-4 sm:p-5 bg-surface-container border border-outline-variant rounded-xl flex flex-col gap-4 hover:border-primary/50 transition-colors"
                 >
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded bg-surface-container-high border border-outline-variant flex items-center justify-center">
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
+                      <div className="w-10 h-10 rounded-lg bg-surface-container-high border border-outline-variant flex items-center justify-center shrink-0">
                         <span className={`material-symbols-outlined ${idx % 2 === 0 ? 'text-primary' : 'text-secondary'}`}>
                           {idx % 2 === 0 ? 'link' : 'cloud_queue'}
                         </span>
                       </div>
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 group/url">
-                          <h4 className="font-body-lg text-body-lg text-on-surface truncate max-w-[200px]" title={new URL(tunnel.publicUrl).hostname}>
+                          <h4 className="font-body-lg text-body-lg text-on-surface truncate max-w-[140px] xs:max-w-[200px] sm:max-w-[320px] md:max-w-[440px] lg:max-w-[560px]" title={new URL(tunnel.publicUrl).hostname}>
                             {new URL(tunnel.publicUrl).hostname}
                           </h4>
                           <button
@@ -246,19 +246,19 @@ export function WelcomeView({
                               navigator.clipboard.writeText(tunnel.publicUrl);
                               showToast('Public URL copied!', 'success');
                             }}
-                            className="p-1 rounded text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer flex items-center justify-center opacity-0 group-hover/url:opacity-100 focus:opacity-100"
+                            className="p-1 rounded text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer flex items-center justify-center opacity-70 sm:opacity-0 group-hover/url:opacity-100 focus:opacity-100 shrink-0"
                             title="Copy URL"
                           >
                             <span className="material-symbols-outlined text-[14px]">content_copy</span>
                           </button>
                         </div>
-                        <p className="font-code-sm text-code-sm text-on-surface-variant">
+                        <p className="font-code-sm text-code-sm text-on-surface-variant truncate">
                           {idx % 2 === 0 ? 'Relay Subdomain' : 'Cloudflare'} • Port {tunnel.localPort}
                         </p>
                       </div>
                     </div>
 
-                    <div className="relative">
+                    <div className="relative shrink-0">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -329,24 +329,24 @@ export function WelcomeView({
                       )}
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-4 border-t border-outline-variant/30 pt-4">
-                    <div>
-                      <p className="text-[10px] text-on-surface-variant uppercase font-bold tracking-tighter">Latency</p>
-                      <p className="font-code-sm text-code-sm text-secondary">
+                  <div className="grid grid-cols-3 gap-2 sm:gap-4 border-t border-outline-variant/30 pt-4">
+                    <div className="min-w-0">
+                      <p className="text-[9px] sm:text-[10px] text-on-surface-variant uppercase font-bold tracking-tighter truncate">Latency</p>
+                      <p className="font-code-sm text-code-sm text-secondary truncate">
                         {tunnelLatencies[tunnel.id] !== undefined
                           ? (tunnelLatencies[tunnel.id] === Infinity ? 'offline' : `${Math.round(tunnelLatencies[tunnel.id])}ms`)
                           : 'measuring...'}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-[10px] text-on-surface-variant uppercase font-bold tracking-tighter">Traffic (Up/Down)</p>
-                      <p className="font-code-sm text-code-sm text-on-surface">
+                    <div className="min-w-0">
+                      <p className="text-[9px] sm:text-[10px] text-on-surface-variant uppercase font-bold tracking-tighter truncate">Traffic (Up/Down)</p>
+                      <p className="font-code-sm text-code-sm text-on-surface truncate">
                         {getTrafficStats(tunnel.id)}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-[10px] text-on-surface-variant uppercase font-bold tracking-tighter">Uptime</p>
-                      <p className="font-code-sm text-code-sm text-on-surface">
+                    <div className="min-w-0">
+                      <p className="text-[9px] sm:text-[10px] text-on-surface-variant uppercase font-bold tracking-tighter truncate">Uptime</p>
+                      <p className="font-code-sm text-code-sm text-on-surface truncate">
                         {formatUptime(tunnel.createdAt)}
                       </p>
                     </div>
@@ -364,9 +364,9 @@ export function WelcomeView({
             <h3 className="font-headline-sm text-headline-sm text-on-surface">Expose Services</h3>
             <div className="flex flex-col gap-3">
               {/* Option 0: Proxync Native Tunnel */}
-              <div className="p-4 bg-primary/10 border border-primary/40 rounded-lg group hover:bg-primary/15 transition-all">
-                <div className="flex justify-between items-center mb-1">
-                  <div className="flex items-center gap-2">
+              <div className="p-4 bg-primary/10 border border-primary/40 rounded-xl group hover:bg-primary/15 transition-all">
+                <div className="flex justify-between items-start gap-2 mb-1">
+                  <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                     <h5 className="font-label-md text-label-md text-primary font-bold flex items-center gap-1">
                       <span>⚡</span> Proxync Native Tunnel
                     </h5>
@@ -374,7 +374,7 @@ export function WelcomeView({
                       Azure sish
                     </span>
                   </div>
-                  <span className="material-symbols-outlined text-primary">
+                  <span className="material-symbols-outlined text-primary shrink-0">
                     vpn_lock
                   </span>
                 </div>

@@ -195,6 +195,76 @@ export default function App() {
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger'>('general');
 
+  /* ── Sidebar Responsive State (Icon-only default on small screens, full/user preference on desktop/maximize) ── */
+  const SIDEBAR_DESKTOP_PREF_KEY = 'proxync_sidebar_desktop_collapsed_v1';
+
+  const getDesktopSidebarPref = (): boolean => {
+    try {
+      const stored = localStorage.getItem(SIDEBAR_DESKTOP_PREF_KEY);
+      return stored === 'true';
+    } catch {
+      return false;
+    }
+  };
+
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    // On smaller screens (< 1024px), always default to icons only (true)
+    if (window.innerWidth < 1024) return true;
+    // On bigger screen / maximized (>= 1024px), show full or user preference from localStorage
+    return getDesktopSidebarPref();
+  });
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      // Only persist manual user preference when toggled on desktop/maximized screens
+      if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
+        try {
+          localStorage.setItem(SIDEBAR_DESKTOP_PREF_KEY, String(next));
+        } catch {}
+      }
+      return next;
+    });
+  };
+
+  // Dynamically adapt on window resize (e.g. maximize / restore window)
+  useEffect(() => {
+    let wasSmall = typeof window !== 'undefined' ? window.innerWidth < 1024 : false;
+
+    const handleResize = () => {
+      const isSmall = window.innerWidth < 1024;
+      if (isSmall !== wasSmall) {
+        wasSmall = isSmall;
+        if (isSmall) {
+          // Entering small screen -> default to icon-only
+          setSidebarCollapsed(true);
+        } else {
+          // Entering desktop / maximized -> restore full menu (or user desktop preference)
+          setSidebarCollapsed(getDesktopSidebarPref());
+        }
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Global hotkey Ctrl+B / Cmd+B for toggling sidebar
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        const target = e.target as HTMLElement;
+        if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
+          e.preventDefault();
+          toggleSidebar();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   /* ── 360° Request Workbench Studio & Terminal Drawer State ── */
   const WORKBENCH_TABS_STORAGE_KEY = 'proxync_workbench_tabs_v1';
   const [workbenchTabs, setWorkbenchTabs] = useState<WorkbenchTab[]>(() => {
@@ -2062,7 +2132,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
     <div className="app-frame flex flex-col h-screen w-screen overflow-hidden bg-surface">
       {/* ── Top Header Bar (48px) ── */}
       <header
-        className="app-titlebar h-[48px] min-h-[48px] w-full flex items-center border-b border-outline-variant bg-surface px-4 justify-between select-none z-50 cursor-default"
+        className="app-titlebar h-[48px] min-h-[48px] w-full flex items-center border-b border-outline-variant bg-surface px-2 sm:px-4 justify-between select-none z-50 cursor-default"
         onMouseDown={(e) => {
           const target = e.target as HTMLElement;
           if (
@@ -2077,23 +2147,33 @@ function generateRandomSubdomain(prefix = 'px'): string {
           }
         }}
       >
-        <div className="flex items-center gap-6">
-          <div className="app-brand flex items-center gap-2">
+        <div className="flex items-center gap-2 sm:gap-4 md:gap-6 min-w-0">
+          <button
+            onClick={toggleSidebar}
+            className="p-1.5 rounded-lg hover:bg-surface-container-high text-on-surface-variant hover:text-primary transition-colors cursor-pointer shrink-0"
+            title={sidebarCollapsed ? 'Expand sidebar (Ctrl+B)' : 'Collapse sidebar (Ctrl+B)'}
+          >
+            <span className="material-symbols-outlined text-[20px]">
+              {sidebarCollapsed ? 'menu_open' : 'menu'}
+            </span>
+          </button>
+
+          <div className="app-brand flex items-center gap-2 shrink-0">
             <img src="/logo.svg" className="w-5 h-5 object-contain select-none" alt="Logo" />
-            <span className="text-headline-sm font-bold text-on-surface">Proxync</span>
+            <span className="text-headline-sm font-bold text-on-surface hidden sm:inline">Proxync</span>
           </div>
           {viewLabel !== 'Explore' && (
-            <>
+            <div className="hidden md:flex items-center gap-2 text-on-surface-variant">
               <span className="text-outline-variant">|</span>
-              <span className="text-body-md text-on-surface-variant">{viewLabel}</span>
-            </>
+              <span className="text-body-md truncate max-w-[140px]">{viewLabel}</span>
+            </div>
           )}
-          <div className="app-search flex items-center bg-surface-container-low px-3 py-1 rounded border border-outline-variant">
-            <span className="material-symbols-outlined text-outline text-[18px] mr-2">search</span>
+          <div className="app-search flex items-center bg-surface-container-low px-2.5 py-1 rounded border border-outline-variant w-28 sm:w-44 md:w-56 lg:w-64 transition-all">
+            <span className="material-symbols-outlined text-outline text-[18px] mr-1.5 shrink-0">search</span>
             <input
               type="text"
-              placeholder="Search workspaces..."
-              className="bg-transparent border-none focus:ring-0 focus:outline-none text-body-md w-48 placeholder:text-outline text-on-surface"
+              placeholder="Search..."
+              className="bg-transparent border-none focus:ring-0 focus:outline-none text-body-md w-full placeholder:text-outline text-on-surface text-xs"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -2141,48 +2221,68 @@ function generateRandomSubdomain(prefix = 'px'): string {
 
       {/* ── Body: Sidebar + Content ── */}
       <div className="flex flex-1 min-h-0">
-        {/* ── Sidebar (260px) ── */}
-        <aside className="app-sidebar w-[260px] min-w-[260px] flex flex-col py-4 bg-surface-container-low border-r border-outline-variant z-40">
-          <div className="px-6 mb-6">
-            <h2 className="text-headline-sm font-bold text-primary">Proxync Engine</h2>
-            <p className="text-code-sm text-on-surface-variant opacity-60">v0.2.1-stable</p>
-          </div>
+        {/* ── Sidebar (260px or 68px) ── */}
+        <aside className={`app-sidebar ${sidebarCollapsed ? 'w-[52px] min-w-[52px]' : 'w-[240px] md:w-[260px] min-w-[240px] md:min-w-[260px]'} flex flex-col py-3 bg-surface-container-low border-r border-outline-variant z-40 transition-all overflow-hidden`}>
+          {!sidebarCollapsed ? (
+            <div className="px-6 mb-5">
+              <h2 className="text-headline-sm font-bold text-primary truncate">Proxync Engine</h2>
+              <p className="text-code-sm text-on-surface-variant opacity-60">v0.2.1-stable</p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center mb-4">
+              <span
+                className="material-symbols-outlined text-primary text-[20px] cursor-pointer hover:text-secondary transition-colors"
+                title="Workspace Dashboard"
+                onClick={() => setMainView('workspace_dashboard')}
+              >hub</span>
+            </div>
+          )}
 
           {/* Active Workspace Selector Section */}
-          <div className="px-6 mb-5">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-[10px] font-bold text-on-surface-variant/70 tracking-widest uppercase">Active Workspace</p>
-              <button
-                onClick={() => setMainView('lobby')}
-                className="p-1 rounded text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-all cursor-pointer flex items-center justify-center"
-                title="All Workspaces Studio (Manage & Search 100+ Workspaces)"
-              >
-                <span className="material-symbols-outlined text-[16px]">grid_view</span>
-              </button>
-            </div>
+          <div className={`${sidebarCollapsed ? 'px-1.5 mb-3' : 'px-6 mb-5'}`}>
+            {!sidebarCollapsed && (
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-bold text-on-surface-variant/70 tracking-widest uppercase">Active Workspace</p>
+                <button
+                  onClick={() => setMainView('lobby')}
+                  className="p-1 rounded text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-all cursor-pointer flex items-center justify-center"
+                  title="All Workspaces Studio (Manage & Search 100+ Workspaces)"
+                >
+                  <span className="material-symbols-outlined text-[16px]">grid_view</span>
+                </button>
+              </div>
+            )}
             <div
               onClick={() => setMainView('workspace_dashboard')}
-              className="workspace-selector flex items-center border border-outline-variant/60 bg-surface-container hover:border-primary/50 hover:bg-surface-container-high rounded-lg px-3.5 py-2.5 cursor-pointer transition-all text-sm text-on-surface select-none group shadow-sm"
-              title="Open Active Workspace Hub"
+              className={`workspace-selector flex items-center border border-outline-variant/60 bg-surface-container hover:border-primary/50 hover:bg-surface-container-high rounded-lg cursor-pointer transition-all text-sm text-on-surface select-none group shadow-sm ${
+                sidebarCollapsed ? 'p-1.5 justify-center' : 'px-3.5 py-2.5'
+              }`}
+              title={`Active Workspace: ${activeWorkspace?.name ?? 'Select Workspace'}`}
             >
-              <div className="flex items-center gap-2.5 truncate">
+              <div className={`flex items-center gap-2.5 truncate ${sidebarCollapsed ? 'justify-center' : ''}`}>
                 <span className="w-2 h-2 rounded-full bg-secondary shrink-0" />
-                <span className="truncate font-semibold text-sm text-on-surface group-hover:text-primary transition-colors">
-                  {activeWorkspace?.name ?? 'Select Workspace'}
-                </span>
+                {!sidebarCollapsed && (
+                  <span className="truncate font-semibold text-sm text-on-surface group-hover:text-primary transition-colors">
+                    {activeWorkspace?.name ?? 'Select Workspace'}
+                  </span>
+                )}
               </div>
             </div>
           </div>
 
           {/* Categorized Menu Section */}
-          <nav className="app-nav flex-1 space-y-4 overflow-y-auto">
+          <nav className="app-nav flex-1 space-y-3 overflow-y-auto">
             {NAV_CATEGORIES.map((cat) => (
               <div key={cat.category} className="space-y-0.5">
-                <div className="px-6 mb-1.5">
-                  <p className="text-[10px] font-bold text-on-surface-variant/60 tracking-widest uppercase">
-                    {cat.category}
-                  </p>
-                </div>
+                {!sidebarCollapsed ? (
+                  <div className="px-6 mb-1.5">
+                    <p className="text-[10px] font-bold text-on-surface-variant/60 tracking-widest uppercase">
+                      {cat.category}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="border-t border-outline-variant/20 my-1.5 mx-2" />
+                )}
                 {cat.items.map((item) => {
                   const isSelected = mainView === item.view;
                   const isDisabled = item.view !== 'lobby' && item.view !== 'settings' && item.view !== 'docs' && !activeWorkspace;
@@ -2190,7 +2290,8 @@ function generateRandomSubdomain(prefix = 'px'): string {
                     <button
                       key={item.view}
                       disabled={isDisabled}
-                      className={`nav-item flex items-center gap-3 px-6 py-2 w-full text-left transition-colors font-label-md text-sm ${
+                      title={item.label}
+                      className={`nav-item flex items-center ${sidebarCollapsed ? 'collapsed justify-center px-2 py-2' : 'gap-3 px-6 py-2'} w-full text-left transition-colors font-label-md text-sm ${
                         isSelected
                           ? 'active text-on-surface border-secondary-container bg-surface-container-high font-semibold'
                           : 'text-on-surface-variant hover:bg-surface-container-highest border-l-2 border-transparent'
@@ -2205,8 +2306,8 @@ function generateRandomSubdomain(prefix = 'px'): string {
                         setMainView(item.view);
                       }}
                     >
-                      <span className="material-symbols-outlined text-[18px]">{item.icon}</span>
-                      <span>{item.label}</span>
+                      <span className="material-symbols-outlined text-[18px] shrink-0">{item.icon}</span>
+                      {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
                     </button>
                   );
                 })}
@@ -2214,26 +2315,31 @@ function generateRandomSubdomain(prefix = 'px'): string {
             ))}
           </nav>
 
-          <div className="pt-4 border-t border-outline-variant/30 space-y-1">
-            <button onClick={() => openUrl("https://github.com/Inilax/Proxync/issues")}
-              className="nav-item flex items-center gap-3 px-6 py-2.5 w-full text-left text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md cursor-pointer">
-              <span className="material-symbols-outlined">help</span> Support
+          <div className={`pt-3 border-t border-outline-variant/30 space-y-1 ${sidebarCollapsed ? 'px-1.5' : ''}`}>
+            <button
+              onClick={() => openUrl("https://github.com/Inilax/Proxync/issues")}
+              title="Support"
+              className={`nav-item flex items-center ${sidebarCollapsed ? 'collapsed justify-center px-2 py-2' : 'gap-3 px-6 py-2.5'} w-full text-left text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md cursor-pointer`}
+            >
+              <span className="material-symbols-outlined text-[18px]">help</span>
+              {!sidebarCollapsed && <span>Support</span>}
             </button>
-            <div className="px-6 py-4 mt-2">
+            <div className={`${sidebarCollapsed ? 'px-1.5 py-1.5' : 'px-6 py-3 mt-1'}`}>
               <button
                 onClick={() => setAuthDialogOpen(true)}
-                className="btn-primary flex items-center justify-center gap-2 px-4 py-2.5 w-full rounded-lg text-xs font-bold font-label-md cursor-pointer"
+                title="Sign In"
+                className={`btn-primary flex items-center justify-center ${sidebarCollapsed ? 'p-1.5 w-full' : 'gap-2 px-4 py-2.5'} w-full rounded-lg text-xs font-bold font-label-md cursor-pointer`}
               >
                 <span className="material-symbols-outlined text-[18px]">lock_open</span>
-                Sign In
+                {!sidebarCollapsed && <span>Sign In</span>}
               </button>
             </div>
           </div>
         </aside>
 
         <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-          {/* ── Main Content Area ── */}
-          <main className="app-main flex-1 min-w-0 overflow-y-auto p-8 bg-surface-container-lowest">
+          {/* ── Main Content Area (Responsive Fluid Padding) ── */}
+          <main className="app-main flex-1 min-h-0 min-w-0 overflow-y-auto p-3.5 sm:p-5 md:p-6 lg:p-8 bg-surface-container-lowest">
             {mainView === 'lobby' && (
               <LobbyView workspaces={workspaces} activeWorkspaceId={activeWorkspaceId} newWorkspaceName={newWorkspaceName} onWorkspaceNameChange={setNewWorkspaceName} onCreateWorkspace={createWorkspace} onSelectWorkspace={selectWorkspace} onDeleteWorkspace={initiateDeleteWorkspace} onPurgeWorkspace={purgeWorkspace} onUpdateWorkspace={updateWorkspaceSettings} searchQuery={searchQuery} requests={requests} />
             )}

@@ -128,25 +128,25 @@ export function SettingsView({
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8 fade-in select-none">
+    <div className="w-full max-w-5xl mx-auto space-y-6 sm:space-y-8 fade-in select-none">
       {/* Header Section */}
-      <div className="flex items-center justify-between mb-8 border-b border-outline-variant/30 pb-6">
+      <div className="flex items-center justify-between border-b border-outline-variant/30 pb-6">
         <div>
           <h1 className="font-display-sm text-display-sm text-on-surface">Settings</h1>
-          <p className="text-on-surface-variant font-body-md mt-1">Manage your engine configuration and security credentials.</p>
+          <p className="text-on-surface-variant font-body-md mt-1 text-xs sm:text-sm">Manage your engine configuration and security credentials.</p>
         </div>
 
       </div>
 
       {/* Settings Grid Layout */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-        {/* Settings Tab Sidebar */}
-        <div className="flex flex-col gap-1 md:col-span-1">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 md:gap-8">
+        {/* Settings Tab Sidebar / Horizontal Pills on Compact Screens */}
+        <div className="flex flex-row overflow-x-auto gap-1.5 p-1 bg-surface-container-low rounded-xl border border-outline-variant/30 md:border-none md:bg-transparent md:flex-col md:p-0 md:col-span-1 shrink-0">
           <button
             onClick={() => setActiveSection('general')}
-            className={`text-left px-3 py-2.5 rounded font-label-md text-label-md cursor-pointer transition-all ${
+            className={`text-left px-3.5 py-2 md:py-2.5 rounded-lg font-label-md text-xs md:text-sm cursor-pointer transition-all whitespace-nowrap shrink-0 ${
               activeSection === 'general'
-                ? 'bg-surface-container-high text-primary border-l-2 border-primary'
+                ? 'bg-surface-container-high text-primary md:border-l-2 md:border-primary font-semibold'
                 : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
             }`}
           >
@@ -154,9 +154,9 @@ export function SettingsView({
           </button>
           <button
             onClick={() => setActiveSection('networking')}
-            className={`text-left px-3 py-2.5 rounded font-label-md text-label-md cursor-pointer transition-all ${
+            className={`text-left px-3.5 py-2 md:py-2.5 rounded-lg font-label-md text-xs md:text-sm cursor-pointer transition-all whitespace-nowrap shrink-0 ${
               activeSection === 'networking'
-                ? 'bg-surface-container-high text-primary border-l-2 border-primary'
+                ? 'bg-surface-container-high text-primary md:border-l-2 md:border-primary font-semibold'
                 : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
             }`}
           >
@@ -164,9 +164,9 @@ export function SettingsView({
           </button>
           <button
             onClick={() => setActiveSection('account')}
-            className={`text-left px-3 py-2.5 rounded font-label-md text-label-md cursor-pointer transition-all ${
+            className={`text-left px-3.5 py-2 md:py-2.5 rounded-lg font-label-md text-xs md:text-sm cursor-pointer transition-all whitespace-nowrap shrink-0 ${
               activeSection === 'account'
-                ? 'bg-surface-container-high text-primary border-l-2 border-primary'
+                ? 'bg-surface-container-high text-primary md:border-l-2 md:border-primary font-semibold'
                 : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
             }`}
           >
@@ -174,9 +174,9 @@ export function SettingsView({
           </button>
           <button
             onClick={() => setActiveSection('security')}
-            className={`text-left px-3 py-2.5 rounded font-label-md text-label-md cursor-pointer transition-all ${
+            className={`text-left px-3.5 py-2 md:py-2.5 rounded-lg font-label-md text-xs md:text-sm cursor-pointer transition-all whitespace-nowrap shrink-0 ${
               activeSection === 'security'
-                ? 'bg-surface-container-high text-primary border-l-2 border-primary'
+                ? 'bg-surface-container-high text-primary md:border-l-2 md:border-primary font-semibold'
                 : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
             }`}
           >
@@ -184,9 +184,9 @@ export function SettingsView({
           </button>
           <button
             onClick={() => setActiveSection('domains')}
-            className={`text-left px-3 py-2.5 rounded font-label-md text-label-md cursor-pointer transition-all ${
+            className={`text-left px-3.5 py-2 md:py-2.5 rounded-lg font-label-md text-xs md:text-sm cursor-pointer transition-all whitespace-nowrap shrink-0 ${
               activeSection === 'domains'
-                ? 'bg-surface-container-high text-primary border-l-2 border-primary'
+                ? 'bg-surface-container-high text-primary md:border-l-2 md:border-primary font-semibold'
                 : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
             }`}
           >
@@ -194,9 +194,9 @@ export function SettingsView({
           </button>
           <button
             onClick={() => setActiveSection('danger')}
-            className={`text-left px-3 py-2.5 rounded font-label-md text-label-md cursor-pointer transition-all ${
+            className={`text-left px-3.5 py-2 md:py-2.5 rounded-lg font-label-md text-xs md:text-sm cursor-pointer transition-all whitespace-nowrap shrink-0 ${
               activeSection === 'danger'
-                ? 'bg-surface-container-high text-error border-l-2 border-error'
+                ? 'bg-surface-container-high text-error md:border-l-2 md:border-error font-semibold'
                 : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
             }`}
           >

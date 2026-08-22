@@ -628,7 +628,7 @@ export function RequestWorkbenchDialog({
   const modalContent = (
     <div
       className={`flex-1 flex flex-col min-w-0 bg-surface text-on-surface font-sans overflow-hidden select-none ${
-        isFullView ? 'h-full' : 'w-[95vw] max-w-7xl h-[90vh] rounded-2xl shadow-2xl border border-outline-variant/30'
+        isFullView ? 'h-full' : 'w-[96vw] max-w-[1600px] h-[92vh] sm:rounded-2xl shadow-2xl border border-outline-variant/30'
       }`}
       onClick={(e) => e.stopPropagation()}
     >
@@ -710,26 +710,26 @@ export function RequestWorkbenchDialog({
 
       {/* ── 2. Sticky Sub-Header with Segmented Control Mode Switcher ── */}
       <main className="flex-1 relative overflow-y-auto bg-surface flex flex-col font-sans">
-        <div className="px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 z-10 sticky top-0 bg-surface/90 backdrop-blur-md border-b border-outline-variant/20 shrink-0">
-          <div className="flex flex-col gap-0.5">
+        <div className="px-4 sm:px-6 py-3 sm:py-3.5 flex flex-wrap items-center justify-between gap-3 sm:gap-4 z-10 sticky top-0 bg-surface/90 backdrop-blur-md border-b border-outline-variant/20 shrink-0">
+          <div className="flex flex-col gap-0.5 min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-lg text-on-surface tracking-tight leading-none">
+              <span className="font-bold text-base sm:text-lg text-on-surface tracking-tight leading-none truncate">
                 {workbenchMode === 'devtools' ? 'DevTools & Controller Mapping' : 'Traffic Payload & Replay Garage'}
               </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 uppercase font-bold">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 uppercase font-bold shrink-0">
                 {activeTab.method}
               </span>
             </div>
-            <p className="font-mono text-xs text-on-surface-variant m-0 p-0 flex items-center gap-1.5">
-              <span className="opacity-60">TARGET:</span>
-              <span className="text-emerald-400 font-bold">{activeTab.path}</span>
+            <p className="font-mono text-xs text-on-surface-variant m-0 p-0 flex items-center gap-1.5 truncate">
+              <span className="opacity-60 shrink-0">TARGET:</span>
+              <span className="text-emerald-400 font-bold truncate">{activeTab.path}</span>
             </p>
           </div>
 
-          <div className="flex items-center gap-1 bg-surface-container-lowest p-1 rounded-xl border border-outline-variant/30 font-mono text-xs shadow-inner">
+          <div className="flex items-center gap-1 bg-surface-container-lowest p-1 rounded-xl border border-outline-variant/30 font-mono text-xs shadow-inner w-full sm:w-auto justify-center">
             <button
               onClick={() => setWorkbenchMode('devtools')}
-              className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3 sm:px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 flex-1 sm:flex-initial justify-center ${
                 workbenchMode === 'devtools' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
               }`}
             >
@@ -738,7 +738,7 @@ export function RequestWorkbenchDialog({
             </button>
             <button
               onClick={() => setWorkbenchMode('replay')}
-              className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3 sm:px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 flex-1 sm:flex-initial justify-center ${
                 workbenchMode === 'replay' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
               }`}
             >
@@ -747,10 +747,10 @@ export function RequestWorkbenchDialog({
             </button>
           </div>
 
-          <div className="flex items-center gap-2 font-mono text-xs">
+          <div className="flex flex-wrap items-center gap-2 font-mono text-xs w-full sm:w-auto justify-between sm:justify-end">
             <button
               onClick={() => setExportModalOpen(true)}
-              className="h-8 px-3 flex items-center justify-center gap-1.5 bg-surface-container-high hover:bg-primary-container hover:text-on-primary-container text-on-surface border border-outline-variant/30 rounded-lg transition-colors font-medium cursor-pointer shadow-sm"
+              className="h-8 px-3 flex items-center justify-center gap-1.5 bg-surface-container-high hover:bg-primary-container hover:text-on-primary-container text-on-surface border border-outline-variant/30 rounded-lg transition-colors font-medium cursor-pointer shadow-sm flex-1 sm:flex-initial"
             >
               <span className="material-symbols-outlined text-[15px]">code</span>
               Export Code
@@ -762,7 +762,7 @@ export function RequestWorkbenchDialog({
                   onSaveRequestToCollection(activeTab.draftRequest);
                   showToast('Saved request template to Postman collection', 'success');
                 }}
-                className="h-8 px-3 flex items-center justify-center gap-1.5 bg-surface-container-high hover:bg-primary-container hover:text-on-primary-container text-on-surface border border-outline-variant/30 rounded-lg transition-colors font-medium cursor-pointer shadow-sm"
+                className="h-8 px-3 flex items-center justify-center gap-1.5 bg-surface-container-high hover:bg-primary-container hover:text-on-primary-container text-on-surface border border-outline-variant/30 rounded-lg transition-colors font-medium cursor-pointer shadow-sm flex-1 sm:flex-initial"
               >
                 <span className="material-symbols-outlined text-[15px] text-amber-400">bookmark</span>
                 Save to Collection
@@ -771,7 +771,7 @@ export function RequestWorkbenchDialog({
 
             <button
               onClick={() => openInBrowser(resolvedTargetUrl)}
-              className="h-8 px-3 flex items-center justify-center gap-1.5 bg-surface-container-high hover:bg-primary-container hover:text-on-primary-container text-on-surface border border-outline-variant/30 rounded-lg transition-colors font-medium cursor-pointer shadow-sm"
+              className="h-8 px-3 flex items-center justify-center gap-1.5 bg-surface-container-high hover:bg-primary-container hover:text-on-primary-container text-on-surface border border-outline-variant/30 rounded-lg transition-colors font-medium cursor-pointer shadow-sm flex-1 sm:flex-initial"
             >
               <span className="material-symbols-outlined text-[15px]">open_in_browser</span>
               Browser
@@ -781,10 +781,10 @@ export function RequestWorkbenchDialog({
 
         {/* ── MODE 1: DEVTOOLS & CODEBASE MAPPING (COCKPIT) ── */}
         {workbenchMode === 'devtools' && (
-          <div className="flex-1 px-6 py-5 pb-10 flex flex-col gap-5">
+          <div className="flex-1 px-4 sm:px-6 py-4 sm:py-5 pb-10 flex flex-col gap-5">
             {/* Pro-Debugger Diagnostic Banner */}
             <div
-              className={`p-4 rounded-xl border font-mono text-xs flex items-center justify-between gap-4 shadow-sm ${
+              className={`p-3.5 sm:p-4 rounded-xl border font-mono text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 shadow-sm ${
                 is5xx
                   ? 'bg-rose-500/10 border-rose-500/30 text-rose-200'
                   : isAuthError
@@ -794,12 +794,12 @@ export function RequestWorkbenchDialog({
                   : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
               }`}
             >
-              <div className="flex items-center gap-3">
-                <span className="material-symbols-outlined text-[24px]">
+              <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
+                <span className="material-symbols-outlined text-[24px] shrink-0 mt-0.5 sm:mt-0">
                   {is5xx ? 'bug_report' : isAuthError ? 'lock' : is304 ? 'cached' : 'verified'}
                 </span>
-                <div className="space-y-0.5">
-                  <span className="font-bold block uppercase">
+                <div className="space-y-0.5 min-w-0 flex-1">
+                  <span className="font-bold block uppercase truncate">
                     HTTP {statusNum} —{' '}
                     {is5xx
                       ? 'Critical Server Failure'
@@ -809,7 +809,7 @@ export function RequestWorkbenchDialog({
                       ? '304 Not Modified Cache Hit'
                       : '200 OK Optimal Execution'}
                   </span>
-                  <p className="text-[11px] font-sans opacity-90">
+                  <p className="text-[11px] font-sans opacity-90 leading-relaxed">
                     {is5xx
                       ? 'Server threw an exception during controller execution. Inspect file mapping and correlated logs below.'
                       : isAuthError
@@ -821,7 +821,7 @@ export function RequestWorkbenchDialog({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
                 <span className="text-[11px] font-mono opacity-80">
                   Heap: <strong>{routeMetrics.heapUsedMb}MB</strong> | Latency:{' '}
                   <strong>{routeMetrics.avgLatencyMs}ms</strong>
@@ -833,15 +833,15 @@ export function RequestWorkbenchDialog({
               {/* LEFT COLUMN (8 COLS) */}
               <div className="col-span-12 lg:col-span-8 flex flex-col gap-5">
                 {/* CARD 1: IDE INTEGRATION & LINE-ACCURATE JUMP */}
-                <div className="bg-surface-container rounded-xl p-5 shadow-sm flex flex-col gap-4 relative overflow-hidden border border-outline-variant/30">
-                  <div className="flex items-start justify-between z-10">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-primary-container/20 flex items-center justify-center text-primary border border-primary/20 shadow-[0_0_15px_rgba(173,198,255,0.1)]">
+                <div className="bg-surface-container rounded-xl p-4 sm:p-5 shadow-sm flex flex-col gap-4 relative overflow-hidden border border-outline-variant/30">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 z-10">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="w-10 h-10 rounded-lg bg-primary-container/20 flex items-center justify-center text-primary border border-primary/20 shadow-[0_0_15px_rgba(173,198,255,0.1)] shrink-0">
                         <span className="material-symbols-outlined text-[20px]">code_blocks</span>
                       </div>
-                      <div className="flex flex-col">
-                        <h2 className="font-bold text-lg text-on-surface m-0 p-0">IDE Integration</h2>
-                        <span className="font-mono text-xs text-on-surface-variant">
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <h2 className="font-bold text-base sm:text-lg text-on-surface m-0 p-0 truncate">IDE Integration</h2>
+                        <span className="font-mono text-xs text-on-surface-variant truncate">
                           {confidence === 'EXACT'
                             ? 'Exact Controller Signature Match'
                             : confidence === 'MOUNT_RESOLVED'
@@ -1229,7 +1229,7 @@ export function RequestWorkbenchDialog({
 
         {/* ── MODE 2: TRAFFIC PAYLOAD & REPLAY GARAGE ── */}
         {workbenchMode === 'replay' && (
-          <div className="flex-1 px-6 py-5 pb-10 grid grid-cols-1 lg:grid-cols-2 gap-5 font-mono">
+          <div className="flex-1 px-4 sm:px-6 py-4 sm:py-5 pb-10 grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 font-mono">
             {/* LEFT COLUMN: CAPTURED BASELINE */}
             <div className="bg-surface-container rounded-xl p-5 border border-outline-variant/30 space-y-4 flex flex-col shadow-sm">
               <div className="flex items-center justify-between border-b border-outline-variant/20 pb-3">

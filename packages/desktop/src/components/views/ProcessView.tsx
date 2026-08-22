@@ -123,11 +123,11 @@ export function ProcessView({
   const isActive = tunnel?.localPort === processLike.port && tunnel.status === 'ACTIVE';
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8 fade-in select-none">
+    <div className="w-full max-w-6xl mx-auto space-y-6 sm:space-y-8 fade-in select-none">
       {/* Page Heading */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 border-b border-outline-variant/30 pb-6">
-        <div>
-          <h1 className="font-display-sm text-display-sm text-on-surface">{processLike.name}</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-6 border-b border-outline-variant/30 pb-5 sm:pb-6">
+        <div className="min-w-0">
+          <h1 className="font-display-sm text-display-sm text-on-surface truncate" title={processLike.name}>{processLike.name}</h1>
           <div className="flex flex-wrap items-center gap-2 mt-2">
             {isActive && tunnel ? (
               <span className="badge success">
@@ -149,12 +149,12 @@ export function ProcessView({
             <span className="badge muted">{workspace?.languageHint ?? 'Unknown language'}</span>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           {isActive && tunnel ? (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
               {onInspectTraffic && (
                 <button
-                  className="btn-secondary"
+                  className="btn-secondary flex-1 sm:flex-initial justify-center"
                   onClick={onInspectTraffic}
                   title="Inspect real-time HTTP traffic and payloads"
                 >
@@ -162,7 +162,7 @@ export function ProcessView({
                 </button>
               )}
               <button
-                className="btn-danger"
+                className="btn-danger flex-1 sm:flex-initial justify-center"
                 onClick={() => onStop(tunnel)}
               >
                 <span className="material-symbols-outlined text-[16px]">stop</span>
@@ -170,10 +170,10 @@ export function ProcessView({
               </button>
             </div>
           ) : sharingPort === processLike.port ? (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
               {onInspectTraffic && (
                 <button
-                  className="btn-secondary"
+                  className="btn-secondary flex-1 sm:flex-initial justify-center"
                   onClick={onInspectTraffic}
                   title="Inspect local traffic"
                 >
@@ -181,7 +181,7 @@ export function ProcessView({
                 </button>
               )}
               <button
-                className="btn-danger"
+                className="btn-danger flex-1 sm:flex-initial justify-center"
                 onClick={onStopLocalShare}
               >
                 <span className="material-symbols-outlined text-[16px]">stop</span>
@@ -189,16 +189,16 @@ export function ProcessView({
               </button>
             </div>
           ) : process ? (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
               <button
-                className="btn-secondary"
+                className="btn-secondary flex-1 sm:flex-initial justify-center"
                 onClick={() => onShareLocal(process)}
               >
                 <span className="material-symbols-outlined text-[16px]">wifi</span>
                 LAN Share
               </button>
               <button
-                className="btn-primary"
+                className="btn-primary flex-1 sm:flex-initial justify-center"
                 onClick={() => onShare(process)}
               >
                 <span className="material-symbols-outlined text-[16px]">public</span>
@@ -207,7 +207,7 @@ export function ProcessView({
             </div>
           ) : (
             <button
-              className="btn-primary"
+              className="btn-primary w-full sm:w-auto justify-center"
               onClick={onDiscover}
             >
               <span className="material-symbols-outlined text-[16px]">search</span>
@@ -219,14 +219,14 @@ export function ProcessView({
 
       {/* Starter Request Scan */}
       {suggestions.length > 0 && (
-        <section className="p-5 bg-surface-container border border-outline-variant/30 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+        <section className="p-4 sm:p-5 bg-surface-container border border-outline-variant/30 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-6">
           <div className="space-y-1">
             <h2 className="font-body-lg text-body-lg text-on-surface font-semibold">Starter Request Scan</h2>
             <p className="text-xs text-on-surface-variant leading-relaxed max-w-xl">
               Proxync detected likely routing endpoints for this framework. Import them to your Playground collection to start live tests and build Swagger validation contracts.
             </p>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-3 shrink-0 w-full sm:w-auto justify-between sm:justify-end">
             <span className="text-xs text-on-surface-variant font-mono">{suggestions.length} templates ready</span>
             <button
               className="btn-primary compact"
@@ -239,7 +239,7 @@ export function ProcessView({
       )}
 
       {/* Grid: Process Details & Connection Sharing */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
         {/* Left Column: Diagnostics */}
         <div className="space-y-6">
           {/* Status Box */}
@@ -317,18 +317,18 @@ export function ProcessView({
             )}
 
             <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between p-3 bg-surface-container-low border border-outline-variant/30 rounded-lg">
-                <div className="flex flex-col">
+              <div className="flex items-center justify-between p-3 bg-surface-container-low border border-outline-variant/30 rounded-lg gap-2">
+                <div className="flex flex-col min-w-0 flex-1">
                   <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">Local Endpoint</span>
                   <code
                     onClick={() => handleOpenUrl(`http://localhost:${processLike.port}`)}
-                    className="text-xs font-mono text-primary font-semibold mt-0.5 hover:underline cursor-pointer select-all"
+                    className="text-xs font-mono text-primary font-semibold mt-0.5 hover:underline cursor-pointer select-all truncate"
                     title="Open in Browser"
                   >
                     http://localhost:{processLike.port}
                   </code>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 shrink-0">
                   <button
                     onClick={() => handleOpenUrl(`http://localhost:${processLike.port}`)}
                     className="btn-ghost compact cursor-pointer hover:bg-surface-container-high rounded text-on-surface-variant hover:text-primary transition-colors"
@@ -347,18 +347,18 @@ export function ProcessView({
               </div>
 
               {localIp && localIp !== '127.0.0.1' && (
-                <div className="flex items-center justify-between p-3 bg-surface-container-low border border-outline-variant/30 rounded-lg">
-                  <div className="flex flex-col">
+                <div className="flex items-center justify-between p-3 bg-surface-container-low border border-outline-variant/30 rounded-lg gap-2">
+                  <div className="flex flex-col min-w-0 flex-1">
                     <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">LAN Endpoint</span>
                     <code
                       onClick={() => handleOpenUrl(`http://${localIp}:${processLike.port}`)}
-                      className="text-xs font-mono text-primary font-semibold mt-0.5 hover:underline cursor-pointer select-all"
+                      className="text-xs font-mono text-primary font-semibold mt-0.5 hover:underline cursor-pointer select-all truncate"
                       title="Open in Browser"
                     >
                       http://{localIp}:{processLike.port}
                     </code>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 shrink-0">
                     <button
                       onClick={() => handleOpenUrl(`http://${localIp}:${processLike.port}`)}
                       className="btn-ghost compact cursor-pointer hover:bg-surface-container-high rounded text-on-surface-variant hover:text-primary transition-colors"
@@ -379,25 +379,25 @@ export function ProcessView({
 
               {isActive && tunnel && (
                 <div className="space-y-3 pt-3 border-t border-outline-variant/30">
-                  <div className="flex items-center justify-between p-3 bg-surface-container-low border border-emerald-500/30 rounded-lg">
-                    <div className="flex flex-col">
+                  <div className="flex items-center justify-between p-3 bg-surface-container-low border border-emerald-500/30 rounded-lg gap-2">
+                    <div className="flex flex-col min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
+                        <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider truncate">
                           {getTunnelProviderLabel(tunnel)} • Public URL
                         </span>
-                        <span className="px-1.5 py-0.2 bg-emerald-500/15 text-[9.5px] font-mono text-emerald-400 rounded font-semibold">
+                        <span className="px-1.5 py-0.2 bg-emerald-500/15 text-[9.5px] font-mono text-emerald-400 rounded font-semibold shrink-0">
                           Live
                         </span>
                       </div>
                       <code
                         onClick={() => handleOpenUrl(tunnel.publicUrl)}
-                        className="text-xs font-mono text-primary font-bold mt-0.5 hover:underline cursor-pointer select-all"
-                        title="Open in Browser"
+                        className="text-xs font-mono text-primary font-bold mt-0.5 hover:underline cursor-pointer select-all truncate"
+                        title={tunnel.publicUrl}
                       >
                         {tunnel.publicUrl}
                       </code>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => handleOpenUrl(tunnel.publicUrl)}
                         className="btn-ghost compact cursor-pointer hover:bg-surface-container-high rounded text-primary hover:text-primary/80 transition-colors"
@@ -415,18 +415,18 @@ export function ProcessView({
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between p-3 bg-surface-container-low border border-outline-variant/30 rounded-lg">
-                    <div className="flex flex-col">
+                  <div className="flex items-center justify-between p-3 bg-surface-container-low border border-outline-variant/30 rounded-lg gap-2">
+                    <div className="flex flex-col min-w-0 flex-1">
                       <span className="text-[10px] text-on-surface-variant font-bold uppercase tracking-wider">LAN Proxy Tunnel</span>
                       <code
                         onClick={() => handleOpenUrl(`http://${localIp}:3939`)}
-                        className="text-xs font-mono text-on-surface mt-0.5 hover:underline cursor-pointer select-all"
+                        className="text-xs font-mono text-on-surface mt-0.5 hover:underline cursor-pointer select-all truncate"
                         title="Open in Browser"
                       >
                         http://{localIp}:3939
                       </code>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => handleOpenUrl(`http://${localIp}:3939`)}
                         className="btn-ghost compact cursor-pointer hover:bg-surface-container-high rounded text-on-surface-variant hover:text-primary transition-colors"
