@@ -6,6 +6,26 @@ function handleOpenUrl(url: string) {
   openUrl(url).catch(() => window.open(url, '_blank'));
 }
 
+export function getTunnelProviderLabel(tunnel: Tunnel | null): string {
+  if (!tunnel?.publicUrl) return 'Proxync Tunnel';
+  const lower = tunnel.publicUrl.toLowerCase();
+  if (lower.includes('trycloudflare.com') || lower.includes('cloudflare')) {
+    return 'Cloudflare Tunnel';
+  }
+  if (lower.includes('localtunnel.me') || lower.includes('localtunnel')) {
+    return 'Localtunnel';
+  }
+  if (lower.includes('proxync') || tunnel.subdomain?.startsWith('px-')) {
+    return 'Proxync Tunnel';
+  }
+  try {
+    const urlObj = new URL(tunnel.publicUrl.startsWith('http') ? tunnel.publicUrl : `https://${tunnel.publicUrl}`);
+    return urlObj.hostname ? `Custom Domain (${urlObj.hostname})` : 'Proxync Tunnel';
+  } catch {
+    return 'Proxync Tunnel';
+  }
+}
+
 export function ProcessView({
   workspace,
   process,
@@ -23,6 +43,7 @@ export function ProcessView({
   onCopy,
   onImportStarterRequests,
   onRefreshConfig,
+  onInspectTraffic,
 }: {
   workspace: WorkspaceConfig | null;
   process: ProcessCandidate | null;
@@ -40,6 +61,7 @@ export function ProcessView({
   onCopy: (value: string, message: string) => void;
   onImportStarterRequests: () => void;
   onRefreshConfig?: (process: ProcessCandidate | ProcessProfile) => void;
+  onInspectTraffic?: () => void;
 }) {
   if (!process && !profile) {
     return (
@@ -107,9 +129,21 @@ export function ProcessView({
         <div>
           <h1 className="font-display-sm text-display-sm text-on-surface">{processLike.name}</h1>
           <div className="flex flex-wrap items-center gap-2 mt-2">
-            <span className={`badge ${process ? 'accent' : 'muted'}`}>
-              {process ? '● Running locally' : '○ Saved profile'}
-            </span>
+            {isActive && tunnel ? (
+              <span className="badge success">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse mr-0.5" />
+                Online • {getTunnelProviderLabel(tunnel)}
+              </span>
+            ) : sharingPort === processLike.port ? (
+              <span className="badge accent" style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.25)' }}>
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-400 mr-0.5" />
+                Shared on LAN
+              </span>
+            ) : (
+              <span className={`badge ${process ? 'accent' : 'muted'}`}>
+                {process ? '● Running locally' : '○ Saved profile'}
+              </span>
+            )}
             <span className="badge muted">Port {processLike.port}</span>
             <span className="badge muted">{processLike.framework ?? 'HTTP'}</span>
             <span className="badge muted">{workspace?.languageHint ?? 'Unknown language'}</span>
@@ -117,21 +151,43 @@ export function ProcessView({
         </div>
         <div className="flex gap-2">
           {isActive && tunnel ? (
-            <button
-              className="btn-danger"
-              onClick={() => onStop(tunnel)}
-            >
-              <span className="material-symbols-outlined text-[16px]">stop</span>
-              Stop Tunnel
-            </button>
+            <div className="flex gap-2">
+              {onInspectTraffic && (
+                <button
+                  className="btn-secondary"
+                  onClick={onInspectTraffic}
+                  title="Inspect real-time HTTP traffic and payloads"
+                >
+                  Inspect Traffic
+                </button>
+              )}
+              <button
+                className="btn-danger"
+                onClick={() => onStop(tunnel)}
+              >
+                <span className="material-symbols-outlined text-[16px]">stop</span>
+                Stop Tunnel
+              </button>
+            </div>
           ) : sharingPort === processLike.port ? (
-            <button
-              className="btn-danger"
-              onClick={onStopLocalShare}
-            >
-              <span className="material-symbols-outlined text-[16px]">stop</span>
-              Stop Sharing
-            </button>
+            <div className="flex gap-2">
+              {onInspectTraffic && (
+                <button
+                  className="btn-secondary"
+                  onClick={onInspectTraffic}
+                  title="Inspect local traffic"
+                >
+                  Inspect Traffic
+                </button>
+              )}
+              <button
+                className="btn-danger"
+                onClick={onStopLocalShare}
+              >
+                <span className="material-symbols-outlined text-[16px]">stop</span>
+                Stop Sharing
+              </button>
+            </div>
           ) : process ? (
             <div className="flex gap-2">
               <button
@@ -190,7 +246,18 @@ export function ProcessView({
           <div className="p-5 bg-surface-container border border-outline-variant/30 rounded-xl space-y-4">
             <h3 className="font-headline-sm text-xs font-bold text-on-surface uppercase tracking-wider">Process Diagnostics</h3>
             <div className="grid grid-cols-2 gap-4">
-              <InfoTile label="Status" value={process ? 'Running' : 'Awaiting rerun'} />
+              <InfoTile
+                label="Status"
+                value={
+                  isActive && tunnel
+                    ? `Online (${getTunnelProviderLabel(tunnel)})`
+                    : sharingPort === processLike.port
+                    ? 'Shared (LAN)'
+                    : process
+                    ? 'Running locally'
+                    : 'Awaiting rerun'
+                }
+              />
               <InfoTile label="Uptime" value={processLike.uptime ?? 'unknown'} />
               <InfoTile label="PID" value={process?.pid?.toString() ?? 'saved only'} />
               <InfoTile label="Port" value={processLike.port.toString()} />
@@ -312,9 +379,16 @@ export function ProcessView({
 
               {isActive && tunnel && (
                 <div className="space-y-3 pt-3 border-t border-outline-variant/30">
-                  <div className="flex items-center justify-between p-3 bg-surface-container-low border border-outline-variant/30 rounded-lg">
+                  <div className="flex items-center justify-between p-3 bg-surface-container-low border border-emerald-500/30 rounded-lg">
                     <div className="flex flex-col">
-                      <span className="text-[10px] text-primary font-bold uppercase tracking-wider">Public Exposure URL</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
+                          {getTunnelProviderLabel(tunnel)} • Public URL
+                        </span>
+                        <span className="px-1.5 py-0.2 bg-emerald-500/15 text-[9.5px] font-mono text-emerald-400 rounded font-semibold">
+                          Live
+                        </span>
+                      </div>
                       <code
                         onClick={() => handleOpenUrl(tunnel.publicUrl)}
                         className="text-xs font-mono text-primary font-bold mt-0.5 hover:underline cursor-pointer select-all"

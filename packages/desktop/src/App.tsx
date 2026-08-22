@@ -2249,6 +2249,13 @@ function generateRandomSubdomain(prefix = 'px'): string {
                 }}
                 onStopTunnel={stopTunnel}
                 onStopAllTunnels={stopAllTunnels}
+                onInspectTraffic={(tunnel) => {
+                  if (tunnel) {
+                    const proc = processes.find((p) => p.port === tunnel.localPort);
+                    if (proc) setSelectedProcessId(proc.id);
+                  }
+                  setMainView('traffic');
+                }}
               />
             )}
             {mainView === 'workspace_dashboard' && (
@@ -2458,6 +2465,12 @@ function generateRandomSubdomain(prefix = 'px'): string {
                 onCopy={copyText}
                 onImportStarterRequests={importStarterRequests}
                 onRefreshConfig={(p) => void refreshProcessDirectory(p as ProcessCandidate)}
+                onInspectTraffic={() => {
+                  if (selectedProcess) {
+                    setSelectedProcessId(selectedProcess.id);
+                  }
+                  setMainView('traffic');
+                }}
               />
             )}
           </main>
