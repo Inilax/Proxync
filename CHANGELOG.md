@@ -2,6 +2,20 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/ide-navigation-and-preflight-probe] - 2026-08-22 (Dynamic IDE Route Navigation, Inactive Port Pre-Flight Probe & Global Traffic Logs Purge)
+- **Feature Summary**:
+  - **Dynamic Route Resolution & Zero Fake Paths (TC-WB-003)**: Upgraded `RequestWorkbenchDialog.tsx` to include `nearMissMatch` in route resolution and replaced the hardcoded `src/controllers/...` fallback with `null`. When a route is unlinked, displays an explanatory prompt and disables IDE triggers. Dynamically derives `resolvedRoot` from active process candidates and workspace configs so files always resolve to their absolute file system path.
+  - **3-Tier Cross-Platform IDE Engine**: Refactored `open_file_in_editor` in `storage.rs` with discrete argument quoting (`code -g "<root>/<path>:<line>"`) on Windows to prevent space splitting in paths, and implemented resilient 3-tier fallbacks (CLI with line jump $\rightarrow$ OS URI scheme $\rightarrow$ system default file opener) across Windows, macOS, and Linux.
+  - **Inactive Port Pre-Flight Probe & Residue Purge**: Implemented `probe_port` in `recon.rs` (300ms dual-stack TCP check) and wired `verifyPortIsLive` in `App.tsx`. Prevents creating tunnels on offline ports (e.g. `:4500` after `Ctrl+C`) with clear warning toasts, and triggers background `discoverProcesses(true, true)` to automatically purge dead process cards from the UI.
+  - **Global Traffic Logs Clearance**: Fixed `clearTrafficLogs()` in `App.tsx` to completely reset in-memory `requests`, wipe `capturedRequests` across all workspaces in `localStorage`, and delete underlying disk logs via `clearLogs()`.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/RequestWorkbenchDialog.tsx`
+  - `CHANGELOG.md`
+
 ## [fix/tunnel-resilient-standby] - 2026-08-22 (Resilient Standby Tunnels, 502 Fallback & Instant Local Auto-Recovery)
 - **Feature Summary**:
   - **Universal Standby Mode & URL Preservation**: Replaced abrupt hard tunnel teardown on local process shutdown (`Ctrl+C`) with a resilient `STANDBY` state. Preserves public tunnel URLs (`https://px-xxxx.proxync.dev`) across server restarts and hot-reloads so webhook integrations (Stripe, GitHub, Shopify) remain permanently connected without reconfiguration.

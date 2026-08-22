@@ -213,63 +213,130 @@ pub async fn open_file_in_editor(file_path: String, line_number: Option<u32>, ed
     let ed = editor.unwrap_or_else(|| "vscode".to_string()).to_lowercase();
     let line = line_number.unwrap_or(1);
     let binary_name = if ed == "cursor" { "cursor" } else { "code" };
-    let goto_arg = format!("{}:{}", file_path, line);
+    let scheme = if ed == "cursor" { "cursor" } else { "vscode" };
 
+    // --- TIER 1: Direct CLI with Exact Line Jump (-g <path>:<line>) ---
     #[cfg(target_os = "windows")]
     {
-        // 1. Try direct code.cmd / cursor.cmd CLI launcher
-        let mut cmd = std::process::Command::new("cmd");
-        cmd.args(&["/c", binary_name, "-g", &goto_arg]);
-        if let Ok(mut child) = cmd.spawn() {
-            if let Ok(status) = child.wait() {
-                if status.success() {
-                    return Ok(());
-                }
+        let normalized_path = file_path.replace('/', "\\");
+        let goto_arg = format!("{}:{}", normalized_path, line);
+
+        // 1a. Try <binary>.cmd (standard Windows CLI batch wrapper)
+        let cmd_name = format!("{}.cmd", binary_name);
+        if let Ok(mut child) = std::process::Command::new(&cmd_name).arg("-g").arg(&goto_arg).spawn() {
+            if child.wait().map(|s| s.success()).unwrap_or(false) {
+                return Ok(());
             }
         }
 
-        // 2. Fallback: Windows Shell Execute via registered URI protocol
-        let scheme = if ed == "cursor" { "cursor" } else { "vscode" };
-        let norm_path = file_path.replace('\\', "/");
-        let uri = format!("{}://file/{}:{}", scheme, norm_path, line);
-        
-        let mut uri_cmd = std::process::Command::new("cmd");
-        uri_cmd.args(&["/c", "start", "", &uri]);
-        if let Ok(_) = uri_cmd.spawn() {
-            return Ok(());
+        // 1b. Try raw binary in PATH
+        if let Ok(mut child) = std::process::Command::new(binary_name).arg("-g").arg(&goto_arg).spawn() {
+            if child.wait().map(|s| s.success()).unwrap_or(false) {
+                return Ok(());
+            }
         }
+
+        // --- TIER 2: OS URI Protocol Handler (vscode://file/... or cursor://file/...) ---
+        let norm_uri_path = file_path.replace('\\', "/");
+        let uri = format!("{}://file/{}:{}", scheme, norm_uri_path, line);
+        if let Ok(mut child) = std::process::Command::new("cmd").args(&["/c", "start", "", &uri]).spawn() {
+            if child.wait().map(|s| s.success()).unwrap_or(false) {
+                return Ok(());
+            }
+        }
+
+        // --- TIER 3: OS Default Associated Application Fallback ---
+        let _ = std::process::Command::new("cmd").args(&["/c", "start", "", &normalized_path]).spawn();
+        return Ok(());
     }
 
     #[cfg(target_os = "macos")]
     {
-        let mut cmd = std::process::Command::new(binary_name);
-        cmd.args(&["-g", &goto_arg]);
-        if let Ok(_) = cmd.spawn() {
-            return Ok(());
+        let goto_arg = format!("{}:{}", file_path, line);
+
+        // 1a. Try CLI binary in standard PATH
+        if let Ok(mut child) = std::process::Command::new(binary_name).arg("-g").arg(&goto_arg).spawn() {
+            if child.wait().map(|s| s.success()).unwrap_or(false) {
+                return Ok(());
+            }
         }
 
-        let scheme = if ed == "cursor" { "cursor" } else { "vscode" };
-        let norm_path = file_path.replace('\\', "/");
-        let uri = format!("{}://file/{}:{}", scheme, norm_path, line);
-        let _ = std::process::Command::new("open").arg(&uri).spawn();
+        // 1b. Check common macOS paths (/usr/local/bin, /opt/homebrew/bin, Application bundle bin)
+        let mac_candidates = [
+            format!("/usr/local/bin/{}", binary_name),
+            format!("/opt/homebrew/bin/{}", binary_name),
+            if ed == "cursor" {
+                "/Applications/Cursor.app/Contents/Resources/app/bin/cursor".to_string()
+            } else {
+                "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code".to_string()
+            },
+        ];
+        for candidate in &mac_candidates {
+            if std::path::Path::new(candidate).exists() {
+                if let Ok(mut child) = std::process::Command::new(candidate).arg("-g").arg(&goto_arg).spawn() {
+                    if child.wait().map(|s| s.success()).unwrap_or(false) {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
+        // --- TIER 2: macOS URL Scheme (`open vscode://file/...`) ---
+        let uri = format!("{}://file/{}:{}", scheme, file_path, line);
+        if let Ok(mut child) = std::process::Command::new("open").arg(&uri).spawn() {
+            if child.wait().map(|s| s.success()).unwrap_or(false) {
+                return Ok(());
+            }
+        }
+
+        // --- TIER 3: macOS Default App Fallback (`open <file_path>`) ---
+        let _ = std::process::Command::new("open").arg(&file_path).spawn();
         return Ok(());
     }
 
     #[cfg(target_os = "linux")]
     {
-        let mut cmd = std::process::Command::new(binary_name);
-        cmd.args(&["-g", &goto_arg]);
-        if let Ok(_) = cmd.spawn() {
-            return Ok(());
+        let goto_arg = format!("{}:{}", file_path, line);
+
+        // 1a. Try CLI binary in PATH
+        if let Ok(mut child) = std::process::Command::new(binary_name).arg("-g").arg(&goto_arg).spawn() {
+            if child.wait().map(|s| s.success()).unwrap_or(false) {
+                return Ok(());
+            }
         }
 
-        let scheme = if ed == "cursor" { "cursor" } else { "vscode" };
-        let norm_path = file_path.replace('\\', "/");
-        let uri = format!("{}://file/{}:{}", scheme, norm_path, line);
-        let _ = std::process::Command::new("xdg-open").arg(&uri).spawn();
+        // 1b. Check common Linux paths (/usr/bin, /usr/local/bin, /snap/bin)
+        let linux_candidates = [
+            format!("/usr/bin/{}", binary_name),
+            format!("/usr/local/bin/{}", binary_name),
+            format!("/snap/bin/{}", binary_name),
+        ];
+        for candidate in &linux_candidates {
+            if std::path::Path::new(candidate).exists() {
+                if let Ok(mut child) = std::process::Command::new(candidate).arg("-g").arg(&goto_arg).spawn() {
+                    if child.wait().map(|s| s.success()).unwrap_or(false) {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
+        // --- TIER 2: Linux XDG URL Scheme (`xdg-open vscode://file/...`) ---
+        let uri = format!("{}://file/{}:{}", scheme, file_path, line);
+        if let Ok(mut child) = std::process::Command::new("xdg-open").arg(&uri).spawn() {
+            if child.wait().map(|s| s.success()).unwrap_or(false) {
+                return Ok(());
+            }
+        }
+
+        // --- TIER 3: Linux XDG Default App Fallback (`xdg-open <file_path>`) ---
+        let _ = std::process::Command::new("xdg-open").arg(&file_path).spawn();
         return Ok(());
     }
 
-    Ok(())
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    {
+        Ok(())
+    }
 }
 

@@ -4,7 +4,7 @@ mod storage;
 mod http;
 mod tunnel;
 
-use recon::{scan_ports, scan_processes, resolve_process_directory};
+use recon::{scan_ports, scan_processes, resolve_process_directory, probe_port};
 use tunnel::{open_tunnel, close_tunnel, close_all_tunnels, open_localtunnel, open_cloudflare_tunnel, open_native_tunnel};
 use proxy::start_proxy;
 use storage::{
@@ -24,6 +24,7 @@ pub fn run() {
             scan_ports, 
             scan_processes,
             resolve_process_directory,
+            probe_port,
             open_tunnel, 
             close_tunnel,
             close_all_tunnels,

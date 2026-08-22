@@ -593,20 +593,29 @@ export function RequestWorkbenchDialog({
   const isAuthError = statusNum === 401 || statusNum === 403;
 
   // Matched Route Properties
-  const matchedRoute = routeMatch.exactMatch || routeMatch.mountResolvedMatch || routeMatch.mountUnresolvedMatch;
+  const matchedRoute =
+    routeMatch.exactMatch ||
+    routeMatch.mountResolvedMatch ||
+    routeMatch.mountUnresolvedMatch ||
+    routeMatch.nearMissMatch;
   const targetPathClean = activeTab.path.split('?')[0].replace(/^\//, '');
   const pathSegments = targetPathClean.split('/').filter(Boolean);
   const resourceName = pathSegments.length > 0 ? pathSegments[pathSegments.length - 1] : 'resource';
-  const inferredController = matchedRoute
-    ? matchedRoute.fileSource
-    : (scannedEndpoints[0]?.fileSource || `src/controllers/${resourceName.replace(/[^a-zA-Z0-9_-]/g, '')}.controller.ts`);
-  const exactLineNumber = matchedRoute?.lineNumber || 1;
+  const inferredController = matchedRoute?.fileSource ?? null;
+  const exactLineNumber = matchedRoute?.lineNumber ?? null;
   const confidence = routeMatch.confidence;
   const handlerFunctionName = matchedRoute
     ? `${matchedRoute.path.split('/').pop() || 'handleRequest'}(req, res)`
     : `${activeTab.method.toLowerCase()}${resourceName.charAt(0).toUpperCase() + resourceName.slice(1)}(req, res)`;
   const middlewareList = matchedRoute?.middleware || ['authMiddleware', 'rateLimiter'];
   const detectedEntities = matchedRoute?.detectedEntities || ['User', 'Session'];
+
+  // Fail-Safe Absolute Project Root resolution
+  const resolvedRoot =
+    activeRootPath ||
+    processes?.find((p) => p.port === activeProcessPort)?.directory ||
+    workspace?.projectRootPath ||
+    '';
 
   // Export snippet helper
   const getExportSnippet = () => {
@@ -950,26 +959,42 @@ export function RequestWorkbenchDialog({
                   <div className="bg-surface-container-lowest rounded-lg p-3.5 font-mono text-xs text-on-surface flex items-center justify-between shadow-inner border border-outline-variant/20 z-10 gap-3">
                     <div className="flex items-center gap-2.5 truncate min-w-0">
                       <span className="material-symbols-outlined text-outline text-[18px] shrink-0">draft</span>
-                      <span className="opacity-90 truncate font-mono">
-                        {inferredController}
-                        <span className="text-secondary font-bold">:{exactLineNumber}</span>
-                      </span>
+                      {inferredController ? (
+                        <span className="opacity-90 truncate font-mono">
+                          {inferredController}
+                          <span className="text-secondary font-bold">:{exactLineNumber ?? 1}</span>
+                        </span>
+                      ) : (
+                        <span className="text-outline italic text-[11px] truncate">
+                          Route file not resolved — scan project root to link
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
                       <button
-                        onClick={() => openInEditor(activeRootPath || '', inferredController, exactLineNumber, 'vscode')}
-                        className="bg-primary text-on-primary hover:bg-primary-fixed-dim px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors font-mono text-[11px] font-bold shadow cursor-pointer"
-                        title="Open in VS Code"
+                        onClick={() => inferredController && openInEditor(resolvedRoot, inferredController, exactLineNumber ?? 1, 'vscode')}
+                        disabled={!inferredController}
+                        className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors font-mono text-[11px] font-bold shadow ${
+                          inferredController
+                            ? 'bg-primary text-on-primary hover:bg-primary-fixed-dim cursor-pointer'
+                            : 'bg-surface-container-high text-outline cursor-not-allowed opacity-60'
+                        }`}
+                        title={inferredController ? 'Open in VS Code' : 'Route not linked'}
                       >
                         <span className="material-symbols-outlined text-[14px]">open_in_new</span>
                         VS Code
                       </button>
 
                       <button
-                        onClick={() => openInEditor(activeRootPath || '', inferredController, exactLineNumber, 'cursor')}
-                        className="bg-surface-container-high hover:bg-primary hover:text-on-primary text-on-surface px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors font-mono text-[11px] font-bold border border-outline-variant/30 cursor-pointer"
-                        title="Open in Cursor IDE"
+                        onClick={() => inferredController && openInEditor(resolvedRoot, inferredController, exactLineNumber ?? 1, 'cursor')}
+                        disabled={!inferredController}
+                        className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors font-mono text-[11px] font-bold border ${
+                          inferredController
+                            ? 'bg-surface-container-high hover:bg-primary hover:text-on-primary text-on-surface border-outline-variant/30 cursor-pointer'
+                            : 'bg-surface-container-high text-outline border-outline-variant/10 cursor-not-allowed opacity-60'
+                        }`}
+                        title={inferredController ? 'Open in Cursor IDE' : 'Route not linked'}
                       >
                         <span className="material-symbols-outlined text-[14px]">bolt</span>
                         Cursor
@@ -1194,7 +1219,7 @@ export function RequestWorkbenchDialog({
                         <div
                           key={idx}
                           onClick={() => {
-                            if (item.fileSource) openInEditor(activeRootPath || '', item.fileSource, item.lineNumber, 'vscode');
+                            if (item.fileSource) openInEditor(resolvedRoot, item.fileSource, item.lineNumber ?? 1, 'vscode');
                           }}
                           className="flex items-center justify-between p-2.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container-high transition-colors cursor-pointer group border border-transparent hover:border-outline-variant/30"
                         >
