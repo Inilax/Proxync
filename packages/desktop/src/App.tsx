@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -145,6 +145,20 @@ async function checkRealInternetConnection(timeoutMs = 1200): Promise<boolean> {
   }
 }
 
+// ponytail: merge incoming requests with existing local requests without wiping state (ceiling: 300 logs)
+function mergeUniqueRequests(existing: RequestLog[], incoming: RequestLog[]): RequestLog[] {
+  if (!incoming || incoming.length === 0) return existing;
+  const existingIds = new Set(existing.map((r) => r.id || (r as any).rawRequestId));
+  const newItems = incoming.filter((r) => {
+    const key = r.id || (r as any).rawRequestId;
+    return key && !existingIds.has(key);
+  });
+  if (newItems.length === 0) return existing;
+  return [...existing, ...newItems]
+    .sort((a, b) => new Date(b.capturedAt || 0).getTime() - new Date(a.capturedAt || 0).getTime())
+    .slice(0, 300);
+}
+
 export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [context, setContext] = useState<LocalWorkspaceContext | null>(null);
@@ -178,7 +192,26 @@ export default function App() {
     }
   }, [activeTunnel]);
   const [tunnels, setTunnels] = useState<Tunnel[]>([]);
-  const [requests, setRequests] = useState<RequestLog[]>([]);
+  const [requests, setRequests] = useState<RequestLog[]>(() => {
+    try {
+      const stored = localStorage.getItem(LOCAL_WORKSPACES_KEY);
+      const parsed = stored ? (JSON.parse(stored) as WorkspaceConfig[]) : [];
+      const all: RequestLog[] = [];
+      const seen = new Set<string>();
+      parsed.forEach((ws) => {
+        (ws.capturedRequests || []).forEach((r) => {
+          const key = r.id || (r as any).rawRequestId;
+          if (key && !seen.has(key)) {
+            seen.add(key);
+            all.push(r);
+          }
+        });
+      });
+      return all.sort((a, b) => new Date(b.capturedAt || 0).getTime() - new Date(a.capturedAt || 0).getTime()).slice(0, 300);
+    } catch {
+      return [];
+    }
+  });
   const [selectedRequest, setSelectedRequest] = useState<RequestLog | null>(null);
   const [savedRequests, setSavedRequests] = useState<SavedRequest[]>([]);
   const [draftRequest, setDraftRequest] = useState<SavedRequest>(DEFAULT_REQUEST);
@@ -962,25 +995,48 @@ export default function App() {
 
   useEffect(() => {
     if (!activeWorkspace) return;
-    setSavedRequests(activeWorkspace.savedRequests);
-    setRequests((current) => (current.length > 0 ? current : (activeWorkspace.capturedRequests || [])));
-    setStarterSuggestions(activeWorkspace.savedRequests.filter((r) => r.source === 'starter-scan'));
+    setSavedRequests(activeWorkspace.savedRequests || []);
+    // ponytail: merge workspace requests into pool without wiping previous workspace captures
+    if (activeWorkspace.capturedRequests && activeWorkspace.capturedRequests.length > 0) {
+      setRequests((current) => mergeUniqueRequests(current, activeWorkspace.capturedRequests));
+    }
+    setStarterSuggestions((activeWorkspace.savedRequests || []).filter((r) => r.source === 'starter-scan'));
     if (activeWorkspace.remoteWorkspaceId) {
       localStorage.setItem('proxync_workspace', activeWorkspace.remoteWorkspaceId);
     }
   }, [activeWorkspaceId]);
 
   useEffect(() => {
-    if (!activeWorkspace) return;
+    if (!activeWorkspaceId) return;
     const now = new Date().toISOString();
     setWorkspaces((current) =>
-      current.map((ws) =>
-        ws.id === activeWorkspace.id
-          ? { ...ws, savedRequests, capturedRequests: requests, languageHint: effectiveLanguageHint, lastActivityAt: now }
-          : ws,
-      ),
+      current.map((ws) => {
+        const wsRequests = requests.filter((r) => r.workspaceId === ws.id);
+        const isCurrentActive = ws.id === activeWorkspaceId;
+        return {
+          ...ws,
+          savedRequests: isCurrentActive ? savedRequests : ws.savedRequests,
+          capturedRequests: wsRequests.length > 0 ? wsRequests : (isCurrentActive ? requests.filter(r => !r.workspaceId || r.workspaceId === ws.id) : ws.capturedRequests),
+          languageHint: isCurrentActive ? effectiveLanguageHint : ws.languageHint,
+          lastActivityAt: isCurrentActive ? now : ws.lastActivityAt,
+        };
+      }),
     );
-  }, [savedRequests, requests, effectiveLanguageHint]);
+  }, [savedRequests, requests, effectiveLanguageHint, activeWorkspaceId]);
+
+  const activeWorkspaceRef = useRef(activeWorkspace);
+  const activeWorkspaceIdRef = useRef(activeWorkspaceId);
+  const tunnelsRef = useRef(tunnels);
+  const activeTunnelRef = useRef(activeTunnel);
+  const processesRef = useRef(processes);
+  const selectedProcessRef = useRef(selectedProcess);
+
+  useEffect(() => { activeWorkspaceRef.current = activeWorkspace; }, [activeWorkspace]);
+  useEffect(() => { activeWorkspaceIdRef.current = activeWorkspaceId; }, [activeWorkspaceId]);
+  useEffect(() => { tunnelsRef.current = tunnels; }, [tunnels]);
+  useEffect(() => { activeTunnelRef.current = activeTunnel; }, [activeTunnel]);
+  useEffect(() => { processesRef.current = processes; }, [processes]);
+  useEffect(() => { selectedProcessRef.current = selectedProcess; }, [selectedProcess]);
 
   useEffect(() => {
     let unlistenRequest: (() => void) | undefined;
@@ -1008,14 +1064,21 @@ export default function App() {
         if (isHmrNoise) return;
 
         const rawRequestId = payload.id || payload.requestId || '';
-        const portNum = payload.port || activeTunnel?.localPort || selectedProcess?.port || undefined;
+        const currentActiveTunnel = activeTunnelRef.current;
+        const currentSelectedProcess = selectedProcessRef.current;
+        const currentTunnels = tunnelsRef.current;
+        const currentProcesses = processesRef.current;
+        const currentActiveWorkspace = activeWorkspaceRef.current;
+        const currentActiveWorkspaceId = activeWorkspaceIdRef.current;
+
+        const portNum = payload.port || currentActiveTunnel?.localPort || currentSelectedProcess?.port || undefined;
 
         // Resolve matching tunnel and process dynamically
-        const matchingTunnel = tunnels.find(
+        const matchingTunnel = currentTunnels.find(
           (t) => (payload.tunnelId && t.id === payload.tunnelId) || (portNum && t.localPort === portNum && t.status === 'ACTIVE')
-        ) || (activeTunnel?.localPort === portNum ? activeTunnel : null);
+        ) || (currentActiveTunnel?.localPort === portNum ? currentActiveTunnel : null);
 
-        const matchingProcess = processes.find((p) => portNum && p.port === portNum) || (selectedProcess?.port === portNum ? selectedProcess : null);
+        const matchingProcess = currentProcesses.find((p) => portNum && p.port === portNum) || (currentSelectedProcess?.port === portNum ? currentSelectedProcess : null);
 
         const isProbe = isNoiseOrScannerProbe(path, payload.bodyPreview || payload.body, payload.headers);
 
@@ -1031,8 +1094,8 @@ export default function App() {
           bodyPreview: payload.bodyPreview || payload.body,
           capturedAt: new Date(nowMs).toISOString(),
           capturedAtMs: nowMs,
-          workspaceId: activeWorkspaceId || undefined,
-          workspaceName: activeWorkspace?.name || undefined,
+          workspaceId: currentActiveWorkspaceId || undefined,
+          workspaceName: currentActiveWorkspace?.name || undefined,
           port: portNum,
           serverName: matchingProcess?.name || matchingTunnel?.subdomain || (portNum ? `Port :${portNum}` : undefined),
           tunnelUrl: matchingTunnel?.publicUrl,
@@ -1109,7 +1172,12 @@ export default function App() {
   useEffect(() => {
     if (!activeWorkspace?.remoteWorkspaceId || !activeTunnel) return;
     api.requests.list(activeWorkspace.remoteWorkspaceId, activeTunnel.id)
-      .then((history) => setRequests(history)).catch(() => undefined);
+      .then((history) => {
+        if (history && history.length > 0) {
+          setRequests((current) => mergeUniqueRequests(current, history));
+        }
+      })
+      .catch(() => undefined);
   }, [activeTunnel, activeWorkspaceId]);
 
   useEffect(() => {
@@ -1465,7 +1533,9 @@ export default function App() {
       const cloudflareBoundTunnel: Tunnel = { ...tunnel, publicUrl: cfTunnelUrl, subdomain: cfTunnelUrl.replace('https://', '').replace('.trycloudflare.com', '') };
       setActiveTunnel(cloudflareBoundTunnel);
       setTunnels((current) => [cloudflareBoundTunnel, ...current.filter((item) => item.id !== tunnel.id)]);
-      setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false); setRequests([]);
+      setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false);
+      // ponytail: scope clear to active workspace only — preserve other workspaces' traffic history
+      setRequests((current) => current.filter((r) => r.workspaceId && r.workspaceId !== activeWorkspaceIdRef.current));
       logApp('TUNNEL', 'INFO', `Cloudflare Tunnel online: ${cfTunnelUrl} (Port :${process.port})`);
       showToast(`Cloudflare Tunnel is active! URL: ${cfTunnelUrl}`, 'success');
       updateActiveWorkspace((ws) => ({ ...ws, profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: cfTunnelUrl } : p) }));
@@ -1524,7 +1594,9 @@ function generateRandomSubdomain(prefix = 'px'): string {
       const boundTunnel: Tunnel = { ...tunnel, publicUrl: nativeTunnelUrl, subdomain: suggestedSub };
       setActiveTunnel(boundTunnel);
       setTunnels((current) => [boundTunnel, ...current.filter((item) => item.id !== tunnel.id)]);
-      setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false); setRequests([]);
+      setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false);
+      // ponytail: scope clear to active workspace only — preserve other workspaces' traffic history
+      setRequests((current) => current.filter((r) => r.workspaceId && r.workspaceId !== activeWorkspaceIdRef.current));
       logApp('TUNNEL', 'INFO', `Proxync Native Tunnel online: ${nativeTunnelUrl} (Port :${process.port})`);
       showToast(`Tunnel is active! URL: ${nativeTunnelUrl}`, 'success');
       updateActiveWorkspace((ws) => ({ ...ws, profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: nativeTunnelUrl } : p) }));
@@ -1581,7 +1653,9 @@ function generateRandomSubdomain(prefix = 'px'): string {
       const localtunnelBoundTunnel: Tunnel = { ...tunnel, publicUrl: localtunnelUrl, subdomain: localtunnelUrl.replace('https://', '').replace('.localtunnel.me', '') };
       setActiveTunnel(localtunnelBoundTunnel);
       setTunnels((current) => [localtunnelBoundTunnel, ...current.filter((item) => item.id !== tunnel.id)]);
-      setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false); setRequests([]);
+      setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false);
+      // ponytail: scope clear to active workspace only — preserve other workspaces' traffic history
+      setRequests((current) => current.filter((r) => r.workspaceId && r.workspaceId !== activeWorkspaceIdRef.current));
       showToast(`Localtunnel is active! URL: ${localtunnelUrl}`, 'success');
       updateActiveWorkspace((ws) => ({ ...ws, profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: localtunnelUrl } : p) }));
     } catch (error) { showToast(error instanceof Error ? error.message : String(error), 'error'); }
@@ -1654,7 +1728,9 @@ function generateRandomSubdomain(prefix = 'px'): string {
       await invoke('open_tunnel', { tunnelId: tunnel.id, localPort: proxyPort, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined);
       setActiveTunnel(tunnel);
       setTunnels((current) => [tunnel, ...current.filter((item) => item.id !== tunnel.id)]);
-      setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false); setRequests([]);
+      setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false);
+      // ponytail: scope clear to active workspace only — preserve other workspaces' traffic history
+      setRequests((current) => current.filter((r) => r.workspaceId && r.workspaceId !== activeWorkspaceIdRef.current));
       updateActiveWorkspace((ws) => ({
         ...ws,
         profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: tunnel.publicUrl } : p)
@@ -2100,9 +2176,13 @@ function generateRandomSubdomain(prefix = 'px'): string {
   }
 
   function clearTrafficLogs() {
-    setRequests([]);
-    if (activeWorkspace) {
-      updateActiveWorkspace((ws) => ({ ...ws, capturedRequests: [] }));
+    if (activeWorkspaceId) {
+      setRequests((current) => current.filter((r) => r.workspaceId && r.workspaceId !== activeWorkspaceId));
+      if (activeWorkspace) {
+        updateActiveWorkspace((ws) => ({ ...ws, capturedRequests: [] }));
+      }
+    } else {
+      setRequests([]);
     }
     showToast('Traffic logs cleared', 'info');
   }
@@ -2291,7 +2371,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
                       key={item.view}
                       disabled={isDisabled}
                       title={item.label}
-                      className={`nav-item flex items-center ${sidebarCollapsed ? 'collapsed justify-center px-2 py-2' : 'gap-3 px-6 py-2'} w-full text-left transition-colors font-label-md text-sm ${
+                      className={`nav-item flex items-center ${sidebarCollapsed ? 'collapsed justify-center px-1.5 py-2 mx-auto w-[42px] rounded-xl' : 'gap-3 px-6 py-2'} w-full text-left transition-colors font-label-md text-sm ${
                         isSelected
                           ? 'active text-on-surface border-secondary-container bg-surface-container-high font-semibold'
                           : 'text-on-surface-variant hover:bg-surface-container-highest border-l-2 border-transparent'
@@ -2319,7 +2399,7 @@ function generateRandomSubdomain(prefix = 'px'): string {
             <button
               onClick={() => openUrl("https://github.com/Inilax/Proxync/issues")}
               title="Support"
-              className={`nav-item flex items-center ${sidebarCollapsed ? 'collapsed justify-center px-2 py-2' : 'gap-3 px-6 py-2.5'} w-full text-left text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md cursor-pointer`}
+              className={`nav-item flex items-center ${sidebarCollapsed ? 'collapsed justify-center px-1.5 py-2 mx-auto w-[42px] rounded-xl' : 'gap-3 px-6 py-2.5'} w-full text-left text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md cursor-pointer`}
             >
               <span className="material-symbols-outlined text-[18px]">help</span>
               {!sidebarCollapsed && <span>Support</span>}

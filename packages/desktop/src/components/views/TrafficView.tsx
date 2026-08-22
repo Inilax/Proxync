@@ -257,16 +257,17 @@ export function TrafficView({
 
       {/* Traffic Table Area */}
       <div className="border border-outline-variant/30 rounded-xl bg-surface-container-lowest overflow-hidden shadow-sm">
-        <div className="responsive-table-container">
-          <div className="min-w-[760px]">
+        <div className="w-full overflow-x-auto">
+          <div className="min-w-[1080px]">
             {/* Table Head */}
-            <div className="flex items-center border-b border-outline-variant bg-surface-container-low font-label-md text-on-surface-variant py-2.5 px-4 text-xs font-bold uppercase tracking-wider">
-              <div className="w-20 shrink-0">Method</div>
-              <div className="w-24 shrink-0">Status</div>
-              <div className="w-44 shrink-0">Scope / Server</div>
-              <div className="flex-1 min-w-0 pr-4">Request Path</div>
-              <div className="w-28 shrink-0 text-right pr-6">Duration</div>
-              <div className="w-72 shrink-0 text-right">Actions</div>
+            <div className="flex items-center border-b border-outline-variant bg-surface-container-low font-label-md text-on-surface-variant py-3 px-4 text-xs font-bold uppercase tracking-wider">
+              <div className="w-24 shrink-0">Method</div>
+              <div className="w-20 shrink-0">Status</div>
+              <div className="flex-1 min-w-[180px] pr-4">Request Path</div>
+              <div className="w-44 shrink-0 pr-2">Scope / Server</div>
+              <div className="w-28 shrink-0 text-left pr-2">Time</div>
+              <div className="w-32 shrink-0 text-left pr-4">Duration</div>
+              <div className="w-72 shrink-0 text-right pr-2">Actions</div>
             </div>
 
         {filteredRequests.length === 0 ? (
@@ -301,11 +302,11 @@ export function TrafficView({
                 <div key={request.id}>
                   <div
                     onClick={() => onOpen(request)}
-                    className={`flex items-center py-2.5 px-4 hover:bg-surface-container-highest cursor-pointer transition-colors group ${isExpanded ? 'bg-surface-container-high/60' : ''
+                    className={`flex items-center py-3 px-4 hover:bg-surface-container-highest cursor-pointer transition-colors group ${isExpanded ? 'bg-surface-container-high/60' : ''
                       }`}
                   >
                     {/* Method Column */}
-                    <div className={`w-20 shrink-0 font-bold font-mono text-xs truncate ${methodColor} flex items-center gap-1.5`}>
+                    <div className={`w-24 shrink-0 font-bold font-mono text-[13px] ${methodColor} flex items-center gap-1.5`}>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -314,7 +315,7 @@ export function TrafficView({
                         className="p-0.5 rounded hover:bg-surface-container-highest transition-colors cursor-pointer"
                         title={isExpanded ? 'Collapse inline preview' : 'Expand inline preview'}
                       >
-                        <span className="material-symbols-outlined text-[14px] text-outline opacity-70 hover:opacity-100 transition-opacity block">
+                        <span className="material-symbols-outlined text-[15px] text-outline opacity-70 hover:opacity-100 transition-opacity block">
                           {isExpanded ? 'expand_more' : 'chevron_right'}
                         </span>
                       </button>
@@ -322,74 +323,84 @@ export function TrafficView({
                     </div>
 
                     {/* Status Column */}
-                    <div className={`w-24 shrink-0 flex items-center gap-1 font-mono text-xs ${getStatusClass(request.status)}`}>
-                      <span className="material-symbols-outlined text-[14px] shrink-0">
+                    <div className={`w-20 shrink-0 flex items-center gap-1 font-mono text-[13px] ${getStatusClass(request.status)}`}>
+                      <span className="material-symbols-outlined text-[15px] shrink-0">
                         {getStatusIcon(request.status)}
                       </span>
-                      {request.status ?? 'pending'}
+                      <span className="font-semibold">{request.status ?? 'pending'}</span>
+                    </div>
+
+                    {/* Request Path Column */}
+                    <div className="flex-1 min-w-[180px] pr-4 font-mono text-[13px] text-on-surface font-medium truncate" title={request.path}>
+                      {request.path || '/'}
                     </div>
 
                     {/* Scope / Server Column */}
-                    <div className="w-44 shrink-0 flex items-center gap-1.5 truncate pr-2 font-mono text-[11px]">
-                      {request.workspaceName ? (
-                        <span className="px-1.5 py-0.5 bg-surface-container-high border border-outline-variant/40 rounded text-on-surface-variant font-sans truncate max-w-[100px]" title={request.workspaceName}>
-                          {request.workspaceName}
-                        </span>
-                      ) : (
-                        <span className="text-outline text-[10px] italic">Global</span>
-                      )}
+                    <div className="w-44 shrink-0 flex items-center gap-1.5 truncate pr-2 font-mono text-xs">
+                      {(() => {
+                        const wsName = request.workspaceName || workspaces.find((w) => w.id === request.workspaceId)?.name;
+                        return wsName ? (
+                          <span className="px-1.5 py-0.5 bg-surface-container-high border border-outline-variant/40 rounded text-on-surface-variant font-sans truncate max-w-[100px]" title={wsName}>
+                            {wsName}
+                          </span>
+                        ) : (
+                          <span className="text-outline text-[11px] italic">Global</span>
+                        );
+                      })()}
                       {request.port && (
-                        <span className="px-1.5 py-0.5 bg-primary/10 border border-primary/20 rounded text-primary font-mono text-[10px] shrink-0">
+                        <span className="px-1.5 py-0.5 bg-primary/10 border border-primary/20 rounded text-primary font-mono text-[11px] font-semibold shrink-0">
                           :{request.port}
                         </span>
                       )}
                     </div>
 
-                    {/* Request Path Column */}
-                    <div className="flex-1 min-w-0 pr-4 font-mono text-xs text-on-surface truncate" title={request.path}>
-                      {request.path || '/'}
+                    {/* Time Column */}
+                    <div className="w-28 shrink-0 pr-2 font-mono text-xs text-on-surface-variant/75">
+                      {request.capturedAt
+                        ? new Date(request.capturedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                        : 'recent'}
                     </div>
 
-                    {/* Duration Column (Fixed width & right-aligned with clear right padding) */}
-                    <div className="w-28 shrink-0 text-right pr-6 font-mono text-xs">
+                    {/* Duration Column — Left aligned inside w-32 to create clear separation from Actions */}
+                    <div className="w-32 shrink-0 text-left pr-4 font-mono text-[13px]">
                       {request.durationMs ? (
-                        <span className="inline-flex items-center gap-0.5 text-amber-400 font-semibold">
-                          <span className="text-[12px]">⚡</span>
+                        <span className="inline-flex items-center gap-1 text-amber-400 font-semibold">
+                          <span className="text-[13px]">⚡</span>
                           {request.durationMs}ms
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-outline italic text-[11px]">
+                        <span className="inline-flex items-center gap-1 text-outline italic text-xs">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
                           in flight
                         </span>
                       )}
                     </div>
 
-                    {/* Actions Column (Dedicated width with compact isolated buttons) */}
-                    <div className="w-72 shrink-0 flex items-center justify-end gap-2 pl-2" onClick={(e) => e.stopPropagation()}>
+                    {/* Actions Column */}
+                    <div className="w-72 shrink-0 flex items-center justify-end gap-2 pr-2" onClick={(e) => e.stopPropagation()}>
                       {onOpenWorkbench && (
                         <button
                           onClick={() => onOpenWorkbench(request)}
-                          className="px-2.5 py-1 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
+                          className="px-2.5 py-1 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded-md text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0 shadow-sm"
                           title="Open 360° Request Workbench Studio"
                         >
-                          <span className="material-symbols-outlined text-[13px]">bolt</span>
+                          <span className="material-symbols-outlined text-[14px]">bolt</span>
                           Workbench
                         </button>
                       )}
                       <button
                         onClick={() => onSendToPostman(request)}
-                        className="px-2.5 py-1 bg-surface-container border border-outline-variant/30 hover:bg-surface-container-high rounded text-xs font-medium text-on-surface transition-colors cursor-pointer shrink-0"
+                        className="px-2.5 py-1 bg-surface-container border border-outline-variant/30 hover:bg-surface-container-high rounded-md text-xs font-medium text-on-surface transition-colors cursor-pointer shrink-0 shadow-sm"
                         title="Send request template to Playground"
                       >
                         Playground →
                       </button>
                       <button
                         onClick={() => (onOpenWorkbench ? onOpenWorkbench(request) : onOpen(request))}
-                        className="p-1 rounded hover:bg-surface-container-highest text-outline hover:text-on-surface transition-colors cursor-pointer shrink-0"
+                        className="p-1 rounded-md hover:bg-surface-container-highest text-outline hover:text-on-surface transition-colors cursor-pointer shrink-0"
                         title="Open in Detail Dialog"
                       >
-                        <span className="material-symbols-outlined text-sm">open_in_new</span>
+                        <span className="material-symbols-outlined text-[16px]">open_in_new</span>
                       </button>
                     </div>
                   </div>

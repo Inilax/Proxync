@@ -273,6 +273,11 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   padding-left: 0;
 }
 
+.nav-item.collapsed::after {
+  inset: 6px 1.5px 6px auto;
+  width: 2.5px;
+}
+
 .nav-item:hover:not(:disabled) .material-symbols-outlined {
   color: var(--color-primary);
   font-variation-settings: 'FILL' 1, 'wght' 450, 'GRAD' 0, 'opsz' 24;
