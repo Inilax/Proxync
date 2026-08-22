@@ -2140,7 +2140,7 @@ export default function App() {
     });
     showToast(
       enabled
-        ? '🛡️ Application engine logging enabled (%APPDATA%\\Proxync\\logs\\app.log)'
+        ? '🛡️ Application engine logging enabled (app.log)'
         : 'Application engine logging disabled',
       enabled ? 'success' : 'info'
     );
@@ -2153,7 +2153,7 @@ export default function App() {
     });
     showToast(
       enabled
-        ? '⚡ Traffic stream logging enabled (%APPDATA%\\Proxync\\logs\\traffic.log)'
+        ? '⚡ Traffic stream logging enabled (traffic.log)'
         : 'Traffic stream logging disabled',
       enabled ? 'success' : 'info'
     );

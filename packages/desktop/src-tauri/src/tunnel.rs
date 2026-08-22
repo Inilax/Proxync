@@ -146,6 +146,25 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
                                 });
                                 let _ = app_clone.emit("request:log", req_meta);
 
+                                // ponytail: 50 MB cap on relay body — mirror of proxy.rs upload limit.
+                                const MAX_RELAY_BODY_BYTES: usize = 50 * 1024 * 1024;
+                                if req_data.body.len() > MAX_RELAY_BODY_BYTES {
+                                    let mut res_payload = HttpResponsePayload {
+                                        request_id: req_data.request_id,
+                                        status: 413,
+                                        headers: HashMap::new(),
+                                        body: BASE64_STANDARD.encode(b"{\"error\":\"Upload limit exceeded. Proxync limits uploads to 50 MB per request.\"}"),
+                                    };
+                                    res_payload.headers.insert("content-type".to_string(), "application/json".to_string());
+
+                                    let out_msg = WsMessage {
+                                        event: "http:response".to_string(),
+                                        data: serde_json::to_value(res_payload).unwrap(),
+                                    };
+                                    let _ = tx.send(Message::Text(serde_json::to_string(&out_msg).unwrap().into()));
+                                    return;
+                                }
+
                                 let url = format!("http://localhost:{}{}", local_port, req_data.path);
                                 
                                 let mut req_builder = match req_data.method.as_str() {
@@ -154,6 +173,8 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
                                     "PUT" => client.put(&url),
                                     "DELETE" => client.delete(&url),
                                     "PATCH" => client.patch(&url),
+                                    "HEAD" => client.head(&url),
+                                    "OPTIONS" => client.request(reqwest::Method::OPTIONS, &url),
                                     _ => client.get(&url),
                                 };
 
@@ -162,6 +183,11 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
                                         req_builder = req_builder.header(k, v);
                                     }
                                 }
+
+                                req_builder = req_builder
+                                    .header("X-Forwarded-Proto", "https")
+                                    .header("X-Forwarded-For", "127.0.0.1")
+                                    .header("Host", format!("localhost:{}", local_port));
 
                                 if !req_data.body.is_empty() {
                                     req_builder = req_builder.body(req_data.body);
@@ -186,7 +212,87 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
                                         }
                                     }
                                     if let Ok(bytes) = res.bytes().await {
-                                        res_payload.body = BASE64_STANDARD.encode(&bytes);
+                                        let content_type = res_payload.headers.get("content-type").cloned().unwrap_or_default();
+
+                                        // Patch HTML responses: inject a lightweight shim in <head> that satisfies
+                                        // Vite / Next.js HMR WebSocket clients. This prevents blank white screens and
+                                        // connection reload loops when dev servers are shared over the public relay.
+                                        // ponytail: response body rewrite — upgrade path: native WS relay bridge in edge server
+                                        let patched_bytes = if content_type.contains("text/html") {
+                                            let html = String::from_utf8_lossy(&bytes);
+                                            if html.contains("/@vite/client") || html.contains("/@react-refresh") || html.contains("/_next/") {
+                                                let hmr_disable = r#"<script>
+/* proxync-hmr-patch: satisfy dev server HMR WebSocket client over public relay */
+if (typeof window !== 'undefined') {
+  window.__vite_is_modern_browser = true;
+  window.__vite_plugin_react_preamble_installed__ = true;
+  if (!window.$RefreshReg$) { window.$RefreshReg$ = () => {}; }
+  if (!window.$RefreshSig$) { window.$RefreshSig$ = () => (type) => type; }
+  const _OrigWS = window.WebSocket;
+  window.WebSocket = function(url, protocols) {
+    if (typeof url === 'string' && (
+      url.includes('/@vite/client') ||
+      url.includes('/__vite_hmr') ||
+      url.includes('?type=hmr') ||
+      url.includes('/_next/webpack-hmr') ||
+      url.includes('/_next/turbopack-hmr') ||
+      (url.endsWith('/') && url.startsWith('wss://'))
+    )) {
+      const fake = {
+        readyState: 1, // OPEN — avoids disconnect / reload loops
+        protocol: typeof protocols === 'string' ? protocols : (Array.isArray(protocols) ? protocols[0] : ''),
+        extensions: '',
+        bufferedAmount: 0,
+        binaryType: 'blob',
+        url: url,
+        send: function(){},
+        close: function(){},
+        addEventListener: function(event, cb) {
+          if (event === 'open' && typeof cb === 'function') {
+            setTimeout(cb, 0);
+          }
+        },
+        removeEventListener: function(){},
+        dispatchEvent: function(){ return true; },
+        onopen: null,
+        onmessage: null,
+        onerror: null,
+        onclose: null
+      };
+      setTimeout(() => { if (typeof fake.onopen === 'function') fake.onopen({ type: 'open' }); }, 0);
+      return fake;
+    }
+    return new _OrigWS(url, protocols);
+  };
+  window.WebSocket.prototype = _OrigWS.prototype;
+  window.WebSocket.CONNECTING = 0; window.WebSocket.OPEN = 1; window.WebSocket.CLOSING = 2; window.WebSocket.CLOSED = 3;
+}
+</script>"#;
+                                                let patched = if html.contains("<head>") {
+                                                    html.replacen("<head>", &format!("<head>\n{}", hmr_disable), 1)
+                                                } else if html.contains("<HEAD>") {
+                                                    html.replacen("<HEAD>", &format!("<HEAD>\n{}", hmr_disable), 1)
+                                                } else if let Some(idx) = html.to_lowercase().find("<head") {
+                                                    if let Some(end_idx) = html[idx..].find('>') {
+                                                        let insert_pos = idx + end_idx + 1;
+                                                        format!("{}\n{}{}", &html[..insert_pos], hmr_disable, &html[insert_pos..])
+                                                    } else {
+                                                        format!("{}\n{}", hmr_disable, html)
+                                                    }
+                                                } else {
+                                                    format!("{}\n{}", hmr_disable, html)
+                                                };
+                                                patched.into_bytes()
+                                            } else {
+                                                bytes.to_vec()
+                                            }
+                                        } else {
+                                            bytes.to_vec()
+                                        };
+
+                                        res_payload.body = BASE64_STANDARD.encode(&patched_bytes);
+                                        // Update content-length to match patched body
+                                        res_payload.headers.insert("content-length".to_string(), patched_bytes.len().to_string());
                                     }
                                 }
 
