@@ -57,6 +57,7 @@ import {
   logApp,
   logError,
   logTraffic,
+  clearLogs,
 } from './lib/logger';
 
 /* ══════════════════════════════════════════════
@@ -1443,7 +1444,18 @@ export default function App() {
     setWorkspaces((current) => current.map((ws) => ws.id === activeWorkspace.id ? { ...mutator(ws), lastActivityAt: now } : ws));
   }
 
-  function initiatePublicShare(process: ProcessCandidate) {
+  async function verifyPortIsLive(port: number): Promise<boolean> {
+    try {
+      const isLive = await invoke<boolean>('probe_port', { port });
+      if (isLive) return true;
+    } catch {
+      const latency = await measureLocalPortLatency(port);
+      if (latency !== Infinity) return true;
+    }
+    return false;
+  }
+
+  async function initiatePublicShare(process: ProcessCandidate) {
     if (!activeWorkspace) {
       showToast('Select or create a workspace first before sharing a port', 'info');
       return;
@@ -1459,6 +1471,14 @@ export default function App() {
       showToast(`A tunnel is currently launching for port ${process.port}. Please wait...`, 'info');
       return;
     }
+
+    const isLive = await verifyPortIsLive(process.port);
+    if (!isLive) {
+      showToast(`⚠️ Port :${process.port} is offline or not running. Please start your local server on port ${process.port} before sharing.`, 'warning');
+      void discoverProcesses(true, true);
+      return;
+    }
+
     setSharingProcessCandidate(process);
   }
 
@@ -1513,6 +1533,14 @@ export default function App() {
       showToast(`A tunnel is currently launching for port ${process.port}. Please wait...`, 'info');
       return;
     }
+
+    const isLive = await verifyPortIsLive(process.port);
+    if (!isLive) {
+      showToast(`⚠️ Port :${process.port} is offline. Please start your local server on port ${process.port} before creating a Cloudflare tunnel.`, 'warning');
+      void discoverProcesses(true, true);
+      return;
+    }
+
     const isConnected = await checkRealInternetConnection();
     if (!isConnected) {
       showToast('⚠️ No internet connection detected. Cloudflare Tunnel requires an active internet connection. Please connect to the internet and try again.', 'error');
@@ -1583,6 +1611,14 @@ export default function App() {
       showToast(`A tunnel is currently launching for port ${process.port}. Please wait...`, 'info');
       return;
     }
+
+    const isLive = await verifyPortIsLive(process.port);
+    if (!isLive) {
+      showToast(`⚠️ Port :${process.port} is offline or not running. Please start your local server on port ${process.port} before sharing.`, 'warning');
+      void discoverProcesses(true, true);
+      return;
+    }
+
     addSpawningPort(process.port);
     const starterScan = buildStarterRequests(process);
     setStarterSuggestions(starterScan);
@@ -1635,6 +1671,14 @@ export default function App() {
       showToast(`A tunnel is currently launching for port ${process.port}. Please wait...`, 'info');
       return;
     }
+
+    const isLive = await verifyPortIsLive(process.port);
+    if (!isLive) {
+      showToast(`⚠️ Port :${process.port} is offline. Please start your local server on port ${process.port} before creating a localtunnel.`, 'warning');
+      void discoverProcesses(true, true);
+      return;
+    }
+
     const isConnected = await checkRealInternetConnection();
     if (!isConnected) {
       showToast('⚠️ No internet connection detected. Localtunnel service requires an active internet connection. Please connect to the internet and try again.', 'error');
@@ -2191,14 +2235,15 @@ export default function App() {
   }
 
   function clearTrafficLogs() {
-    if (activeWorkspaceId) {
-      setRequests((current) => current.filter((r) => r.workspaceId && r.workspaceId !== activeWorkspaceId));
-      if (activeWorkspace) {
-        updateActiveWorkspace((ws) => ({ ...ws, capturedRequests: [] }));
-      }
-    } else {
-      setRequests([]);
-    }
+    setRequests([]);
+    setSelectedRequest(null);
+    setWorkspaces((current) =>
+      current.map((ws) => ({
+        ...ws,
+        capturedRequests: [],
+      }))
+    );
+    void clearLogs();
     showToast('Traffic logs cleared', 'info');
   }
 

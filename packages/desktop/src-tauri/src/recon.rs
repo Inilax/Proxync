@@ -764,3 +764,16 @@ pub async fn scan_processes(bypass_cache: bool) -> Result<Vec<ProcessCandidate>,
 
     Ok(candidates)
 }
+
+#[tauri::command]
+pub async fn probe_port(port: u16) -> Result<bool, String> {
+    let addr_v4: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
+    if tokio::time::timeout(std::time::Duration::from_millis(300), tokio::net::TcpStream::connect(&addr_v4)).await.is_ok_and(|r| r.is_ok()) {
+        return Ok(true);
+    }
+    let addr_v6: std::net::SocketAddr = format!("[::1]:{}", port).parse().unwrap();
+    if tokio::time::timeout(std::time::Duration::from_millis(300), tokio::net::TcpStream::connect(&addr_v6)).await.is_ok_and(|r| r.is_ok()) {
+        return Ok(true);
+    }
+    Ok(false)
+}
