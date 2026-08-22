@@ -2,6 +2,23 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/tunnel-resilient-standby] - 2026-08-22 (Resilient Standby Tunnels, 502 Fallback & Instant Local Auto-Recovery)
+- **Feature Summary**:
+  - **Universal Standby Mode & URL Preservation**: Replaced abrupt hard tunnel teardown on local process shutdown (`Ctrl+C`) with a resilient `STANDBY` state. Preserves public tunnel URLs (`https://px-xxxx.proxync.dev`) across server restarts and hot-reloads so webhook integrations (Stripe, GitHub, Shopify) remain permanently connected without reconfiguration.
+  - **Branded 502 Bad Gateway Standby Fallback**: Configured `proxy.rs` to serve a responsive, branded HTML 502 Bad Gateway fallback page when incoming public traffic reaches an offline local target, informing external clients and browsers that the local server is in standby.
+  - **Background Port Liveness Engine**: Added a lightweight 1000ms loop in `proxy.rs` using 250ms bounded TCP probes across `127.0.0.1` and `[::1]`. Emits `tunnel:status-changed` events (`ACTIVE` $\leftrightarrow$ `STANDBY`) with automatic UI recovery the instant a developer restarts their server (`npm run dev`).
+  - **Frontend Standby Indicators & Badges**: Integrated `STANDBY` status handling across `ProcessView`, `WorkspaceDashboardView`, `WelcomeView`, and `SwaggerView` with amber status badges (`🟡 Standby • Target Offline`), status footer counters, and transition toasts.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/SwaggerView.tsx`
+  - `packages/desktop/src/lib/types.ts`
+  - `CHANGELOG.md`
+
 ## [fix/develop-responsiveness] - 2026-08-22 (Universal Responsive Layout & Streamlined Workbench Studio Command Bar)
 - **Feature Summary**:
   - **Streamlined Workbench Studio Command Bar**: Refactored the sticky sub-header in `RequestWorkbenchDialog.tsx` into a high-density, compact Studio Action Bar ($\sim 48\text{px}$). Consolidated the primary segmented mode switcher (`[DevTools & Mapping] [Traffic & Replay]`) and quick action triggers (`[Export Code]`, `[Save to Collection]`, `[Browser]`) onto a single balanced bar, eliminating triple information redundancy and reclaiming vertical screen real estate.

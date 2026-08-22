@@ -98,31 +98,7 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
     
     write.send(Message::Text(serde_json::to_string(&reg_msg).unwrap().into())).await.map_err(|e| e.to_string())?;
 
-    let tunnel_id_watcher = tunnel_id.clone();
-    let app_watcher = app.clone();
-    tokio::spawn(async move {
-        let mut failures = 0;
-        loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-            // Check service liveness on 127.0.0.1 with fallback to [::1] (IPv6)
-            let is_alive = tokio::net::TcpStream::connect(format!("127.0.0.1:{}", local_port)).await.is_ok()
-                || tokio::net::TcpStream::connect(format!("[::1]:{}", local_port)).await.is_ok();
 
-            if !is_alive {
-                failures += 1;
-                if failures >= 3 {
-                    let mut tunnels = ACTIVE_TUNNELS.lock().await;
-                    if let Some(handle) = tunnels.remove(&tunnel_id_watcher) {
-                        handle.abort();
-                    }
-                    let _ = app_watcher.emit("tunnel:auto-closed", serde_json::json!({ "tunnelId": tunnel_id_watcher }));
-                    break;
-                }
-            } else {
-                failures = 0;
-            }
-        }
-    });
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
 

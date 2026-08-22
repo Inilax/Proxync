@@ -8,20 +8,24 @@ use tokio::net::TcpStream;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 lazy_static! {
-    static ref PROXY_HANDLES: Arc<Mutex<HashMap<u16, (u16, tokio::task::JoinHandle<()>)>>> = Arc::new(Mutex::new(HashMap::new()));
+    static ref PROXY_HANDLES: Arc<Mutex<HashMap<u16, (u16, Vec<tokio::task::JoinHandle<()>>)>>> = Arc::new(Mutex::new(HashMap::new()));
 }
 
 pub async fn stop_proxy(local_port: Option<u16>) -> bool {
     let mut proxies = PROXY_HANDLES.lock().await;
     if let Some(port) = local_port {
-        if let Some((_proxy_port, handle)) = proxies.remove(&port) {
-            handle.abort();
+        if let Some((_proxy_port, handles)) = proxies.remove(&port) {
+            for handle in handles {
+                handle.abort();
+            }
             return true;
         }
     } else {
         if !proxies.is_empty() {
-            for (_, (_proxy_port, handle)) in proxies.drain() {
-                handle.abort();
+            for (_, (_proxy_port, handles)) in proxies.drain() {
+                for handle in handles {
+                    handle.abort();
+                }
             }
             return true;
         }
@@ -32,16 +36,19 @@ pub async fn stop_proxy(local_port: Option<u16>) -> bool {
 #[tauri::command]
 pub async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, String> {
     let mut map = PROXY_HANDLES.lock().await;
-    if let Some((_, old_handle)) = map.remove(&local_port) {
-        old_handle.abort();
+    if let Some((_, old_handles)) = map.remove(&local_port) {
+        for handle in old_handles {
+            handle.abort();
+        }
     }
 
     let listener = TcpListener::bind("127.0.0.1:0").await.map_err(|e| e.to_string())?;
     let proxy_port = listener.local_addr().map_err(|e| e.to_string())?.port();
 
-    let handle = tokio::spawn(async move {
+    let proxy_app = app.clone();
+    let listener_handle = tokio::spawn(async move {
         while let Ok((mut client_stream, _)) = listener.accept().await {
-            let app_clone = app.clone();
+            let app_clone = proxy_app.clone();
             tokio::spawn(async move {
                 // Connect to target service on 127.0.0.1 with fallback to [::1] (for IPv6-only servers like Vite)
                 let target_stream_res = match TcpStream::connect(format!("127.0.0.1:{}", local_port)).await {
@@ -50,7 +57,32 @@ pub async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, 
                 };
                 let mut target_stream = match target_stream_res {
                     Ok(stream) => stream,
-                    Err(_) => return,
+                    Err(_) => {
+                        // Target server is offline / restarting: serve branded 502 Bad Gateway standby page
+                        let html_body = format!(
+                            r#"<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>502 - Target Server Offline | Proxync</title></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b0f19; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; padding: 20px; box-sizing: border-box;">
+  <div style="text-align: center; max-width: 480px; width: 100%; padding: 36px 28px; background: #151d2f; border-radius: 16px; border: 1px solid #1e293b; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);">
+    <div style="font-size: 36px; margin-bottom: 12px;">🟡</div>
+    <h2 style="color: #f59e0b; margin: 0 0 10px 0; font-size: 20px; font-weight: 600;">Local Service Offline</h2>
+    <p style="color: #94a3b8; font-size: 14px; line-height: 1.5; margin: 0 0 16px 0;">Proxync public tunnel is <b style="color: #f8fafc;">active</b> in standby mode. Waiting for your local server on <span style="background:#1e293b; padding:2px 8px; border-radius:4px; color:#38bdf8; font-family:monospace; font-weight:600;">port {}</span> to respond.</p>
+    <p style="color: #64748b; font-size: 12px; margin: 0;">Start or restart your local development server to resume live traffic on this URL.</p>
+  </div>
+</body>
+</html>"#,
+                            local_port
+                        );
+                        let resp = format!(
+                            "HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            html_body.len(),
+                            html_body
+                        );
+                        let _ = client_stream.write_all(resp.as_bytes()).await;
+                        let _ = client_stream.shutdown().await;
+                        return;
+                    }
                 };
 
                 let mut req_buf = vec![0u8; 16384];
@@ -178,6 +210,49 @@ pub async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, 
         }
     });
 
-    map.insert(local_port, (proxy_port, handle));
+    let app_liveness = app.clone();
+    let liveness_handle = tokio::spawn(async move {
+        // Initial pause before first probe
+        tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
+        let mut last_status = "ACTIVE";
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+
+            let is_v4 = tokio::time::timeout(
+                tokio::time::Duration::from_millis(250),
+                TcpStream::connect(format!("127.0.0.1:{}", local_port)),
+            )
+            .await
+            .map(|r| r.is_ok())
+            .unwrap_or(false);
+
+            let is_alive = if is_v4 {
+                true
+            } else {
+                tokio::time::timeout(
+                    tokio::time::Duration::from_millis(250),
+                    TcpStream::connect(format!("[::1]:{}", local_port)),
+                )
+                .await
+                .map(|r| r.is_ok())
+                .unwrap_or(false)
+            };
+
+            let new_status = if is_alive { "ACTIVE" } else { "STANDBY" };
+            if new_status != last_status {
+                last_status = new_status;
+                let _ = app_liveness.emit(
+                    "tunnel:status-changed",
+                    serde_json::json!({
+                        "port": local_port,
+                        "status": new_status
+                    }),
+                );
+            }
+        }
+    });
+
+    map.insert(local_port, (proxy_port, vec![listener_handle, liveness_handle]));
     Ok(proxy_port)
 }
+

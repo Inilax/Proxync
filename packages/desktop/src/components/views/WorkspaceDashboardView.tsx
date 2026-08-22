@@ -57,7 +57,7 @@ export function WorkspaceDashboardView({
   onInspectTraffic?: (proc: ProcessCandidate) => void;
 }) {
   const [activeMenuTunnelId, setActiveMenuTunnelId] = useState<string | null>(null);
-  const activeTunnels = tunnels.filter((t) => t.status === 'ACTIVE');
+  const activeTunnels = tunnels.filter((t) => t.status === 'ACTIVE' || t.status === 'STANDBY');
   const [tunnelLatencies, setTunnelLatencies] = useState<Record<string, number>>({});
   const [tick, setTick] = useState(0);
 
@@ -90,7 +90,7 @@ export function WorkspaceDashboardView({
     }
 
     async function measureAll() {
-      const activeTunnelsList = tunnels.filter((t) => t.status === 'ACTIVE');
+      const activeTunnelsList = tunnels.filter((t) => t.status === 'ACTIVE' || t.status === 'STANDBY');
       if (activeTunnelsList.length === 0) {
         if (active) setTunnelLatencies({});
         return;
@@ -227,8 +227,9 @@ export function WorkspaceDashboardView({
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5">
                 {processes.map((proc) => {
-                  const activeT = tunnels.find((t) => t.localPort === proc.port && t.status === 'ACTIVE');
+                  const activeT = tunnels.find((t) => t.localPort === proc.port && (t.status === 'ACTIVE' || t.status === 'STANDBY'));
                   const isLive = Boolean(activeT);
+                  const isStandby = activeT?.status === 'STANDBY';
                   const isSpawning = spawningPorts.includes(proc.port) || sharingPort === proc.port;
                   const displayDir = proc.directory && proc.directory !== 'unknown' ? proc.directory : `localhost:${proc.port}`;
 
@@ -237,11 +238,13 @@ export function WorkspaceDashboardView({
                       key={proc.id}
                       onClick={() => onSelectProcess(proc.id)}
                       className={`p-4 sm:p-5 bg-surface-container border rounded-2xl flex flex-col justify-between gap-4 transition-all cursor-pointer group shadow-sm hover:shadow-md ${
-                        isLive
+                        isLive && !isStandby
                           ? 'border-emerald-500/60 shadow-emerald-500/10'
-                          : isSpawning
-                            ? 'border-primary/50 ring-1 ring-primary/30'
-                            : 'border-outline-variant/60 hover:border-primary/50'
+                          : isStandby
+                            ? 'border-amber-500/60 shadow-amber-500/10'
+                            : isSpawning
+                              ? 'border-primary/50 ring-1 ring-primary/30'
+                              : 'border-outline-variant/60 hover:border-primary/50'
                       }`}
                     >
                       <div className="space-y-3.5">
@@ -269,12 +272,14 @@ export function WorkspaceDashboardView({
                           {/* Top Right Badges */}
                           <div className="flex items-center gap-1.5 shrink-0">
                             <span className={`px-2.5 py-1 bg-surface-container-high rounded-full border text-[11px] font-mono font-medium flex items-center gap-1.5 ${
-                              isLive
+                              isLive && !isStandby
                                 ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10'
+                                : isStandby
+                                ? 'border-amber-500/40 text-amber-400 bg-amber-500/10'
                                 : 'border-outline-variant/50 text-on-surface-variant'
                             }`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-emerald-400 animate-pulse' : 'bg-outline'}`}></span>
-                              {isLive ? 'ONLINE' : 'LOCAL'}
+                              <span className={`w-1.5 h-1.5 rounded-full ${isLive && !isStandby ? 'bg-emerald-400 animate-pulse' : isStandby ? 'bg-amber-400' : 'bg-outline'}`}></span>
+                              {isLive && !isStandby ? 'ONLINE' : isStandby ? 'STANDBY' : 'LOCAL'}
                             </span>
                             <span className="px-2.5 py-1 bg-surface-container-high rounded-full border border-outline-variant/50 text-[11px] font-mono font-bold text-primary">
                               :{proc.port}
@@ -294,13 +299,13 @@ export function WorkspaceDashboardView({
 
                         {/* Local Endpoint / Public Endpoint Box */}
                         {isLive && activeT ? (
-                          <div className="bg-surface-container-lowest/80 p-3 rounded-lg border border-emerald-500/30 space-y-1">
+                          <div className={`bg-surface-container-lowest/80 p-3 rounded-lg border ${isStandby ? 'border-amber-500/30' : 'border-emerald-500/30'} space-y-1`}>
                             <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-400 font-bold">
-                                PUBLIC ENDPOINT
+                              <span className={`text-[10px] font-mono uppercase tracking-wider ${isStandby ? 'text-amber-400' : 'text-emerald-400'} font-bold`}>
+                                {isStandby ? 'STANDBY ENDPOINT' : 'PUBLIC ENDPOINT'}
                               </span>
-                              <span className="px-1.5 py-0.5 bg-emerald-500/15 text-[10px] font-mono text-emerald-400 rounded">
-                                Live
+                              <span className={`px-1.5 py-0.5 ${isStandby ? 'bg-amber-500/15 text-amber-400' : 'bg-emerald-500/15 text-emerald-400'} text-[10px] font-mono rounded`}>
+                                {isStandby ? 'Standby' : 'Live'}
                               </span>
                             </div>
                             <div className="flex items-center justify-between gap-2">

@@ -120,7 +120,9 @@ export function ProcessView({
     }
   }
 
+  const isTunnelOpen = tunnel?.localPort === processLike.port && (tunnel.status === 'ACTIVE' || tunnel.status === 'STANDBY');
   const isActive = tunnel?.localPort === processLike.port && tunnel.status === 'ACTIVE';
+  const isStandby = tunnel?.localPort === processLike.port && tunnel.status === 'STANDBY';
 
   return (
     <div className="w-full max-w-6xl mx-auto space-y-6 sm:space-y-8 fade-in select-none">
@@ -133,6 +135,11 @@ export function ProcessView({
               <span className="badge success">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse mr-0.5" />
                 Online • {getTunnelProviderLabel(tunnel)}
+              </span>
+            ) : isStandby && tunnel ? (
+              <span className="badge warning" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', borderColor: 'rgba(245, 158, 11, 0.3)' }} title="Local server is offline. Tunnel URL is preserved in standby mode and waiting for server restart.">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 mr-0.5" />
+                Standby • Target Offline
               </span>
             ) : sharingPort === processLike.port ? (
               <span className="badge accent" style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.25)' }}>
@@ -150,7 +157,7 @@ export function ProcessView({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-          {isActive && tunnel ? (
+          {isTunnelOpen && tunnel ? (
             <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
               {onInspectTraffic && (
                 <button
@@ -251,6 +258,8 @@ export function ProcessView({
                 value={
                   isActive && tunnel
                     ? `Online (${getTunnelProviderLabel(tunnel)})`
+                    : isStandby && tunnel
+                    ? `Standby (${getTunnelProviderLabel(tunnel)})`
                     : sharingPort === processLike.port
                     ? 'Shared (LAN)'
                     : process
@@ -377,16 +386,16 @@ export function ProcessView({
                 </div>
               )}
 
-              {isActive && tunnel && (
+              {isTunnelOpen && tunnel && (
                 <div className="space-y-3 pt-3 border-t border-outline-variant/30">
-                  <div className="flex items-center justify-between p-3 bg-surface-container-low border border-emerald-500/30 rounded-lg gap-2">
+                  <div className={`flex items-center justify-between p-3 bg-surface-container-low border ${isStandby ? 'border-amber-500/30' : 'border-emerald-500/30'} rounded-lg gap-2`}>
                     <div className="flex flex-col min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider truncate">
+                        <span className={`text-[10px] ${isStandby ? 'text-amber-400' : 'text-emerald-400'} font-bold uppercase tracking-wider truncate`}>
                           {getTunnelProviderLabel(tunnel)} • Public URL
                         </span>
-                        <span className="px-1.5 py-0.2 bg-emerald-500/15 text-[9.5px] font-mono text-emerald-400 rounded font-semibold shrink-0">
-                          Live
+                        <span className={`px-1.5 py-0.2 ${isStandby ? 'bg-amber-500/15 text-amber-400' : 'bg-emerald-500/15 text-emerald-400'} text-[9.5px] font-mono rounded font-semibold shrink-0`}>
+                          {isStandby ? 'Standby' : 'Live'}
                         </span>
                       </div>
                       <code

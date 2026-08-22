@@ -24,7 +24,7 @@ export function WelcomeView({
   onInspectTraffic?: (tunnel?: Tunnel) => void;
 }) {
   const [activeMenuTunnelId, setActiveMenuTunnelId] = useState<string | null>(null);
-  const activeTunnels = tunnels.filter((t) => t.status === 'ACTIVE');
+  const activeTunnels = tunnels.filter((t) => t.status === 'ACTIVE' || t.status === 'STANDBY');
 
   const [latencies, setLatencies] = useState<{
     relayMesh: number;
@@ -67,7 +67,7 @@ export function WelcomeView({
     }
 
     async function measureAll() {
-      const activeTunnelsList = tunnels.filter((t) => t.status === 'ACTIVE');
+      const activeTunnelsList = tunnels.filter((t) => t.status === 'ACTIVE' || t.status === 'STANDBY');
 
       const [relayMeshLatency, cloudflareLatency, localtunnelLatency, tunnelResults] = await Promise.all([
         pingUrl('https://api.proxync.dev/health', 1500),
