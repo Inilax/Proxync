@@ -2,6 +2,18 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/universal-proxy-vite-hmr] - 2026-08-23 (Ctrl+R Reload Safety Shield, Vite Tunnel Guard & Bidirectional Stream Telemetry)
+- **Feature Summary**:
+  - **Ctrl+R / F5 Reload Safety Shield (`App.tsx`)**: Intercepts `Ctrl+R`, `Cmd+R`, and `F5` events in capture mode while a tunnel is running. Suppresses window reload and alerts the user with a warning toast (`⛔ Refresh blocked — stop your active tunnel first to avoid orphan processes`), completely preventing orphan background tunnels and state desynchronization.
+  - **Vite Dev Server Detection & Launch Guard (`App.tsx`)**: Added `isViteProcess(process)` helper checking framework signature, command, directory, process name, and default port `5173`. When a user attempts to share a Vite dev server across any tunnel mode (`shareProcess`, `shareProcessCloudflare`, `shareProcessNative`, `shareProcessLocaltunnel`), cleanly halts execution and displays an informative warning toast (`⚠️ Sharing Vite dev servers over public tunnel is currently under development`).
+  - **Bidirectional Stream Latency & Status Code Telemetry (`proxy.rs`)**: Captured initial HTTP response chunk to emit precise HTTP status codes and round-trip duration metadata (`request:log:response`) before transitioning into full-duplex `tokio::io::copy_bidirectional`.
+  - **Cleaned Up Experimental Rust Pipeline (`tunnel.rs`, `proxy.rs`)**: Cleaned up experimental HTML injection and compression pipelines, keeping standard base64 response transport clean and reliable.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `CHANGELOG.md`
+
 ## [fix/universal-proxy-vite-hmr] - 2026-08-22 (Universal Proxy Engine, Vite 6 HMR Stabilization, Cross-Platform Diagnostic Export & Upload Cap)
 - **Feature Summary**:
   - **Universal Full-Duplex Proxy Engine (`proxy.rs`)**: Replaced split read/write loops with non-blocking `tokio::io::copy_bidirectional`. Dynamically rewrites `Host: localhost:<port>` and `Origin: http://localhost:<port>` while preserving `Sec-WebSocket-*` headers and injecting `X-Forwarded-Proto: https`, `X-Forwarded-Host`, and `X-Forwarded-For: 127.0.0.1`. Eliminates Vite 6 `allowedHosts` 403 Forbidden errors and Webpack `Invalid Host Header` errors.

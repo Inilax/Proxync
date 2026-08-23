@@ -163,7 +163,7 @@ pub async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, 
                                 incoming_host = val.to_string();
                                 modified_headers.push(format!("Host: localhost:{}", local_port));
                             } else if lower_key == "origin" {
-                                // Rewrite Origin to match local dev server host so Vite, Next.js, and WebSocket origin checks pass 100%
+                                // Rewrite Origin to match local dev server host so WebSocket origin checks pass
                                 modified_headers.push(format!("Origin: http://localhost:{}", local_port));
                             } else if is_ws_upgrade && (lower_key == "connection" || lower_key == "upgrade" || lower_key.starts_with("sec-websocket-")) {
                                 // Preserve WebSocket headers verbatim
@@ -184,7 +184,7 @@ pub async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, 
                     }
                 }
 
-                // Inject Forwarded headers for Vite / Next.js / Webpack
+                // Inject Forwarded headers for reverse proxying
                 modified_headers.push("X-Forwarded-Proto: https".to_string());
                 modified_headers.push("X-Forwarded-For: 127.0.0.1".to_string());
                 if !incoming_host.is_empty() {

@@ -22,7 +22,7 @@ lazy_static! {
         .tcp_nodelay(true)
         .pool_idle_timeout(std::time::Duration::from_secs(90))
         .pool_max_idle_per_host(10)
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(30))
         .build()
         .unwrap_or_else(|_| Client::new());
 }
@@ -108,7 +108,7 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
         }
     });
 
-    let client = Client::new();
+    let client = HTTP_CLIENT.clone();
     let tunnel_id_clone = tunnel_id.clone();
 
     let handle = tokio::spawn(async move {
@@ -179,12 +179,18 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
                                 };
 
                                 for (k, v) in req_data.headers {
-                                    if k.to_lowercase() != "host" && k.to_lowercase() != "content-length" && k.to_lowercase() != "accept-encoding" {
+                                    let lower = k.to_lowercase();
+                                    // Strip hop-by-hop, encoding, and origin headers that Vite uses for security checks.
+                                    // Referer with a tunnel URL host causes Vite to reject cross-origin module requests.
+                                    if lower != "host" && lower != "content-length" && lower != "accept-encoding" && lower != "connection" && lower != "referer" && lower != "origin" {
                                         req_builder = req_builder.header(k, v);
                                     }
                                 }
 
                                 req_builder = req_builder
+                                    .header("Accept-Encoding", "identity")
+                                    .header("Origin", format!("http://localhost:{}", local_port))
+                                    .header("Referer", format!("http://localhost:{}/", local_port))
                                     .header("X-Forwarded-Proto", "https")
                                     .header("X-Forwarded-For", "127.0.0.1")
                                     .header("Host", format!("localhost:{}", local_port));
@@ -208,91 +214,16 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
                                     res_payload.status = res.status().as_u16();
                                     for (k, v) in res.headers() {
                                         if let Ok(v_str) = v.to_str() {
-                                            res_payload.headers.insert(k.to_string(), v_str.to_string());
+                                            let k_lower = k.as_str().to_lowercase();
+                                            // DO NOT forward hop-by-hop headers or content-encoding since res.bytes() is already decompressed by reqwest!
+                                            if k_lower != "content-encoding" && k_lower != "transfer-encoding" && k_lower != "connection" {
+                                                res_payload.headers.insert(k.to_string(), v_str.to_string());
+                                            }
                                         }
                                     }
                                     if let Ok(bytes) = res.bytes().await {
-                                        let content_type = res_payload.headers.get("content-type").cloned().unwrap_or_default();
-
-                                        // Patch HTML responses: inject a lightweight shim in <head> that satisfies
-                                        // Vite / Next.js HMR WebSocket clients. This prevents blank white screens and
-                                        // connection reload loops when dev servers are shared over the public relay.
-                                        // ponytail: response body rewrite — upgrade path: native WS relay bridge in edge server
-                                        let patched_bytes = if content_type.contains("text/html") {
-                                            let html = String::from_utf8_lossy(&bytes);
-                                            if html.contains("/@vite/client") || html.contains("/@react-refresh") || html.contains("/_next/") {
-                                                let hmr_disable = r#"<script>
-/* proxync-hmr-patch: satisfy dev server HMR WebSocket client over public relay */
-if (typeof window !== 'undefined') {
-  window.__vite_is_modern_browser = true;
-  window.__vite_plugin_react_preamble_installed__ = true;
-  if (!window.$RefreshReg$) { window.$RefreshReg$ = () => {}; }
-  if (!window.$RefreshSig$) { window.$RefreshSig$ = () => (type) => type; }
-  const _OrigWS = window.WebSocket;
-  window.WebSocket = function(url, protocols) {
-    if (typeof url === 'string' && (
-      url.includes('/@vite/client') ||
-      url.includes('/__vite_hmr') ||
-      url.includes('?type=hmr') ||
-      url.includes('/_next/webpack-hmr') ||
-      url.includes('/_next/turbopack-hmr') ||
-      (url.endsWith('/') && url.startsWith('wss://'))
-    )) {
-      const fake = {
-        readyState: 1, // OPEN — avoids disconnect / reload loops
-        protocol: typeof protocols === 'string' ? protocols : (Array.isArray(protocols) ? protocols[0] : ''),
-        extensions: '',
-        bufferedAmount: 0,
-        binaryType: 'blob',
-        url: url,
-        send: function(){},
-        close: function(){},
-        addEventListener: function(event, cb) {
-          if (event === 'open' && typeof cb === 'function') {
-            setTimeout(cb, 0);
-          }
-        },
-        removeEventListener: function(){},
-        dispatchEvent: function(){ return true; },
-        onopen: null,
-        onmessage: null,
-        onerror: null,
-        onclose: null
-      };
-      setTimeout(() => { if (typeof fake.onopen === 'function') fake.onopen({ type: 'open' }); }, 0);
-      return fake;
-    }
-    return new _OrigWS(url, protocols);
-  };
-  window.WebSocket.prototype = _OrigWS.prototype;
-  window.WebSocket.CONNECTING = 0; window.WebSocket.OPEN = 1; window.WebSocket.CLOSING = 2; window.WebSocket.CLOSED = 3;
-}
-</script>"#;
-                                                let patched = if html.contains("<head>") {
-                                                    html.replacen("<head>", &format!("<head>\n{}", hmr_disable), 1)
-                                                } else if html.contains("<HEAD>") {
-                                                    html.replacen("<HEAD>", &format!("<HEAD>\n{}", hmr_disable), 1)
-                                                } else if let Some(idx) = html.to_lowercase().find("<head") {
-                                                    if let Some(end_idx) = html[idx..].find('>') {
-                                                        let insert_pos = idx + end_idx + 1;
-                                                        format!("{}\n{}{}", &html[..insert_pos], hmr_disable, &html[insert_pos..])
-                                                    } else {
-                                                        format!("{}\n{}", hmr_disable, html)
-                                                    }
-                                                } else {
-                                                    format!("{}\n{}", hmr_disable, html)
-                                                };
-                                                patched.into_bytes()
-                                            } else {
-                                                bytes.to_vec()
-                                            }
-                                        } else {
-                                            bytes.to_vec()
-                                        };
-
-                                        res_payload.body = BASE64_STANDARD.encode(&patched_bytes);
-                                        // Update content-length to match patched body
-                                        res_payload.headers.insert("content-length".to_string(), patched_bytes.len().to_string());
+                                        res_payload.body = BASE64_STANDARD.encode(&bytes);
+                                        res_payload.headers.insert("content-length".to_string(), bytes.len().to_string());
                                     }
                                 }
 
