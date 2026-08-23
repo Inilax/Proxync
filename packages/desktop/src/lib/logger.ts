@@ -346,7 +346,7 @@ export interface SupportBundleContext {
   appVersion?: string;
 }
 
-export function exportSupportBundle(ctx: SupportBundleContext): void {
+export async function exportSupportBundle(ctx: SupportBundleContext): Promise<{ success: boolean; path?: string; cancelled?: boolean }> {
   const generatedAt = new Date().toISOString();
   const appVersion = ctx.appVersion || 'v0.2.1-stable';
 
@@ -403,13 +403,57 @@ export function exportSupportBundle(ctx: SupportBundleContext): void {
   };
 
   const jsonStr = JSON.stringify(bundle, null, 2);
-  const blob = new Blob([jsonStr], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `proxync-support-bundle-${Date.now()}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+
+  // 1. Try Native OS Save File Dialog via Tauri backend (Windows, macOS, Linux)
+  try {
+    const savedPath = await invoke<string | null>('save_support_bundle_dialog', { jsonContent: jsonStr });
+    if (savedPath) {
+      return { success: true, path: savedPath };
+    }
+    // User cancelled dialog
+    return { success: false, cancelled: true };
+  } catch (ipcErr) {
+    console.warn('[SupportBundle] Native save dialog unavailable, trying Web File System Access API...', ipcErr);
+  }
+
+  // 2. Try Web File System Access API (window.showSaveFilePicker)
+  if (typeof window !== 'undefined' && 'showSaveFilePicker' in window) {
+    try {
+      const handle = await (window as any).showSaveFilePicker({
+        suggestedName: `proxync-support-bundle-${Date.now()}.json`,
+        types: [
+          {
+            description: 'JSON Support Diagnostic Bundle',
+            accept: { 'application/json': ['.json'] },
+          },
+        ],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(jsonStr);
+      await writable.close();
+      return { success: true, path: handle.name };
+    } catch (pickerErr: any) {
+      if (pickerErr?.name === 'AbortError') {
+        return { success: false, cancelled: true };
+      }
+    }
+  }
+
+  // 3. Fallback: Browser blob download
+  try {
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const filename = `proxync-support-bundle-${Date.now()}.json`;
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    return { success: true, path: filename };
+  } catch (err) {
+    console.error('[SupportBundle] Blob download fallback failed:', err);
+    return { success: false };
+  }
 }

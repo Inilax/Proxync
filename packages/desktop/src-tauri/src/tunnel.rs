@@ -22,7 +22,7 @@ lazy_static! {
         .tcp_nodelay(true)
         .pool_idle_timeout(std::time::Duration::from_secs(90))
         .pool_max_idle_per_host(10)
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(30))
         .build()
         .unwrap_or_else(|_| Client::new());
 }
@@ -108,7 +108,7 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
         }
     });
 
-    let client = Client::new();
+    let client = HTTP_CLIENT.clone();
     let tunnel_id_clone = tunnel_id.clone();
 
     let handle = tokio::spawn(async move {
@@ -146,6 +146,25 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
                                 });
                                 let _ = app_clone.emit("request:log", req_meta);
 
+                                // ponytail: 50 MB cap on relay body — mirror of proxy.rs upload limit.
+                                const MAX_RELAY_BODY_BYTES: usize = 50 * 1024 * 1024;
+                                if req_data.body.len() > MAX_RELAY_BODY_BYTES {
+                                    let mut res_payload = HttpResponsePayload {
+                                        request_id: req_data.request_id,
+                                        status: 413,
+                                        headers: HashMap::new(),
+                                        body: BASE64_STANDARD.encode(b"{\"error\":\"Upload limit exceeded. Proxync limits uploads to 50 MB per request.\"}"),
+                                    };
+                                    res_payload.headers.insert("content-type".to_string(), "application/json".to_string());
+
+                                    let out_msg = WsMessage {
+                                        event: "http:response".to_string(),
+                                        data: serde_json::to_value(res_payload).unwrap(),
+                                    };
+                                    let _ = tx.send(Message::Text(serde_json::to_string(&out_msg).unwrap().into()));
+                                    return;
+                                }
+
                                 let url = format!("http://localhost:{}{}", local_port, req_data.path);
                                 
                                 let mut req_builder = match req_data.method.as_str() {
@@ -154,14 +173,27 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
                                     "PUT" => client.put(&url),
                                     "DELETE" => client.delete(&url),
                                     "PATCH" => client.patch(&url),
+                                    "HEAD" => client.head(&url),
+                                    "OPTIONS" => client.request(reqwest::Method::OPTIONS, &url),
                                     _ => client.get(&url),
                                 };
 
                                 for (k, v) in req_data.headers {
-                                    if k.to_lowercase() != "host" && k.to_lowercase() != "content-length" && k.to_lowercase() != "accept-encoding" {
+                                    let lower = k.to_lowercase();
+                                    // Strip hop-by-hop, encoding, and origin headers that Vite uses for security checks.
+                                    // Referer with a tunnel URL host causes Vite to reject cross-origin module requests.
+                                    if lower != "host" && lower != "content-length" && lower != "accept-encoding" && lower != "connection" && lower != "referer" && lower != "origin" {
                                         req_builder = req_builder.header(k, v);
                                     }
                                 }
+
+                                req_builder = req_builder
+                                    .header("Accept-Encoding", "identity")
+                                    .header("Origin", format!("http://localhost:{}", local_port))
+                                    .header("Referer", format!("http://localhost:{}/", local_port))
+                                    .header("X-Forwarded-Proto", "https")
+                                    .header("X-Forwarded-For", "127.0.0.1")
+                                    .header("Host", format!("localhost:{}", local_port));
 
                                 if !req_data.body.is_empty() {
                                     req_builder = req_builder.body(req_data.body);
@@ -182,11 +214,16 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
                                     res_payload.status = res.status().as_u16();
                                     for (k, v) in res.headers() {
                                         if let Ok(v_str) = v.to_str() {
-                                            res_payload.headers.insert(k.to_string(), v_str.to_string());
+                                            let k_lower = k.as_str().to_lowercase();
+                                            // DO NOT forward hop-by-hop headers or content-encoding since res.bytes() is already decompressed by reqwest!
+                                            if k_lower != "content-encoding" && k_lower != "transfer-encoding" && k_lower != "connection" {
+                                                res_payload.headers.insert(k.to_string(), v_str.to_string());
+                                            }
                                         }
                                     }
                                     if let Ok(bytes) = res.bytes().await {
                                         res_payload.body = BASE64_STANDARD.encode(&bytes);
+                                        res_payload.headers.insert("content-length".to_string(), bytes.len().to_string());
                                     }
                                 }
 

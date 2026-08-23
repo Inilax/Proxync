@@ -1,18 +1,36 @@
 fn get_base_data_dir() -> std::path::PathBuf {
+    #[cfg(target_os = "windows")]
     let mut dir = if let Ok(appdata) = std::env::var("APPDATA") {
         std::path::PathBuf::from(appdata)
-    } else if let Ok(home) = std::env::var("HOME") {
-        #[cfg(target_os = "macos")]
-        {
-            std::path::PathBuf::from(home).join("Library").join("Application Support")
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            std::path::PathBuf::from(home).join(".config")
-        }
+    } else if let Ok(userprofile) = std::env::var("USERPROFILE") {
+        std::path::PathBuf::from(userprofile).join("AppData").join("Roaming")
     } else {
         std::env::current_dir().unwrap_or_default()
     };
+
+    #[cfg(target_os = "macos")]
+    let mut dir = if let Ok(home) = std::env::var("HOME") {
+        std::path::PathBuf::from(home).join("Library").join("Application Support")
+    } else {
+        std::env::current_dir().unwrap_or_default()
+    };
+
+    #[cfg(target_os = "linux")]
+    let mut dir = if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
+        std::path::PathBuf::from(xdg)
+    } else if let Ok(home) = std::env::var("HOME") {
+        std::path::PathBuf::from(home).join(".config")
+    } else {
+        std::env::current_dir().unwrap_or_default()
+    };
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    let mut dir = if let Ok(home) = std::env::var("HOME") {
+        std::path::PathBuf::from(home).join(".config")
+    } else {
+        std::env::current_dir().unwrap_or_default()
+    };
+
     dir.push("Proxync");
     let _ = std::fs::create_dir_all(&dir);
     dir
@@ -339,4 +357,74 @@ pub async fn open_file_in_editor(file_path: String, line_number: Option<u32>, ed
         Ok(())
     }
 }
+
+#[tauri::command]
+pub async fn save_support_bundle_dialog(json_content: String) -> Result<Option<String>, String> {
+    let default_name = format!(
+        "proxync-support-bundle-{}.json",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+    );
+
+    #[cfg(target_os = "windows")]
+    {
+        let script = format!(
+            "[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms') | Out-Null; $f = New-Object System.Windows.Forms.SaveFileDialog; $f.Title = 'Save Proxync Support Diagnostic Bundle'; $f.Filter = 'JSON Files (*.json)|*.json|All Files (*.*)|*.*'; $f.FileName = '{}'; if($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK){{ $f.FileName }}",
+            default_name
+        );
+        let output = std::process::Command::new("powershell")
+            .args(&["-NoProfile", "-NonInteractive", "-Command", &script])
+            .output();
+
+        if let Ok(out) = output {
+            let path_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !path_str.is_empty() {
+                std::fs::write(&path_str, json_content).map_err(|e| e.to_string())?;
+                return Ok(Some(path_str));
+            }
+            return Ok(None);
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let script = format!(
+            "POSIX path of (choose file name with prompt \"Save Proxync Support Diagnostic Bundle:\" default name \"{}\")",
+            default_name
+        );
+        let output = std::process::Command::new("osascript")
+            .args(&["-e", &script])
+            .output();
+
+        if let Ok(out) = output {
+            let path_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !path_str.is_empty() {
+                std::fs::write(&path_str, json_content).map_err(|e| e.to_string())?;
+                return Ok(Some(path_str));
+            }
+            return Ok(None);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let output = std::process::Command::new("zenity")
+            .args(&["--file-selection", "--save", "--confirm-overwrite", "--title=Save Proxync Support Diagnostic Bundle", &format!("--filename={}", default_name)])
+            .output();
+
+        if let Ok(out) = output {
+            let path_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !path_str.is_empty() {
+                std::fs::write(&path_str, json_content).map_err(|e| e.to_string())?;
+                return Ok(Some(path_str));
+            }
+            return Ok(None);
+        }
+    }
+
+    Ok(None)
+}
+
 

@@ -887,7 +887,7 @@ export function SettingsView({
                   <div className="flex items-center gap-2.5 min-w-0 flex-1">
                     <span className="material-symbols-outlined text-outline text-[18px] shrink-0">folder_open</span>
                     <span className="text-[11px] font-mono text-on-surface-variant truncate select-all px-2 py-1 bg-surface-container/60 border border-outline-variant/20 rounded-md flex-1" title={logsSummary?.logs_dir}>
-                      {logsSummary?.logs_dir || '%APPDATA%\\Proxync\\logs\\'}
+                      {logsSummary?.logs_dir || 'Loading logs directory...'}
                     </span>
                   </div>
                   <button
@@ -912,7 +912,7 @@ export function SettingsView({
                       className="btn-secondary compact text-xs flex items-center gap-1.5 cursor-pointer py-1.5 px-3"
                       onClick={() => {
                         void openLogsFolder();
-                        showToast('Opening logs directory in File Explorer...', 'info');
+                        showToast('Opening logs directory...', 'info');
                       }}
                     >
                       <span className="material-symbols-outlined text-[15px]">folder_open</span>
@@ -921,8 +921,8 @@ export function SettingsView({
 
                     <button
                       className="btn-primary compact text-xs flex items-center gap-1.5 cursor-pointer py-1.5 px-3.5"
-                      onClick={() => {
-                        exportSupportBundle({
+                      onClick={async () => {
+                        const res = await exportSupportBundle({
                           settings: appSettings,
                           activeWorkspace: workspace,
                           activeTunnel,
@@ -942,7 +942,11 @@ export function SettingsView({
                             executable: p.executable,
                           })),
                         });
-                        showToast('Support diagnostic bundle downloaded (JSON)', 'success');
+                        if (res.success && res.path) {
+                          showToast(`Support diagnostic bundle saved to: ${res.path}`, 'success');
+                        } else if (!res.cancelled) {
+                          showToast('Support diagnostic bundle exported', 'info');
+                        }
                       }}
                     >
                       <span className="material-symbols-outlined text-[15px]">archive</span>

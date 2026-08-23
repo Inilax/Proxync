@@ -1185,6 +1185,28 @@ export default function App() {
     };
   }, []);
 
+  // Block Ctrl+R / F5 / Ctrl+Shift+R while a tunnel is active.
+  // Uses refs (tunnelsRef, activeTunnelRef) so never goes stale.
+  // ponytail: pure frontend, zero Rust changes needed.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isReload =
+        (e.key === 'r' && (e.ctrlKey || e.metaKey)) ||
+        e.key === 'F5';
+      if (!isReload) return;
+
+      const hasTunnels = tunnelsRef.current.length > 0 || !!activeTunnelRef.current;
+      if (hasTunnels) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        showToast('⛔ Refresh blocked — stop your active tunnel first to avoid orphan processes.', 'warning');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
+  }, []);
+
   useEffect(() => {
     if (!activeWorkspace?.remoteWorkspaceId || !activeTunnel) return;
     api.requests.list(activeWorkspace.remoteWorkspaceId, activeTunnel.id)
@@ -1549,6 +1571,10 @@ export default function App() {
     if (!process.directory || process.directory === 'unknown') {
       void refreshProcessDirectory(process);
     }
+    if (isViteProcess(process)) {
+      showToast('⚠️ Sharing Vite dev servers over public tunnel is currently under development.', 'warning');
+      return;
+    }
     addSpawningPort(process.port);
     setProcesses((curr) => [process, ...curr.filter((p) => p.id !== process.id)]);
     const starterScan = buildStarterRequests(process);
@@ -1616,6 +1642,11 @@ export default function App() {
     if (!isLive) {
       showToast(`⚠️ Port :${process.port} is offline or not running. Please start your local server on port ${process.port} before sharing.`, 'warning');
       void discoverProcesses(true, true);
+      return;
+    }
+
+    if (isViteProcess(process)) {
+      showToast('⚠️ Sharing Vite dev servers over public tunnel is currently under development.', 'warning');
       return;
     }
 
@@ -1687,6 +1718,10 @@ export default function App() {
     if (!process.directory || process.directory === 'unknown') {
       void refreshProcessDirectory(process);
     }
+    if (isViteProcess(process)) {
+      showToast('⚠️ Sharing Vite dev servers over public tunnel is currently under development.', 'warning');
+      return;
+    }
     addSpawningPort(process.port);
     setProcesses((curr) => [process, ...curr.filter((p) => p.id !== process.id)]);
     const starterScan = buildStarterRequests(process);
@@ -1732,6 +1767,11 @@ export default function App() {
     }
     if (spawningPorts.includes(process.port) || sharingPort === process.port) {
       showToast(`A tunnel is currently launching for port ${process.port}. Please wait...`, 'info');
+      return;
+    }
+
+    if (isViteProcess(process)) {
+      showToast('⚠️ Sharing Vite dev servers over public tunnel is currently under development.', 'warning');
       return;
     }
 
@@ -2140,7 +2180,7 @@ export default function App() {
     });
     showToast(
       enabled
-        ? '🛡️ Application engine logging enabled (%APPDATA%\\Proxync\\logs\\app.log)'
+        ? '🛡️ Application engine logging enabled (app.log)'
         : 'Application engine logging disabled',
       enabled ? 'success' : 'info'
     );
@@ -2153,7 +2193,7 @@ export default function App() {
     });
     showToast(
       enabled
-        ? '⚡ Traffic stream logging enabled (%APPDATA%\\Proxync\\logs\\traffic.log)'
+        ? '⚡ Traffic stream logging enabled (traffic.log)'
         : 'Traffic stream logging disabled',
       enabled ? 'success' : 'info'
     );
@@ -2980,6 +3020,11 @@ function detectLanguageLabel(process: Pick<ProcessCandidate, 'framework' | 'comm
   if (sig.includes('spring') || sig.includes('java')) return 'Java';
   if (sig.includes('.net') || sig.includes('dotnet')) return '.NET';
   return 'Undetermined';
+}
+
+function isViteProcess(process: Pick<ProcessCandidate, 'framework' | 'command' | 'directory' | 'name' | 'port'>) {
+  const sig = `${process.framework ?? ''} ${process.command ?? ''} ${process.directory ?? ''} ${process.name ?? ''}`.toLowerCase();
+  return sig.includes('vite') || process.port === 5173;
 }
 
 function inferLanguageFromFiles(files: string[]) {

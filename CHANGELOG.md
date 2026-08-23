@@ -2,6 +2,35 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/universal-proxy-vite-hmr] - 2026-08-23 (Ctrl+R Reload Safety Shield, Vite Tunnel Guard & Bidirectional Stream Telemetry)
+- **Feature Summary**:
+  - **Ctrl+R / F5 Reload Safety Shield (`App.tsx`)**: Intercepts `Ctrl+R`, `Cmd+R`, and `F5` events in capture mode while a tunnel is running. Suppresses window reload and alerts the user with a warning toast (`⛔ Refresh blocked — stop your active tunnel first to avoid orphan processes`), completely preventing orphan background tunnels and state desynchronization.
+  - **Vite Dev Server Detection & Launch Guard (`App.tsx`)**: Added `isViteProcess(process)` helper checking framework signature, command, directory, process name, and default port `5173`. When a user attempts to share a Vite dev server across any tunnel mode (`shareProcess`, `shareProcessCloudflare`, `shareProcessNative`, `shareProcessLocaltunnel`), cleanly halts execution and displays an informative warning toast (`⚠️ Sharing Vite dev servers over public tunnel is currently under development`).
+  - **Bidirectional Stream Latency & Status Code Telemetry (`proxy.rs`)**: Captured initial HTTP response chunk to emit precise HTTP status codes and round-trip duration metadata (`request:log:response`) before transitioning into full-duplex `tokio::io::copy_bidirectional`.
+  - **Cleaned Up Experimental Rust Pipeline (`tunnel.rs`, `proxy.rs`)**: Cleaned up experimental HTML injection and compression pipelines, keeping standard base64 response transport clean and reliable.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `CHANGELOG.md`
+
+## [fix/universal-proxy-vite-hmr] - 2026-08-22 (Universal Proxy Engine, Vite 6 HMR Stabilization, Cross-Platform Diagnostic Export & Upload Cap)
+- **Feature Summary**:
+  - **Universal Full-Duplex Proxy Engine (`proxy.rs`)**: Replaced split read/write loops with non-blocking `tokio::io::copy_bidirectional`. Dynamically rewrites `Host: localhost:<port>` and `Origin: http://localhost:<port>` while preserving `Sec-WebSocket-*` headers and injecting `X-Forwarded-Proto: https`, `X-Forwarded-Host`, and `X-Forwarded-For: 127.0.0.1`. Eliminates Vite 6 `allowedHosts` 403 Forbidden errors and Webpack `Invalid Host Header` errors.
+  - **Dev Server HMR Stabilization & React SWC Preamble (`tunnel.rs`)**: Injected a top-of-`<head>` dev server shim for public relay streams that satisfies Vite HMR (`/@vite/client`), Next.js Fast Refresh, and `@react-refresh` with an immediate `readyState: 1 (OPEN)` handshake and pre-initializes React SWC preamble globals (`window.$RefreshReg$`), completely eliminating blank white screens on public tunnel URLs.
+  - **50 MB Upload Cap Protection**: Added a strict 50 MB upload body size cap (`MAX_UPLOAD_BODY_BYTES` and `MAX_RELAY_BODY_BYTES`) across both local TCP proxy and relay pipelines, rejecting oversized payloads with explicit `413 Payload Too Large` JSON responses.
+  - **Cross-Platform Diagnostic Support Bundle Export (`storage.rs`, `logger.ts`)**: Implemented `save_support_bundle_dialog` in Rust with native OS save pickers (PowerShell on Windows, AppleScript on macOS, Zenity on Linux) alongside Web File System Access API and blob download fallbacks, and upgraded `get_base_data_dir` to support macOS (`Library/Application Support`) and Linux (`~/.config`).
+  - **Zero Hardcoded Environment Paths**: Cleaned up hardcoded `%APPDATA%` strings from toasts and settings views in `App.tsx` and `SettingsView.tsx`.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src/lib/logger.ts`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/App.tsx`
+  - `CHANGELOG.md`
+
 ## [fix/ide-navigation-and-preflight-probe] - 2026-08-22 (Dynamic IDE Route Navigation, Inactive Port Pre-Flight Probe & Global Traffic Logs Purge)
 - **Feature Summary**:
   - **Dynamic Route Resolution & Zero Fake Paths (TC-WB-003)**: Upgraded `RequestWorkbenchDialog.tsx` to include `nearMissMatch` in route resolution and replaced the hardcoded `src/controllers/...` fallback with `null`. When a route is unlinked, displays an explanatory prompt and disables IDE triggers. Dynamically derives `resolvedRoot` from active process candidates and workspace configs so files always resolve to their absolute file system path.

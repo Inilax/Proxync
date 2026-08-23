@@ -33,6 +33,10 @@ pub async fn stop_proxy(local_port: Option<u16>) -> bool {
     false
 }
 
+// ponytail: 50 MB upload cap — prevents OOM on large multipart uploads over public tunnels.
+// Upgrade path: make configurable via AppSettings if users request larger limits.
+const MAX_UPLOAD_BODY_BYTES: usize = 50 * 1024 * 1024; // 50 MB
+
 #[tauri::command]
 pub async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, String> {
     let mut map = PROXY_HANDLES.lock().await;
@@ -91,121 +95,166 @@ pub async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, 
                     _ => return,
                 };
 
-                let req_id = format!("req-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
                 let req_str = String::from_utf8_lossy(&req_buf[..n_req]);
+
+                // 1. Detect WebSocket Upgrade requests (Vite HMR, Next Turbopack, Socket.io, NestJS, etc.)
+                let is_ws_upgrade = req_str.lines().any(|l| {
+                    let ll = l.to_lowercase();
+                    ll.starts_with("upgrade:") && ll.contains("websocket")
+                }) || req_str.lines().any(|l| {
+                    let ll = l.to_lowercase();
+                    ll.starts_with("connection:") && ll.contains("upgrade")
+                });
+
+                // 2. Detect SSE (Server-Sent Events) streams
+                let is_sse = req_str.lines().any(|l| {
+                    let ll = l.to_lowercase();
+                    ll.starts_with("accept:") && ll.contains("text/event-stream")
+                });
+
+                // 3. Enforce upload size cap (50 MB)
+                let mut content_length: usize = 0;
+                for line in req_str.lines() {
+                    let lower = line.to_lowercase();
+                    if lower.starts_with("content-length:") {
+                        if let Some((_, val)) = line.split_once(':') {
+                            if let Ok(len) = val.trim().parse::<usize>() {
+                                content_length = len;
+                            }
+                        }
+                    }
+                }
+                if content_length > MAX_UPLOAD_BODY_BYTES {
+                    let err_json = "{\"error\":\"Upload limit exceeded. Proxync limits uploads to 50 MB per request.\"}";
+                    let resp = format!(
+                        "HTTP/1.1 413 Payload Too Large\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        err_json.len(),
+                        err_json
+                    );
+                    let _ = client_stream.write_all(resp.as_bytes()).await;
+                    let _ = client_stream.shutdown().await;
+                    return;
+                }
+
+                // 4. Header normalization & forwarding headers injection
+                let parts_split: Vec<&str> = req_str.splitn(2, "\r\n\r\n").collect();
+                let mut incoming_host = String::new();
+                let mut modified_headers = Vec::new();
+                let mut safe_headers = HashMap::new();
                 let mut method = "GET".to_string();
                 let mut path = "/".to_string();
 
-                if let Some(req_line) = req_str.lines().next() {
-                    let parts: Vec<&str> = req_line.split_whitespace().collect();
-                    if parts.len() >= 2 {
-                        method = parts[0].to_string();
-                        path = parts[1].to_string();
-                    }
-                }
-
-                let mut headers = HashMap::new();
-                let mut body_preview = String::new();
-
-                let parts_split: Vec<&str> = req_str.splitn(2, "\r\n\r\n").collect();
                 if let Some(header_part) = parts_split.get(0) {
-                    for line in header_part.lines().skip(1) {
+                    for (idx, line) in header_part.lines().enumerate() {
+                        if idx == 0 {
+                            let parts: Vec<&str> = line.split_whitespace().collect();
+                            if parts.len() >= 2 {
+                                method = parts[0].to_string();
+                                path = parts[1].to_string();
+                            }
+                            modified_headers.push(line.to_string());
+                            continue;
+                        }
                         if let Some((k, v)) = line.split_once(':') {
                             let key = k.trim();
                             let val = v.trim();
                             let lower_key = key.to_lowercase();
+                            if lower_key == "host" {
+                                incoming_host = val.to_string();
+                                modified_headers.push(format!("Host: localhost:{}", local_port));
+                            } else if lower_key == "origin" {
+                                // Rewrite Origin to match local dev server host so WebSocket origin checks pass
+                                modified_headers.push(format!("Origin: http://localhost:{}", local_port));
+                            } else if is_ws_upgrade && (lower_key == "connection" || lower_key == "upgrade" || lower_key.starts_with("sec-websocket-")) {
+                                // Preserve WebSocket headers verbatim
+                                modified_headers.push(line.to_string());
+                            } else if !is_ws_upgrade && !is_sse && lower_key == "connection" {
+                                modified_headers.push("Connection: close".to_string());
+                            } else {
+                                modified_headers.push(line.to_string());
+                            }
+
                             let display_val = if lower_key == "authorization" || lower_key == "cookie" || lower_key == "set-cookie" || lower_key == "x-api-key" || lower_key == "api-key" {
                                 "[REDACTED]".to_string()
                             } else {
                                 val.to_string()
                             };
-                            headers.insert(key.to_string(), display_val);
+                            safe_headers.insert(key.to_string(), display_val);
                         }
                     }
                 }
-                if let Some(body_part) = parts_split.get(1) {
-                    body_preview = body_part.trim().to_string();
+
+                // Inject Forwarded headers for reverse proxying
+                modified_headers.push("X-Forwarded-Proto: https".to_string());
+                modified_headers.push("X-Forwarded-For: 127.0.0.1".to_string());
+                if !incoming_host.is_empty() {
+                    modified_headers.push(format!("X-Forwarded-Host: {}", incoming_host));
                 }
+                if !is_ws_upgrade && !is_sse && !modified_headers.iter().any(|h| h.to_lowercase().starts_with("connection:")) {
+                    modified_headers.push("Connection: close".to_string());
+                }
+
+                let body_suffix = if parts_split.len() > 1 { parts_split[1] } else { "" };
+                let modified_req = format!("{}\r\n\r\n{}", modified_headers.join("\r\n"), body_suffix);
+
+                let req_id = format!("req-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
+                let body_preview = if let Some(body_part) = parts_split.get(1) {
+                    body_part.trim().to_string()
+                } else {
+                    String::new()
+                };
 
                 let req_meta = serde_json::json!({
                     "id": req_id.clone(),
                     "method": method,
                     "path": path,
                     "port": local_port,
-                    "headers": headers,
+                    "headers": safe_headers,
                     "bodyPreview": body_preview,
                     "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()
                 });
                 let _ = app_clone.emit("request:log", req_meta);
 
-                let mut modified_req = req_str.to_string();
-
-                // Normalize Host header so frameworks like Vite / Next with strict host validation accept tunnel traffic
-                if let Some(parts) = parts_split.get(0) {
-                    let mut new_headers = Vec::new();
-                    for line in parts.lines() {
-                        if line.to_lowercase().starts_with("host:") {
-                            new_headers.push(format!("Host: localhost:{}", local_port));
-                        } else {
-                            new_headers.push(line.to_string());
-                        }
-                    }
-                    let body_suffix = if parts_split.len() > 1 { parts_split[1] } else { "" };
-                    modified_req = format!("{}\r\n\r\n{}", new_headers.join("\r\n"), body_suffix);
-                }
-
-                if modified_req.contains("Connection: keep-alive") || modified_req.contains("connection: keep-alive") {
-                    modified_req = modified_req
-                        .replace("Connection: keep-alive", "Connection: close")
-                        .replace("connection: keep-alive", "connection: close");
-                } else if !modified_req.contains("Connection: close") && !modified_req.contains("connection: close") {
-                    modified_req = modified_req.replace("\r\n\r\n", "\r\nConnection: close\r\n\r\n");
-                }
+                let start_instant = std::time::Instant::now();
 
                 if target_stream.write_all(modified_req.as_bytes()).await.is_err() {
                     return;
                 }
 
-                let (mut client_read, mut client_write) = client_stream.into_split();
-                let (mut target_read, mut target_write) = target_stream.into_split();
+                // Read initial response chunk to capture HTTP status code and latency duration
+                let mut res_buf = vec![0u8; 16384];
+                let n_res = match target_stream.read(&mut res_buf).await {
+                    Ok(bytes) if bytes > 0 => bytes,
+                    _ => return,
+                };
 
-                let start_instant = std::time::Instant::now();
-                let app_c = app_clone.clone();
-                let req_id_c = req_id.clone();
-                tokio::spawn(async move {
-                    let mut res_buf = vec![0u8; 16384];
-                    if let Ok(n_res) = target_read.read(&mut res_buf).await {
-                        let duration_ms = start_instant.elapsed().as_millis() as u64;
-                        if n_res > 0 {
-                            let res_str = String::from_utf8_lossy(&res_buf[..n_res]);
-                            let mut status: u16 = 200;
-                            if let Some(status_line) = res_str.lines().next() {
-                                let parts: Vec<&str> = status_line.split_whitespace().collect();
-                                if parts.len() >= 2 {
-                                    if let Ok(code) = parts[1].parse::<u16>() {
-                                        status = code;
-                                    }
-                                }
-                            }
-
-                            let res_meta = serde_json::json!({
-                                "requestId": req_id_c,
-                                "status": status,
-                                "durationMs": duration_ms,
-                                "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()
-                            });
-                            let _ = app_c.emit("request:log:response", res_meta);
-
-                            let _ = client_write.write_all(&res_buf[..n_res]).await;
+                let duration_ms = start_instant.elapsed().as_millis() as u64;
+                let res_str = String::from_utf8_lossy(&res_buf[..n_res]);
+                let mut status: u16 = 200;
+                if let Some(status_line) = res_str.lines().next() {
+                    let parts: Vec<&str> = status_line.split_whitespace().collect();
+                    if parts.len() >= 2 {
+                        if let Ok(code) = parts[1].parse::<u16>() {
+                            status = code;
                         }
                     }
+                }
 
-                    let _ = tokio::io::copy(&mut target_read, &mut client_write).await;
-                    let _ = client_write.shutdown().await;
+                let res_meta = serde_json::json!({
+                    "id": req_id.clone(),
+                    "requestId": req_id.clone(),
+                    "status": status,
+                    "durationMs": duration_ms,
+                    "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()
                 });
+                let _ = app_clone.emit("request:log:response", res_meta);
 
-                let _ = tokio::io::copy(&mut client_read, &mut target_write).await;
-                let _ = target_write.shutdown().await;
+                if client_stream.write_all(&res_buf[..n_res]).await.is_err() {
+                    return;
+                }
+
+                // Full-duplex bidirectional stream for remaining traffic (WebSocket HMR, HTTP/1.1 chunked, SSE, uploads)
+                let _ = tokio::io::copy_bidirectional(&mut client_stream, &mut target_stream).await;
             });
         }
     });
