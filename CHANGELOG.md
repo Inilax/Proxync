@@ -2,6 +2,15 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [feature/develop-readme-v0.2.1-update] - 2026-08-24 (README Documentation Update: v0.2.1 Release, Native High-Speed Tunneling & Platform Status)
+- **Feature Summary**:
+  - **v0.2.1 Release Status**: Updated project version badge and documentation references across the studio README to reflect version v0.2.1.
+  - **Native High-Speed Proxync Tunneling**: Added prominent feature documentation for Native High-Speed Proxync Tunneling, ultra-low latency WebSocket/SSH origin relay infrastructure, and Resilient Standby Mode with automatic URL preservation.
+  - **Platform Support Matrix & Roadmap**: Clarified current Windows 10/11 desktop support, updated platform state paths (`%APPDATA%\Proxync\`), and added pending Linux and macOS cross-platform releases to the roadmap and platform matrix.
+- **Modified Files**:
+  - `README.md`
+  - `CHANGELOG.md`
+
 ## [fix/universal-proxy-vite-hmr] - 2026-08-23 (Ctrl+R Reload Safety Shield, Vite Tunnel Guard & Bidirectional Stream Telemetry)
 - **Feature Summary**:
   - **Ctrl+R / F5 Reload Safety Shield (`App.tsx`)**: Intercepts `Ctrl+R`, `Cmd+R`, and `F5` events in capture mode while a tunnel is running. Suppresses window reload and alerts the user with a warning toast (`⛔ Refresh blocked — stop your active tunnel first to avoid orphan processes`), completely preventing orphan background tunnels and state desynchronization.
