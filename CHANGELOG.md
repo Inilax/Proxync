@@ -2,6 +2,18 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/workspace-search-bar] - 2026-08-25 (Workspace Command Search Dropdown, Direct Hub Navigation & Inline Creation)
+- **Feature Summary**:
+  - **Floating Workspace Search Dropdown (`App.tsx`)**: Replaced plain search input with an interactive floating command dropdown anchored under the top search bar. Filters present and created workspaces in real time by name, notes, server processes, or open ports, with active badges and hotkey support (`Ctrl+K` / `Cmd+K` to open, `Escape` or click-outside to dismiss).
+  - **1-Click Workspace Hub Navigation & Robust Click Handlers (`App.tsx`)**: Upgraded selection items with `onMouseDown` (`e.preventDefault()`, `e.stopPropagation()`) to immediately switch active workspace and navigate straight to the workspace hub (`workspace_dashboard`) without blur race conditions.
+  - **Direct Workspace Creation via Reused Helper (`App.tsx`)**: Extended `createWorkspace(explicitName?: string)` to allow direct 1-click creation from search queries without intermediate lobby redirections.
+  - **Safe Tunnel Lifecycle Teardown (`App.tsx`)**: Maintained strict tunnel lifecycle teardown (`stopAllTunnels(true)`) and process rediscovery when switching between workspaces via search.
+  - **UI & Documentation Polish (`App.tsx`, `README.md`)**: Removed text-decoration underline on *All Workspaces Studio* button in favor of clean interactive styling, and refined README feature highlights and platform support statuses.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `README.md`
+  - `CHANGELOG.md`
+
 ## [feature/develop-readme-v0.2.1-update] - 2026-08-24 (README Documentation Update: v0.2.1 Release, Native High-Speed Tunneling & Platform Status)
 - **Feature Summary**:
   - **v0.2.1 Release Status**: Updated project version badge and documentation references across the studio README to reflect version v0.2.1.
