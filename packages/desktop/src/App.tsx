@@ -47,6 +47,7 @@ import { ObservabilityView } from './components/views/ObservabilityView';
 import { SettingsView } from './components/views/SettingsView';
 import { DocsView } from './components/views/DocsView';
 import { DiscoverDialog, DomainSelectDialog, RequestDetailDialog, ConfirmDeleteDialog } from './components/views/Dialogs';
+import { KeyboardShortcutsDialog } from './components/views/KeyboardShortcutsDialog';
 import { RequestWorkbenchDialog } from './components/views/RequestWorkbenchDialog';
 import { TerminalDrawer, type TerminalLogEntry } from './components/ui/TerminalDrawer';
 import type { WorkbenchTab, ExecutionRun } from './lib/types';
@@ -163,8 +164,14 @@ function mergeUniqueRequests(existing: RequestLog[], incoming: RequestLog[]): Re
 export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchSelectedIndex, setSearchSelectedIndex] = useState(0);
+  const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setSearchSelectedIndex(0);
+  }, [searchQuery, searchOpen]);
   const [context, setContext] = useState<LocalWorkspaceContext | null>(null);
   const [bootstrapError, setBootstrapError] = useState('');
   const [workspaces, setWorkspaces] = useState<WorkspaceConfig[]>(() => {
@@ -287,7 +294,7 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Global hotkeys: Ctrl+B / Cmd+B (toggle sidebar) & Ctrl+K / Cmd+K (workspace quick search)
+  // Global hotkeys: Ctrl+B / Cmd+B (sidebar), Ctrl+K / Cmd+K (search), Ctrl+/ / Cmd+/ (shortcuts), Ctrl+` / Cmd+` (console)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
@@ -303,14 +310,27 @@ export default function App() {
           searchInputRef.current?.focus();
           searchInputRef.current?.select();
         }, 30);
-      } else if (e.key === 'Escape' && searchOpen) {
-        setSearchOpen(false);
-        searchInputRef.current?.blur();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === '?' || e.key === '/' || e.code === 'Slash')) {
+        const target = e.target as HTMLElement;
+        if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
+          e.preventDefault();
+          setShortcutsModalOpen((prev) => !prev);
+        }
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === '`' || e.code === 'Backquote')) {
+        e.preventDefault();
+        setTerminalOpen((prev) => !prev);
+      } else if (e.key === 'Escape') {
+        if (shortcutsModalOpen) {
+          setShortcutsModalOpen(false);
+        } else if (searchOpen) {
+          setSearchOpen(false);
+          searchInputRef.current?.blur();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [searchOpen]);
+  }, [searchOpen, shortcutsModalOpen]);
 
   // Click outside to dismiss workspace search dropdown
   useEffect(() => {
@@ -2413,6 +2433,37 @@ export default function App() {
                   setSearchQuery(e.target.value);
                   if (!searchOpen) setSearchOpen(true);
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (!searchOpen) {
+                      setSearchOpen(true);
+                      setSearchSelectedIndex(0);
+                    } else if (searchedWorkspaces.length > 0) {
+                      setSearchSelectedIndex((prev) => (prev + 1) % searchedWorkspaces.length);
+                    }
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (searchedWorkspaces.length > 0) {
+                      setSearchSelectedIndex((prev) => (prev - 1 + searchedWorkspaces.length) % searchedWorkspaces.length);
+                    }
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (searchedWorkspaces.length > 0 && searchedWorkspaces[searchSelectedIndex]) {
+                      void selectWorkspace(searchedWorkspaces[searchSelectedIndex].id);
+                      setSearchOpen(false);
+                      setSearchQuery('');
+                    } else if (searchQuery.trim() && !workspaces.some(w => w.name.toLowerCase() === searchQuery.trim().toLowerCase())) {
+                      void createWorkspace(searchQuery.trim());
+                      setSearchOpen(false);
+                      setSearchQuery('');
+                    }
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setSearchOpen(false);
+                    searchInputRef.current?.blur();
+                  }
+                }}
               />
               {searchQuery && (
                 <button
@@ -2438,18 +2489,20 @@ export default function App() {
                     Workspaces ({searchedWorkspaces.length})
                   </span>
                   <span className="text-[10px] text-outline font-mono">
-                    Esc to close
+                    ↑↓ navigate · Esc to close
                   </span>
                 </div>
 
                 <div className="max-h-64 overflow-y-auto p-1.5 space-y-1">
                   {searchedWorkspaces.length > 0 ? (
-                    searchedWorkspaces.map((ws) => {
+                    searchedWorkspaces.map((ws, index) => {
                       const isActive = ws.id === activeWorkspaceId;
+                      const isHighlighted = index === searchSelectedIndex;
                       const profileCount = ws.profiles?.length || 0;
                       return (
                         <div
                           key={ws.id}
+                          onMouseEnter={() => setSearchSelectedIndex(index)}
                           onMouseDown={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
@@ -2464,7 +2517,9 @@ export default function App() {
                             setSearchQuery('');
                           }}
                           className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all ${
-                            isActive
+                            isHighlighted
+                              ? 'bg-primary/20 ring-1 ring-primary/40 text-on-surface'
+                              : isActive
                               ? 'bg-primary/10 border border-primary/30 text-on-surface'
                               : 'hover:bg-surface-container-highest text-on-surface-variant hover:text-on-surface'
                           }`}
@@ -2705,9 +2760,17 @@ export default function App() {
 
           <div className={`pt-3 border-t border-outline-variant/30 space-y-1 ${sidebarCollapsed ? 'px-1.5' : ''}`}>
             <button
+              onClick={() => setShortcutsModalOpen(true)}
+              title="Keyboard Shortcuts (Ctrl + /)"
+              className={`nav-item flex items-center ${sidebarCollapsed ? 'collapsed justify-center px-1.5 py-2 mx-auto w-[42px] rounded-xl' : 'gap-3 px-6 py-2'} w-full text-left text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md cursor-pointer`}
+            >
+              <span className="material-symbols-outlined text-[18px]">keyboard</span>
+              {!sidebarCollapsed && <span>Shortcuts</span>}
+            </button>
+            <button
               onClick={() => openUrl("https://github.com/Inilax/Proxync/issues")}
               title="Support"
-              className={`nav-item flex items-center ${sidebarCollapsed ? 'collapsed justify-center px-1.5 py-2 mx-auto w-[42px] rounded-xl' : 'gap-3 px-6 py-2.5'} w-full text-left text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md cursor-pointer`}
+              className={`nav-item flex items-center ${sidebarCollapsed ? 'collapsed justify-center px-1.5 py-2 mx-auto w-[42px] rounded-xl' : 'gap-3 px-6 py-2'} w-full text-left text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md cursor-pointer`}
             >
               <span className="material-symbols-outlined text-[18px]">help</span>
               {!sidebarCollapsed && <span>Support</span>}
@@ -2824,6 +2887,7 @@ export default function App() {
                 onDeleteRequest={deleteSavedRequest}
                 onUpdateSavedRequests={updateSavedRequests}
                 onOpenWorkbench={openRequestInWorkbench}
+                onOpenShortcuts={() => setShortcutsModalOpen(true)}
               />
             )}
             {mainView === 'swagger' && (
@@ -3101,6 +3165,13 @@ export default function App() {
       )}
 
 
+
+      {/* Reusable Cross-Platform Keyboard Shortcuts Dialog */}
+      <KeyboardShortcutsDialog
+        isOpen={shortcutsModalOpen}
+        onClose={() => setShortcutsModalOpen(false)}
+        currentView={mainView}
+      />
 
       <ToastContainer />
     </div>
