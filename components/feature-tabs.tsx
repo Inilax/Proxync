@@ -30,9 +30,9 @@ const tabs: { id: TabId; label: string; icon: typeof Globe }[] = [
 
 const bullets: Record<TabId, string[]> = {
   tunnels: [
-    "Proxync Native SSH High-Throughput Tunnels (Ed25519, 2222 direct origin)",
-    "Active Internet Connectivity Guard with live edge ping verification",
-    "Zero-Trace TempDirGuard security & 1-click Stop All batch teardown",
+    "Native High-Speed Proxync Tunneling (Ed25519 JIT certificates & WebSocket/SSH relay)",
+    "Resilient Standby Mode: Preserves webhook URLs across Ctrl+C with automatic 502 fallback & auto-recovery",
+    "4 Tunnel Providers: Proxync Native, Cloudflare Quick Tunnels, Localtunnel, and Local Loopback (*.localtest.me)",
   ],
   traffic: [
     "Multi-tunnel traffic segregation with deterministic port & server attribution",

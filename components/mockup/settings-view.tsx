@@ -105,7 +105,7 @@ export function SettingsView({
           {[
             { id: "slate", name: "Midnight Slate", color: "#8aebff", desc: "Default Dark" },
             { id: "dracula", name: "Dracula Dark", color: "#ff79c6", desc: "Pink / Purple" },
-            { id: "cyberpunk", name: "Cyberpunk Void", color: "#ec4899", desc: "Neon Magenta" },
+            { id: "dark", name: "Obsidian Dark", color: "#38bdf8", desc: "Studio Dark" },
             { id: "emerald", name: "Deep Emerald", color: "#10b981", desc: "Forest Green" },
           ].map((item) => (
             <button

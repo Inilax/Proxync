@@ -2,11 +2,10 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { BookOpen, Cloud, Radio, Settings, Terminal } from "lucide-react";
+import { Cloud, Radio, Settings, Terminal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLatestRelease } from "@/lib/releases";
 
-import { DocsView } from "./mockup/docs-view";
 import { LobbyView } from "./mockup/lobby-view";
 import { ObservabilityView } from "./mockup/observability-view";
 import { PostmanView } from "./mockup/postman-view";
@@ -38,8 +37,8 @@ export function AppMockup() {
 
       <div className={cn("relative overflow-hidden rounded-2xl border border-outline-variant/40 shadow-panel transition-all duration-300", `theme-${theme}`)}>
         {/* Titlebar */}
-        <div className="relative flex items-center justify-between border-b border-outline-variant/30 bg-surface-container-low px-4 py-2.5 select-none">
-          <div className="flex items-center gap-4">
+        <div className="relative flex items-center justify-between border-b border-outline-variant/30 bg-surface-container-low px-4 py-2.5 select-none gap-2">
+          <div className="flex items-center gap-3 shrink-0">
             <div className="flex items-center gap-1.5">
               <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
               <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
@@ -48,17 +47,28 @@ export function AppMockup() {
 
             <div className="font-mono text-xs font-bold text-on-surface-variant hidden sm:flex items-center gap-2">
               <Radio className="h-3.5 w-3.5 text-primary" />
-              <span>Proxync — Workspace Studio</span>
+              <span>Proxync Studio</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Center Workspace Search Command Bar (Ctrl+K) */}
+          <div className="hidden md:flex items-center gap-2 rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-3 py-1 font-mono text-[11px] text-on-surface-variant max-w-xs w-full justify-between">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+              <span className="text-on-surface font-semibold truncate">proxync-workspace</span>
+            </div>
+            <span className="text-[9.5px] font-bold text-outline bg-surface-container px-1.5 py-0.5 rounded border border-outline-variant/40 shrink-0">
+              Ctrl+K
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
             {/* Live Theme Switcher */}
             <div className="flex items-center rounded-lg border border-outline-variant/40 bg-surface-container px-1 py-0.5">
               {[
                 { id: "slate", label: "Slate", color: "#8aebff" },
                 { id: "dracula", label: "Dracula", color: "#ff79c6" },
-                { id: "cyberpunk", label: "Cyberpunk", color: "#ec4899" },
+                { id: "dark", label: "Obsidian", color: "#38bdf8" },
                 { id: "emerald", label: "Emerald", color: "#10b981" },
               ].map((t) => (
                 <button
@@ -72,7 +82,7 @@ export function AppMockup() {
                   title={`Switch to ${t.label} theme`}
                 >
                   <span className="h-2 w-2 rounded-full" style={{ backgroundColor: t.color }} />
-                  <span className="hidden md:inline">{t.label}</span>
+                  <span className="hidden lg:inline">{t.label}</span>
                 </button>
               ))}
             </div>
@@ -105,7 +115,6 @@ export function AppMockup() {
                   {active === "postman" && <PostmanView />}
                   {active === "workbench" && <WorkbenchView />}
                   {active === "swagger" && <SwaggerView />}
-                  {active === "docs" && <DocsView />}
                   {active === "observability" && <ObservabilityView />}
                   {active === "settings" && <SettingsView theme={theme} onThemeChange={setTheme} />}
                 </motion.div>

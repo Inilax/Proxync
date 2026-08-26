@@ -158,6 +158,12 @@ export function TrafficView() {
           </button>
           <button
             type="button"
+            className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-secondary/40 bg-secondary/10 px-3 py-1.5 font-mono text-[11px] font-bold text-secondary hover:bg-secondary/20 transition-all cursor-pointer"
+          >
+            <span>⚡ Open in VS Code (:42)</span>
+          </button>
+          <button
+            type="button"
             className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-outline-variant/40 bg-surface-container px-3 py-1.5 font-mono text-[11px] font-medium text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all cursor-pointer"
           >
             <Send className="h-3 w-3" />
