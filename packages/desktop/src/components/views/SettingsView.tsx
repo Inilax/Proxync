@@ -303,9 +303,9 @@ export function SettingsView({
                 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-2">
                   {[
+                    { id: 'dark', name: 'Obsidian Dark', colors: ['bg-[#0d1117]', 'bg-[#38bdf8]', 'bg-[#0284c7]'] },
                     { id: 'slate', name: 'Midnight Slate', colors: ['bg-[#0b1326]', 'bg-[#c0c1ff]', 'bg-[#89ceff]'] },
                     { id: 'emerald', name: 'Deep Emerald', colors: ['bg-[#031411]', 'bg-[#10b981]', 'bg-[#34d399]'] },
-                    { id: 'cyberpunk', name: 'Cyberpunk Void', colors: ['bg-[#0a0114]', 'bg-[#ec4899]', 'bg-[#a855f7]'] },
                     { id: 'dracula', name: 'Dracula Dark', colors: ['bg-[#1e1f29]', 'bg-[#ff79c6]', 'bg-[#8be9fd]'] },
                   ].map((theme) => {
                     const isSelected = (appSettings.theme ?? 'slate') === theme.id;

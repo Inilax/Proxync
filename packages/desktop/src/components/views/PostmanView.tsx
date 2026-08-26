@@ -537,7 +537,7 @@ export function PostmanView({
                       </span>
                     </button>
 
-                    <span className="material-symbols-outlined text-secondary text-base">folder</span>
+                    <span className="material-symbols-outlined text-primary text-base">folder</span>
 
                     {isEditingThisFolder ? (
                       <input

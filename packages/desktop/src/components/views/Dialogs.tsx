@@ -231,7 +231,7 @@ export function DomainSelectDialog({
   const getDescription = () => {
     if (selectedDomain === 'proxync_native') {
       return (
-        <span className="domain-desc accent" style={{ color: '#8b5cf6' }}>
+        <span className="domain-desc accent">
           ⚡ <strong>Proxync Tunnel (Recommended):</strong> Direct SSH reverse tunnel to Proxync edge hosted on Azure with auto-generated public subdomains (e.g., <code>*.proxync.dev</code>).
         </span>
       );

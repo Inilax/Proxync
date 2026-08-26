@@ -152,21 +152,26 @@ export function WorkspaceDashboardView({
       <div className="hidden" style={{ display: 'none' }}>{tick}</div>
       <div className="workspace-dashboard-view w-full max-w-[1600px] mx-auto space-y-6 sm:space-y-8 fade-in select-none">
         {/* Hero Workspace Header */}
-        <section className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-6 bg-surface-container-low p-4 sm:p-6 md:p-8 rounded-2xl border border-outline-variant relative overflow-hidden">
-          <div className="relative z-10 space-y-2 max-w-xl">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-2.5 w-2.5 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-secondary opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-secondary"></span>
-              </span>
-              <span className="font-label-md text-label-md text-secondary uppercase tracking-widest text-[11px] sm:text-xs">
+        <section className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-6 bg-surface-container-low/80 p-4 sm:p-5 md:p-6 rounded-xl border border-outline-variant/60 relative overflow-hidden">
+          <div className="relative z-10 space-y-1.5 max-w-2xl">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-primary/10 border border-primary/25 text-[10px] font-bold text-primary tracking-wider uppercase">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                 Active Workspace
               </span>
+              {workspace?.projectRootPath && workspace.projectRootPath !== 'unknown' && (
+                <>
+                  <span className="text-on-surface-variant/40 text-xs hidden sm:inline">•</span>
+                  <span className="font-mono text-xs text-on-surface-variant/70 truncate max-w-[260px] hidden sm:inline" title={workspace.projectRootPath}>
+                    {workspace.projectRootPath}
+                  </span>
+                </>
+              )}
             </div>
-            <h2 className="font-display-sm text-display-sm text-on-surface">
+            <h2 className="text-lg sm:text-xl font-semibold text-on-surface tracking-tight">
               {workspace?.name ?? 'Workspace Dashboard'}
             </h2>
-            <p className="text-on-surface-variant text-xs sm:text-sm leading-relaxed">
+            <p className="text-on-surface-variant text-xs leading-relaxed">
               Detected {processes.length} local development {processes.length === 1 ? 'server' : 'servers'} running on localhost ports. Select any server card below to configure and launch a public tunnel.
             </p>
           </div>
@@ -398,16 +403,6 @@ export function WorkspaceDashboardView({
                               <button
                                 onClick={() => onShareNative(proc)}
                                 className="btn-expose-proxync flex-1 min-w-0"
-                                style={{
-                                  backgroundColor: '#7c82ff',
-                                  color: '#ffffff',
-                                  fontWeight: 700,
-                                  fontSize: '11px',
-                                  padding: '6px 8px',
-                                  borderRadius: '8px',
-                                  border: '1px solid rgba(255, 255, 255, 0.25)',
-                                  boxShadow: '0 2px 8px rgba(124, 130, 255, 0.3)',
-                                }}
                                 title="Share via Proxync Native SSH Tunnel"
                               >
                                 <span className="material-symbols-outlined text-[15px] text-white shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>
