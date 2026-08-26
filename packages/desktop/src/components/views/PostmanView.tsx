@@ -3,6 +3,7 @@ import type { SavedRequest, PostmanResponse, Tunnel, ProcessCandidate } from './
 import { formatHeaders, stripMethodPrefix } from './SharedComponents';
 import { showToast } from '../../lib/toast';
 import { importSwaggerToSavedRequests, importPostmanToOpenApi } from '../../lib/openApiGenerator';
+import { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
 
 export function PostmanView({
   draft,
@@ -26,6 +27,7 @@ export function PostmanView({
   onUpdateSavedRequests,
   onOpenWorkbench,
   onClearResponse,
+  onOpenShortcuts,
 }: {
   draft: SavedRequest;
   savedRequests: SavedRequest[];
@@ -48,6 +50,7 @@ export function PostmanView({
   onDeleteRequest?: (id: string) => void;
   onUpdateSavedRequests?: (next: SavedRequest[]) => void;
   onOpenWorkbench?: (request: SavedRequest) => void;
+  onOpenShortcuts?: () => void;
 }) {
   // Request Sub-Tabs: 'body' | 'headers' | 'auth' | 'response'
   const [requestTab, setRequestTab] = useState<'body' | 'headers' | 'auth' | 'response'>('body');
@@ -229,7 +232,11 @@ export function PostmanView({
         onSave();
       } else if ((e.ctrlKey || e.metaKey) && (e.key === '?' || e.key === '/' || e.code === 'Slash')) {
         e.preventDefault();
-        setShowHotkeysModal((prev) => !prev);
+        if (onOpenShortcuts) {
+          onOpenShortcuts();
+        } else {
+          setShowHotkeysModal((prev) => !prev);
+        }
       } else if (e.key === 'Escape') {
         if (isCreatingFolder) {
           setIsCreatingFolder(false);
@@ -765,7 +772,7 @@ export function PostmanView({
             </button>
             <button
               className="p-2 rounded-xl bg-surface-container-high border border-outline-variant/40 hover:border-primary/50 text-outline hover:text-primary transition-all cursor-pointer"
-              onClick={() => setShowHotkeysModal(true)}
+              onClick={onOpenShortcuts ?? (() => setShowHotkeysModal(true))}
               title="Keyboard Shortcuts & Hotkeys"
             >
               <span className="material-symbols-outlined text-sm">keyboard</span>
@@ -1213,73 +1220,13 @@ export function PostmanView({
         </div>
       )}
 
-      {/* Keyboard Shortcuts Help Dialog */}
-      {showHotkeysModal && (
-        <div className="dialog-backdrop glass" onClick={() => setShowHotkeysModal(false)}>
-          <div
-            className="dialog-content max-w-md w-full p-6 bg-surface-container-high border border-outline-variant/40 rounded-2xl space-y-4 shadow-2xl slide-up select-none"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-outline-variant/30 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary text-xl">keyboard</span>
-                <h3 className="font-bold text-on-surface text-base">Playground Keyboard Shortcuts</h3>
-              </div>
-              <button
-                onClick={() => setShowHotkeysModal(false)}
-                className="p-1 rounded-lg hover:bg-surface-container-highest text-outline hover:text-on-surface transition-colors"
-              >
-                <span className="material-symbols-outlined text-base">close</span>
-              </button>
-            </div>
-
-            <div className="space-y-2.5 text-xs">
-              <div className="flex items-center justify-between p-2.5 bg-surface-container-lowest rounded-xl border border-outline-variant/20">
-                <span className="text-on-surface font-medium">Send Request</span>
-                <kbd className="px-2 py-1 bg-surface-container-high border border-outline-variant/40 rounded text-[11px] font-mono text-primary font-bold">
-                  Ctrl + Enter
-                </kbd>
-              </div>
-
-              <div className="flex items-center justify-between p-2.5 bg-surface-container-lowest rounded-xl border border-outline-variant/20">
-                <span className="text-on-surface font-medium">Save Request to Collection</span>
-                <kbd className="px-2 py-1 bg-surface-container-high border border-outline-variant/40 rounded text-[11px] font-mono text-primary font-bold">
-                  Ctrl + S
-                </kbd>
-              </div>
-
-              <div className="flex items-center justify-between p-2.5 bg-surface-container-lowest rounded-xl border border-outline-variant/20">
-                <span className="text-on-surface font-medium">Open Item Context Menu</span>
-                <span className="px-2 py-1 bg-surface-container-high border border-outline-variant/40 rounded text-[11px] font-mono text-secondary font-semibold">
-                  Right Click (Mouse)
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between p-2.5 bg-surface-container-lowest rounded-xl border border-outline-variant/20">
-                <span className="text-on-surface font-medium">Toggle Shortcuts & Hotkeys</span>
-                <kbd className="px-2 py-1 bg-surface-container-high border border-outline-variant/40 rounded text-[11px] font-mono text-secondary font-bold">
-                  Ctrl + /  or  Ctrl + ?
-                </kbd>
-              </div>
-
-              <div className="flex items-center justify-between p-2.5 bg-surface-container-lowest rounded-xl border border-outline-variant/20">
-                <span className="text-on-surface font-medium">Close Context Menu / Modals</span>
-                <kbd className="px-2 py-1 bg-surface-container-high border border-outline-variant/40 rounded text-[11px] font-mono text-on-surface-variant">
-                  Esc
-                </kbd>
-              </div>
-            </div>
-
-            <div className="pt-2 flex justify-end">
-              <button
-                className="btn-primary compact"
-                onClick={() => setShowHotkeysModal(false)}
-              >
-                Got it
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Keyboard Shortcuts Help Dialog (Standalone Fallback) */}
+      {!onOpenShortcuts && (
+        <KeyboardShortcutsDialog
+          isOpen={showHotkeysModal}
+          onClose={() => setShowHotkeysModal(false)}
+          currentView="postman"
+        />
       )}
     </div>
   );

@@ -47,6 +47,7 @@ import { ObservabilityView } from './components/views/ObservabilityView';
 import { SettingsView } from './components/views/SettingsView';
 import { DocsView } from './components/views/DocsView';
 import { DiscoverDialog, DomainSelectDialog, RequestDetailDialog, ConfirmDeleteDialog } from './components/views/Dialogs';
+import { KeyboardShortcutsDialog } from './components/views/KeyboardShortcutsDialog';
 import { RequestWorkbenchDialog } from './components/views/RequestWorkbenchDialog';
 import { TerminalDrawer, type TerminalLogEntry } from './components/ui/TerminalDrawer';
 import type { WorkbenchTab, ExecutionRun } from './lib/types';
@@ -162,6 +163,15 @@ function mergeUniqueRequests(existing: RequestLog[], incoming: RequestLog[]): Re
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchSelectedIndex, setSearchSelectedIndex] = useState(0);
+  const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const searchContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setSearchSelectedIndex(0);
+  }, [searchQuery, searchOpen]);
   const [context, setContext] = useState<LocalWorkspaceContext | null>(null);
   const [bootstrapError, setBootstrapError] = useState('');
   const [workspaces, setWorkspaces] = useState<WorkspaceConfig[]>(() => {
@@ -284,7 +294,7 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Global hotkey Ctrl+B / Cmd+B for toggling sidebar
+  // Global hotkeys: Ctrl+B / Cmd+B (sidebar), Ctrl+K / Cmd+K (search), Ctrl+/ / Cmd+/ (shortcuts), Ctrl+` / Cmd+` (console)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
@@ -293,11 +303,46 @@ export default function App() {
           e.preventDefault();
           toggleSidebar();
         }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearchOpen(true);
+        setTimeout(() => {
+          searchInputRef.current?.focus();
+          searchInputRef.current?.select();
+        }, 30);
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === '?' || e.key === '/' || e.code === 'Slash')) {
+        const target = e.target as HTMLElement;
+        if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
+          e.preventDefault();
+          setShortcutsModalOpen((prev) => !prev);
+        }
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === '`' || e.code === 'Backquote')) {
+        e.preventDefault();
+        setTerminalOpen((prev) => !prev);
+      } else if (e.key === 'Escape') {
+        if (shortcutsModalOpen) {
+          setShortcutsModalOpen(false);
+        } else if (searchOpen) {
+          setSearchOpen(false);
+          searchInputRef.current?.blur();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [searchOpen, shortcutsModalOpen]);
+
+  // Click outside to dismiss workspace search dropdown
+  useEffect(() => {
+    if (!searchOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [searchOpen]);
 
   /* ── 360° Request Workbench Studio & Terminal Drawer State ── */
   const WORKBENCH_TABS_STORAGE_KEY = 'proxync_workbench_tabs_v1';
@@ -395,6 +440,21 @@ export default function App() {
   const [localIp, setLocalIp] = useState<string>('127.0.0.1');
 
   /* ── Derived state ── */
+  const searchedWorkspaces = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return workspaces.slice(0, 8);
+    return workspaces.filter(
+      (ws) =>
+        ws.name.toLowerCase().includes(q) ||
+        (ws.notes && ws.notes.toLowerCase().includes(q)) ||
+        ws.profiles.some(
+          (p) =>
+            p.processName?.toLowerCase().includes(q) ||
+            String(p.port).includes(q) ||
+            p.framework?.toLowerCase().includes(q)
+        )
+    );
+  }, [workspaces, searchQuery]);
 
   const activeWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null,
@@ -1299,8 +1359,9 @@ export default function App() {
     } finally { setDiscovering(false); }
   }
 
-  async function createWorkspace() {
-    const name = newWorkspaceName.trim();
+  // ponytail: Reused createWorkspace helper accepting optional explicit name
+  async function createWorkspace(explicitName?: string) {
+    const name = (explicitName ?? newWorkspaceName).trim();
     if (!name) return;
     if (tunnels.length > 0 || activeTunnel) {
       const prevName = activeWorkspace?.name || activeWorkspaceId || 'previous workspace';
@@ -2348,15 +2409,219 @@ export default function App() {
               <span className="text-body-md truncate max-w-[140px]">{viewLabel}</span>
             </div>
           )}
-          <div className="app-search flex items-center bg-surface-container-low px-2.5 py-1 rounded border border-outline-variant w-28 sm:w-44 md:w-56 lg:w-64 transition-all">
-            <span className="material-symbols-outlined text-outline text-[18px] mr-1.5 shrink-0">search</span>
-            <input
-              type="text"
-              placeholder="Search..."
-              className="bg-transparent border-none focus:ring-0 focus:outline-none text-body-md w-full placeholder:text-outline text-on-surface text-xs"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+          <div
+            ref={searchContainerRef}
+            className="relative"
+          >
+            <div
+              onClick={() => {
+                setSearchOpen(true);
+                searchInputRef.current?.focus();
+              }}
+              className="app-search flex items-center bg-surface-container-low px-2.5 py-1 rounded border border-outline-variant w-28 sm:w-44 md:w-56 lg:w-64 transition-all cursor-text group hover:border-primary/50"
+              title="Search workspaces (Ctrl+K)"
+            >
+              <span className="material-symbols-outlined text-outline text-[18px] mr-1.5 shrink-0 group-hover:text-primary transition-colors">search</span>
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Search workspaces..."
+                className="bg-transparent border-none focus:ring-0 focus:outline-none text-body-md w-full placeholder:text-outline text-on-surface text-xs"
+                value={searchQuery}
+                onFocus={() => setSearchOpen(true)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  if (!searchOpen) setSearchOpen(true);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (!searchOpen) {
+                      setSearchOpen(true);
+                      setSearchSelectedIndex(0);
+                    } else if (searchedWorkspaces.length > 0) {
+                      setSearchSelectedIndex((prev) => (prev + 1) % searchedWorkspaces.length);
+                    }
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (searchedWorkspaces.length > 0) {
+                      setSearchSelectedIndex((prev) => (prev - 1 + searchedWorkspaces.length) % searchedWorkspaces.length);
+                    }
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (searchedWorkspaces.length > 0 && searchedWorkspaces[searchSelectedIndex]) {
+                      void selectWorkspace(searchedWorkspaces[searchSelectedIndex].id);
+                      setSearchOpen(false);
+                      setSearchQuery('');
+                    } else if (searchQuery.trim() && !workspaces.some(w => w.name.toLowerCase() === searchQuery.trim().toLowerCase())) {
+                      void createWorkspace(searchQuery.trim());
+                      setSearchOpen(false);
+                      setSearchQuery('');
+                    }
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setSearchOpen(false);
+                    searchInputRef.current?.blur();
+                  }
+                }}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSearchQuery('');
+                    searchInputRef.current?.focus();
+                  }}
+                  className="text-outline hover:text-on-surface transition-colors cursor-pointer text-[14px] ml-1 shrink-0"
+                  title="Clear search"
+                >
+                  <span className="material-symbols-outlined text-[14px]">close</span>
+                </button>
+              )}
+            </div>
+
+            {/* Workspaces Search Dropdown */}
+            {searchOpen && (
+              <div className="absolute top-full left-0 mt-2 w-72 sm:w-80 md:w-96 bg-surface-container-high/95 border border-outline-variant/80 rounded-xl shadow-2xl z-50 overflow-hidden backdrop-blur-md animate-in fade-in slide-in-from-top-1 duration-150">
+                <div className="flex items-center justify-between px-3.5 py-2 border-b border-outline-variant/40 bg-surface-container/50">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant/80">
+                    Workspaces ({searchedWorkspaces.length})
+                  </span>
+                  <span className="text-[10px] text-outline font-mono">
+                    ↑↓ navigate · Esc to close
+                  </span>
+                </div>
+
+                <div className="max-h-64 overflow-y-auto p-1.5 space-y-1">
+                  {searchedWorkspaces.length > 0 ? (
+                    searchedWorkspaces.map((ws, index) => {
+                      const isActive = ws.id === activeWorkspaceId;
+                      const isHighlighted = index === searchSelectedIndex;
+                      const profileCount = ws.profiles?.length || 0;
+                      return (
+                        <div
+                          key={ws.id}
+                          onMouseEnter={() => setSearchSelectedIndex(index)}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            void selectWorkspace(ws.id);
+                            setSearchOpen(false);
+                            setSearchQuery('');
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void selectWorkspace(ws.id);
+                            setSearchOpen(false);
+                            setSearchQuery('');
+                          }}
+                          className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all ${
+                            isHighlighted
+                              ? 'bg-primary/20 ring-1 ring-primary/40 text-on-surface'
+                              : isActive
+                              ? 'bg-primary/10 border border-primary/30 text-on-surface'
+                              : 'hover:bg-surface-container-highest text-on-surface-variant hover:text-on-surface'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className={`material-symbols-outlined text-[18px] shrink-0 ${isActive ? 'text-primary' : 'text-outline'}`}>
+                              {isActive ? 'check_circle' : 'space_dashboard'}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold truncate text-on-surface">
+                                {ws.name}
+                              </p>
+                              <p className="text-[10px] text-outline truncate">
+                                {profileCount > 0
+                                  ? `${profileCount} configured server${profileCount === 1 ? '' : 's'}`
+                                  : ws.notes || 'No active servers'}
+                              </p>
+                            </div>
+                          </div>
+                          {isActive && (
+                            <span className="text-[9px] font-bold uppercase tracking-wider bg-primary/20 text-primary px-1.5 py-0.5 rounded shrink-0">
+                              Active
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="py-4 px-3 text-center space-y-2">
+                      <span className="material-symbols-outlined text-[24px] text-outline">search_off</span>
+                      <p className="text-xs text-on-surface-variant font-medium">
+                        No workspaces matching "{searchQuery}"
+                      </p>
+                      {searchQuery.trim() && (
+                        <button
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            void createWorkspace(searchQuery.trim());
+                            setSearchOpen(false);
+                            setSearchQuery('');
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void createWorkspace(searchQuery.trim());
+                            setSearchOpen(false);
+                            setSearchQuery('');
+                          }}
+                          className="btn-primary text-xs py-1.5 px-3 rounded-lg mx-auto flex items-center gap-1 cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">add</span>
+                          Create "{searchQuery.trim()}"
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-1.5 border-t border-outline-variant/40 bg-surface-container/30 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setMainView('lobby');
+                      setSearchOpen(false);
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMainView('lobby');
+                      setSearchOpen(false);
+                    }}
+                    className="text-xs text-on-surface-variant hover:text-primary hover:bg-surface-container-highest font-medium px-2.5 py-1.5 rounded-lg cursor-pointer flex items-center gap-1.5 transition-colors select-none no-underline"
+                  >
+                    <span className="material-symbols-outlined text-[16px] text-outline shrink-0">grid_view</span>
+                    <span>All Workspaces Studio</span>
+                  </button>
+                  {searchQuery.trim() && !workspaces.some(w => w.name.toLowerCase() === searchQuery.trim().toLowerCase()) && (
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        void createWorkspace(searchQuery.trim());
+                        setSearchOpen(false);
+                        setSearchQuery('');
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void createWorkspace(searchQuery.trim());
+                        setSearchOpen(false);
+                        setSearchQuery('');
+                      }}
+                      className="text-[11px] bg-primary/10 hover:bg-primary/20 text-primary font-bold px-2 py-1 rounded cursor-pointer transition-colors"
+                    >
+                      + Create "{searchQuery.trim()}"
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
         <div className="window-controls flex items-center h-full">
@@ -2495,9 +2760,17 @@ export default function App() {
 
           <div className={`pt-3 border-t border-outline-variant/30 space-y-1 ${sidebarCollapsed ? 'px-1.5' : ''}`}>
             <button
+              onClick={() => setShortcutsModalOpen(true)}
+              title="Keyboard Shortcuts (Ctrl + /)"
+              className={`nav-item flex items-center ${sidebarCollapsed ? 'collapsed justify-center px-1.5 py-2 mx-auto w-[42px] rounded-xl' : 'gap-3 px-6 py-2'} w-full text-left text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md cursor-pointer`}
+            >
+              <span className="material-symbols-outlined text-[18px]">keyboard</span>
+              {!sidebarCollapsed && <span>Shortcuts</span>}
+            </button>
+            <button
               onClick={() => openUrl("https://github.com/Inilax/Proxync/issues")}
               title="Support"
-              className={`nav-item flex items-center ${sidebarCollapsed ? 'collapsed justify-center px-1.5 py-2 mx-auto w-[42px] rounded-xl' : 'gap-3 px-6 py-2.5'} w-full text-left text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md cursor-pointer`}
+              className={`nav-item flex items-center ${sidebarCollapsed ? 'collapsed justify-center px-1.5 py-2 mx-auto w-[42px] rounded-xl' : 'gap-3 px-6 py-2'} w-full text-left text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md cursor-pointer`}
             >
               <span className="material-symbols-outlined text-[18px]">help</span>
               {!sidebarCollapsed && <span>Support</span>}
@@ -2614,6 +2887,7 @@ export default function App() {
                 onDeleteRequest={deleteSavedRequest}
                 onUpdateSavedRequests={updateSavedRequests}
                 onOpenWorkbench={openRequestInWorkbench}
+                onOpenShortcuts={() => setShortcutsModalOpen(true)}
               />
             )}
             {mainView === 'swagger' && (
@@ -2891,6 +3165,13 @@ export default function App() {
       )}
 
 
+
+      {/* Reusable Cross-Platform Keyboard Shortcuts Dialog */}
+      <KeyboardShortcutsDialog
+        isOpen={shortcutsModalOpen}
+        onClose={() => setShortcutsModalOpen(false)}
+        currentView={mainView}
+      />
 
       <ToastContainer />
     </div>

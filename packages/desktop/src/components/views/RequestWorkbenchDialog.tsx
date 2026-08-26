@@ -715,70 +715,74 @@ export function RequestWorkbenchDialog({
 
       {/* ── 2. Sticky Sub-Header with Segmented Control Mode Switcher ── */}
       <main className="flex-1 relative overflow-y-auto bg-surface flex flex-col font-sans">
-        <div className="px-4 sm:px-6 py-3 sm:py-3.5 flex flex-wrap items-center justify-between gap-3 sm:gap-4 z-10 sticky top-0 bg-surface/90 backdrop-blur-md border-b border-outline-variant/20 shrink-0">
-          <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-base sm:text-lg text-on-surface tracking-tight leading-none truncate">
-                {workbenchMode === 'devtools' ? 'DevTools & Controller Mapping' : 'Traffic Payload & Replay Garage'}
-              </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 uppercase font-bold shrink-0">
-                {activeTab.method}
-              </span>
+        <div className="px-4 sm:px-6 py-3 sm:py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 z-30 sticky top-0 bg-surface-container-low/95 backdrop-blur-xl border-b border-outline-variant/40 shadow-sm shrink-0">
+          <div className="flex items-center justify-between gap-3 min-w-0 flex-1">
+            <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-base sm:text-lg text-on-surface tracking-tight leading-none truncate">
+                  {workbenchMode === 'devtools' ? 'DevTools & Controller Mapping' : 'Traffic Payload & Replay Garage'}
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 uppercase font-bold shrink-0">
+                  {activeTab.method}
+                </span>
+              </div>
+              <p className="font-mono text-xs text-on-surface-variant m-0 p-0 flex items-center gap-1.5 truncate">
+                <span className="opacity-60 shrink-0">TARGET:</span>
+                <span className="text-emerald-400 font-bold truncate">{activeTab.path}</span>
+              </p>
             </div>
-            <p className="font-mono text-xs text-on-surface-variant m-0 p-0 flex items-center gap-1.5 truncate">
-              <span className="opacity-60 shrink-0">TARGET:</span>
-              <span className="text-emerald-400 font-bold truncate">{activeTab.path}</span>
-            </p>
           </div>
 
-          <div className="flex items-center gap-1 bg-surface-container-lowest p-1 rounded-xl border border-outline-variant/30 font-mono text-xs shadow-inner w-full sm:w-auto justify-center">
-            <button
-              onClick={() => setWorkbenchMode('devtools')}
-              className={`px-3 sm:px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 flex-1 sm:flex-initial justify-center ${workbenchMode === 'devtools' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
-                }`}
-            >
-              <span className="material-symbols-outlined text-[16px]">code_blocks</span>
-              <span>DevTools & Mapping</span>
-            </button>
-            <button
-              onClick={() => setWorkbenchMode('replay')}
-              className={`px-3 sm:px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 flex-1 sm:flex-initial justify-center ${workbenchMode === 'replay' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
-                }`}
-            >
-              <span className="material-symbols-outlined text-[16px]">science</span>
-              <span>Traffic & Replay</span>
-            </button>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 font-mono text-xs w-full sm:w-auto justify-between sm:justify-end">
-            <button
-              onClick={() => setExportModalOpen(true)}
-              className="h-8 px-3 flex items-center justify-center gap-1.5 bg-surface-container-high hover:bg-primary-container hover:text-on-primary-container text-on-surface border border-outline-variant/30 rounded-lg transition-colors font-medium cursor-pointer shadow-sm flex-1 sm:flex-initial"
-            >
-              <span className="material-symbols-outlined text-[15px]">code</span>
-              Export Code
-            </button>
-
-            {onSaveRequestToCollection && (
+          <div className="flex flex-wrap items-center gap-2.5 justify-between md:justify-end">
+            <div className="flex items-center gap-1 bg-surface-container-lowest p-1 rounded-xl border border-outline-variant/30 font-mono text-xs shadow-inner shrink-0">
               <button
-                onClick={() => {
-                  onSaveRequestToCollection(activeTab.draftRequest);
-                  showToast('Saved request template to Postman collection', 'success');
-                }}
-                className="h-8 px-3 flex items-center justify-center gap-1.5 bg-surface-container-high hover:bg-primary-container hover:text-on-primary-container text-on-surface border border-outline-variant/30 rounded-lg transition-colors font-medium cursor-pointer shadow-sm flex-1 sm:flex-initial"
+                onClick={() => setWorkbenchMode('devtools')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${workbenchMode === 'devtools' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
               >
-                <span className="material-symbols-outlined text-[15px] text-amber-400">bookmark</span>
-                Save to Collection
+                <span className="material-symbols-outlined text-[16px]">code_blocks</span>
+                <span>DevTools & Mapping</span>
               </button>
-            )}
+              <button
+                onClick={() => setWorkbenchMode('replay')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${workbenchMode === 'replay' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+              >
+                <span className="material-symbols-outlined text-[16px]">science</span>
+                <span>Traffic & Replay</span>
+              </button>
+            </div>
 
-            <button
-              onClick={() => openInBrowser(resolvedTargetUrl)}
-              className="h-8 px-3 flex items-center justify-center gap-1.5 bg-surface-container-high hover:bg-primary-container hover:text-on-primary-container text-on-surface border border-outline-variant/30 rounded-lg transition-colors font-medium cursor-pointer shadow-sm flex-1 sm:flex-initial"
-            >
-              <span className="material-symbols-outlined text-[15px]">open_in_browser</span>
-              Browser
-            </button>
+            <div className="flex items-center gap-2 font-mono text-xs shrink-0">
+              <button
+                onClick={() => setExportModalOpen(true)}
+                className="h-8 px-3 flex items-center justify-center gap-1.5 bg-surface-container-high hover:bg-primary-container hover:text-on-primary-container text-on-surface border border-outline-variant/30 rounded-lg transition-colors font-medium cursor-pointer shadow-sm"
+              >
+                <span className="material-symbols-outlined text-[15px]">code</span>
+                <span className="hidden sm:inline">Export Code</span>
+              </button>
+
+              {onSaveRequestToCollection && (
+                <button
+                  onClick={() => {
+                    onSaveRequestToCollection(activeTab.draftRequest);
+                    showToast('Saved request template to Postman collection', 'success');
+                  }}
+                  className="h-8 px-3 flex items-center justify-center gap-1.5 bg-surface-container-high hover:bg-primary-container hover:text-on-primary-container text-on-surface border border-outline-variant/30 rounded-lg transition-colors font-medium cursor-pointer shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-[15px] text-amber-400">bookmark</span>
+                  <span className="hidden sm:inline">Save</span>
+                </button>
+              )}
+
+              <button
+                onClick={() => openInBrowser(resolvedTargetUrl)}
+                className="h-8 px-3 flex items-center justify-center gap-1.5 bg-surface-container-high hover:bg-primary-container hover:text-on-primary-container text-on-surface border border-outline-variant/30 rounded-lg transition-colors font-medium cursor-pointer shadow-sm"
+              >
+                <span className="material-symbols-outlined text-[15px]">open_in_browser</span>
+                <span className="hidden sm:inline">Browser</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -836,7 +840,7 @@ export function RequestWorkbenchDialog({
               <div className="col-span-12 lg:col-span-8 flex flex-col gap-5">
                 {/* CARD 1: IDE INTEGRATION & LINE-ACCURATE JUMP */}
                 <div className="bg-surface-container rounded-xl p-4 sm:p-5 shadow-sm flex flex-col gap-4 relative overflow-hidden border border-outline-variant/30">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 z-10">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div className="w-10 h-10 rounded-lg bg-primary-container/20 flex items-center justify-center text-primary border border-primary/20 shadow-[0_0_15px_rgba(173,198,255,0.1)] shrink-0">
                         <span className="material-symbols-outlined text-[20px]">code_blocks</span>
@@ -878,7 +882,7 @@ export function RequestWorkbenchDialog({
                   </div>
 
                   {/* Project Root Link Bar */}
-                  <div className="bg-surface-container-lowest rounded-lg p-2.5 font-mono text-xs border border-outline-variant/20 flex flex-col gap-2 z-10">
+                  <div className="bg-surface-container-lowest rounded-lg p-2.5 font-mono text-xs border border-outline-variant/20 flex flex-col gap-2">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 text-on-surface-variant truncate">
                         <span className="material-symbols-outlined text-primary text-[16px]">folder</span>
@@ -956,7 +960,7 @@ export function RequestWorkbenchDialog({
                   </div>
 
                   {/* File Source Box with Line Number */}
-                  <div className="bg-surface-container-lowest rounded-lg p-3.5 font-mono text-xs text-on-surface flex items-center justify-between shadow-inner border border-outline-variant/20 z-10 gap-3">
+                  <div className="bg-surface-container-lowest rounded-lg p-3.5 font-mono text-xs text-on-surface flex items-center justify-between shadow-inner border border-outline-variant/20 gap-3">
                     <div className="flex items-center gap-2.5 truncate min-w-0">
                       <span className="material-symbols-outlined text-outline text-[18px] shrink-0">draft</span>
                       {inferredController ? (
@@ -1003,7 +1007,7 @@ export function RequestWorkbenchDialog({
                   </div>
 
                   {/* Metadata Handler & Middleware Grid */}
-                  <div className="grid grid-cols-2 gap-3 mt-1 z-10">
+                  <div className="grid grid-cols-2 gap-3 mt-1">
                     <div className="bg-surface-container-high rounded-lg p-3 flex flex-col gap-1 border border-outline-variant/20">
                       <span className="font-mono text-[9px] font-bold text-outline uppercase tracking-wider">HANDLER FUNCTION</span>
                       <span className="font-mono text-xs text-primary font-bold truncate">{handlerFunctionName}</span>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import type { Tunnel, RequestLog } from './SharedComponents';
 import { SignalBars } from './SharedComponents';
@@ -35,6 +35,11 @@ export function WelcomeView({
   const [tunnelLatencies, setTunnelLatencies] = useState<Record<string, number>>({});
   const [tick, setTick] = useState(0);
 
+  const isMac = useMemo(() => {
+    if (typeof navigator === 'undefined') return false;
+    return /Mac|iPod|iPhone|iPad/i.test(navigator.platform) || /Macintosh|Mac OS X/i.test(navigator.userAgent);
+  }, []);
+
   // Trigger re-render every second for real-time uptime tick
   useEffect(() => {
     const interval = setInterval(() => {
@@ -42,6 +47,28 @@ export function WelcomeView({
     }, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // Hotkey: Ctrl+Shift+X / Cmd+Shift+X to Stop All Active Tunnels
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'x' || e.key === 'X')) {
+        const target = e.target as HTMLElement;
+        if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
+          e.preventDefault();
+          if (activeTunnels.length > 0) {
+            if (onStopAllTunnels) {
+              onStopAllTunnels();
+            } else {
+              activeTunnels.forEach((t) => onStopTunnel(t));
+            }
+            showToast('Stopped all active tunnels', 'info');
+          }
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTunnels, onStopAllTunnels, onStopTunnel]);
 
   useEffect(() => {
     let active = true;
@@ -191,7 +218,7 @@ export function WelcomeView({
                     }
                   }}
                   className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-md border border-error/40 bg-error/10 hover:bg-error/20 text-error font-body-sm text-xs font-semibold transition-all cursor-pointer shadow-xs active:scale-95"
-                  title="Stop all active tunnel sessions"
+                  title={`Stop all active tunnel sessions (${isMac ? '⌘⇧X' : 'Ctrl+Shift+X'})`}
                 >
                   <span className="material-symbols-outlined text-[15px]" style={{ fontVariationSettings: "'FILL' 1" }}>
                     stop_circle

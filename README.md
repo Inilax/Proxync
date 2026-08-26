@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/Inilax/Proxync/releases"><img src="https://img.shields.io/badge/version-v0.2.1-blue?style=flat" alt="Version v0.2.1" /></a>&nbsp;
-  <a href="https://github.com/Inilax/Proxync"><img src="https://img.shields.io/badge/platform-Windows-lightgrey?style=flat" alt="Windows" /></a>&nbsp;
+  <!-- <a href="https://github.com/Inilax/Proxync"><img src="https://img.shields.io/badge/platform-Windows-lightgrey?style=flat" alt="Windows" /></a>&nbsp; -->
   <a href="https://github.com/Inilax/Proxync/stargazers"><img src="https://img.shields.io/github/stars/Inilax/Proxync?style=flat" alt="Stars" /></a>&nbsp;
   <a href="https://github.com/Inilax/Proxync/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Inilax/Proxync?style=flat" alt="License" /></a>&nbsp;
   <a href="https://github.com/Inilax/Proxync/issues"><img src="https://img.shields.io/github/issues-raw/Inilax/Proxync?style=flat" alt="Issues" /></a>&nbsp;
@@ -32,15 +32,15 @@ We got tired of switching between five tabs and apps just to test a single webho
 
 ### What you get
 
-- ⚡ **Native High-Speed Proxync Tunneling** — Ultra-low latency, zero-setup proprietary tunneling infrastructure built for high throughput and instantaneous connections alongside Cloudflare Tunnels and Localtunnel.
-- 🔄 **Resilient Standby Mode** — Server restarts (`Ctrl+C` or hot-reload) won't kill your tunnel. Proxync preserves your public URL in standby and automatically recovers the moment your local dev server boots back up.
-- 🔍 **Live Traffic Inspector & Intercepting TCP Proxy** — Real-time request and response logging with full header inspection, body formatting (JSON/XML/form-data), timing breakdown, and status codes.
-- 📄 **Auto-Generated OpenAPI / Swagger Docs** — Analyzes your live incoming and outgoing HTTP traffic to build OpenAPI 3.0 specifications on the fly — no manual YAML writing required.
-- 🚀 **Built-in API Workbench & Request Runner** — Test, tweak, and replay endpoints directly inside the app with full parameter editing, collection grouping, and native CORS-bypassing execution.
-- 🖥️ **Smart Process & Framework Discovery** — Automatically detects active dev servers (Next.js, Vite, Express, FastAPI, Django, Rails, Spring Boot, etc.) and open ports with 1-click sharing.
-- 📊 **Observability & Health Dashboard** — Monitor real-time traffic volume, latency metrics, environment health, and diagnostic support bundles.
-- 🌐 **Custom Domains** — Map your own domains directly to your local tunnels with DNS verification guidelines and instant status checks.
-- 🔒 **Local-First & Data Privacy** — Zero telemetry on request bodies. All logs, settings, and workspace profiles are stored strictly on your local machine.
+- **Native High-Speed Proxync Tunneling** — Ultra-low latency, zero-setup proprietary tunneling infrastructure built for high throughput and instantaneous connections alongside Cloudflare Tunnels and Localtunnel.
+- **Resilient Standby Mode** — Server restarts (`Ctrl+C` or hot-reload) won't kill your tunnel. Proxync preserves your public URL in standby and automatically recovers the moment your local dev server boots back up.
+- **Live Traffic Inspector & Intercepting TCP Proxy** — Real-time request and response logging with full header inspection, body formatting (JSON/XML/form-data), timing breakdown, and status codes.
+- **Auto-Generated OpenAPI / Swagger Docs** — Analyzes your live incoming and outgoing HTTP traffic to build OpenAPI 3.0 specifications on the fly — no manual YAML writing required.
+- **Built-in API Workbench & Request Runner** — Test, tweak, and replay endpoints directly inside the app with full parameter editing, collection grouping, and native CORS-bypassing execution.
+- **Smart Process & Framework Discovery** — Automatically detects active dev servers (Next.js, Vite, Express, FastAPI, Django, Rails, Spring Boot, etc.) and open ports with 1-click sharing.
+- **Observability & Health Dashboard** — Monitor real-time traffic volume, latency metrics, environment health, and diagnostic support bundles.
+- **Custom Domains** — Map your own domains directly to your local tunnels with DNS verification guidelines and instant status checks.
+- **Local-First & Data Privacy** — Zero telemetry on request bodies. All logs, settings, and workspace profiles are stored strictly on your local machine.
 
 ---
 
@@ -50,9 +50,9 @@ Proxync is engineered with [Tauri v2](https://v2.tauri.app/) and Rust for minima
 
 | Platform | Architecture | Binary / Package | State Storage Location | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| **Windows** | Windows 10 / 11 (`x64`) | `.msi`, NSIS Setup `.exe` | `%APPDATA%\Proxync\` (`AppData/Roaming/Proxync/`) | ✅ Supported |
-| **Linux** | Ubuntu, Debian, Fedora, Arch (`x64`) | `.deb`, `.AppImage` | `~/.config/Proxync/` | 🚧 Next Release |
-| **macOS** | Apple Silicon & Intel | `.dmg`, `.app` | `~/Library/Application Support/Proxync/` | 🚧 Next Release |
+| **Windows** | Windows 10 / 11 (`x64`) | `.msi`, NSIS Setup `.exe` | `%APPDATA%\Proxync\` (`AppData/Roaming/Proxync/`) | Supported |
+| **Linux** | Ubuntu, Debian, Fedora, Arch (`x64`) | `.deb`, `.AppImage` | `~/.config/Proxync/` | Planned (Next Release) |
+| **macOS** | Apple Silicon & Intel | `.dmg`, `.app` | `~/Library/Application Support/Proxync/` | Planned (Next Release) |
 
 ---
 
