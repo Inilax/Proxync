@@ -50,6 +50,7 @@ Thumbs.db
 *.tsbuildinfo
 next-env.d.ts
 
-# GStack local reports
-.gstack/
+# Agents workspace directory
+.agents/
+
 

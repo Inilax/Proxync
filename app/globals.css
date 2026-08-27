@@ -100,19 +100,24 @@
   --color-tertiary: #bd93f9;
 }
 
-.theme-cyberpunk {
-  --color-surface: #0a0114;
-  --color-surface-dim: #0a0114;
-  --color-surface-bright: #240d3a;
-  --color-surface-container: #140527;
-  --color-surface-container-low: #0e021c;
-  --color-surface-container-high: #200a36;
-  --color-surface-container-highest: #2b1147;
-  --color-surface-container-lowest: #06010b;
-  --color-primary: #ec4899;
-  --color-primary-container: #db2777;
-  --color-secondary: #a855f7;
-  --color-tertiary: #06b6d4;
+.theme-dark,
+.theme-obsidian {
+  --color-surface: #0d1117;
+  --color-surface-dim: #090d12;
+  --color-surface-bright: #21262d;
+  --color-surface-container: #161b22;
+  --color-surface-container-low: #0e131a;
+  --color-surface-container-high: #1c212a;
+  --color-surface-container-highest: #282f3c;
+  --color-surface-container-lowest: #070a0e;
+  --color-primary: #38bdf8;
+  --color-primary-container: #0284c7;
+  --color-secondary: #38bdf8;
+  --color-tertiary: #34d399;
+  --color-on-surface: #f0f6fc;
+  --color-on-surface-variant: #94a3b8;
+  --color-outline: #64748b;
+  --color-outline-variant: #334155;
 }
 
 .theme-emerald {

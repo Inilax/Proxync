@@ -144,10 +144,26 @@ export function FeaturesBento() {
             </Card>
           </Reveal>
 
+          <Reveal delay={0.12} className="lg:col-span-2">
+            <Card className="group flex h-full flex-col p-6 md:p-8">
+              <IconTile icon={Globe} tone="primary" />
+              <CardHeading>Resilient Standby Tunnels</CardHeading>
+              <CardCopy>
+                Server restarts (`Ctrl+C` or hot reload) won&apos;t kill your public URL. Proxync holds webhook URLs in standby with branded 502 fallbacks and instant auto-recovery.
+              </CardCopy>
+              <div className="mt-auto pt-6">
+                <div className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-2.5 font-mono text-[10px] space-y-1">
+                  <div className="text-primary font-bold">● Standby · URL Preserved</div>
+                  <div className="text-outline">Auto-Reconnects on server reboot</div>
+                </div>
+              </div>
+            </Card>
+          </Reveal>
+
           <Reveal delay={0.16} className="lg:col-span-2">
             <Card className="group flex h-full flex-col p-6 md:p-8">
               <IconTile icon={Bug} tone="secondary" />
-              <CardHeading>Pro Debugger & Dual-Stream Logs</CardHeading>
+              <CardHeading>Pro Debugger &amp; Dual-Stream Logs</CardHeading>
               <CardCopy>
                 Native Rust disk logging with structured AI diagnostic directives, automatic PII token redaction, and 1-click support bundle export.
               </CardCopy>

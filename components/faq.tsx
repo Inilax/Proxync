@@ -37,9 +37,19 @@ const faqs = [
       "Workbench allows you to stage multi-tab HTTP requests, send live replays against local endpoints with millisecond duration tracking, and view side-by-side visual diffs between original captured traffic and new responses. A native Tauri IPC command also allows 1-click jumping straight to the exact endpoint controller file and line number inside VS Code or Cursor (e.g. src/routes/users.ts:42).",
   },
   {
+    question: "What is Resilient Standby Mode and how does it protect webhook testing?",
+    answer:
+      "Unlike conventional tunnels that crash whenever you restart your local server (Ctrl+C), Proxync holds your public URL (e.g. px-xxxx.proxync.dev) in Standby. External webhooks from Stripe, GitHub, or Shopify receive a clean branded 502 Standby response while a 1000ms background health probe automatically restores full traffic the moment your local dev server boots back up.",
+  },
+  {
+    question: "How does the Workspace Command Palette (Ctrl+K) work?",
+    answer:
+      "Pressing Ctrl+K (or Cmd+K) brings up a global floating command palette allowing you to search across all active and saved workspaces, inspect active server processes, open ports, and switch workspaces in 1 click with automatic background tunnel lifecycle cleanup.",
+  },
+  {
     question: "Which platforms and installer versions are supported?",
     answer:
-      "A native Windows x64 installer (Proxync_0.2.1_x64-setup.exe) ships today via Tauri v2 with built-in version-aware auto-updates and High-DPI setup wizards. macOS and Linux support is currently in development.",
+      "A native Windows x64 installer (Proxync_0.2.1_x64-setup.exe) ships today via Tauri v2 with built-in version-aware auto-updates and High-DPI setup wizards. Linux (.deb, .AppImage) and macOS (.dmg) support is planned for the upcoming release.",
   },
 ];
 

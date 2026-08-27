@@ -74,7 +74,7 @@ export function Cta() {
             </div>
 
             <p className="mt-6 font-mono text-xs text-on-surface-muted">
-              Version {release.tagName} (Windows x64 setup) &middot; macOS &amp; Linux coming soon
+              Version {release.tagName} (Windows x64 setup) &middot; Linux &amp; macOS coming soon
             </p>
 
             <div className="mt-10 flex flex-wrap items-center justify-center gap-2">

@@ -1,7 +1,6 @@
 import {
   Activity,
   BarChart3,
-  BookOpen,
   Code2,
   Compass,
   Globe,
@@ -35,7 +34,6 @@ export const NAV_CATEGORIES = [
     category: "OBSERVABILITY & TOOLS",
     items: [
       { view: "observability", label: "Observability", icon: BarChart3 },
-      { view: "docs", label: "Docs", icon: BookOpen },
       { view: "settings", label: "Settings", icon: Settings },
     ],
   },
@@ -50,10 +48,9 @@ export type ViewId =
   | "workbench"
   | "swagger"
   | "observability"
-  | "docs"
   | "settings";
 
-export type ThemeId = "slate" | "dracula" | "cyberpunk" | "emerald";
+export type ThemeId = "slate" | "dracula" | "dark" | "emerald";
 
 export interface Process {
   name: string;
