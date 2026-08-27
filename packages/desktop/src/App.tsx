@@ -2433,7 +2433,7 @@ export default function App() {
     <div className={`app-frame flex flex-col h-screen w-screen overflow-hidden bg-surface theme-${appSettings.theme ?? 'dark'}`}>
       {/* ── Top Header Bar (48px) ── */}
       <header
-        className="app-titlebar h-[48px] min-h-[48px] w-full flex items-center border-b border-outline-variant bg-surface px-2 sm:px-4 justify-between select-none z-50 cursor-default"
+        className="app-titlebar h-[48px] min-h-[48px] w-full flex items-center border-b border-outline-variant bg-surface pl-2 sm:pl-4 pr-0 justify-between select-none z-50 cursor-default"
         onMouseDown={(e) => {
           const target = e.target as HTMLElement;
           if (
@@ -2684,7 +2684,7 @@ export default function App() {
             )}
           </div>
         </div>
-        <div className="window-controls flex items-center h-full">
+        <div className="window-controls flex items-center h-full shrink-0">
           <button
             onClick={(e) => {
               e.stopPropagation();

@@ -2,6 +2,17 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/nsis-bundling-titlebar-alignment] - 2026-08-27 (Tauri v2 Native NSIS Uninstaller Icon, Makensis Build Fix & Responsive Titlebar Edge Alignment)
+- **Feature Summary**:
+  - **Tauri v2 Native NSIS Uninstaller Config (`tauri.conf.json`, `hooks.nsh`)**: Migrated uninstaller branding from fragile raw script hooks (`hooks.nsh`) to native Tauri v2 `uninstallerIcon: "icons/icon.ico"` in `tauri.conf.json`. Resolves `makensis` compilation failure (`Error while loading icon from "icons\icon.ico": can't open file`) caused by relative path evaluation in temporary NSIS release directories.
+  - **Clean Titlebar Flush Alignment (`App.tsx`, `index.css`)**: Removed brittle negative margin overrides (`margin-right: -16px` / `-24px`) in favor of clean header padding (`pl-2 sm:pl-4 pr-0`) and explicit `h-full` / `shrink-0` on `.window-controls`. Ensures the close button and window controls are pixel-perfect and flush with the top-right corner across all viewport sizes (small screens, standard desktop, and fullscreen).
+- **Modified Files**:
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/src-tauri/hooks.nsh` (deleted)
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/index.css`
+  - `CHANGELOG.md`
+
 ## [fix/theme-titlebar-docs-polish] - 2026-08-27 (Precision Windows Titlebar, Theme Scoping, Cyberpunk Purge, Docs Manual Overhaul & IPC Hardening)
 - **Feature Summary**:
   - **Precision Windows Titlebar Controls (`App.tsx`, `index.css`)**: Replaced glyph-font titlebar symbols with native 10px SVG vector controls (line minimize, single square maximize, overlapping dual-square restore, and diagonal cross close). Added live `isMaximized` tracking with 100ms debouncing, responsive right-edge flush cancellation (`margin-right: -24px` on `sm:` desktop), and native `#e81123` close hover styling.
