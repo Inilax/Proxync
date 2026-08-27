@@ -10,6 +10,8 @@
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",
     "core:window:allow-start-dragging",
-    "autostart:default"
+    "autostart:default",
+    "updater:default",
+    "process:default"
   ]
 }

@@ -65,3 +65,9 @@ src-tauri/gen/schemas/
 
 # Antigravity Assistant metadata
 .agents/
+
+# Gstack reports and metadata
+.gstack/
+
+# Sanity testing sheets & artifacts
+sanity/

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Proxync",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "identifier": "com.proxync.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -19,15 +19,16 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https: blob:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' ws: wss: http: https: ipc:;"
     }
   },
   "bundle": {
     "active": true,
     "publisher": "Inilax",
     "copyright": "Copyright © 2026 Inilax",
+    "licenseFile": "LICENSE",
     "shortDescription": "Developer Tunneling Workspace Studio",
-    "longDescription": "Proxync — Developer Tunneling Workspace Studio",
+    "longDescription": "Proxync — Instant Local-First Tunneling, API Inspection & Developer Workspace Studio",
     "targets": [
       "nsis",
       "msi"
@@ -43,7 +44,8 @@
       "nsis": {
         "installerIcon": "icons/icon.ico",
         "headerImage": "icons/nsis-header.bmp",
-        "sidebarImage": "icons/nsis-sidebar.bmp"
+        "sidebarImage": "icons/nsis-sidebar.bmp",
+        "installerHooks": "hooks.nsh"
       }
     }
   },

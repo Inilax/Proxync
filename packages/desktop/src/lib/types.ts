@@ -1,11 +1,13 @@
 export type MainView =
   | 'lobby'
   | 'welcome'
+  | 'workspace_dashboard'
   | 'process'
   | 'traffic'
   | 'postman'
   | 'swagger'
   | 'observability'
+  | 'workbench'
   | 'docs'
   | 'settings';
 
@@ -31,7 +33,7 @@ export interface Tunnel {
   id: string;
   publicUrl: string;
   localPort: number;
-  status: string;
+  status: 'ACTIVE' | 'STANDBY' | 'CLOSED' | string;
   subdomain?: string;
   createdAt?: string;
 }
@@ -46,6 +48,14 @@ export interface RequestLog {
   bodyPreview?: string;
   responseHeaders?: Record<string, string>;
   capturedAt?: string;
+  workspaceId?: string;
+  workspaceName?: string;
+  port?: number;
+  serverName?: string;
+  tunnelUrl?: string;
+  subdomain?: string;
+  tunnelId?: string;
+  isProbe?: boolean;
 }
 
 export interface SavedRequest {
@@ -124,5 +134,56 @@ export interface AppSettings {
   autoUpdate: boolean;
   telemetry?: 'enhanced' | 'basic';
   enableDevTools?: boolean;
+  debugLogging?: boolean;
+  appLogging?: boolean;
+  trafficLogging?: boolean;
 }
+
+export interface AppLogEntry {
+  seq: number;
+  timestamp: string;
+  level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG';
+  source: 'SYSTEM' | 'RECON' | 'TUNNEL' | 'PROXY' | 'HTTP' | 'SCANNER' | 'UPDATER';
+  message: string;
+  details?: string;
+}
+
+export interface LogsSummary {
+  logs_dir: string;
+  app_log_bytes: number;
+  traffic_log_bytes: number;
+  app_log_lines: number;
+  traffic_log_lines: number;
+}
+
+export interface ExecutionRun {
+  id: string;
+  runIndex: number;
+  timestamp: string;
+  status: number;
+  durationMs: number;
+  headers: Record<string, string>;
+  body: string;
+  note?: string;
+}
+
+export interface WorkbenchTab {
+  id: string;
+  title: string;
+  method: string;
+  path: string;
+  requestLog?: RequestLog;
+  draftRequest: SavedRequest;
+  activeSubTab: 'replay' | 'traffic' | 'telemetry' | 'swagger' | 'devtools';
+  executionHistory: ExecutionRun[];
+  lastResponse?: PostmanResponse | null;
+  bypassCache?: boolean;
+  authSyncedState?: 'unsynced' | 'synced';
+  queryParams?: { key: string; value: string; enabled: boolean }[];
+  targetEnvironment?: 'local' | 'tunnel' | 'custom';
+  customTargetUrl?: string;
+  bearerToken?: string;
+}
+
+
 
