@@ -69,17 +69,10 @@ jobs:
 
       - name: Determine new version
         id: version
-        env:
-          INPUT_VERSION: ${{ github.event.inputs.version }}
         shell: bash
         run: |
-          if [[ -n "$INPUT_VERSION" ]]; then
-            # Validate version string format to prevent command injection
-            if ! [[ "$INPUT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
-              echo "Error: Invalid semantic version format: $INPUT_VERSION"
-              exit 1
-            fi
-            NEW_VERSION="$INPUT_VERSION"
+          if [[ -n "${{ github.event.inputs.version }}" ]]; then
+            NEW_VERSION="${{ github.event.inputs.version }}"
           else
             LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1 || true)
             [[ -z "$LAST_TAG" ]] && LAST_TAG="v0.0.0"
@@ -91,10 +84,10 @@ jobs:
           echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Bump version in project files
-        env:
-          NEW_VERSION: ${{ steps.version.outputs.version }}
         shell: bash
         run: |
+          NEW_VERSION="${{ steps.version.outputs.version }}"
+
           (cd "${PKG_DIR}" && npm version "$NEW_VERSION" --no-git-tag-version --allow-same-version)
 
           node - "$NEW_VERSION" "$PKG_DIR" <<'EOF'
@@ -109,16 +102,8 @@ jobs:
           fs.writeFileSync(p, JSON.stringify(c, null, 2) + '\n');
           EOF
 
-          node - "$NEW_VERSION" "$PKG_DIR" <<'EOF'
-          const fs = require('fs');
-          const path = require('path');
-          const v = process.argv[2];
-          const pkgDir = process.argv[3];
-          const cargoPath = path.join(pkgDir, 'src-tauri', 'Cargo.toml');
-          let cargo = fs.readFileSync(cargoPath, 'utf8');
-          cargo = cargo.replace(/^version = ".*"/m, `version = "${v}"`);
-          fs.writeFileSync(cargoPath, cargo);
-          EOF
+          sed -i.bak -E "0,/^version = \".*\"/s//version = \"${NEW_VERSION}\"/" "${PKG_DIR}/src-tauri/Cargo.toml"
+          rm -f "${PKG_DIR}/src-tauri/Cargo.toml.bak"
 
       - name: Open release pull request into main
         uses: peter-evans/create-pull-request@v6

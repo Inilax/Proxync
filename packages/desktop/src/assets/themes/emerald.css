@@ -31,13 +31,4 @@
   --color-tertiary-fixed-dim: #22d3ee;
   --color-on-tertiary: #0891b2;
   --color-on-tertiary-container: #ffffff;
-
-  --color-on-surface: #ecfdf5;
-  --color-on-surface-variant: #6ee7b7;
-  --color-on-background: #ecfdf5;
-  --color-background: #031411;
-  --color-outline: #059669;
-  --color-outline-variant: #047857;
-  --color-inverse-surface: #ecfdf5;
-  --color-inverse-on-surface: #064e3b;
 }

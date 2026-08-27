@@ -1,15 +1,8 @@
 import { useState, useEffect } from 'react';
 import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
-import type { WorkspaceConfig, AppSettings, DomainRecord, Guardrails, Tunnel, ProcessCandidate } from './SharedComponents';
+import type { WorkspaceConfig, AppSettings, DomainRecord, Guardrails } from './SharedComponents';
 import { showToast } from '../../lib/toast';
 import { ConfirmPurgeDialog } from './Dialogs';
-import {
-  readLogsSummary,
-  openLogsFolder,
-  clearLogs,
-  exportSupportBundle,
-  type LogsSummary,
-} from '../../lib/logger';
 
 export function SettingsView({
   workspace,
@@ -19,9 +12,6 @@ export function SettingsView({
   loadingDomains,
   busyDomainId,
   scanningProject,
-  activeTunnel,
-  processes = [],
-  tunnels = [],
   onUpdateGuardrails,
   onUpdateAppNotes,
   onUpdateProjectRootPath,
@@ -34,8 +24,6 @@ export function SettingsView({
   onUpdateAutoUpdate,
   onUpdateTelemetry,
   onUpdateEnableDevTools,
-  onUpdateAppLogging,
-  onUpdateTrafficLogging,
   initialSection = 'general',
 }: {
   workspace: WorkspaceConfig | null;
@@ -45,9 +33,6 @@ export function SettingsView({
   loadingDomains: boolean;
   busyDomainId: string | null;
   scanningProject: boolean;
-  activeTunnel?: Tunnel | null;
-  processes?: ProcessCandidate[];
-  tunnels?: Tunnel[];
   onUpdateGuardrails: (patch: Partial<Guardrails>) => void;
   onUpdateAppNotes: (notes: string) => void;
   onUpdateProjectRootPath: (projectRootPath: string) => void;
@@ -60,23 +45,14 @@ export function SettingsView({
   onUpdateAutoUpdate: (enabled: boolean) => void;
   onUpdateTelemetry?: (telemetry: 'enhanced' | 'basic') => void;
   onUpdateEnableDevTools?: (enabled: boolean) => void;
-  onUpdateAppLogging?: (enabled: boolean) => void;
-  onUpdateTrafficLogging?: (enabled: boolean) => void;
   initialSection?: 'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger';
 }) {
   const [activeSection, setActiveSection] = useState<'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger'>(initialSection);
   const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
-  const [logsSummary, setLogsSummary] = useState<LogsSummary | null>(null);
 
   useEffect(() => {
     setActiveSection(initialSection);
   }, [initialSection]);
-
-  useEffect(() => {
-    if (activeSection === 'danger') {
-      readLogsSummary().then(setLogsSummary).catch(() => {});
-    }
-  }, [activeSection, appSettings.debugLogging]);
 
   const [autostart, setAutostart] = useState(false);
 
@@ -128,25 +104,25 @@ export function SettingsView({
   };
 
   return (
-    <div className="w-full max-w-5xl mx-auto space-y-6 sm:space-y-8 fade-in select-none">
+    <div className="max-w-5xl mx-auto space-y-8 fade-in select-none">
       {/* Header Section */}
-      <div className="flex items-center justify-between border-b border-outline-variant/30 pb-6">
+      <div className="flex items-center justify-between mb-8 border-b border-outline-variant/30 pb-6">
         <div>
           <h1 className="font-display-sm text-display-sm text-on-surface">Settings</h1>
-          <p className="text-on-surface-variant font-body-md mt-1 text-xs sm:text-sm">Manage your engine configuration and security credentials.</p>
+          <p className="text-on-surface-variant font-body-md mt-1">Manage your engine configuration and security credentials.</p>
         </div>
 
       </div>
 
       {/* Settings Grid Layout */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 md:gap-8">
-        {/* Settings Tab Sidebar / Horizontal Pills on Compact Screens */}
-        <div className="flex flex-row overflow-x-auto gap-1.5 p-1 bg-surface-container-low rounded-xl border border-outline-variant/30 md:border-none md:bg-transparent md:flex-col md:p-0 md:col-span-1 shrink-0">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+        {/* Settings Tab Sidebar */}
+        <div className="flex flex-col gap-1 md:col-span-1">
           <button
             onClick={() => setActiveSection('general')}
-            className={`text-left px-3.5 py-2 md:py-2.5 rounded-lg font-label-md text-xs md:text-sm cursor-pointer transition-all whitespace-nowrap shrink-0 ${
+            className={`text-left px-3 py-2.5 rounded font-label-md text-label-md cursor-pointer transition-all ${
               activeSection === 'general'
-                ? 'bg-surface-container-high text-primary md:border-l-2 md:border-primary font-semibold'
+                ? 'bg-surface-container-high text-primary border-l-2 border-primary'
                 : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
             }`}
           >
@@ -154,9 +130,9 @@ export function SettingsView({
           </button>
           <button
             onClick={() => setActiveSection('networking')}
-            className={`text-left px-3.5 py-2 md:py-2.5 rounded-lg font-label-md text-xs md:text-sm cursor-pointer transition-all whitespace-nowrap shrink-0 ${
+            className={`text-left px-3 py-2.5 rounded font-label-md text-label-md cursor-pointer transition-all ${
               activeSection === 'networking'
-                ? 'bg-surface-container-high text-primary md:border-l-2 md:border-primary font-semibold'
+                ? 'bg-surface-container-high text-primary border-l-2 border-primary'
                 : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
             }`}
           >
@@ -164,9 +140,9 @@ export function SettingsView({
           </button>
           <button
             onClick={() => setActiveSection('account')}
-            className={`text-left px-3.5 py-2 md:py-2.5 rounded-lg font-label-md text-xs md:text-sm cursor-pointer transition-all whitespace-nowrap shrink-0 ${
+            className={`text-left px-3 py-2.5 rounded font-label-md text-label-md cursor-pointer transition-all ${
               activeSection === 'account'
-                ? 'bg-surface-container-high text-primary md:border-l-2 md:border-primary font-semibold'
+                ? 'bg-surface-container-high text-primary border-l-2 border-primary'
                 : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
             }`}
           >
@@ -174,9 +150,9 @@ export function SettingsView({
           </button>
           <button
             onClick={() => setActiveSection('security')}
-            className={`text-left px-3.5 py-2 md:py-2.5 rounded-lg font-label-md text-xs md:text-sm cursor-pointer transition-all whitespace-nowrap shrink-0 ${
+            className={`text-left px-3 py-2.5 rounded font-label-md text-label-md cursor-pointer transition-all ${
               activeSection === 'security'
-                ? 'bg-surface-container-high text-primary md:border-l-2 md:border-primary font-semibold'
+                ? 'bg-surface-container-high text-primary border-l-2 border-primary'
                 : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
             }`}
           >
@@ -184,9 +160,9 @@ export function SettingsView({
           </button>
           <button
             onClick={() => setActiveSection('domains')}
-            className={`text-left px-3.5 py-2 md:py-2.5 rounded-lg font-label-md text-xs md:text-sm cursor-pointer transition-all whitespace-nowrap shrink-0 ${
+            className={`text-left px-3 py-2.5 rounded font-label-md text-label-md cursor-pointer transition-all ${
               activeSection === 'domains'
-                ? 'bg-surface-container-high text-primary md:border-l-2 md:border-primary font-semibold'
+                ? 'bg-surface-container-high text-primary border-l-2 border-primary'
                 : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
             }`}
           >
@@ -194,9 +170,9 @@ export function SettingsView({
           </button>
           <button
             onClick={() => setActiveSection('danger')}
-            className={`text-left px-3.5 py-2 md:py-2.5 rounded-lg font-label-md text-xs md:text-sm cursor-pointer transition-all whitespace-nowrap shrink-0 ${
+            className={`text-left px-3 py-2.5 rounded font-label-md text-label-md cursor-pointer transition-all ${
               activeSection === 'danger'
-                ? 'bg-surface-container-high text-error md:border-l-2 md:border-error font-semibold'
+                ? 'bg-surface-container-high text-error border-l-2 border-error'
                 : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
             }`}
           >
@@ -303,9 +279,9 @@ export function SettingsView({
                 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-2">
                   {[
-                    { id: 'dark', name: 'Obsidian Dark', colors: ['bg-[#0d1117]', 'bg-[#38bdf8]', 'bg-[#0284c7]'] },
                     { id: 'slate', name: 'Midnight Slate', colors: ['bg-[#0b1326]', 'bg-[#c0c1ff]', 'bg-[#89ceff]'] },
                     { id: 'emerald', name: 'Deep Emerald', colors: ['bg-[#031411]', 'bg-[#10b981]', 'bg-[#34d399]'] },
+                    { id: 'cyberpunk', name: 'Cyberpunk Void', colors: ['bg-[#0a0114]', 'bg-[#ec4899]', 'bg-[#a855f7]'] },
                     { id: 'dracula', name: 'Dracula Dark', colors: ['bg-[#1e1f29]', 'bg-[#ff79c6]', 'bg-[#8be9fd]'] },
                   ].map((theme) => {
                     const isSelected = (appSettings.theme ?? 'slate') === theme.id;
@@ -784,191 +760,6 @@ export function SettingsView({
                 </label>
               </div>
 
-              <div className="p-5 bg-surface-container border border-outline-variant/30 rounded-xl space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-primary text-[20px]">bug_report</span>
-                    <h3 className="font-body-lg text-body-lg text-on-surface font-semibold">Pro Debugger & Dual-Stream Logging</h3>
-                    <span
-                      className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
-                        appSettings.appLogging !== false || appSettings.trafficLogging
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-                          : 'bg-surface-container-high text-on-surface-variant border border-outline-variant/30'
-                      }`}
-                    >
-                      {appSettings.appLogging !== false || appSettings.trafficLogging ? 'DISK LOGGING ACTIVE' : 'LOGGING PAUSED'}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Stream Controls Grid: App Logs (Default ON) & Traffic Logs (Default OFF) */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  {/* Stream 1: Application Logs */}
-                  <div className="p-4 bg-surface-container-low border border-outline-variant/30 rounded-xl space-y-3 flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="material-symbols-outlined text-cyan-400 text-[18px]">description</span>
-                          <span className="text-xs font-bold text-on-surface">Application Diagnostics</span>
-                        </div>
-                        <label className="toggle-switch">
-                          <input
-                            type="checkbox"
-                            checked={appSettings.appLogging !== false}
-                            onChange={(e) => {
-                              if (onUpdateAppLogging) onUpdateAppLogging(e.target.checked);
-                            }}
-                          />
-                          <span className="toggle-slider" />
-                        </label>
-                      </div>
-                      <p className="text-[11px] text-on-surface-variant mt-1.5 leading-relaxed min-h-[34px]">
-                        Engine lifecycle, recon port scans, proxy binds, tunnel spawn/close, and subprocess crashes.
-                      </p>
-                    </div>
-                    <div className="flex items-center justify-between pt-2.5 border-t border-outline-variant/20">
-                      <span
-                        className={`text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
-                          appSettings.appLogging !== false
-                            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                            : 'bg-surface-container-high text-outline border border-outline-variant/30'
-                        }`}
-                      >
-                        {appSettings.appLogging !== false ? '● Enabled (Default)' : '○ Disabled'}
-                      </span>
-                      <span className="text-[11px] font-mono text-on-surface font-semibold">
-                        app.log: {logsSummary ? formatBytes(logsSummary.app_log_bytes) : '0 B'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Stream 2: Traffic Logs */}
-                  <div className="p-4 bg-surface-container-low border border-outline-variant/30 rounded-xl space-y-3 flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="material-symbols-outlined text-amber-400 text-[18px]">swap_horiz</span>
-                          <span className="text-xs font-bold text-on-surface">Traffic Stream & Payloads</span>
-                        </div>
-                        <label className="toggle-switch">
-                          <input
-                            type="checkbox"
-                            checked={!!appSettings.trafficLogging}
-                            onChange={(e) => {
-                              if (onUpdateTrafficLogging) onUpdateTrafficLogging(e.target.checked);
-                            }}
-                          />
-                          <span className="toggle-slider" />
-                        </label>
-                      </div>
-                      <p className="text-[11px] text-on-surface-variant mt-1.5 leading-relaxed min-h-[34px]">
-                        Full HTTP request/response payloads, headers, latency measurements, and tunnel interception.
-                      </p>
-                    </div>
-                    <div className="flex items-center justify-between pt-2.5 border-t border-outline-variant/20">
-                      <span
-                        className={`text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
-                          appSettings.trafficLogging
-                            ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                            : 'bg-surface-container-high text-outline border border-outline-variant/30'
-                        }`}
-                      >
-                        {appSettings.trafficLogging ? '● Active • Recording' : '○ Disabled (Default)'}
-                      </span>
-                      <span className="text-[11px] font-mono text-on-surface font-semibold">
-                        traffic.log: {logsSummary ? formatBytes(logsSummary.traffic_log_bytes) : '0 B'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Local Storage Information */}
-                <div className="p-3 bg-surface-container-low border border-outline-variant/30 rounded-xl flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                    <span className="material-symbols-outlined text-outline text-[18px] shrink-0">folder_open</span>
-                    <span className="text-[11px] font-mono text-on-surface-variant truncate select-all px-2 py-1 bg-surface-container/60 border border-outline-variant/20 rounded-md flex-1" title={logsSummary?.logs_dir}>
-                      {logsSummary?.logs_dir || 'Loading logs directory...'}
-                    </span>
-                  </div>
-                  <button
-                    className="btn-secondary compact text-xs flex items-center gap-1.5 cursor-pointer shrink-0 py-1.5 px-3"
-                    onClick={() => {
-                      if (logsSummary?.logs_dir) {
-                        navigator.clipboard.writeText(logsSummary.logs_dir);
-                        showToast('Logs folder path copied to clipboard', 'success');
-                      }
-                    }}
-                    title="Copy logs folder path"
-                  >
-                    <span className="material-symbols-outlined text-[14px]">content_copy</span>
-                    Copy Path
-                  </button>
-                </div>
-
-                {/* 1-Click Action Buttons */}
-                <div className="flex flex-wrap items-center justify-between gap-2.5 pt-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      className="btn-secondary compact text-xs flex items-center gap-1.5 cursor-pointer py-1.5 px-3"
-                      onClick={() => {
-                        void openLogsFolder();
-                        showToast('Opening logs directory...', 'info');
-                      }}
-                    >
-                      <span className="material-symbols-outlined text-[15px]">folder_open</span>
-                      Open Logs Folder
-                    </button>
-
-                    <button
-                      className="btn-primary compact text-xs flex items-center gap-1.5 cursor-pointer py-1.5 px-3.5"
-                      onClick={async () => {
-                        const res = await exportSupportBundle({
-                          settings: appSettings,
-                          activeWorkspace: workspace,
-                          activeTunnel,
-                          activeTunnels: tunnels.filter((t) => t.status === 'ACTIVE').map((t) => ({
-                            id: t.id,
-                            publicUrl: t.publicUrl,
-                            localPort: t.localPort,
-                            subdomain: t.subdomain,
-                            status: t.status,
-                          })),
-                          discoveredProcesses: processes.map((p) => ({
-                            name: p.name,
-                            port: p.port,
-                            command: p.command,
-                            framework: p.framework,
-                            directory: p.directory,
-                            executable: p.executable,
-                          })),
-                        });
-                        if (res.success && res.path) {
-                          showToast(`Support diagnostic bundle saved to: ${res.path}`, 'success');
-                        } else if (!res.cancelled) {
-                          showToast('Support diagnostic bundle exported', 'info');
-                        }
-                      }}
-                    >
-                      <span className="material-symbols-outlined text-[15px]">archive</span>
-                      Export Support Bundle
-                    </button>
-                  </div>
-
-                  <button
-                    className="btn-danger compact text-xs flex items-center gap-1.5 cursor-pointer py-1.5 px-3"
-                    onClick={async () => {
-                      await clearLogs();
-                      const updated = await readLogsSummary();
-                      setLogsSummary(updated);
-                      showToast('App and traffic logs cleared', 'info');
-                    }}
-                  >
-                    <span className="material-symbols-outlined text-[15px]">delete_sweep</span>
-                    Clear Disk Logs
-                  </button>
-                </div>
-              </div>
-
               <div className="p-5 bg-error/5 border border-error/20 rounded-xl flex items-center justify-between gap-4">
                 <div>
                   <h3 className="font-body-lg text-body-lg text-error font-semibold">Purge Engine Data</h3>
@@ -989,12 +780,7 @@ export function SettingsView({
       {showPurgeConfirm && (
         <ConfirmPurgeDialog
           onClose={() => setShowPurgeConfirm(false)}
-          onConfirm={async () => {
-            try {
-              await clearLogs();
-            } catch (err) {
-              console.error('Failed to clear logs on purge:', err);
-            }
+          onConfirm={() => {
             localStorage.clear();
             window.location.reload();
           }}
@@ -1002,12 +788,4 @@ export function SettingsView({
       )}
     </div>
   );
-}
-
-function formatBytes(bytes: number): string {
-  if (!bytes || bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
