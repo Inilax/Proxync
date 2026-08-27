@@ -78,7 +78,7 @@ const DEFAULT_REQUEST: SavedRequest = {
 const DEFAULT_APP_SETTINGS: AppSettings = {
   guardrails: { ...DEFAULT_GUARDRAILS },
   defaultProjectRootPath: '', notes: '',
-  theme: 'slate',
+  theme: 'dark',
   autoUpdate: true,
   telemetry: 'enhanced',
   enableDevTools: false,
@@ -120,7 +120,6 @@ const NAV_CATEGORIES: {
       category: 'OBSERVABILITY & TOOLS',
       items: [
         { view: 'observability', label: 'Observability', icon: 'insights' },
-        { view: 'docs', label: 'Docs', icon: 'menu_book' },
         { view: 'settings', label: 'Settings', icon: 'settings' },
       ],
     },
@@ -162,12 +161,67 @@ function mergeUniqueRequests(existing: RequestLog[], incoming: RequestLog[]): Re
 }
 
 export default function App() {
+  const [isMaximized, setIsMaximized] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchSelectedIndex, setSearchSelectedIndex] = useState(0);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const checkMax = async () => {
+      try {
+        const max = await getCurrentWindow().isMaximized();
+        if (mounted) setIsMaximized(max);
+      } catch {
+        // ignore non-tauri environments
+      }
+    };
+    void checkMax();
+
+    const unlistenPromise = getCurrentWindow().onResized(() => {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        void checkMax();
+      }, 100);
+    });
+
+    return () => {
+      mounted = false;
+      if (resizeTimer) clearTimeout(resizeTimer);
+      unlistenPromise.then((unlisten) => unlisten()).catch(() => {});
+    };
+  }, []);
+
+  const handleMinimize = useCallback(() => {
+    try {
+      void getCurrentWindow().minimize().catch(() => {});
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const handleToggleMaximize = useCallback(async () => {
+    try {
+      await getCurrentWindow().toggleMaximize();
+      const max = await getCurrentWindow().isMaximized();
+      setIsMaximized(max);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const handleClose = useCallback(() => {
+    try {
+      void getCurrentWindow().close().catch(() => {});
+    } catch {
+      // ignore
+    }
+  }, []);
 
   useEffect(() => {
     setSearchSelectedIndex(0);
@@ -1045,13 +1099,19 @@ export default function App() {
   }, [appSettings]);
 
   useEffect(() => {
-    const theme = appSettings.theme ?? 'slate';
+    const theme = appSettings.theme ?? 'dark';
     document.body.classList.forEach((cls) => {
       if (cls.startsWith('theme-')) {
         document.body.classList.remove(cls);
       }
     });
     document.body.classList.add(`theme-${theme}`);
+    document.documentElement.classList.forEach((cls) => {
+      if (cls.startsWith('theme-')) {
+        document.documentElement.classList.remove(cls);
+      }
+    });
+    document.documentElement.classList.add(`theme-${theme}`);
   }, [appSettings.theme]);
 
   useEffect(() => {
@@ -2370,7 +2430,7 @@ export default function App() {
     ?? (mainView === 'process' ? 'Process' : mainView === 'postman' ? 'Playground' : mainView === 'observability' ? 'Observability' : 'Proxync');
 
   return (
-    <div className="app-frame flex flex-col h-screen w-screen overflow-hidden bg-surface">
+    <div className={`app-frame flex flex-col h-screen w-screen overflow-hidden bg-surface theme-${appSettings.theme ?? 'dark'}`}>
       {/* ── Top Header Bar (48px) ── */}
       <header
         className="app-titlebar h-[48px] min-h-[48px] w-full flex items-center border-b border-outline-variant bg-surface px-2 sm:px-4 justify-between select-none z-50 cursor-default"
@@ -2418,15 +2478,15 @@ export default function App() {
                 setSearchOpen(true);
                 searchInputRef.current?.focus();
               }}
-              className="app-search flex items-center bg-surface-container-low px-2.5 py-1 rounded border border-outline-variant w-28 sm:w-44 md:w-56 lg:w-64 transition-all cursor-text group hover:border-primary/50"
+              className="app-search flex items-center bg-surface-container px-3 py-1.5 rounded-lg border border-outline-variant/80 w-32 sm:w-48 md:w-60 lg:w-72 transition-all cursor-text group hover:border-primary/70 hover:bg-surface-container-high shadow-sm"
               title="Search workspaces (Ctrl+K)"
             >
-              <span className="material-symbols-outlined text-outline text-[18px] mr-1.5 shrink-0 group-hover:text-primary transition-colors">search</span>
+              <span className="material-symbols-outlined text-on-surface-variant text-[18px] mr-1.5 shrink-0 group-hover:text-primary transition-colors">search</span>
               <input
                 ref={searchInputRef}
                 type="text"
                 placeholder="Search workspaces..."
-                className="bg-transparent border-none focus:ring-0 focus:outline-none text-body-md w-full placeholder:text-outline text-on-surface text-xs"
+                className="bg-transparent border-none focus:ring-0 focus:outline-none text-body-md w-full placeholder:text-on-surface-variant/70 text-on-surface text-xs font-medium"
                 value={searchQuery}
                 onFocus={() => setSearchOpen(true)}
                 onChange={(e) => {
@@ -2629,37 +2689,50 @@ export default function App() {
             onClick={(e) => {
               e.stopPropagation();
               e.preventDefault();
-              void getCurrentWindow().minimize();
+              handleMinimize();
             }}
             className="window-control window-control-hover text-on-surface-variant hover:text-on-surface cursor-pointer"
             title="Minimize"
             aria-label="Minimize"
           >
-            <span className="material-symbols-outlined text-[12px]">remove</span>
+            <svg width="10" height="1" viewBox="0 0 10 1" fill="currentColor">
+              <rect width="10" height="1" />
+            </svg>
           </button>
           <button
             onClick={(e) => {
               e.stopPropagation();
               e.preventDefault();
-              void getCurrentWindow().toggleMaximize();
+              void handleToggleMaximize();
             }}
             className="window-control window-control-hover text-on-surface-variant hover:text-on-surface cursor-pointer"
-            title="Maximize"
-            aria-label="Maximize"
+            title={isMaximized ? "Restore" : "Maximize"}
+            aria-label={isMaximized ? "Restore" : "Maximize"}
           >
-            <span className="material-symbols-outlined text-[11px]">check_box_outline_blank</span>
+            {isMaximized ? (
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M2.5 0.5H9.5V7.5" stroke="currentColor" strokeWidth="1" fill="none" />
+                <rect x="0.5" y="2.5" width="7" height="7" stroke="currentColor" strokeWidth="1" fill="none" />
+              </svg>
+            ) : (
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="0.5" y="0.5" width="9" height="9" stroke="currentColor" strokeWidth="1" />
+              </svg>
+            )}
           </button>
           <button
             onClick={(e) => {
               e.stopPropagation();
               e.preventDefault();
-              void getCurrentWindow().close();
+              handleClose();
             }}
             className="window-control close-hover text-on-surface-variant cursor-pointer"
             title="Close"
             aria-label="Close"
           >
-            <span className="material-symbols-outlined text-[13px]">close</span>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M0.5 0.5L9.5 9.5M9.5 0.5L0.5 9.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+            </svg>
           </button>
         </div>
       </header>
@@ -2699,18 +2772,23 @@ export default function App() {
             )}
             <div
               onClick={() => setMainView('workspace_dashboard')}
-              className={`workspace-selector flex items-center border border-outline-variant/60 bg-surface-container hover:border-primary/50 hover:bg-surface-container-high rounded-lg cursor-pointer transition-all text-sm text-on-surface select-none group shadow-sm ${sidebarCollapsed ? 'p-1.5 justify-center' : 'px-3.5 py-2.5'
+              className={`workspace-selector flex items-center justify-between border border-outline-variant/60 bg-surface-container hover:border-primary/50 hover:bg-surface-container-high rounded-lg cursor-pointer transition-all text-on-surface select-none group shadow-sm ${sidebarCollapsed ? 'p-2 justify-center' : 'px-3.5 py-2'
                 }`}
               title={`Active Workspace: ${activeWorkspace?.name ?? 'Select Workspace'}`}
             >
               <div className={`flex items-center gap-2.5 truncate ${sidebarCollapsed ? 'justify-center' : ''}`}>
-                <span className="w-2 h-2 rounded-full bg-secondary shrink-0" />
+                <span className="w-2 h-2 rounded-full bg-primary shrink-0 ring-2 ring-primary/20" />
                 {!sidebarCollapsed && (
                   <span className="truncate font-semibold text-sm text-on-surface group-hover:text-primary transition-colors">
                     {activeWorkspace?.name ?? 'Select Workspace'}
                   </span>
                 )}
               </div>
+              {!sidebarCollapsed && (
+                <span className="material-symbols-outlined text-[16px] text-on-surface-variant/50 group-hover:text-on-surface-variant transition-colors shrink-0">
+                  unfold_more
+                </span>
+              )}
             </div>
           </div>
 
@@ -2760,17 +2838,17 @@ export default function App() {
 
           <div className={`pt-3 border-t border-outline-variant/30 space-y-1 ${sidebarCollapsed ? 'px-1.5' : ''}`}>
             <button
-              onClick={() => setShortcutsModalOpen(true)}
-              title="Keyboard Shortcuts (Ctrl + /)"
-              className={`nav-item flex items-center ${sidebarCollapsed ? 'collapsed justify-center px-1.5 py-2 mx-auto w-[42px] rounded-xl' : 'gap-3 px-6 py-2'} w-full text-left text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md cursor-pointer`}
+              onClick={() => setMainView('docs')}
+              title="Documentation & Guides"
+              className={`nav-item flex items-center ${sidebarCollapsed ? 'collapsed justify-center px-1.5 py-2 mx-auto w-[42px] rounded-xl' : 'gap-3 px-6 py-2'} w-full text-left ${mainView === 'docs' ? 'active text-on-surface border-secondary-container bg-surface-container-high font-semibold' : 'text-on-surface-variant hover:bg-surface-container-highest'} transition-colors font-label-md text-sm cursor-pointer`}
             >
-              <span className="material-symbols-outlined text-[18px]">keyboard</span>
-              {!sidebarCollapsed && <span>Shortcuts</span>}
+              <span className="material-symbols-outlined text-[18px]">menu_book</span>
+              {!sidebarCollapsed && <span>Docs</span>}
             </button>
             <button
               onClick={() => openUrl("https://github.com/Inilax/Proxync/issues")}
-              title="Support"
-              className={`nav-item flex items-center ${sidebarCollapsed ? 'collapsed justify-center px-1.5 py-2 mx-auto w-[42px] rounded-xl' : 'gap-3 px-6 py-2'} w-full text-left text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md cursor-pointer`}
+              title="Support & Feedback"
+              className={`nav-item flex items-center ${sidebarCollapsed ? 'collapsed justify-center px-1.5 py-2 mx-auto w-[42px] rounded-xl' : 'gap-3 px-6 py-2'} w-full text-left text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-sm cursor-pointer`}
             >
               <span className="material-symbols-outlined text-[18px]">help</span>
               {!sidebarCollapsed && <span>Support</span>}
@@ -3247,11 +3325,12 @@ function loadAppSettings(): AppSettings {
   if (!stored) return { ...DEFAULT_APP_SETTINGS, guardrails: { ...DEFAULT_GUARDRAILS } };
   try {
     const parsed = JSON.parse(stored) as Partial<AppSettings>;
+    const resolvedTheme = parsed.theme ?? 'dark';
     return {
       guardrails: { ...DEFAULT_GUARDRAILS, ...(parsed.guardrails ?? {}) },
       defaultProjectRootPath: parsed.defaultProjectRootPath ?? '',
       notes: parsed.notes ?? '',
-      theme: parsed.theme ?? 'slate',
+      theme: resolvedTheme,
       autoUpdate: parsed.autoUpdate ?? true,
       telemetry: parsed.telemetry ?? 'enhanced',
       enableDevTools: parsed.enableDevTools ?? false,

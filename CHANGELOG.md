@@ -2,6 +2,29 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/theme-titlebar-docs-polish] - 2026-08-27 (Precision Windows Titlebar, Theme Scoping, Cyberpunk Purge, Docs Manual Overhaul & IPC Hardening)
+- **Feature Summary**:
+  - **Precision Windows Titlebar Controls (`App.tsx`, `index.css`)**: Replaced glyph-font titlebar symbols with native 10px SVG vector controls (line minimize, single square maximize, overlapping dual-square restore, and diagonal cross close). Added live `isMaximized` tracking with 100ms debouncing, responsive right-edge flush cancellation (`margin-right: -24px` on `sm:` desktop), and native `#e81123` close hover styling.
+  - **Complete Cyberpunk Theme Deprecation (`cyberpunk.css`, `App.tsx`, `SettingsView.tsx`)**: Completely deleted `cyberpunk.css`, cleaned up fallback handlers in `loadAppSettings()`, and renamed dark theme card to **Obsidian Dark**.
+  - **Theme Token Scoping & Dynamic Color-Mix (`dracula.css`, `emerald.css`, `dark.css`, `slate.css`, `index.css`)**: Added complete `--color-on-surface`, `--color-on-surface-variant`, `--color-outline`, and `--color-background` tokens across all stylesheets to eliminate cross-theme token fallback bleed. Refactored `.badge.accent`, `.badge.muted`, `.method`, `.status-code`, and `.btn-expose-proxync` to use CSS `color-mix()` for automatic theme adaptation.
+  - **Technical Documentation Overhaul (`DocsView.tsx`)**: Replaced generic placeholder content with an in-depth developer manual covering Tauri v2/Rust architecture, all 4 tunnel providers (Native Azure SSH, Cloudflare Quick Tunnels, Localtunnel, Loopback `*.localtest.me`), DNS CNAME setup, Postman/Swagger studios, and keyboard hotkeys. Streamlined navigation with punchy 1-word tab titles.
+  - **Navigation Real Estate Optimization (`App.tsx`)**: Relocated `Docs` to the sidebar footer utility bar alongside `Support`, decluttering the primary `OBSERVABILITY & TOOLS` category.
+  - **IPC & Window Exception Hardening (`App.tsx`)**: Wrapped window management actions in safe, unhandled-rejection-proof handlers with clean listener teardown.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/index.css`
+  - `packages/desktop/src/components/views/DocsView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/assets/themes/dracula.css`
+  - `packages/desktop/src/assets/themes/emerald.css`
+  - `packages/desktop/src/assets/themes/dark.css`
+  - `packages/desktop/src/assets/themes/slate.css`
+  - `packages/desktop/src/assets/themes/cyberpunk.css` (deleted)
+  - `CHANGELOG.md`
+
 ## [fix/workspace-search-bar] - 2026-08-25 (Workspace Command Search Dropdown, Direct Hub Navigation, Global Keyboard Shortcuts Dialog & Workbench CSS Fix)
 - **Feature Summary**:
   - **Floating Workspace Search Dropdown & Keyboard Navigation (`App.tsx`)**: Replaced plain search input with an interactive floating command dropdown anchored under the top search bar. Filters present and created workspaces in real time by name, notes, server processes, or open ports, with active badges, `↑` / `↓` keyboard selection, `Enter` navigation, and hotkey support (`Ctrl+K` / `Cmd+K` to open, `Escape` or click-outside to dismiss).

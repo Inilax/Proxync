@@ -2,8 +2,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=block');
 @import "./assets/typography.css";
 @import "tailwindcss";
+@import "./assets/themes/slate.css";
+@import "./assets/themes/dark.css";
 @import "./assets/themes/emerald.css";
-@import "./assets/themes/cyberpunk.css";
 @import "./assets/themes/dracula.css";
 
 /* ══════════════════════════════════════════════
@@ -192,6 +193,12 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   -webkit-app-region: no-drag;
 }
 
+@media (min-width: 640px) {
+  .window-controls {
+    margin-right: -24px;
+  }
+}
+
 .window-control {
   width: 46px;
   height: 48px;
@@ -203,16 +210,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   -webkit-app-region: no-drag;
   transition:
     color 90ms ease,
-    background-color 90ms ease,
-    transform 90ms ease;
-}
-
-.window-control:hover {
-  transform: translateY(-1px);
-}
-
-.window-control:active {
-  transform: translateY(0);
+    background-color 90ms ease;
 }
 
 .window-control-hover:hover {
@@ -221,8 +219,8 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 }
 
 .close-hover:hover {
-  background: rgba(147, 0, 10, 0.82);
-  color: var(--color-on-error-container);
+  background: #e81123 !important;
+  color: #ffffff !important;
 }
 
 .app-sidebar {
@@ -713,19 +711,38 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   font-family: var(--font-mono);
   font-size: 11px; font-weight: 600; letter-spacing: 0.2px;
 }
-.badge.accent { background: rgba(192, 193, 255, 0.10); color: var(--color-primary); border: 1px solid rgba(192, 193, 255, 0.15); }
-.badge.success { background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25); }
-.badge.muted { background: rgba(255, 255, 255, 0.04); color: var(--color-outline); border: 1px solid var(--color-outline-variant); }
+.badge.accent {
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  color: var(--color-primary);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 28%, transparent);
+}
+.badge.success {
+  background: color-mix(in srgb, #10b981 14%, transparent);
+  color: #34d399;
+  border: 1px solid color-mix(in srgb, #10b981 30%, transparent);
+}
+.badge.muted {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--color-on-surface-variant, #94a3b8);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
 
 .method {
   display: inline-flex; justify-content: center; min-width: 52px;
   padding: 3px 8px; border-radius: 6px;
   font-family: var(--font-mono);
   font-size: 11px; font-weight: 700; letter-spacing: 0.3px;
-  background: rgba(137, 206, 255, 0.10); color: var(--color-secondary);
+  background: color-mix(in srgb, var(--color-secondary) 12%, transparent);
+  color: var(--color-secondary);
 }
-.method.post, .method.put, .method.patch { background: rgba(192, 193, 255, 0.10); color: var(--color-primary); }
-.method.delete { background: rgba(255, 180, 171, 0.10); color: var(--color-error); }
+.method.post, .method.put, .method.patch {
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  color: var(--color-primary);
+}
+.method.delete {
+  background: color-mix(in srgb, var(--color-error) 12%, transparent);
+  color: var(--color-error);
+}
 
 .status-code { font-weight: 600; font-size: 12px; font-family: var(--font-mono); }
 .status-code.success { color: #34d399; }
@@ -971,7 +988,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
    WORKSPACE HUB SERVER CARD BUTTONS
    ══════════════════════════════════════════════ */
 .btn-expose-proxync {
-  background-color: #7c82ff !important;
+  background-color: var(--color-primary-container, var(--color-primary)) !important;
   color: #ffffff !important;
   font-weight: 700 !important;
   font-family: var(--font-mono), monospace !important;
@@ -984,7 +1001,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   justify-content: center !important;
   gap: 4px !important;
   cursor: pointer !important;
-  box-shadow: 0 2px 8px rgba(124, 130, 255, 0.3) !important;
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--color-primary-container, var(--color-primary)) 35%, transparent) !important;
   transition: all 0.15s ease !important;
   white-space: nowrap !important;
   min-width: 0 !important;
@@ -993,13 +1010,13 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 }
 
 .btn-expose-proxync:hover {
-  background-color: #6d74ff !important;
-  box-shadow: 0 4px 12px rgba(124, 130, 255, 0.45) !important;
+  filter: brightness(1.15);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--color-primary-container, var(--color-primary)) 50%, transparent) !important;
   transform: translateY(-1px);
 }
 
 .btn-expose-proxync:active {
-  background-color: #5d65f5 !important;
+  filter: brightness(0.92);
   transform: translateY(0);
 }
 
