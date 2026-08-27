@@ -227,18 +227,18 @@ export function LobbyView({
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-10 fade-in select-none">
+    <div className="w-full max-w-[1600px] mx-auto space-y-8 sm:space-y-10 fade-in select-none">
       {/* Header Section */}
-      <div className="flex justify-between items-end mb-10">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-6 sm:mb-8">
         <div>
           <h1 className="font-display-sm text-display-sm text-on-surface">Workspaces</h1>
-          <p className="font-body-lg text-body-lg text-on-surface-variant mt-2">Manage your proxy environments and team deployments.</p>
+          <p className="font-body-lg text-body-lg text-on-surface-variant mt-1.5 text-xs sm:text-sm">Manage your proxy environments and team deployments.</p>
         </div>
         
-        <div className="flex gap-4">
-          <div className="flex items-center bg-surface-container p-1 rounded-lg border border-outline-variant">
+        <div className="flex flex-wrap items-center gap-2.5 sm:gap-4 w-full sm:w-auto">
+          <div className="flex items-center bg-surface-container p-1 rounded-lg border border-outline-variant flex-1 sm:flex-initial justify-center">
             <button
-              className={`px-4 py-1.5 rounded font-label-md text-label-md cursor-pointer transition-all ${
+              className={`flex-1 sm:flex-initial px-3 sm:px-4 py-1.5 rounded font-label-md text-xs sm:text-label-md cursor-pointer transition-all ${
                 activeTab === 'active'
                   ? 'bg-surface-bright text-primary font-bold'
                   : 'text-on-surface-variant hover:text-on-surface'
@@ -248,7 +248,7 @@ export function LobbyView({
               Active ({activeWorkspacesList.length})
             </button>
             <button
-              className={`px-4 py-1.5 rounded font-label-md text-label-md cursor-pointer transition-all ${
+              className={`flex-1 sm:flex-initial px-3 sm:px-4 py-1.5 rounded font-label-md text-xs sm:text-label-md cursor-pointer transition-all ${
                 activeTab === 'inactive'
                   ? 'bg-surface-bright text-primary font-bold'
                   : 'text-on-surface-variant hover:text-on-surface'
@@ -264,7 +264,7 @@ export function LobbyView({
               onWorkspaceNameChange('');
               setIsCreatingInline(true);
             }}
-            className="btn-primary"
+            className="btn-primary w-full sm:w-auto justify-center"
           >
             <span className="material-symbols-outlined">add</span> Create New Workspace
           </button>
@@ -272,7 +272,7 @@ export function LobbyView({
       </div>
 
       {/* Bento Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-6">
         {/* Inline Creation Card */}
         {isCreatingInline && (
           <Card hoverable={false} className="border-primary/50 bg-surface-container-high shadow-lg flex flex-col justify-between h-full">
@@ -315,7 +315,7 @@ export function LobbyView({
 
         {/* Empty state for tabs */}
         {displayedWorkspaces.length === 0 && !isCreatingInline && (
-          <div className="col-span-full py-12 text-center bg-surface-container-low border border-outline-variant/30 rounded-xl p-8">
+          <div className="col-span-full py-12 text-center bg-surface-container-low border border-outline-variant/30 rounded-xl p-6 sm:p-8">
             <div className="w-12 h-12 bg-surface-container-high text-on-surface-variant/40 rounded-full flex items-center justify-center mx-auto mb-3">
               <span className="material-symbols-outlined text-[24px]">
                 {activeTab === 'inactive' ? 'motion_photos_off' : 'search_off'}
@@ -344,7 +344,7 @@ export function LobbyView({
             <div
               key={workspace.id}
               onClick={() => onSelectWorkspace(workspace.id)}
-              className={`workspace-card relative group bg-surface-container border p-6 rounded-xl hover:bg-surface-container-high transition-all cursor-pointer ${
+              className={`workspace-card relative group bg-surface-container border p-5 sm:p-6 rounded-xl hover:bg-surface-container-high transition-all cursor-pointer flex flex-col justify-between ${
                 isActive ? 'border-primary/50' : 'border-outline-variant'
               }`}
             >
@@ -374,47 +374,51 @@ export function LobbyView({
                 </button>
               </div>
 
-              <div className="flex justify-between items-start mb-6">
-                {/* Icon Box */}
-                <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${iconColor}`}>
-                  <span className="material-symbols-outlined text-[28px]">{icon}</span>
+              <div>
+                <div className="flex justify-between items-start mb-4 sm:mb-6">
+                  {/* Icon Box */}
+                  <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center ${iconColor}`}>
+                    <span className="material-symbols-outlined text-[24px] sm:text-[28px]">{icon}</span>
+                  </div>
                 </div>
+
+                <h3 className="font-headline-md text-headline-md mb-1 text-on-surface truncate" title={workspace.name}>{workspace.name}</h3>
+                <p className="font-body-md text-body-md text-on-surface-variant mb-4 sm:mb-6 line-clamp-2 min-h-[36px] sm:min-h-[40px] text-xs sm:text-sm">
+                  {workspace.notes || 'No workspace notes yet. Use the pencil to add handoff details, staging hints, or project context.'}
+                </p>
               </div>
 
-              <h3 className="font-headline-md text-headline-md mb-1 text-on-surface">{workspace.name}</h3>
-              <p className="font-body-md text-body-md text-on-surface-variant mb-6 line-clamp-2 min-h-[40px]">
-                {workspace.notes || 'No workspace notes yet. Use the pencil to add handoff details, staging hints, or project context.'}
-              </p>
-
-              {/* Stat Grid */}
-              <div className="grid grid-cols-1 gap-4">
-                <div className="bg-surface-container-low p-3 rounded-lg border border-outline-variant/30">
-                  <span className="block text-primary font-bold text-headline-sm mb-1">
-                    {workspace.profiles.length}
-                  </span>
-                  <span className="block font-label-md text-label-md text-on-surface-variant uppercase tracking-wider text-[10px]">
-                    Active Tunnels
-                  </span>
+              <div>
+                {/* Stat Grid */}
+                <div className="grid grid-cols-1 gap-4 mb-4 sm:mb-6">
+                  <div className="bg-surface-container-low p-2.5 sm:p-3 rounded-lg border border-outline-variant/30">
+                    <span className="block text-primary font-bold text-headline-sm mb-0.5 sm:mb-1">
+                      {workspace.profiles.length}
+                    </span>
+                    <span className="block font-label-md text-label-md text-on-surface-variant uppercase tracking-wider text-[10px]">
+                      Active Tunnels
+                    </span>
+                  </div>
                 </div>
-              </div>
 
-              {/* Card Footer */}
-              <div className="mt-6 flex items-center justify-between text-code-sm text-on-surface-variant">
-                <span>Last activity: {formatLastActivity(workspace.lastActivityAt, workspace.createdAt)}</span>
-                
-                {isActive ? (
-                  <span className="flex items-center gap-1.5 text-primary font-medium">
-                    <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span> Synchronized
-                  </span>
-                ) : isWorkspaceInactive(workspace.lastActivityAt, workspace.createdAt) ? (
-                  <span className="flex items-center gap-1.5 text-on-surface-variant/50">
-                    <span className="w-2 h-2 rounded-full bg-on-surface-variant/30"></span> Inactive
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1.5 text-emerald-400/90 font-medium">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span> Active
-                  </span>
-                )}
+                {/* Card Footer */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-code-sm text-on-surface-variant text-[11px] sm:text-xs">
+                  <span className="truncate">Active: {formatLastActivity(workspace.lastActivityAt, workspace.createdAt)}</span>
+                  
+                  {isActive ? (
+                    <span className="flex items-center gap-1.5 text-primary font-medium shrink-0">
+                      <span className="w-2 h-2 rounded-full bg-primary animate-pulse"></span> Synchronized
+                    </span>
+                  ) : isWorkspaceInactive(workspace.lastActivityAt, workspace.createdAt) ? (
+                    <span className="flex items-center gap-1.5 text-on-surface-variant/50 shrink-0">
+                      <span className="w-2 h-2 rounded-full bg-on-surface-variant/30"></span> Inactive
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-emerald-400/90 font-medium shrink-0">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400"></span> Active
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           );
@@ -427,7 +431,7 @@ export function LobbyView({
               onWorkspaceNameChange('');
               setIsCreatingInline(true);
             }}
-            className="border-2 border-dashed border-outline-variant rounded-xl p-6 flex flex-col items-center justify-center gap-4 hover:bg-surface-container-low hover:border-primary transition-all cursor-pointer group py-12"
+            className="border-2 border-dashed border-outline-variant rounded-xl p-6 flex flex-col items-center justify-center gap-4 hover:bg-surface-container-low hover:border-primary transition-all cursor-pointer group py-12 min-h-[240px]"
           >
             <div className="w-14 h-14 rounded-full bg-surface-container-high flex items-center justify-center group-hover:bg-primary/20 transition-colors">
               <span className="material-symbols-outlined text-[32px] text-outline group-hover:text-primary transition-colors">
@@ -438,7 +442,7 @@ export function LobbyView({
               <p className="font-headline-sm text-headline-sm text-on-surface-variant group-hover:text-on-surface transition-colors">
                 Provision Workspace
               </p>
-              <p className="font-body-md text-body-md text-outline transition-colors">
+              <p className="font-body-md text-body-md text-outline transition-colors text-xs sm:text-sm">
                 New department or project cluster
               </p>
             </div>
@@ -447,29 +451,29 @@ export function LobbyView({
       </div>
 
       {/* System Stats Footer Area */}
-      <div className="mt-12 p-6 rounded-xl border border-outline-variant bg-surface-container-lowest relative overflow-hidden">
-        <div className="relative z-10 grid grid-cols-1 md:grid-cols-4 gap-8">
-          <div>
-            <span className="block font-code-sm text-code-sm text-on-surface-variant uppercase mb-2">Total Bandwidth</span>
-            <span className="block font-headline-md text-headline-md text-secondary">
+      <div className="mt-8 sm:mt-12 p-4 sm:p-6 rounded-xl border border-outline-variant bg-surface-container-lowest relative overflow-hidden">
+        <div className="relative z-10 grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+          <div className="min-w-0">
+            <span className="block font-code-sm text-code-sm text-on-surface-variant uppercase mb-1 sm:mb-2 text-[10px] sm:text-xs truncate">Total Bandwidth</span>
+            <span className="block font-headline-md text-headline-md text-secondary truncate">
               {getSystemBandwidth()} <span className="text-body-md font-normal text-outline">/mo</span>
             </span>
           </div>
-          <div>
-            <span className="block font-code-sm text-code-sm text-on-surface-variant uppercase mb-2">Global Latency</span>
-            <span className="block font-headline-md text-headline-md text-emerald-400">
+          <div className="min-w-0">
+            <span className="block font-code-sm text-code-sm text-on-surface-variant uppercase mb-1 sm:mb-2 text-[10px] sm:text-xs truncate">Global Latency</span>
+            <span className="block font-headline-md text-headline-md text-emerald-400 truncate">
               {getSystemLatency()} <span className="text-body-md font-normal text-outline">avg</span>
             </span>
           </div>
-          <div>
-            <span className="block font-code-sm text-code-sm text-on-surface-variant uppercase mb-2">Active Regions</span>
-            <span className="block font-headline-md text-headline-md text-on-surface">
+          <div className="min-w-0">
+            <span className="block font-code-sm text-code-sm text-on-surface-variant uppercase mb-1 sm:mb-2 text-[10px] sm:text-xs truncate">Active Regions</span>
+            <span className="block font-headline-md text-headline-md text-on-surface truncate">
               {getSystemRegions()} <span className="text-body-md font-normal text-outline">nodes</span>
             </span>
           </div>
-          <div>
-            <span className="block font-code-sm text-code-sm text-on-surface-variant uppercase mb-2">Security Status</span>
-            <span className="block font-headline-md text-headline-md text-on-surface">
+          <div className="min-w-0">
+            <span className="block font-code-sm text-code-sm text-on-surface-variant uppercase mb-1 sm:mb-2 text-[10px] sm:text-xs truncate">Security Status</span>
+            <span className="block font-headline-md text-headline-md text-on-surface truncate">
               Optimum
             </span>
           </div>
