@@ -2,6 +2,24 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [feature/develop-v0.2.2-version-bump] - 2026-09-01 (Workspace & Studio Version Bump to v0.2.2 for Cross-OS Compatibility & Stabilization)
+- **Feature Summary**:
+  - **Comprehensive Version Bump to v0.2.2**: Synchronized workspace and package manifests (`package.json`, `packages/desktop/package.json`, `package-lock.json`, `Cargo.toml`, `Cargo.lock`, and `tauri.conf.json`) to version `0.2.2`.
+  - **Native HTTP Network Headers & Diagnostics**: Updated Rust client `User-Agent` headers in `http.rs` to `ProxyncStudio/0.2.2`. Synchronized frontend diagnostic logging metadata, log session directives, and support bundle fallbacks in `App.tsx` and `logger.ts` to `v0.2.2-stable`.
+  - **Recon & Documentation Badge Alignment**: Updated README version shield badge and `.agents/architecture.json` static recon map to reflect version `0.2.2`.
+- **Modified Files**:
+  - `package.json`
+  - `packages/desktop/package.json`
+  - `package-lock.json`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/src-tauri/src/http.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/lib/logger.ts`
+  - `README.md`
+  - `CHANGELOG.md`
+
 ## [fix/nsis-bundling-titlebar-alignment] - 2026-08-27 (Tauri v2 Native NSIS Uninstaller Icon, Makensis Build Fix & Responsive Titlebar Edge Alignment)
 - **Feature Summary**:
   - **Tauri v2 Native NSIS Uninstaller Config (`tauri.conf.json`, `hooks.nsh`)**: Migrated uninstaller branding from fragile raw script hooks (`hooks.nsh`) to native Tauri v2 `uninstallerIcon: "icons/icon.ico"` in `tauri.conf.json`. Resolves `makensis` compilation failure (`Error while loading icon from "icons\icon.ico": can't open file`) caused by relative path evaluation in temporary NSIS release directories.
