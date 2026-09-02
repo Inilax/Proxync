@@ -3,6 +3,7 @@ import type { WorkspaceConfig, SwaggerPanel, ProcessCandidate, Tunnel, RequestLo
 import type { ScannedEndpoint } from '../../lib/codebaseScanner';
 import { exportOpenApiToYaml, exportSwaggerToPostmanCollection, importPostmanToOpenApi, inferResourceTag } from '../../lib/openApiGenerator';
 import { generateCodeSnippet, type FrameworkLanguage } from '../../lib/codeSnippetGenerator';
+import type { SchemaDriftReport } from '../../lib/types';
 
 export function SwaggerView({
   document,
@@ -13,8 +14,9 @@ export function SwaggerView({
   tunnels = [],
   processes = [],
   requests = [],
-  activeTunnel = null,
-  generating = false,
+  activeTunnel,
+  generating,
+  driftReports,
   onGenerateSpec,
   onClearSpec,
   onChangePanel,
@@ -33,6 +35,7 @@ export function SwaggerView({
   requests?: RequestLog[];
   activeTunnel?: Tunnel | null;
   generating?: boolean;
+  driftReports?: SchemaDriftReport[];
   onGenerateSpec: (targetPort?: number) => void;
   onClearSpec?: () => void;
   onChangePanel: (panel: SwaggerPanel) => void;
@@ -52,6 +55,21 @@ export function SwaggerView({
 
   const endpointPreview = useMemo(() => buildEndpointPreview(document), [document]);
   const rawYaml = useMemo(() => exportOpenApiToYaml(document), [document]);
+
+  const contractHealth = useMemo(() => {
+    if (!driftReports || driftReports.length === 0) {
+      return { pct: 100, breakingCount: 0, driftedRoutes: 0 };
+    }
+    const breaking = driftReports.reduce((s, r) => s + r.breakingCount, 0);
+    const totalDocumented = endpointPreview.length || 1;
+    const driftedEndpoints = new Set(driftReports.filter((r) => r.hasDrift).map((r) => `${r.method} ${r.path}`)).size;
+    const pct = Math.max(0, Math.round(((totalDocumented - Math.min(totalDocumented, driftedEndpoints)) / totalDocumented) * 100));
+    return {
+      pct,
+      breakingCount: breaking,
+      driftedRoutes: driftedEndpoints,
+    };
+  }, [driftReports, endpointPreview]);
 
   // Build Server / Tunnel Options dynamically
   const serverOptions = useMemo(() => {
@@ -517,6 +535,22 @@ export function SwaggerView({
             </div>
           ) : (
             <div className="space-y-3">
+              {/* Contract Health & Reconciliation Banner */}
+              {contractHealth.breakingCount > 0 && (
+                <div className="p-3.5 bg-error/10 border border-error/30 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2 text-error font-bold">
+                    <span className="material-symbols-outlined text-[18px]">warning</span>
+                    <span>
+                      {contractHealth.breakingCount} Breaking Contract Violation{contractHealth.breakingCount !== 1 ? 's' : ''} in Live Traffic
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-on-surface-variant font-mono">
+                      Contract Health: <strong className="text-error">{contractHealth.pct}%</strong> compliant
+                    </span>
+                  </div>
+                </div>
+              )}
               {filteredEndpoints.map((ep) => {
                 const isExpanded = expandedEndpointId === ep.id;
                 const isGet = ep.method === 'GET';
@@ -554,6 +588,34 @@ export function SwaggerView({
                         <span className="font-mono text-xs sm:text-sm text-on-surface font-semibold tracking-tight truncate max-w-[220px] sm:max-w-none" title={ep.path}>
                           {ep.path}
                         </span>
+
+                        {/* Schema Drift Indicator Pill */}
+                        {(() => {
+                          const epDrift = driftReports?.find(
+                            (r) =>
+                              r.method === ep.method.toUpperCase() &&
+                              (r.path === ep.path || ep.path.includes(r.path)) &&
+                              r.hasDrift
+                          );
+                          if (!epDrift) return null;
+                          return (
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border shrink-0 flex items-center gap-1 ${
+                                epDrift.breakingCount > 0
+                                  ? 'bg-error/15 text-error border-error/30'
+                                  : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                              }`}
+                              title={`${epDrift.breakingCount} breaking, ${epDrift.warningCount} warnings`}
+                            >
+                              <span className="material-symbols-outlined text-[12px]">
+                                {epDrift.breakingCount > 0 ? 'warning' : 'change_circle'}
+                              </span>
+                              {epDrift.breakingCount > 0
+                                ? `${epDrift.breakingCount} Breaking Drift`
+                                : `+${epDrift.warningCount} Added Fields`}
+                            </span>
+                          );
+                        })()}
 
                         {/* Server & Tunnel Badge */}
                         {ep.tunnelUrl ? (

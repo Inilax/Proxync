@@ -15,17 +15,15 @@ function notifyListeners() {
   toastListeners.forEach((fn) => fn([...toastQueue]));
 }
 
-export function showToast(message: ReactNode, type: Toast['type'] = 'info', persistent = false): string {
+export function showToast(message: ReactNode, type: Toast['type'] = 'info', _persistent = false): string {
   const id = Math.random().toString(36).slice(2);
-  const toast: Toast = { id, message, type, persistent };
+  const toast: Toast = { id, message, type, persistent: false };
   toastQueue = [...toastQueue, toast];
   notifyListeners();
-  if (!persistent) {
-    setTimeout(() => {
-      toastQueue = toastQueue.filter((t) => t.id !== id);
-      notifyListeners();
-    }, 3500);
-  }
+  setTimeout(() => {
+    toastQueue = toastQueue.filter((t) => t.id !== id);
+    notifyListeners();
+  }, 4000);
   return id;
 }
 

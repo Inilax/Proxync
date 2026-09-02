@@ -56,6 +56,9 @@ export interface RequestLog {
   subdomain?: string;
   tunnelId?: string;
   isProbe?: boolean;
+  rawRequestId?: string;
+  responseBodyPreview?: string;
+  schemaDrift?: SchemaDriftReport;
 }
 
 export interface SavedRequest {
@@ -185,5 +188,40 @@ export interface WorkbenchTab {
   bearerToken?: string;
 }
 
+// ── Schema Drift Detection Types ─────────────────────────────────────────────
 
+export type DriftChangeType =
+  | 'BREAKING_FIELD_REMOVED'
+  | 'BREAKING_TYPE_MISMATCH'
+  | 'BREAKING_NULLABILITY'
+  | 'BREAKING_ARRAY_ITEM_MISMATCH'
+  | 'BREAKING_FIELD_RENAMED'
+  | 'NON_BREAKING_FIELD_ADDED'
+  | 'NON_BREAKING_TYPE_WIDENED'
+  | 'STATUS_UNDOCUMENTED';
 
+export type DriftSeverity = 'breaking' | 'warning' | 'info';
+
+export interface SchemaDriftItem {
+  path: string;
+  changeType: DriftChangeType;
+  severity: DriftSeverity;
+  expected: string;
+  actual: string;
+  message: string;
+  suggestion: string;
+}
+
+export interface SchemaDriftReport {
+  routeKey: string;
+  method: string;
+  path: string;
+  statusCode: number | string;
+  hasDrift: boolean;
+  breakingCount: number;
+  warningCount: number;
+  items: SchemaDriftItem[];
+  detectedAt: string;
+  baselineSchemaSnapshot: string;
+  actualSchemaSnapshot: string;
+}

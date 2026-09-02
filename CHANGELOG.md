@@ -2,6 +2,26 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [feature/develop-schema-drift-detection] - 2026-09-02 (Real-Time Schema Drift Detection & Contract Diff Engine)
+- **Feature Summary**:
+  - **4 KB Native HTTP Response Preview Capture (`proxy.rs`, `tunnel.rs`)**: Extracted response body preview and headers for `application/json` payloads directly in Rust proxy and tunnel streams while bypassing WebSocket/SSE streaming protocols and compressed payloads.
+  - **Pure TypeScript Schema Drift Engine (`schemaDriftDetector.ts`, `types.ts`)**: Built recursive AST schema diff engine detecting `BREAKING_FIELD_RENAMED` (inline Levenshtein distance $\le 2$ & case normalization), `BREAKING_NULLABILITY`, `BREAKING_TYPE_MISMATCH`, `BREAKING_FIELD_REMOVED`, `NON_BREAKING_FIELD_ADDED`, and undocumented status codes. Safely strips HTTP/1.1 chunked transfer encoding headers.
+  - **1-Click OpenAPI Reconciliation & Bug Reporting (`schemaDriftDetector.ts`, `openApiGenerator.ts`)**: Implemented `syncOpenApiWithPayload` to merge runtime schemas into the live OpenAPI document in-memory, clearing active drift flags across all studios, and `generateDriftBugReportMarkdown` to produce copy-paste bug reports.
+  - **Studio Integrations & Real-Time Alerting (`TrafficView.tsx`, `SwaggerView.tsx`, `ObservabilityView.tsx`, `RequestWorkbenchDialog.tsx`, `App.tsx`, `toast.tsx`)**: Added drift filter dropdown and inline diff panel in Traffic Inspector; Contract Health % metric and warning banner in Swagger Studio; telemetry radar in Observability Studio; dedicated Contract mode tab in 360° Request Workbench; dual-key indexed drift state in `App.tsx`; and 4-second auto-dismissing toast alerts.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/ObservabilityView.tsx`
+  - `packages/desktop/src/components/views/RequestWorkbenchDialog.tsx`
+  - `packages/desktop/src/components/views/SwaggerView.tsx`
+  - `packages/desktop/src/components/views/TrafficView.tsx`
+  - `packages/desktop/src/lib/openApiGenerator.ts`
+  - `packages/desktop/src/lib/schemaDriftDetector.ts`
+  - `packages/desktop/src/lib/toast.tsx`
+  - `packages/desktop/src/lib/types.ts`
+  - `CHANGELOG.md`
+
 ## [feature/develop-v0.2.2-version-bump] - 2026-09-01 (Workspace & Studio Version Bump to v0.2.2 for Cross-OS Compatibility & Stabilization)
 - **Feature Summary**:
   - **Comprehensive Version Bump to v0.2.2**: Synchronized workspace and package manifests (`package.json`, `packages/desktop/package.json`, `package-lock.json`, `Cargo.toml`, `Cargo.lock`, and `tauri.conf.json`) to version `0.2.2`.

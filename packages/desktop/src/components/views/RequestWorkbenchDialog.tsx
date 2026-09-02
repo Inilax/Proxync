@@ -14,6 +14,9 @@ import {
 } from '../../lib/interopUtils';
 import { showToast } from '../../lib/toast';
 import { formatHeaders, parseHeaderText, stripMethodPrefix, useEscape } from './SharedComponents';
+import type { SchemaDriftReport } from '../../lib/types';
+import { detectSchemaDrift } from '../../lib/schemaDriftDetector';
+import { DriftDiffPanel } from './TrafficView';
 
 interface RequestWorkbenchDialogProps {
   isOpen: boolean;
@@ -29,11 +32,15 @@ interface RequestWorkbenchDialogProps {
   processes?: ProcessCandidate[];
   tunnels?: Tunnel[];
   isFullView?: boolean;
+  driftAlerts?: Map<string, SchemaDriftReport>;
+  openApiDocument?: Record<string, unknown>;
   onClose: () => void;
   onTabsChange: (tabs: WorkbenchTab[], activeId: string | null) => void;
   onSaveRequestToCollection?: (req: SavedRequest) => void;
   onUpdateProjectRoot?: (path: string) => void;
   onScannedEndpointsUpdate?: (endpoints: ScannedEndpoint[]) => void;
+  onSyncDrift?: (method: string, path: string, statusCode: string, body: string) => void;
+  onCopyBugReport?: (report: SchemaDriftReport) => void;
 }
 
 export function RequestWorkbenchDialog({
@@ -50,11 +57,15 @@ export function RequestWorkbenchDialog({
   activeProcessPort,
   activeTunnelUrl,
   isFullView = false,
+  driftAlerts,
+  openApiDocument,
   onClose,
   onTabsChange,
   onSaveRequestToCollection,
   onUpdateProjectRoot,
   onScannedEndpointsUpdate,
+  onSyncDrift,
+  onCopyBugReport,
 }: RequestWorkbenchDialogProps) {
   useEscape(onClose, isOpen && !isFullView);
 
@@ -182,7 +193,7 @@ export function RequestWorkbenchDialog({
     }
   };
 
-  const [workbenchMode, setWorkbenchMode] = useState<'devtools' | 'replay'>('devtools');
+  const [workbenchMode, setWorkbenchMode] = useState<'devtools' | 'replay' | 'contract'>('devtools');
   const [bearerToken, setBearerToken] = useState<string>('');
   const [sending, setSending] = useState<boolean>(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
@@ -193,6 +204,29 @@ export function RequestWorkbenchDialog({
   const [customUrl, setCustomUrl] = useState<string>('');
   const [selectedLogFilter, setSelectedLogFilter] = useState<'ALL' | 'LIKELY' | 'ERROR'>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  const activeTabDriftReport = useMemo(() => {
+    if (!activeTab) return null;
+    if (activeTab.requestLog?.id && driftAlerts?.has(activeTab.requestLog.id)) {
+      return driftAlerts.get(activeTab.requestLog.id) ?? null;
+    }
+    if (activeTab.requestLog?.rawRequestId && driftAlerts?.has(activeTab.requestLog.rawRequestId)) {
+      return driftAlerts.get(activeTab.requestLog.rawRequestId) ?? null;
+    }
+    if (activeTab.requestLog?.schemaDrift) {
+      return activeTab.requestLog.schemaDrift;
+    }
+    const bodyText = activeTab.lastResponse?.body || activeTab.requestLog?.responseBodyPreview;
+    const statusCode = activeTab.lastResponse?.status || activeTab.requestLog?.status || 200;
+    if (!bodyText || !openApiDocument) return null;
+    return detectSchemaDrift(
+      activeTab.method,
+      activeTab.path,
+      statusCode,
+      bodyText,
+      openApiDocument
+    );
+  }, [activeTab, driftAlerts, openApiDocument]);
 
   // Selected Run Derived State
   const activeRun = useMemo(() => {
@@ -750,6 +784,14 @@ export function RequestWorkbenchDialog({
               >
                 <span className="material-symbols-outlined text-[16px]">science</span>
                 <span>Traffic & Replay</span>
+              </button>
+              <button
+                onClick={() => setWorkbenchMode('contract')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${workbenchMode === 'contract' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+              >
+                <span className="material-symbols-outlined text-[16px]">verified_user</span>
+                <span>Contract {activeTabDriftReport?.hasDrift ? (activeTabDriftReport.breakingCount > 0 ? `(🚨 ${activeTabDriftReport.breakingCount})` : `(+${activeTabDriftReport.warningCount})`) : ''}</span>
               </button>
             </div>
 
@@ -1523,6 +1565,86 @@ export function RequestWorkbenchDialog({
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* ── MODE 3: REAL-TIME API CONTRACT & SCHEMA DRIFT RADAR ── */}
+        {workbenchMode === 'contract' && (
+          <div className="p-6 bg-surface-container rounded-2xl border border-outline-variant/30 space-y-6 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-outline-variant/20 pb-4">
+              <div className="flex items-center gap-3">
+                <span className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                  <span className="material-symbols-outlined text-[24px]">verified_user</span>
+                </span>
+                <div>
+                  <h3 className="font-headline-sm text-sm text-on-surface font-bold">
+                    Real-Time API Contract & Schema Drift Inspector
+                  </h3>
+                  <p className="text-xs text-on-surface-variant">
+                    Comparing runtime execution response against expected OpenAPI specification schema
+                  </p>
+                </div>
+              </div>
+
+              {activeTabDriftReport && (
+                <span
+                  className={`text-xs font-mono px-3 py-1 rounded-full border font-bold flex items-center gap-1.5 ${
+                    activeTabDriftReport.breakingCount > 0
+                      ? 'bg-error/15 text-error border-error/30'
+                      : activeTabDriftReport.hasDrift
+                      ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                      : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[14px]">
+                    {activeTabDriftReport.breakingCount > 0
+                      ? 'warning'
+                      : activeTabDriftReport.hasDrift
+                      ? 'change_circle'
+                      : 'check_circle'}
+                  </span>
+                  {activeTabDriftReport.breakingCount > 0
+                    ? `${activeTabDriftReport.breakingCount} Breaking Drift`
+                    : activeTabDriftReport.hasDrift
+                    ? `${activeTabDriftReport.warningCount} Additive Change(s)`
+                    : 'Contract Compliant'}
+                </span>
+              )}
+            </div>
+
+            {/* Drift Content */}
+            {activeTab?.lastResponse || activeTab?.requestLog?.responseBodyPreview ? (
+              activeTabDriftReport?.hasDrift ? (
+                <DriftDiffPanel
+                  drift={activeTabDriftReport}
+                  responseBodyPreview={activeTab.lastResponse?.body || activeTab.requestLog?.responseBodyPreview}
+                  onSyncDrift={onSyncDrift}
+                  onCopyBugReport={onCopyBugReport}
+                />
+              ) : (
+                <div className="p-12 text-center bg-surface-container-low rounded-xl border border-outline-variant/30 space-y-3">
+                  <span className="material-symbols-outlined text-[44px] text-emerald-400">verified</span>
+                  <p className="text-sm font-bold text-on-surface">Contract Compliant</p>
+                  <p className="text-xs text-on-surface-variant max-w-md mx-auto">
+                    The latest response payload for <code className="text-primary font-mono">{activeTab.method} {activeTab.path}</code> perfectly conforms to the documented OpenAPI specification schema.
+                  </p>
+                </div>
+              )
+            ) : (
+              <div className="p-12 text-center bg-surface-container-low rounded-xl border border-outline-variant/30 space-y-3">
+                <span className="material-symbols-outlined text-[44px] text-outline">science</span>
+                <p className="text-sm font-bold text-on-surface">No Response Captured Yet</p>
+                <p className="text-xs text-on-surface-variant max-w-md mx-auto">
+                  Execute a request or replay in the <strong>Traffic & Replay</strong> tab to test live contract compliance against your OpenAPI specification.
+                </p>
+                <button
+                  onClick={() => setWorkbenchMode('replay')}
+                  className="btn-secondary compact text-xs mt-2"
+                >
+                  Switch to Replay & Execute
+                </button>
+              </div>
+            )}
           </div>
         )}
       </main>

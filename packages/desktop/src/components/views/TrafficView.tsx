@@ -1,29 +1,36 @@
 import { useState, useMemo } from 'react';
 import type { RequestLog, Tunnel } from './SharedComponents';
-import type { WorkspaceConfig, ProcessCandidate } from '../../lib/types';
+import type { WorkspaceConfig, ProcessCandidate, SchemaDriftReport } from '../../lib/types';
 
 export function TrafficView({
   requests,
   workspaces = [],
   processes = [],
   activeTunnel,
+  driftAlerts,
   onOpen,
   onSendToPostman,
   onClear,
   onOpenWorkbench,
+  onSyncDrift,
+  onCopyBugReport,
 }: {
   requests: RequestLog[];
   workspaces?: WorkspaceConfig[];
   processes?: ProcessCandidate[];
   activeTunnel: Tunnel | null;
+  driftAlerts?: Map<string, SchemaDriftReport>;
   onOpen: (request: RequestLog) => void;
   onSendToPostman: (request: RequestLog) => void;
   onClear: () => void;
   onOpenWorkbench?: (request: RequestLog) => void;
+  onSyncDrift?: (method: string, path: string, statusCode: string, body: string) => void;
+  onCopyBugReport?: (report: SchemaDriftReport) => void;
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMethod, setSelectedMethod] = useState<string>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
+  const [driftFilter, setDriftFilter] = useState<'ALL' | 'BREAKING' | 'ANY' | 'COMPLIANT'>('ALL');
   const [selectedWorkspaceFilter, setSelectedWorkspaceFilter] = useState<string>('ALL');
   const [selectedServerFilter, setSelectedServerFilter] = useState<string>('ALL');
   const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null);
@@ -71,6 +78,7 @@ export function TrafficView({
     searchQuery.trim() !== '' ||
     selectedMethod !== 'ALL' ||
     selectedStatus !== 'ALL' ||
+    driftFilter !== 'ALL' ||
     selectedWorkspaceFilter !== 'ALL' ||
     selectedServerFilter !== 'ALL';
 
@@ -78,12 +86,13 @@ export function TrafficView({
     setSearchQuery('');
     setSelectedMethod('ALL');
     setSelectedStatus('ALL');
+    setDriftFilter('ALL');
     setSelectedWorkspaceFilter('ALL');
     setSelectedServerFilter('ALL');
   };
 
   const filteredRequests = useMemo(() => {
-    // // ponytail: Pre-compute query normalization & port parsing once outside loop
+    // ponytail: Pre-compute query normalization & port parsing once outside loop
     const normalizedQuery = searchQuery.trim().toLowerCase();
     const targetPort = selectedServerFilter !== 'ALL' ? parseInt(selectedServerFilter, 10) : null;
 
@@ -110,6 +119,17 @@ export function TrafficView({
         if (selectedStatus === '5xx' && statusNum < 500) return false;
       }
 
+      // Schema drift filter
+      if (driftFilter !== 'ALL') {
+        const drift =
+          driftAlerts?.get(req.id) ??
+          (req.rawRequestId ? driftAlerts?.get(req.rawRequestId) : undefined) ??
+          req.schemaDrift;
+        if (driftFilter === 'BREAKING' && (!drift || drift.breakingCount === 0)) return false;
+        if (driftFilter === 'ANY' && (!drift || !drift.hasDrift)) return false;
+        if (driftFilter === 'COMPLIANT' && drift?.hasDrift) return false;
+      }
+
       // 2. Search query check only executed if non-empty
       if (normalizedQuery) {
         const path = (req.path || '/').toLowerCase();
@@ -123,7 +143,7 @@ export function TrafficView({
 
       return true;
     });
-  }, [requests, searchQuery, selectedMethod, selectedStatus, selectedWorkspaceFilter, selectedServerFilter]);
+  }, [requests, searchQuery, selectedMethod, selectedStatus, driftFilter, selectedWorkspaceFilter, selectedServerFilter, driftAlerts]);
 
   return (
     <div className="w-full max-w-[1600px] mx-auto space-y-6 fade-in select-none">
@@ -134,7 +154,7 @@ export function TrafficView({
           <p className="text-on-surface-variant font-body-md mt-1 text-xs">
             {activeTunnel
               ? `Capturing live network packages on port :${activeTunnel.localPort}`
-              : 'Real-time HTTP request & response payload inspector across workspaces.'}
+              : 'Real-time HTTP request & response payload inspector with contract drift detection.'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 w-full sm:w-auto justify-between sm:justify-end">
@@ -174,7 +194,7 @@ export function TrafficView({
           )}
         </div>
 
-        {/* 4 Custom Theme-Matching Dropdown Controls */}
+        {/* 5 Custom Theme-Matching Dropdown Controls */}
         <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 shrink-0">
           {/* 1. Workspace Dropdown */}
           <div className="flex items-center justify-between sm:justify-start gap-1.5 bg-surface-container-low border border-outline-variant/40 hover:border-primary/50 rounded-lg px-2.5 py-1 text-xs text-on-surface transition-all">
@@ -243,6 +263,21 @@ export function TrafficView({
             </select>
           </div>
 
+          {/* 5. Drift Dropdown */}
+          <div className="flex items-center justify-between sm:justify-start gap-1.5 bg-surface-container-low border border-outline-variant/40 hover:border-primary/50 rounded-lg px-2.5 py-1 text-xs text-on-surface transition-all">
+            <span className="text-[10px] font-bold text-on-surface-variant/70 uppercase tracking-wider shrink-0">Drift:</span>
+            <select
+              className="bg-surface-container-low text-xs font-mono font-semibold text-on-surface focus:outline-none cursor-pointer w-full sm:w-auto"
+              value={driftFilter}
+              onChange={(e) => setDriftFilter(e.target.value as typeof driftFilter)}
+            >
+              <option value="ALL" className="bg-surface-container-high text-on-surface">All</option>
+              <option value="BREAKING" className="bg-surface-container-high text-error font-bold">🚨 Breaking</option>
+              <option value="ANY" className="bg-surface-container-high text-amber-400 font-bold">⚠️ Any Drift</option>
+              <option value="COMPLIANT" className="bg-surface-container-high text-secondary font-bold">✓ Compliant</option>
+            </select>
+          </div>
+
           {hasActiveFilters && (
             <button
               onClick={resetFilters}
@@ -262,7 +297,7 @@ export function TrafficView({
             {/* Table Head */}
             <div className="flex items-center border-b border-outline-variant bg-surface-container-low font-label-md text-on-surface-variant py-3 px-4 text-xs font-bold uppercase tracking-wider">
               <div className="w-24 shrink-0">Method</div>
-              <div className="w-20 shrink-0">Status</div>
+              <div className="w-28 shrink-0">Status</div>
               <div className="flex-1 min-w-[180px] pr-4">Request Path</div>
               <div className="w-44 shrink-0 pr-2">Scope / Server</div>
               <div className="w-28 shrink-0 text-left pr-2">Time</div>
@@ -297,13 +332,18 @@ export function TrafficView({
               const methodColor = isGet ? 'text-primary' : isPost ? 'text-secondary' : 'text-error';
 
               const isExpanded = expandedRequestId === request.id;
+              const drift =
+                driftAlerts?.get(request.id) ??
+                (request.rawRequestId ? driftAlerts?.get(request.rawRequestId) : undefined) ??
+                request.schemaDrift;
 
               return (
                 <div key={request.id}>
                   <div
                     onClick={() => onOpen(request)}
-                    className={`flex items-center py-3 px-4 hover:bg-surface-container-highest cursor-pointer transition-colors group ${isExpanded ? 'bg-surface-container-high/60' : ''
-                      }`}
+                    className={`flex items-center py-3 px-4 hover:bg-surface-container-highest cursor-pointer transition-colors group ${
+                      isExpanded ? 'bg-surface-container-high/60' : ''
+                    }`}
                   >
                     {/* Method Column */}
                     <div className={`w-24 shrink-0 font-bold font-mono text-[13px] ${methodColor} flex items-center gap-1.5`}>
@@ -322,12 +362,31 @@ export function TrafficView({
                       {reqMethod}
                     </div>
 
-                    {/* Status Column */}
-                    <div className={`w-20 shrink-0 flex items-center gap-1 font-mono text-[13px] ${getStatusClass(request.status)}`}>
+                    {/* Status Column + Contract Drift Badge */}
+                    <div className={`w-28 shrink-0 flex items-center gap-1 font-mono text-[13px] ${getStatusClass(request.status)}`}>
                       <span className="material-symbols-outlined text-[15px] shrink-0">
                         {getStatusIcon(request.status)}
                       </span>
                       <span className="font-semibold">{request.status ?? 'pending'}</span>
+                      {drift?.hasDrift && (
+                        drift.breakingCount > 0 ? (
+                          <span
+                            className="px-1.5 py-0.5 bg-error/15 border border-error/30 rounded text-error font-mono text-[10px] font-bold shrink-0 flex items-center gap-0.5 ml-1"
+                            title={`${drift.breakingCount} breaking contract violations`}
+                          >
+                            <span className="material-symbols-outlined text-[11px]">warning</span>
+                            {drift.breakingCount}
+                          </span>
+                        ) : (
+                          <span
+                            className="px-1.5 py-0.5 bg-amber-500/15 border border-amber-500/30 rounded text-amber-400 font-mono text-[10px] font-bold shrink-0 flex items-center gap-0.5 ml-1"
+                            title={`${drift.warningCount} additive schema changes`}
+                          >
+                            <span className="material-symbols-outlined text-[11px]">add_circle</span>
+                            +{drift.warningCount}
+                          </span>
+                        )
+                      )}
                     </div>
 
                     {/* Request Path Column */}
@@ -361,7 +420,7 @@ export function TrafficView({
                         : 'recent'}
                     </div>
 
-                    {/* Duration Column — Left aligned inside w-32 to create clear separation from Actions */}
+                    {/* Duration Column — Left aligned inside w-32 */}
                     <div className="w-32 shrink-0 text-left pr-4 font-mono text-[13px]">
                       {request.durationMs ? (
                         <span className="inline-flex items-center gap-1 text-amber-400 font-semibold">
@@ -405,9 +464,19 @@ export function TrafficView({
                     </div>
                   </div>
 
-                  {/* Inline Expanded Payload & Header Inspector */}
+                  {/* Inline Expanded Payload, Header & Schema Drift Inspector */}
                   {isExpanded && (
                     <div className="p-4 bg-surface-container-lowest border-t border-b border-outline-variant/30 space-y-3 font-mono text-xs" onClick={(e) => e.stopPropagation()}>
+                      {/* Contract & Schema Drift Diff Panel */}
+                      {drift?.hasDrift && (
+                        <DriftDiffPanel
+                          drift={drift}
+                          responseBodyPreview={request.responseBodyPreview}
+                          onSyncDrift={onSyncDrift}
+                          onCopyBugReport={onCopyBugReport}
+                        />
+                      )}
+
                       {request.headers && Object.keys(request.headers).length > 0 && (
                         <div>
                           <strong className="text-[11px] uppercase tracking-wider text-outline block mb-1">Request Headers</strong>
@@ -434,6 +503,15 @@ export function TrafficView({
                           </pre>
                         </div>
                       )}
+
+                      {request.responseBodyPreview && (
+                        <div>
+                          <strong className="text-[11px] uppercase tracking-wider text-outline block mb-1">Response Body Preview (Intercepted)</strong>
+                          <pre className="p-2.5 bg-surface-container-low rounded-lg border border-outline-variant/20 overflow-x-auto text-[11px] text-on-surface">
+                            {request.responseBodyPreview}
+                          </pre>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -443,6 +521,120 @@ export function TrafficView({
         )}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ponytail: co-located visual diff panel until reused in standalone views
+export function DriftDiffPanel({
+  drift,
+  responseBodyPreview,
+  onSyncDrift,
+  onCopyBugReport,
+}: {
+  drift: SchemaDriftReport;
+  responseBodyPreview?: string;
+  onSyncDrift?: (method: string, path: string, statusCode: string, body: string) => void;
+  onCopyBugReport?: (report: SchemaDriftReport) => void;
+}) {
+  const hasBreaking = drift.breakingCount > 0;
+  return (
+    <div
+      className={`rounded-xl border p-4 space-y-3 font-sans transition-all shadow-sm ${
+        hasBreaking
+          ? 'bg-error/10 border-error/40 text-on-surface'
+          : 'bg-amber-500/10 border-amber-500/40 text-on-surface'
+      }`}
+    >
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-outline-variant/30 pb-2.5">
+        <div className="flex items-center gap-2">
+          <span
+            className={`material-symbols-outlined text-[20px] ${
+              hasBreaking ? 'text-error animate-pulse' : 'text-amber-400'
+            }`}
+          >
+            {hasBreaking ? 'error' : 'change_circle'}
+          </span>
+          <div>
+            <strong className={`text-xs uppercase tracking-wider block font-bold ${hasBreaking ? 'text-error' : 'text-amber-400'}`}>
+              {hasBreaking
+                ? `Contract Drift: ${drift.breakingCount} Breaking Violation${drift.breakingCount !== 1 ? 's' : ''}`
+                : `Schema Change: ${drift.warningCount} Additive Field${drift.warningCount !== 1 ? 's' : ''}`}
+            </strong>
+            <span className="text-[11px] text-on-surface-variant font-mono">
+              Expected contract: <code className="text-on-surface font-semibold">{drift.method} {drift.path}</code> (HTTP {drift.statusCode})
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {onCopyBugReport && (
+            <button
+              onClick={() => onCopyBugReport(drift)}
+              className="px-2.5 py-1 text-xs font-semibold bg-surface-container-high border border-outline-variant/40 hover:border-primary/40 rounded-lg hover:bg-surface-container-highest transition-colors cursor-pointer text-on-surface flex items-center gap-1"
+              title="Copy markdown bug report for Slack / Jira"
+            >
+              <span className="material-symbols-outlined text-[14px]">content_copy</span>
+              Copy Bug Report
+            </button>
+          )}
+          {onSyncDrift && responseBodyPreview && (
+            <button
+              onClick={() => onSyncDrift(drift.method, drift.path, String(drift.statusCode), responseBodyPreview)}
+              className="px-2.5 py-1 text-xs font-semibold bg-primary hover:bg-primary-hover text-on-primary rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-sm"
+              title="Reconcile OpenAPI specification with this runtime payload"
+            >
+              <span className="material-symbols-outlined text-[14px]">sync</span>
+              Sync with OpenAPI
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Structured Diff Table */}
+      <div className="overflow-x-auto rounded-lg border border-outline-variant/30 bg-surface-container-lowest/80">
+        <table className="w-full text-xs font-mono text-left border-collapse">
+          <thead>
+            <tr className="border-b border-outline-variant/30 bg-surface-container-low text-[10px] text-on-surface-variant uppercase tracking-wider">
+              <th className="py-2 px-3">Field Path</th>
+              <th className="py-2 px-3">Violation Type</th>
+              <th className="py-2 px-3">Expected Contract</th>
+              <th className="py-2 px-3">Actual Runtime</th>
+              <th className="py-2 px-3 font-sans">Recommendation</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-outline-variant/20">
+            {drift.items.map((item, idx) => {
+              const isBreaking = item.severity === 'breaking';
+              return (
+                <tr key={idx} className={isBreaking ? 'bg-error/5' : 'bg-amber-500/5'}>
+                  <td className="py-2 px-3 font-bold text-on-surface whitespace-nowrap">
+                    {item.path}
+                  </td>
+                  <td className="py-2 px-3 whitespace-nowrap">
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                        isBreaking ? 'bg-error/20 text-error' : 'bg-amber-500/20 text-amber-400'
+                      }`}
+                    >
+                      {item.changeType.replace(/^(BREAKING_|NON_BREAKING_)/, '')}
+                    </span>
+                  </td>
+                  <td className="py-2 px-3 text-on-surface-variant font-semibold">
+                    {item.expected}
+                  </td>
+                  <td className={`py-2 px-3 font-bold ${isBreaking ? 'text-error' : 'text-amber-400'}`}>
+                    {item.actual}
+                  </td>
+                  <td className="py-2 px-3 font-sans text-xs text-on-surface-variant max-w-[280px]">
+                    {item.suggestion}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );

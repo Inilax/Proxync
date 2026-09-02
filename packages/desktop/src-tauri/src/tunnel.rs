@@ -210,6 +210,8 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
                                     body: String::new(),
                                 };
 
+                                let mut preview_str: Option<String> = None;
+
                                 if let Ok(res) = response {
                                     res_payload.status = res.status().as_u16();
                                     for (k, v) in res.headers() {
@@ -222,15 +224,29 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
                                         }
                                     }
                                     if let Ok(bytes) = res.bytes().await {
+                                        let is_json = res_payload.headers.get("content-type")
+                                            .map(|ct| ct.to_lowercase().contains("json"))
+                                            .unwrap_or(false);
+                                        if is_json {
+                                            if let Ok(raw_s) = std::str::from_utf8(&bytes) {
+                                                let p: String = raw_s.trim().chars().take(4096).collect();
+                                                if !p.is_empty() {
+                                                    preview_str = Some(p);
+                                                }
+                                            }
+                                        }
                                         res_payload.body = BASE64_STANDARD.encode(&bytes);
                                         res_payload.headers.insert("content-length".to_string(), bytes.len().to_string());
                                     }
                                 }
 
                                 let res_meta = serde_json::json!({
+                                    "id": res_payload.request_id.clone(),
                                     "requestId": res_payload.request_id,
                                     "status": res_payload.status,
                                     "durationMs": duration_ms,
+                                    "responseHeaders": res_payload.headers,
+                                    "responseBodyPreview": preview_str,
                                     "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()
                                 });
                                 let _ = app_clone.emit("request:log:response", res_meta);
