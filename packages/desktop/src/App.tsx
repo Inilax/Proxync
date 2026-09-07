@@ -2295,7 +2295,7 @@ export default function App() {
   async function updateAppLogging(enabled: boolean) {
     setAppSettings((current) => ({ ...current, appLogging: enabled }));
     await setAppLogging(enabled, {
-      appVersion: 'v0.2.1-stable',
+      appVersion: 'v0.2.2-stable',
       theme: appSettings.theme,
       platform: typeof navigator !== 'undefined' ? navigator.platform : 'desktop',
     });
@@ -2310,7 +2310,7 @@ export default function App() {
   async function updateTrafficLogging(enabled: boolean) {
     setAppSettings((current) => ({ ...current, trafficLogging: enabled }));
     await setTrafficLogging(enabled, {
-      appVersion: 'v0.2.1-stable',
+      appVersion: 'v0.2.2-stable',
     });
     showToast(
       enabled
@@ -2744,7 +2744,7 @@ export default function App() {
           {!sidebarCollapsed ? (
             <div className="px-6 mb-5">
               <h2 className="text-headline-sm font-bold text-primary truncate">Proxync Engine</h2>
-              <p className="text-code-sm text-on-surface-variant opacity-60">v0.2.1-stable</p>
+              <p className="text-code-sm text-on-surface-variant opacity-60">v0.2.2-stable</p>
             </div>
           ) : (
             <div className="flex flex-col items-center mb-4">
