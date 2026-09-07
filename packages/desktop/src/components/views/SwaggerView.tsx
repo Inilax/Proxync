@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import type { WorkspaceConfig, SwaggerPanel, ProcessCandidate, Tunnel, RequestLog } from './SharedComponents';
 import type { ScannedEndpoint } from '../../lib/codebaseScanner';
 import { exportOpenApiToYaml, exportSwaggerToPostmanCollection, importPostmanToOpenApi, inferResourceTag } from '../../lib/openApiGenerator';
+import { compileEndpointRegex } from '../../lib/codebaseScanner';
 import { generateCodeSnippet, type FrameworkLanguage } from '../../lib/codeSnippetGenerator';
 import type { SchemaDriftReport } from '../../lib/types';
 
@@ -58,16 +59,19 @@ export function SwaggerView({
 
   const contractHealth = useMemo(() => {
     if (!driftReports || driftReports.length === 0) {
-      return { pct: 100, breakingCount: 0, driftedRoutes: 0 };
+      return { pct: 100, breakingCount: 0, warningCount: 0, driftedRoutes: 0, hasPendingSync: false };
     }
     const breaking = driftReports.reduce((s, r) => s + r.breakingCount, 0);
+    const warnings = driftReports.reduce((s, r) => s + r.warningCount, 0);
     const totalDocumented = endpointPreview.length || 1;
     const driftedEndpoints = new Set(driftReports.filter((r) => r.hasDrift).map((r) => `${r.method} ${r.path}`)).size;
     const pct = Math.max(0, Math.round(((totalDocumented - Math.min(totalDocumented, driftedEndpoints)) / totalDocumented) * 100));
     return {
       pct,
       breakingCount: breaking,
+      warningCount: warnings,
       driftedRoutes: driftedEndpoints,
+      hasPendingSync: breaking > 0 || warnings > 0,
     };
   }, [driftReports, endpointPreview]);
 
@@ -536,17 +540,39 @@ export function SwaggerView({
           ) : (
             <div className="space-y-3">
               {/* Contract Health & Reconciliation Banner */}
-              {contractHealth.breakingCount > 0 && (
-                <div className="p-3.5 bg-error/10 border border-error/30 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-2 text-error font-bold">
-                    <span className="material-symbols-outlined text-[18px]">warning</span>
-                    <span>
-                      {contractHealth.breakingCount} Breaking Contract Violation{contractHealth.breakingCount !== 1 ? 's' : ''} in Live Traffic
+              {contractHealth.hasPendingSync && (
+                <div
+                  className={`p-3.5 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs ${
+                    contractHealth.breakingCount > 0
+                      ? 'bg-error/10 border-error/30 text-on-surface'
+                      : 'bg-amber-500/10 border-amber-500/30 text-on-surface'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 font-bold">
+                    <span
+                      className={`material-symbols-outlined text-[18px] ${
+                        contractHealth.breakingCount > 0 ? 'text-error animate-pulse' : 'text-amber-400'
+                      }`}
+                    >
+                      {contractHealth.breakingCount > 0 ? 'warning' : 'change_circle'}
+                    </span>
+                    <span className={contractHealth.breakingCount > 0 ? 'text-error' : 'text-amber-400'}>
+                      {contractHealth.breakingCount > 0
+                        ? `${contractHealth.breakingCount} Breaking Contract Violation${contractHealth.breakingCount !== 1 ? 's' : ''}${
+                            contractHealth.warningCount > 0
+                              ? ` & ${contractHealth.warningCount} Additive Change${contractHealth.warningCount !== 1 ? 's' : ''}`
+                              : ''
+                          } in Live Traffic`
+                        : `${contractHealth.warningCount} Additive Schema Change${contractHealth.warningCount !== 1 ? 's' : ''} Pending Sync`}
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-on-surface-variant font-mono">
-                      Contract Health: <strong className="text-error">{contractHealth.pct}%</strong> compliant
+                      Contract Health:{' '}
+                      <strong className={contractHealth.breakingCount > 0 ? 'text-error' : 'text-amber-400'}>
+                        {contractHealth.pct}%
+                      </strong>{' '}
+                      compliant ({contractHealth.driftedRoutes} drifted endpoint{contractHealth.driftedRoutes !== 1 ? 's' : ''})
                     </span>
                   </div>
                 </div>
@@ -591,12 +617,15 @@ export function SwaggerView({
 
                         {/* Schema Drift Indicator Pill */}
                         {(() => {
-                          const epDrift = driftReports?.find(
-                            (r) =>
-                              r.method === ep.method.toUpperCase() &&
-                              (r.path === ep.path || ep.path.includes(r.path)) &&
-                              r.hasDrift
-                          );
+                          const epDrift = driftReports?.find((r) => {
+                            if (r.method !== ep.method.toUpperCase() || !r.hasDrift) return false;
+                            if (r.path === ep.path) return true;
+                            try {
+                              return compileEndpointRegex(ep.path).test(r.path);
+                            } catch {
+                              return false;
+                            }
+                          });
                           if (!epDrift) return null;
                           return (
                             <span

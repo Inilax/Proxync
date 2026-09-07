@@ -2,6 +2,18 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [feature/develop-schema-drift-detection] - 2026-09-07 (Multi-Endpoint Schema Drift Tracking & Granular Reconciliation Engine)
+- **Feature Summary**:
+  - **Unified Real-Time Drift Alerting (`App.tsx`)**: Consolidated toast notifications into a shared `notifyDriftAlert` helper delivering distinct, debounced toasts for breaking contract errors (`error`) and additive schema changes (`warning`).
+  - **Granular Scoped Reconciliation & Remaining Counter (`App.tsx`, `TrafficView.tsx`)**: Enhanced `handleSyncOpenApiWithDrift` with $O(N)$ route difference calculation to verify remaining un-synced routes and provide explicit scoping feedback (`Note: X other endpoint(s) still have pending drift`), eliminating user ambiguity during selective sync.
+  - **Swagger Studio Additive Warning Banner & Health Metrics (`SwaggerView.tsx`)**: Upgraded `contractHealth` computation and the top reconciliation banner to track additive schema changes (`warningCount`) alongside breaking violations, rendering an amber banner when only non-breaking changes remain un-synced.
+  - **Precision Route Regex Matching (`SwaggerView.tsx`)**: Replaced loose substring endpoint matching with `compileEndpointRegex`, preventing collection endpoints (`/api/products`) from falsely cascading drift badges onto item endpoints (`/api/products/{id}`).
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/SwaggerView.tsx`
+  - `packages/desktop/src/components/views/TrafficView.tsx`
+  - `CHANGELOG.md`
+
 ## [feature/develop-schema-drift-detection] - 2026-09-02 (Real-Time Schema Drift Detection & Contract Diff Engine)
 - **Feature Summary**:
   - **4 KB Native HTTP Response Preview Capture (`proxy.rs`, `tunnel.rs`)**: Extracted response body preview and headers for `application/json` payloads directly in Rust proxy and tunnel streams while bypassing WebSocket/SSE streaming protocols and compressed payloads.

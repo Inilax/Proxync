@@ -583,7 +583,7 @@ export function DriftDiffPanel({
             <button
               onClick={() => onSyncDrift(drift.method, drift.path, String(drift.statusCode), responseBodyPreview)}
               className="px-2.5 py-1 text-xs font-semibold bg-primary hover:bg-primary-hover text-on-primary rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-sm"
-              title="Reconcile OpenAPI specification with this runtime payload"
+              title={`Reconcile OpenAPI specification for ${drift.method} ${drift.path} (HTTP ${drift.statusCode}) only`}
             >
               <span className="material-symbols-outlined text-[14px]">sync</span>
               Sync with OpenAPI

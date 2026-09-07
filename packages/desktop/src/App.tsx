@@ -568,6 +568,34 @@ export default function App() {
   const appSettingsRef = useRef<AppSettings>(appSettings);
   useEffect(() => { appSettingsRef.current = appSettings; }, [appSettings]);
 
+  // ponytail: unified drift alert notifier covering both breaking errors and additive schema warnings
+  const notifyDriftAlert = useCallback((report: SchemaDriftReport) => {
+    if (!report.hasDrift || alertedRoutesRef.current.has(report.routeKey)) return;
+    alertedRoutesRef.current.add(report.routeKey);
+
+    if (report.breakingCount > 0) {
+      const top = report.items.find((i) => i.severity === 'breaking');
+      showToast(
+        `🚨 Breaking Contract Drift on ${report.method} ${report.path}: ${top?.message ?? `${report.breakingCount} violation(s)`}`,
+        'error',
+        true
+      );
+    } else if (report.warningCount > 0) {
+      showToast(
+        `⚠️ Schema Change on ${report.method} ${report.path}: +${report.warningCount} additive field(s) detected`,
+        'warning',
+        false
+      );
+    }
+
+    logApp(
+      'HTTP',
+      'WARN',
+      `Schema drift on ${report.routeKey}: ${report.breakingCount} breaking, ${report.warningCount} warnings`,
+      { routeKey: report.routeKey, violations: report.items }
+    );
+  }, []);
+
   // Auto-scan codebase endpoints when effective project root is detected or changed
   useEffect(() => {
     if (!effectiveProjectRoot) return;
@@ -1338,20 +1366,8 @@ export default function App() {
             return next;
           });
 
-          // Debounced high-visibility alert for breaking drifts
-          if (report.breakingCount > 0 && !alertedRoutesRef.current.has(report.routeKey)) {
-            alertedRoutesRef.current.add(report.routeKey);
-            const top = report.items.find((i) => i.severity === 'breaking');
-            showToast(
-              `🚨 Breaking Schema Drift on ${report.method} ${report.path}: ${top?.message ?? `${report.breakingCount} violation(s)`}`,
-              'error',
-              true
-            );
-            logApp('HTTP', 'WARN',
-              `Schema drift on ${report.routeKey}: ${report.breakingCount} breaking, ${report.warningCount} warnings`,
-              { routeKey: report.routeKey, violations: report.items }
-            );
-          }
+          // Debounced high-visibility notification for breaking and additive drift
+          notifyDriftAlert(report);
         }
       });
       if (!active) { uRes(); } else { unlistenResponse = uRes; }
@@ -2204,17 +2220,8 @@ export default function App() {
           return next;
         });
 
-        if (replayDrift.breakingCount > 0 && !alertedRoutesRef.current.has(replayDrift.routeKey)) {
-          alertedRoutesRef.current.add(replayDrift.routeKey);
-          const top = replayDrift.items.find((i) => i.severity === 'breaking');
-          showToast(
-            `🚨 Breaking Schema Drift on ${replayDrift.method} ${replayDrift.path}: ${top?.message ?? `${replayDrift.breakingCount} violation(s)`}`,
-            'error',
-            true
-          );
-        } else {
-          showToast(`Replayed ${request.method} ${request.path} (${status})`, 'success');
-        }
+        notifyDriftAlert(replayDrift);
+        showToast(`Replayed ${request.method} ${request.path} (${status})`, 'success');
       } else {
         showToast(`Replayed ${request.method} ${request.path} (${status})`, 'success');
       }
@@ -2322,17 +2329,8 @@ export default function App() {
           return next;
         });
 
-        if (sendDrift.breakingCount > 0 && !alertedRoutesRef.current.has(sendDrift.routeKey)) {
-          alertedRoutesRef.current.add(sendDrift.routeKey);
-          const top = sendDrift.items.find((i) => i.severity === 'breaking');
-          showToast(
-            `🚨 Breaking Schema Drift on ${sendDrift.method} ${sendDrift.path}: ${top?.message ?? `${sendDrift.breakingCount} violation(s)`}`,
-            'error',
-            true
-          );
-        } else {
-          showToast(`Request to ${targetUrl} completed (${status})`, 'success');
-        }
+        notifyDriftAlert(sendDrift);
+        showToast(`Request to ${targetUrl} completed (${status})`, 'success');
       } else {
         showToast(`Request to ${targetUrl} completed (${status})`, 'success');
       }
@@ -2380,6 +2378,16 @@ export default function App() {
     const cleanPath = path.split('?')[0].replace(/^https?:\/\/[^/]+/, '') || path;
     const normMethod = method.toUpperCase();
 
+    // ponytail: DSA optimization - calculate remaining un-synced routes before mutating state
+    const uniqueRemainingRoutes = new Set<string>();
+    for (const v of driftAlerts.values()) {
+      const vClean = v.path.split('?')[0].replace(/^https?:\/\/[^/]+/, '') || v.path;
+      if (v.hasDrift && (v.method.toUpperCase() !== normMethod || (v.path !== path && vClean !== cleanPath))) {
+        uniqueRemainingRoutes.add(`${v.method.toUpperCase()} ${vClean}`);
+      }
+    }
+    const otherDriftCount = uniqueRemainingRoutes.size;
+
     setDriftAlerts((prev) => {
       const next = new Map();
       for (const [k, v] of prev.entries()) {
@@ -2417,9 +2425,19 @@ export default function App() {
       })
     );
 
-    showToast(`✅ OpenAPI contract synchronized for ${method} ${path}`, 'success');
-    logApp('HTTP', 'INFO', `Contract synced for ${method} ${path} (status ${statusCode})`);
-  }, []);
+    if (otherDriftCount > 0) {
+      showToast(
+        `✅ Synced ${normMethod} ${cleanPath} (HTTP ${statusCode}). Note: ${otherDriftCount} other endpoint(s) still have pending drift.`,
+        'success'
+      );
+    } else {
+      showToast(
+        `✅ OpenAPI contract synchronized for ${normMethod} ${cleanPath} (HTTP ${statusCode}) — 100% compliant`,
+        'success'
+      );
+    }
+    logApp('HTTP', 'INFO', `Contract synced for ${method} ${path} (status ${statusCode}), ${otherDriftCount} other drifted routes remaining`);
+  }, [driftAlerts]);
 
   const handleCopyDriftBugReport = useCallback((report: SchemaDriftReport) => {
     const md = generateDriftBugReportMarkdown(report);
