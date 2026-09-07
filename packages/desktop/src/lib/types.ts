@@ -67,6 +67,8 @@ export interface SavedRequest {
   body: string;
   source: 'manual' | 'starter-scan' | 'captured';
   collectionName?: string;
+  queryParams?: { key: string; value: string; enabled: boolean }[];
+  description?: string;
 }
 
 export interface PostmanResponse {

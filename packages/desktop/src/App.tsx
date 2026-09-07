@@ -2184,19 +2184,43 @@ export default function App() {
 
   function saveDraftRequest() {
     const folder = draftRequest.collectionName || 'Default Collection';
+    const id = draftRequest.id === 'draft' ? crypto.randomUUID() : draftRequest.id;
     const saved: SavedRequest = {
       ...draftRequest,
-      id: draftRequest.id === 'draft' ? crypto.randomUUID() : draftRequest.id,
+      id,
       name: stripMethodPrefix(draftRequest.name.trim() || draftRequest.path) || draftRequest.path,
       collectionName: folder,
     };
-    setSavedRequests((current) => mergeRequests(current, [saved]));
+    setSavedRequests((current) => {
+      const exists = current.some((r) => r.id === saved.id);
+      return exists
+        ? current.map((r) => (r.id === saved.id ? saved : r))
+        : [...current, saved];
+    });
     setDraftRequest(saved);
     showToast(`Request saved to "${folder}"`, 'success');
   }
 
   function deleteSavedRequest(id: string) {
-    setSavedRequests((current) => current.filter((r) => r.id !== id));
+    setSavedRequests((current) => {
+      const remaining = current.filter((r) => r.id !== id);
+      if (draftRequest.id === id) {
+        const next = remaining.find((r) => r.collectionName === draftRequest.collectionName) || remaining[0];
+        if (next) {
+          setDraftRequest(next);
+        } else {
+          // Reset to blank draft and clear stale response when collection empties after delete
+          setDraftRequest({
+            ...DEFAULT_REQUEST,
+            collectionName: draftRequest.collectionName || 'Default Collection',
+            queryParams: [],
+            description: '',
+          });
+          setPostmanResponse(null);
+        }
+      }
+      return remaining;
+    });
     showToast('Request removed from collection', 'info');
   }
 
@@ -3355,7 +3379,10 @@ function buildStarterRequests(process: ProcessCandidate): SavedRequest[] {
 
 function mergeRequests(current: SavedRequest[], incoming: SavedRequest[]): SavedRequest[] {
   const map = new Map<string, SavedRequest>();
-  for (const r of [...incoming, ...current]) { map.set(`${r.method}:${r.path}:${r.name}`, r); }
+  for (const r of [...current, ...incoming]) {
+    const key = r.id && r.id !== 'draft' ? `id:${r.id}` : `${r.method}:${r.path}:${r.name}`;
+    map.set(key, r);
+  }
   return Array.from(map.values());
 }
 
