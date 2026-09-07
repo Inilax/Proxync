@@ -562,6 +562,8 @@ export default function App() {
 
   // ── Schema Drift Detection State & Stable Listener Refs ─────────────────────
   const [driftAlerts, setDriftAlerts] = useState<Map<string, SchemaDriftReport>>(new Map());
+  const driftAlertsRef = useRef<Map<string, SchemaDriftReport>>(driftAlerts);
+  useEffect(() => { driftAlertsRef.current = driftAlerts; }, [driftAlerts]);
   const alertedRoutesRef = useRef<Set<string>>(new Set());
   const openApiDocumentRef = useRef<Record<string, unknown>>(openApiDocument);
   useEffect(() => { openApiDocumentRef.current = openApiDocument; }, [openApiDocument]);
@@ -577,14 +579,12 @@ export default function App() {
       const top = report.items.find((i) => i.severity === 'breaking');
       showToast(
         `🚨 Breaking Contract Drift on ${report.method} ${report.path}: ${top?.message ?? `${report.breakingCount} violation(s)`}`,
-        'error',
-        true
+        'error'
       );
     } else if (report.warningCount > 0) {
       showToast(
         `⚠️ Schema Change on ${report.method} ${report.path}: +${report.warningCount} additive field(s) detected`,
-        'warning',
-        false
+        'warning'
       );
     }
 
@@ -2378,9 +2378,9 @@ export default function App() {
     const cleanPath = path.split('?')[0].replace(/^https?:\/\/[^/]+/, '') || path;
     const normMethod = method.toUpperCase();
 
-    // ponytail: DSA optimization - calculate remaining un-synced routes before mutating state
+    // ponytail: compute otherDriftCount synchronously via driftAlertsRef — no closure dep, no updater side effects
     const uniqueRemainingRoutes = new Set<string>();
-    for (const v of driftAlerts.values()) {
+    for (const v of driftAlertsRef.current.values()) {
       const vClean = v.path.split('?')[0].replace(/^https?:\/\/[^/]+/, '') || v.path;
       if (v.hasDrift && (v.method.toUpperCase() !== normMethod || (v.path !== path && vClean !== cleanPath))) {
         uniqueRemainingRoutes.add(`${v.method.toUpperCase()} ${vClean}`);
@@ -2437,12 +2437,20 @@ export default function App() {
       );
     }
     logApp('HTTP', 'INFO', `Contract synced for ${method} ${path} (status ${statusCode}), ${otherDriftCount} other drifted routes remaining`);
-  }, [driftAlerts]);
+  }, []);
+  // ponytail: dep [] is correct — reads latest state via driftAlertsRef.current.
 
   const handleCopyDriftBugReport = useCallback((report: SchemaDriftReport) => {
     const md = generateDriftBugReportMarkdown(report);
     copyText(md, '📋 Bug report copied to clipboard');
   }, []);
+
+  // P2: Memoized drift reports array — avoids allocating a new Set+Array on every render.
+  // Consumed by both SwaggerView and ObservabilityView.
+  const driftReports = useMemo(
+    () => Array.from(new Set(driftAlerts.values())),
+    [driftAlerts]
+  );
 
   function importStarterRequests() {
     if (starterSuggestions.length === 0) return;
@@ -3183,6 +3191,7 @@ export default function App() {
                 processes={processes}
                 activeTunnel={activeTunnel}
                 driftAlerts={driftAlerts}
+                captureBodies={appSettings.guardrails?.captureBodies ?? true}
                 onOpen={openRequestDetail}
                 onSendToPostman={sendToPostman}
                 onClear={clearTrafficLogs}
@@ -3234,7 +3243,7 @@ export default function App() {
                 requests={requests}
                 activeTunnel={activeTunnel}
                 generating={generatingSwagger}
-                driftReports={Array.from(new Set(driftAlerts.values()))}
+                driftReports={driftReports}
                 onGenerateSpec={handleGenerateSwaggerSpec}
                 onClearSpec={handleClearSwaggerSpec}
                 onChangePanel={setSwaggerPanel}
@@ -3303,7 +3312,7 @@ export default function App() {
                 tunnel={activeTunnel}
                 requests={requests}
                 telemetryMode={appSettings.telemetry ?? 'enhanced'}
-                driftReports={Array.from(new Set(driftAlerts.values()))}
+                driftReports={driftReports}
                 onNavigateView={setMainView}
                 onOpenDetail={openRequestDetail}
                 onSendToPostman={sendToPostman}

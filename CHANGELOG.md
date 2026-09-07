@@ -2,6 +2,20 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [feature/develop-schema-drift-detection] - 2026-09-07 (Schema Drift Hardening, Council Review Optimizations & Guardrail Indicator)
+- **Feature Summary**:
+  - **Fuzzy Rename Guard (`schemaDriftDetector.ts`)**: Enforced a minimum field length check (>= 3 chars) on Levenshtein edit-distance matching, preventing false positive `FIELD_RENAMED` violations between unrelated short identifiers (e.g., `id`, `at`, `ts`, `ip`).
+  - **Status-Aware Schema Resolution (`schemaDriftDetector.ts`)**: Streamlined `resolveBaselineSchema` to return a minimal resolution on undocumented HTTP statuses, preventing invalid cross-status schema diffing against default 200 OK schemas.
+  - **Regex Caching & Recursion Defense (`schemaDriftDetector.ts`)**: Implemented `getCompiledEndpointRegex` caching to avoid repeated regex compilation on hot traffic loops, and added a recursion depth guard (`depth > 20`) in `diffSchemas`.
+  - **Reactivity Optimization & Toast Timing (`App.tsx`, `toast.tsx`)**: Removed state closures from `handleSyncOpenApiWithDrift` via `driftAlertsRef`, memoized `driftReports` to eliminate redundant Set/Array reallocations, restored persistent toast capabilities in `toast.tsx`, and kept drift notifications non-sticky (4-second auto-dismiss).
+  - **Bodies Captured Indicator (`TrafficView.tsx`)**: Added a visual telemetry indicator in the Traffic Inspector header to clearly inform users when payload capture is active in memory.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/TrafficView.tsx`
+  - `packages/desktop/src/lib/schemaDriftDetector.ts`
+  - `packages/desktop/src/lib/toast.tsx`
+  - `CHANGELOG.md`
+
 ## [feature/develop-schema-drift-detection] - 2026-09-07 (Multi-Endpoint Schema Drift Tracking & Granular Reconciliation Engine)
 - **Feature Summary**:
   - **Unified Real-Time Drift Alerting (`App.tsx`)**: Consolidated toast notifications into a shared `notifyDriftAlert` helper delivering distinct, debounced toasts for breaking contract errors (`error`) and additive schema changes (`warning`).

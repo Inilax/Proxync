@@ -8,6 +8,7 @@ export function TrafficView({
   processes = [],
   activeTunnel,
   driftAlerts,
+  captureBodies = false,
   onOpen,
   onSendToPostman,
   onClear,
@@ -20,6 +21,8 @@ export function TrafficView({
   processes?: ProcessCandidate[];
   activeTunnel: Tunnel | null;
   driftAlerts?: Map<string, SchemaDriftReport>;
+  /** When true, response bodies are captured in memory — shows a guardrail badge in the toolbar. */
+  captureBodies?: boolean;
   onOpen: (request: RequestLog) => void;
   onSendToPostman: (request: RequestLog) => void;
   onClear: () => void;
@@ -161,6 +164,16 @@ export function TrafficView({
           <span className="font-code-sm text-code-sm text-on-surface-variant px-3 py-1 bg-surface-container rounded border border-outline-variant/50">
             {filteredRequests.length} / {requests.length} Logs
           </span>
+          {/* P2: Guardrail badge — warns user that response bodies are retained in memory */}
+          {captureBodies && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-500/15 border border-amber-500/30 text-amber-400"
+              title="Response body capture is enabled (Guardrails: Bodies ON). Bodies are stored in memory for drift analysis."
+            >
+              <span className="material-symbols-outlined text-[12px]">security</span>
+              Bodies Captured
+            </span>
+          )}
           <button
             onClick={onClear}
             disabled={requests.length === 0}

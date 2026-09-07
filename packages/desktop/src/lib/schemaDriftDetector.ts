@@ -25,6 +25,17 @@ export function compileEndpointRegex(openApiPath: string): RegExp {
   return new RegExp(regexString, 'i');
 }
 
+/** Cache compiled endpoint path regexes to avoid recompiling on every traffic packet */
+const endpointRegexCache = new Map<string, RegExp>();
+export function getCompiledEndpointRegex(openApiPath: string): RegExp {
+  let cached = endpointRegexCache.get(openApiPath);
+  if (!cached) {
+    cached = compileEndpointRegex(openApiPath);
+    endpointRegexCache.set(openApiPath, cached);
+  }
+  return cached;
+}
+
 // ─── Inline Levenshtein Distance & Case Normalization ─────────────────────────
 // ponytail: pure stdlib Levenshtein algorithm with snake_case/camelCase normalization.
 // Upgrade path: benchmark vs fastest-levenshtein if payload schemas exceed 100 properties.
@@ -55,7 +66,7 @@ export function levenshtein(a: string, b: string): number {
 export function isRenameCandidate(a: string, b: string): boolean {
   if (a === b) return false;
 
-  // 1. Exact letter match ignoring underscores and case
+  // 1. Exact letter match ignoring underscores and case (e.g. userId <-> user_id, _id <-> id)
   const normA = a.replace(/_/g, '').toLowerCase();
   const normB = b.replace(/_/g, '').toLowerCase();
   if (normA === normB && normA.length > 1) {
@@ -63,6 +74,10 @@ export function isRenameCandidate(a: string, b: string): boolean {
   }
 
   // 2. Levenshtein edit distance <= 2
+  // P1 fix: short field names (id, at, ts, ok, ip) all have Levenshtein <= 2 between each other;
+  // guard them to prevent spurious BREAKING_FIELD_RENAMED violations on fuzzy matching.
+  if (a.length < 3 || b.length < 3) return false;
+
   return levenshtein(a.toLowerCase(), b.toLowerCase()) <= 2;
 }
 
@@ -91,6 +106,17 @@ export function cleanAndParseJson(bodyStr?: string | null): unknown | null {
 }
 
 // ─── Resolve Baseline Schema from live OpenAPI Specification ─────────────────
+
+/** Typed shape of an OpenAPI response entry — replaces `as any` casts downstream. */
+interface OpenApiResponseEntry {
+  description?: string;
+  content?: {
+    'application/json'?: {
+      schema?: OpenApiSchema;
+    };
+    [mediaType: string]: unknown;
+  };
+}
 
 export interface BaselineResolution {
   schema: OpenApiSchema;
@@ -138,14 +164,15 @@ export function resolveBaselineSchema(
         break;
       }
       try {
-        const reg = compileEndpointRegex(docPath);
+        const reg = getCompiledEndpointRegex(docPath);
         if (reg.test(cleanReqPath)) {
           matchedDocPath = docPath;
           matchedPathObj = pathObj;
           break;
         }
-      } catch {
-        // Continue to next path if regex compilation fails
+      } catch (err) {
+        // P2: Log misconfigured OpenAPI path patterns for ops debuggability
+        console.warn(`[SchemaDrift] compileEndpointRegex failed for docPath '${docPath}':`, err);
       }
     }
   }
@@ -159,20 +186,23 @@ export function resolveBaselineSchema(
   if (!responses || typeof responses !== 'object') return null;
 
   const statusDocumented = statusCode in responses;
-  // Use exact status response or fall back to '200' / '201' / 'default'
-  const responseEntry = (responses[statusCode] ??
-    responses['200'] ??
-    responses['201'] ??
-    responses['default']) as Record<string, unknown> | undefined;
 
+  // If status is undocumented, return minimal baseline resolution so
+  // detectSchemaDrift can report STATUS_UNDOCUMENTED without falsely diffing body against another status.
+  if (!statusDocumented) {
+    return { schema: {} as OpenApiSchema, statusDocumented: false, docPath: matchedDocPath };
+  }
+
+  const responseEntry = responses[statusCode] as OpenApiResponseEntry | undefined;
   if (!responseEntry) return null;
 
-  const schema = (responseEntry as any)?.content?.['application/json']?.schema as OpenApiSchema | undefined;
+  // P2: Typed OpenApiResponseEntry replaces the previous `as any` cast
+  const schema = responseEntry?.content?.['application/json']?.schema;
   if (!schema) return null;
 
   return {
     schema,
-    statusDocumented,
+    statusDocumented: true,
     docPath: matchedDocPath,
   };
 }
@@ -186,7 +216,10 @@ export function diffSchemas(
   baseline: OpenApiSchema,
   current: OpenApiSchema,
   fieldPath: string = '',
+  _depth: number = 0,
 ): SchemaDriftItem[] {
+  // P2: Guard against unbounded recursion on circular $ref schemas or deeply-nested arrays
+  if (_depth > 20) return [];
   const items: SchemaDriftItem[] = [];
 
   // 1. Nullability Check
@@ -222,7 +255,7 @@ export function diffSchemas(
 
   // 3. Array Item Recursion
   if (baseline.type === 'array' && current.type === 'array' && baseline.items && current.items) {
-    const subItems = diffSchemas(baseline.items, current.items, `${fieldPath}[*]`);
+    const subItems = diffSchemas(baseline.items, current.items, `${fieldPath}[*]`, _depth + 1);
     subItems.forEach((si) => {
       items.push({
         ...si,
@@ -306,7 +339,7 @@ export function diffSchemas(
       .filter((f) => currFields.includes(f) && current.properties?.[f])
       .forEach((f) => {
         const fp = fieldPath ? `${fieldPath}.${f}` : f;
-        items.push(...diffSchemas(baseline.properties![f], current.properties![f], fp));
+        items.push(...diffSchemas(baseline.properties![f], current.properties![f], fp, _depth + 1));
       });
   }
 
@@ -346,7 +379,6 @@ export function detectSchemaDrift(
   if (parsedJson === null) return null;
 
   const statusStr = String(statusCode);
-  const numStatus = typeof statusCode === 'number' ? statusCode : parseInt(statusStr, 10);
 
   // Guard 5: Route documented in OpenAPI spec
   const resolved = resolveBaselineSchema(openApiDoc, method, rawPath, statusStr);
@@ -369,9 +401,9 @@ export function detectSchemaDrift(
     });
   }
 
-  // Hardening Rule: If 4xx/5xx error and status is not documented, do NOT compare error body against 200 OK schema
-  const isUndocumentedError = numStatus >= 400 && !resolved.statusDocumented;
-  if (!isUndocumentedError) {
+  // Only diff response body schema when status is documented and has a baseline schema.
+  // If status is undocumented, we do not have an expected schema for this status code.
+  if (resolved.statusDocumented && resolved.schema && Object.keys(resolved.schema).length > 0) {
     const actualSchema = inferJsonSchemaFromValue(parsedJson);
     driftItems.push(...diffSchemas(resolved.schema, actualSchema));
   }
@@ -431,12 +463,13 @@ export function syncOpenApiWithPayload(
       break;
     }
     try {
-      if (compileEndpointRegex(docPath).test(cleanReqPath)) {
+      if (getCompiledEndpointRegex(docPath).test(cleanReqPath)) {
         targetPath = docPath;
         break;
       }
-    } catch {
-      // Continue searching
+    } catch (err) {
+      // P2: Log misconfigured OpenAPI path patterns for ops debuggability
+      console.warn(`[SchemaDrift] syncOpenApiWithPayload: compileEndpointRegex failed for '${docPath}':`, err);
     }
   }
 
