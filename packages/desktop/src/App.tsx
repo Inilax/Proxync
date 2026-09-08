@@ -10,6 +10,12 @@ import { ToastContainer, showToast, dismissToast } from './lib/toast';
 import { scanCodebaseEndpoints, type ScannedEndpoint } from './lib/codebaseScanner';
 import { generateOpenApiSpec, importSwaggerToSavedRequests, isNoiseOrScannerProbe } from './lib/openApiGenerator';
 import {
+  detectSchemaDrift,
+  syncOpenApiWithPayload,
+  generateDriftBugReportMarkdown,
+} from './lib/schemaDriftDetector';
+import type { SchemaDriftReport } from './lib/types';
+import {
   api,
   ensureLocalWorkspace,
   getToken,
@@ -554,6 +560,42 @@ export default function App() {
   );
   const [generatingSwagger, setGeneratingSwagger] = useState<boolean>(false);
 
+  // ── Schema Drift Detection State & Stable Listener Refs ─────────────────────
+  const [driftAlerts, setDriftAlerts] = useState<Map<string, SchemaDriftReport>>(new Map());
+  const driftAlertsRef = useRef<Map<string, SchemaDriftReport>>(driftAlerts);
+  useEffect(() => { driftAlertsRef.current = driftAlerts; }, [driftAlerts]);
+  const alertedRoutesRef = useRef<Set<string>>(new Set());
+  const openApiDocumentRef = useRef<Record<string, unknown>>(openApiDocument);
+  useEffect(() => { openApiDocumentRef.current = openApiDocument; }, [openApiDocument]);
+  const appSettingsRef = useRef<AppSettings>(appSettings);
+  useEffect(() => { appSettingsRef.current = appSettings; }, [appSettings]);
+
+  // ponytail: unified drift alert notifier covering both breaking errors and additive schema warnings
+  const notifyDriftAlert = useCallback((report: SchemaDriftReport) => {
+    if (!report.hasDrift || alertedRoutesRef.current.has(report.routeKey)) return;
+    alertedRoutesRef.current.add(report.routeKey);
+
+    if (report.breakingCount > 0) {
+      const top = report.items.find((i) => i.severity === 'breaking');
+      showToast(
+        `🚨 Breaking Contract Drift on ${report.method} ${report.path}: ${top?.message ?? `${report.breakingCount} violation(s)`}`,
+        'error'
+      );
+    } else if (report.warningCount > 0) {
+      showToast(
+        `⚠️ Schema Change on ${report.method} ${report.path}: +${report.warningCount} additive field(s) detected`,
+        'warning'
+      );
+    }
+
+    logApp(
+      'HTTP',
+      'WARN',
+      `Schema drift on ${report.routeKey}: ${report.breakingCount} breaking, ${report.warningCount} warnings`,
+      { routeKey: report.routeKey, violations: report.items }
+    );
+  }, []);
+
   // Auto-scan codebase endpoints when effective project root is detected or changed
   useEffect(() => {
     if (!effectiveProjectRoot) return;
@@ -651,6 +693,12 @@ export default function App() {
       draftRequest,
       activeSubTab: 'devtools',
       authSyncedState: 'unsynced',
+      lastResponse: requestLog ? {
+        status: typeof requestLog.status === 'number' ? requestLog.status : parseInt(String(requestLog.status || 200), 10),
+        duration: requestLog.durationMs || 12,
+        headers: requestLog.responseHeaders || {},
+        body: requestLog.responseBodyPreview || requestLog.bodyPreview || '',
+      } : undefined,
       executionHistory: requestLog
         ? [
           {
@@ -660,7 +708,7 @@ export default function App() {
             status: typeof requestLog.status === 'number' ? requestLog.status : parseInt(String(requestLog.status || 200), 10),
             durationMs: requestLog.durationMs || 12,
             headers: requestLog.responseHeaders || { 'Content-Type': 'application/json' },
-            body: requestLog.bodyPreview || '{\n  "status": "initial captured log"\n}',
+            body: requestLog.responseBodyPreview || requestLog.bodyPreview || '{\n  "status": "initial captured log"\n}',
             note: 'Captured Log Intercept',
           },
         ]
@@ -1262,15 +1310,65 @@ export default function App() {
         const resolvedDuration = typeof payload.durationMs === 'number' ? payload.durationMs : null;
         console.log(`[Proxync Response] Req ID ${targetId} -> Status ${payload.status} (${resolvedDuration ?? 0}ms)`);
         logApp('HTTP', 'DEBUG', `Response received for req ${targetId} -> Status ${payload.status} (${resolvedDuration ?? 0}ms)`);
+
+        let driftReport: SchemaDriftReport | null = null;
+        let matchedReqId = '';
+        let matchedRawId = '';
+
         setRequests((current) =>
           current.map((r: any) => {
             if (r.id === targetId || r.rawRequestId === targetId) {
+              matchedReqId = r.id;
+              matchedRawId = r.rawRequestId || '';
               const dur = resolvedDuration !== null ? resolvedDuration : (r.capturedAtMs ? Math.max(1, Date.now() - r.capturedAtMs) : (r.durationMs || 12));
-              return { ...r, status: payload.status, durationMs: dur };
+
+              // Real-time Schema Drift Detection
+              if (!r.isProbe && payload.responseBodyPreview && payload.status !== 'pending') {
+                driftReport = detectSchemaDrift(
+                  r.method,
+                  r.path,
+                  payload.status,
+                  payload.responseBodyPreview,
+                  openApiDocumentRef.current,
+                );
+              }
+
+              // Guardrails check for body capture
+              const guardrailsCapture = appSettingsRef.current?.guardrails?.captureBodies ?? true;
+
+              return {
+                ...r,
+                status: payload.status,
+                durationMs: dur,
+                responseHeaders: payload.responseHeaders || r.responseHeaders,
+                responseBodyPreview: guardrailsCapture
+                  ? (payload.responseBodyPreview || r.responseBodyPreview)
+                  : r.responseBodyPreview,
+                schemaDrift: driftReport ?? r.schemaDrift,
+              };
             }
             return r;
           }),
         );
+
+        if (driftReport && (driftReport as SchemaDriftReport).hasDrift) {
+          const report = driftReport as SchemaDriftReport;
+          setDriftAlerts((prev) => {
+            const next = new Map(prev);
+            if (matchedReqId) next.set(matchedReqId, report);
+            if (matchedRawId) next.set(matchedRawId, report);
+            next.set(targetId, report);
+            // ponytail: bounded to 300 entries matching terminalLogs buffer to prevent memory leakage
+            if (next.size > 300) {
+              const keysToDelete = Array.from(next.keys()).slice(0, next.size - 300);
+              for (const k of keysToDelete) next.delete(k);
+            }
+            return next;
+          });
+
+          // Debounced high-visibility notification for breaking and additive drift
+          notifyDriftAlert(report);
+        }
       });
       if (!active) { uRes(); } else { unlistenResponse = uRes; }
 
@@ -2058,6 +2156,7 @@ export default function App() {
       let status = 200;
       let durationMs = 0;
       let resHeaders: Record<string, string> = {};
+      let bodyText = '';
 
       try {
         const res = await invoke<{ status: number; headers: Record<string, string>; body: string }>('execute_http_request', {
@@ -2069,6 +2168,7 @@ export default function App() {
         durationMs = Date.now() - startedAt;
         status = res.status;
         resHeaders = res.headers;
+        bodyText = res.body;
       } catch {
         const response = await fetch(targetUrl, {
           method: request.method,
@@ -2078,6 +2178,18 @@ export default function App() {
         durationMs = Date.now() - startedAt;
         status = response.status;
         resHeaders = Object.fromEntries(response.headers.entries());
+        bodyText = await response.text();
+      }
+
+      let replayDrift: SchemaDriftReport | null = null;
+      if (bodyText) {
+        replayDrift = detectSchemaDrift(
+          request.method,
+          request.path,
+          status,
+          bodyText,
+          openApiDocumentRef.current,
+        );
       }
 
       const replayedLog: RequestLog = {
@@ -2089,12 +2201,30 @@ export default function App() {
         headers: request.headers,
         bodyPreview: request.bodyPreview,
         responseHeaders: resHeaders,
+        responseBodyPreview: bodyText || undefined,
+        schemaDrift: replayDrift ?? undefined,
         capturedAt: new Date().toISOString(),
       };
 
       logApp('HTTP', 'INFO', `Replayed request: ${request.method} ${request.path} -> Status ${status} (${durationMs}ms)`);
       setRequests((current) => [replayedLog, ...current].slice(0, 150));
-      showToast(`Replayed ${request.method} ${request.path} (${status})`, 'success');
+
+      if (replayDrift && replayDrift.hasDrift) {
+        setDriftAlerts((prev) => {
+          const next = new Map(prev);
+          next.set(replayedLog.id, replayDrift!);
+          if (next.size > 300) {
+            const oldestKey = next.keys().next().value;
+            if (oldestKey) next.delete(oldestKey);
+          }
+          return next;
+        });
+
+        notifyDriftAlert(replayDrift);
+        showToast(`Replayed ${request.method} ${request.path} (${status})`, 'success');
+      } else {
+        showToast(`Replayed ${request.method} ${request.path} (${status})`, 'success');
+      }
     } catch (error) {
       logApp('HTTP', 'ERROR', `Replay failed: ${request.method} ${request.path}`, error);
       showToast(error instanceof Error ? error.message : 'Replay failed', 'error');
@@ -2161,6 +2291,17 @@ export default function App() {
 
       setPostmanResponse({ status, duration: durationMs, headers: resHeaders, body: bodyText });
 
+      let sendDrift: SchemaDriftReport | null = null;
+      if (bodyText) {
+        sendDrift = detectSchemaDrift(
+          draftRequest.method,
+          draftRequest.path,
+          status,
+          bodyText,
+          openApiDocumentRef.current,
+        );
+      }
+
       const newLog: RequestLog = {
         id: crypto.randomUUID(),
         method: draftRequest.method,
@@ -2169,11 +2310,30 @@ export default function App() {
         durationMs,
         headers: draftRequest.headers,
         bodyPreview: draftRequest.body,
+        responseHeaders: resHeaders,
+        responseBodyPreview: bodyText || undefined,
+        schemaDrift: sendDrift ?? undefined,
         capturedAt: new Date().toISOString(),
       };
       logApp('HTTP', 'INFO', `Manual request: ${draftRequest.method} ${targetUrl} -> Status ${status} (${durationMs}ms)`);
       setRequests((current) => [newLog, ...current].slice(0, 150));
-      showToast(`Request to ${targetUrl} completed (${status})`, 'success');
+
+      if (sendDrift && sendDrift.hasDrift) {
+        setDriftAlerts((prev) => {
+          const next = new Map(prev);
+          next.set(newLog.id, sendDrift!);
+          if (next.size > 300) {
+            const oldestKey = next.keys().next().value;
+            if (oldestKey) next.delete(oldestKey);
+          }
+          return next;
+        });
+
+        notifyDriftAlert(sendDrift);
+        showToast(`Request to ${targetUrl} completed (${status})`, 'success');
+      } else {
+        showToast(`Request to ${targetUrl} completed (${status})`, 'success');
+      }
     } catch (error) {
       logApp('HTTP', 'ERROR', `Manual request failed: ${draftRequest.method} ${targetUrl}`, error);
       showToast(error instanceof Error ? error.message : 'Request failed', 'error');
@@ -2203,6 +2363,94 @@ export default function App() {
   function updateSavedRequests(next: SavedRequest[]) {
     setSavedRequests(next);
   }
+
+  const handleSyncOpenApiWithDrift = useCallback((
+    method: string,
+    path: string,
+    statusCode: string,
+    responseBodyPreview: string,
+  ) => {
+    setOpenApiDocument((current) =>
+      syncOpenApiWithPayload(current, method, path, statusCode, responseBodyPreview)
+    );
+
+    // Clear resolved drift reports so Swagger, Observability, and Workbench alerts clear immediately
+    const cleanPath = path.split('?')[0].replace(/^https?:\/\/[^/]+/, '') || path;
+    const normMethod = method.toUpperCase();
+
+    // ponytail: compute otherDriftCount synchronously via driftAlertsRef — no closure dep, no updater side effects
+    const uniqueRemainingRoutes = new Set<string>();
+    for (const v of driftAlertsRef.current.values()) {
+      const vClean = v.path.split('?')[0].replace(/^https?:\/\/[^/]+/, '') || v.path;
+      if (v.hasDrift && (v.method.toUpperCase() !== normMethod || (v.path !== path && vClean !== cleanPath))) {
+        uniqueRemainingRoutes.add(`${v.method.toUpperCase()} ${vClean}`);
+      }
+    }
+    const otherDriftCount = uniqueRemainingRoutes.size;
+
+    setDriftAlerts((prev) => {
+      const next = new Map();
+      for (const [k, v] of prev.entries()) {
+        const vClean = v.path.split('?')[0].replace(/^https?:\/\/[^/]+/, '') || v.path;
+        if (v.method.toUpperCase() !== normMethod || (v.path !== path && vClean !== cleanPath)) {
+          next.set(k, v);
+        }
+      }
+      return next;
+    });
+
+    alertedRoutesRef.current.delete(`${normMethod} ${path}`);
+    alertedRoutesRef.current.delete(`${normMethod} ${cleanPath}`);
+
+    setRequests((current) =>
+      current.map((r) => {
+        const rClean = r.path.split('?')[0].replace(/^https?:\/\/[^/]+/, '') || r.path;
+        if (r.method.toUpperCase() === normMethod && (r.path === path || rClean === cleanPath)) {
+          return { ...r, schemaDrift: undefined };
+        }
+        return r;
+      })
+    );
+
+    setWorkbenchTabs((current) =>
+      current.map((t) => {
+        const tClean = t.path.split('?')[0].replace(/^https?:\/\/[^/]+/, '') || t.path;
+        if (t.method.toUpperCase() === normMethod && (t.path === path || tClean === cleanPath)) {
+          return {
+            ...t,
+            requestLog: t.requestLog ? { ...t.requestLog, schemaDrift: undefined } : undefined,
+          };
+        }
+        return t;
+      })
+    );
+
+    if (otherDriftCount > 0) {
+      showToast(
+        `✅ Synced ${normMethod} ${cleanPath} (HTTP ${statusCode}). Note: ${otherDriftCount} other endpoint(s) still have pending drift.`,
+        'success'
+      );
+    } else {
+      showToast(
+        `✅ OpenAPI contract synchronized for ${normMethod} ${cleanPath} (HTTP ${statusCode}) — 100% compliant`,
+        'success'
+      );
+    }
+    logApp('HTTP', 'INFO', `Contract synced for ${method} ${path} (status ${statusCode}), ${otherDriftCount} other drifted routes remaining`);
+  }, []);
+  // ponytail: dep [] is correct — reads latest state via driftAlertsRef.current.
+
+  const handleCopyDriftBugReport = useCallback((report: SchemaDriftReport) => {
+    const md = generateDriftBugReportMarkdown(report);
+    copyText(md, '📋 Bug report copied to clipboard');
+  }, []);
+
+  // P2: Memoized drift reports array — avoids allocating a new Set+Array on every render.
+  // Consumed by both SwaggerView and ObservabilityView.
+  const driftReports = useMemo(
+    () => Array.from(new Set(driftAlerts.values())),
+    [driftAlerts]
+  );
 
   function importStarterRequests() {
     if (starterSuggestions.length === 0) return;
@@ -2295,7 +2543,7 @@ export default function App() {
   async function updateAppLogging(enabled: boolean) {
     setAppSettings((current) => ({ ...current, appLogging: enabled }));
     await setAppLogging(enabled, {
-      appVersion: 'v0.2.1-stable',
+      appVersion: 'v0.2.2-stable',
       theme: appSettings.theme,
       platform: typeof navigator !== 'undefined' ? navigator.platform : 'desktop',
     });
@@ -2310,7 +2558,7 @@ export default function App() {
   async function updateTrafficLogging(enabled: boolean) {
     setAppSettings((current) => ({ ...current, trafficLogging: enabled }));
     await setTrafficLogging(enabled, {
-      appVersion: 'v0.2.1-stable',
+      appVersion: 'v0.2.2-stable',
     });
     showToast(
       enabled
@@ -2398,6 +2646,8 @@ export default function App() {
   function clearTrafficLogs() {
     setRequests([]);
     setSelectedRequest(null);
+    setDriftAlerts(new Map());
+    alertedRoutesRef.current.clear();
     setWorkspaces((current) =>
       current.map((ws) => ({
         ...ws,
@@ -2744,7 +2994,7 @@ export default function App() {
           {!sidebarCollapsed ? (
             <div className="px-6 mb-5">
               <h2 className="text-headline-sm font-bold text-primary truncate">Proxync Engine</h2>
-              <p className="text-code-sm text-on-surface-variant opacity-60">v0.2.1-stable</p>
+              <p className="text-code-sm text-on-surface-variant opacity-60">v0.2.2-stable</p>
             </div>
           ) : (
             <div className="flex flex-col items-center mb-4">
@@ -2935,7 +3185,20 @@ export default function App() {
               />
             )}
             {mainView === 'traffic' && (
-              <TrafficView requests={requests} workspaces={workspaces} processes={processes} activeTunnel={activeTunnel} onOpen={openRequestDetail} onSendToPostman={sendToPostman} onClear={clearTrafficLogs} onOpenWorkbench={openRequestInWorkbench} />
+              <TrafficView
+                requests={requests}
+                workspaces={workspaces}
+                processes={processes}
+                activeTunnel={activeTunnel}
+                driftAlerts={driftAlerts}
+                captureBodies={appSettings.guardrails?.captureBodies ?? true}
+                onOpen={openRequestDetail}
+                onSendToPostman={sendToPostman}
+                onClear={clearTrafficLogs}
+                onOpenWorkbench={openRequestInWorkbench}
+                onSyncDrift={handleSyncOpenApiWithDrift}
+                onCopyBugReport={handleCopyDriftBugReport}
+              />
             )}
             {mainView === 'postman' && (
               <PostmanView
@@ -2980,6 +3243,7 @@ export default function App() {
                 requests={requests}
                 activeTunnel={activeTunnel}
                 generating={generatingSwagger}
+                driftReports={driftReports}
                 onGenerateSpec={handleGenerateSwaggerSpec}
                 onClearSpec={handleClearSwaggerSpec}
                 onChangePanel={setSwaggerPanel}
@@ -3024,6 +3288,8 @@ export default function App() {
                 tunnels={tunnels}
                 activeProcessPort={selectedProcess?.port}
                 activeTunnelUrl={activeTunnel?.publicUrl}
+                driftAlerts={driftAlerts}
+                openApiDocument={openApiDocument}
                 onClose={() => setMainView('traffic')}
                 onTabsChange={(updatedTabs, nextActiveId) => {
                   setWorkbenchTabs(updatedTabs);
@@ -3032,6 +3298,8 @@ export default function App() {
                 onSaveRequestToCollection={saveDraftRequest}
                 onUpdateProjectRoot={updateProjectRootPath}
                 onScannedEndpointsUpdate={setScannedEndpoints}
+                onSyncDrift={handleSyncOpenApiWithDrift}
+                onCopyBugReport={handleCopyDriftBugReport}
               />
             )}
             {mainView === 'docs' && (
@@ -3044,6 +3312,7 @@ export default function App() {
                 tunnel={activeTunnel}
                 requests={requests}
                 telemetryMode={appSettings.telemetry ?? 'enhanced'}
+                driftReports={driftReports}
                 onNavigateView={setMainView}
                 onOpenDetail={openRequestDetail}
                 onSendToPostman={sendToPostman}

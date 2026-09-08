@@ -17,7 +17,7 @@ pub async fn execute_http_request(
 ) -> Result<NativeHttpResponsePayload, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) ProxyncStudio/0.2.1")
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) ProxyncStudio/0.2.2")
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -28,7 +28,7 @@ pub async fn execute_http_request(
 
     let has_user_agent = headers.keys().any(|k| k.eq_ignore_ascii_case("user-agent"));
     if !has_user_agent {
-        req_builder = req_builder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ProxyncStudio/0.2.1");
+        req_builder = req_builder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ProxyncStudio/0.2.2");
     }
 
     for (k, v) in headers {

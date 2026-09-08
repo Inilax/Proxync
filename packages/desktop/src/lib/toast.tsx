@@ -24,7 +24,7 @@ export function showToast(message: ReactNode, type: Toast['type'] = 'info', pers
     setTimeout(() => {
       toastQueue = toastQueue.filter((t) => t.id !== id);
       notifyListeners();
-    }, 3500);
+    }, 4000);
   }
   return id;
 }
