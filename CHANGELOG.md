@@ -2,6 +2,14 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/upgrade-browserslist-security] - 2026-09-08 [SECURITY-CVE] (Upgrade browserslist to 4.28.9 to Remediate GHSA-c83g-rgw3-j3cx & GHSA-73wf-gq98-2v4g)
+- **Feature Summary**:
+  - **Browserslist Security Remediation [TYPE: CVE-PATCH]**: Upgraded `browserslist` from `4.28.4` to `4.28.9` (along with `baseline-browser-mapping`, `caniuse-lite`, `electron-to-chromium`, and `node-releases`) via `npm audit fix`, remediating memory growth / OOM vulnerability (GHSA-c83g-rgw3-j3cx) and prototype write / uncaught crash vulnerability (GHSA-73wf-gq98-2v4g).
+  - **Audit & Compilation Validation**: Validated zero vulnerabilities across npm (`npm audit`) and verified clean TypeScript compilation & Vite production bundling (`npm run build`).
+- **Modified Files**:
+  - `package-lock.json`
+  - `CHANGELOG.md`
+
 ## [feature/develop-v0.2.2-version-bump] - 2026-09-01 (Workspace & Studio Version Bump to v0.2.2 for Cross-OS Compatibility & Stabilization)
 - **Feature Summary**:
   - **Comprehensive Version Bump to v0.2.2**: Synchronized workspace and package manifests (`package.json`, `packages/desktop/package.json`, `package-lock.json`, `Cargo.toml`, `Cargo.lock`, and `tauri.conf.json`) to version `0.2.2`.
