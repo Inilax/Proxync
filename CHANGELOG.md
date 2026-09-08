@@ -2,6 +2,24 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/playground-postman-ux] - 2026-09-07 (API Playground — Postman-Grade UX Upgrade)
+- **Feature Summary**:
+  - **Right-click "Add Request"**: Folder/collection context menu now includes an "Add Request" option to insert new requests directly into a collection without modifying the active draft.
+  - **`Ctrl+T` New Request Shortcut**: Pressing `Ctrl+T` creates a new blank request scoped to the active collection, matching the Postman/Insomnia workflow.
+  - **`Delete` Key Shortcut**: Pressing `Delete` removes the currently selected saved request. Guarded against firing when an input/textarea is focused. On deletion, workbench auto-loads the next sibling request or resets to a clean blank draft.
+  - **In-place Save (no duplicates)**: `saveDraftRequest` now does an ID-keyed upsert — editing and re-saving an existing request updates it in place instead of appending a duplicate.
+  - **Query Params Table**: New "Params" tab in the workbench with editable key/value rows. Fully bidirectional — editing the URL updates the table and vice versa.
+  - **Response History (4 runs)**: Response panel retains the last 4 responses per request as selectable history pills for quick comparison.
+  - **JSON Auto-format (`Ctrl+Shift+F`)**: Pretty-prints the request body JSON in place.
+  - **Collection Search (`Ctrl+F`)**: Real-time sidebar filter by request/collection name.
+  - **Inline Method Badge**: Clickable HTTP method badge on sidebar items opens a dropdown to change method without opening the full editor.
+  - **Sidebar Visual Polish**: Hover-only action buttons; high-contrast colour-coded method badges (emerald=GET, amber=POST, sky=PUT, purple=PATCH, rose=DELETE).
+  - **Keyboard Shortcuts Cheatsheet**: Updated `KeyboardShortcutsDialog` with all new hotkeys.
+  - **Proxync-review fixes**: Removed accidental `export` from `getMethodBadgeStyle`; replaced magic `'/api/v1/health'` fallback paths with `DEFAULT_REQUEST` spread and `DEFAULT_FALLBACK_PATH` constant; `mergeRequests` now keys by stable `id` field.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/components/views/KeyboardShortcutsDialog.tsx`
 ## [feature/develop-schema-drift-detection] - 2026-09-07 (Schema Drift Hardening, Council Review Optimizations & Guardrail Indicator)
 - **Feature Summary**:
   - **Fuzzy Rename Guard (`schemaDriftDetector.ts`)**: Enforced a minimum field length check (>= 3 chars) on Levenshtein edit-distance matching, preventing false positive `FIELD_RENAMED` violations between unrelated short identifiers (e.g., `id`, `at`, `ts`, `ip`).
