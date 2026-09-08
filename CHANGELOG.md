@@ -2,6 +2,12 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/upgrade-browserslist-security] - 2026-09-08 [SECURITY-CVE] (Upgrade browserslist to 4.28.9 to Remediate GHSA-c83g-rgw3-j3cx & GHSA-73wf-gq98-2v4g)
+- **Feature Summary**:
+  - **Browserslist Security Remediation [TYPE: CVE-PATCH]**: Upgraded `browserslist` from `4.28.4` to `4.28.9` (along with `baseline-browser-mapping`, `caniuse-lite`, `electron-to-chromium`, and `node-releases`) via `npm audit fix`, remediating memory growth / OOM vulnerability (GHSA-c83g-rgw3-j3cx) and prototype write / uncaught crash vulnerability (GHSA-73wf-gq98-2v4g).
+  - **Audit & Compilation Validation**: Validated zero vulnerabilities across npm (`npm audit`) and verified clean TypeScript compilation & Vite production bundling (`npm run build`).
+- **Modified Files**:
+  - `package-lock.json`
 ## [fix/playground-postman-ux] - 2026-09-07 (API Playground — Postman-Grade UX Upgrade)
 - **Feature Summary**:
   - **Right-click "Add Request"**: Folder/collection context menu now includes an "Add Request" option to insert new requests directly into a collection without modifying the active draft.
