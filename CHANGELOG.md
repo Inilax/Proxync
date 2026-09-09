@@ -368,6 +368,8 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
   - `CHANGELOG.md`
+
+## [feature/develop-workspace-card-redesign-and-concurrency] - 2026-08-17 (Workspace Hub Card Redesign, Concurrent Tunnel Spawning & Responsive Layout)
 - **Feature Summary**:
   - **Multi-Service Concurrent Tunnel Spawning**: Replaced scalar `sharingPort` with `spawningPorts: number[]` in `App.tsx` and integrated `addSpawningPort` / `removeSpawningPort` across all sharing handlers (`shareProcessNative`, `shareProcessCloudflare`, `shareProcessLocaltunnel`, `shareProcess`), enabling simultaneous tunnel launches without UI state collisions.
   - **Instantaneous Spawning State**: When clicking tunnel launch options, action buttons are immediately replaced with an active animated loading indicator `[ 🔄 Spawning Tunnel Connection... ]`, preventing double-clicks and duplicate backend spawner execution.
