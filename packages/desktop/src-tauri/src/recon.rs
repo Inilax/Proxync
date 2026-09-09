@@ -23,7 +23,7 @@ pub struct ProcessCandidate {
 
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
-struct RawProcess {
+pub(crate) struct RawProcess {
     pid: u32,
     parent_pid: Option<u32>,
     name: String,
@@ -48,45 +48,276 @@ lazy_static! {
 }
 
 /* ══════════════════════════════════════════════
-   PORT DISCOVERY & DEV FILTERING (via netstat)
+   PORT DISCOVERY & DEV FILTERING
    ══════════════════════════════════════════════ */
 
 fn is_dev_port(port: u16) -> bool {
-    // Exclude well-known Windows system, RPC, and common non-dev ports
+    // Exclude well-known system, RPC, mDNS, CUPS, and common non-dev ports
     match port {
-        135 | 136 | 137 | 138 | 139 | 445 | 2869 | 5040 | 6463 | 5357 | 49152..=49157 => false,
+        111 | 135 | 136 | 137 | 138 | 139 | 445 | 631 | 2869 | 5040 | 5353 | 6463 | 5357 | 49152..=49157 => false,
         80 | 443 | 1024..=49151 => true,
         _ => false,
     }
 }
 
-fn get_listening_ports_map() -> (HashMap<u16, u32>, HashMap<u32, Vec<u16>>) {
+/* ══════════════════════════════════════════════
+   CROSS-PLATFORM SCANNER TRAIT & FACTORY
+   ══════════════════════════════════════════════ */
+
+pub trait PlatformScanner: Send + Sync {
+    fn scan_listening_ports(&self) -> (HashMap<u16, u32>, HashMap<u32, Vec<u16>>);
+    fn scan_processes(&self) -> HashMap<u32, RawProcess>;
+    fn get_process_cwd(&self, pid: u32) -> Option<String>;
+}
+
+#[cfg(target_os = "linux")]
+fn get_platform_scanner() -> &'static dyn PlatformScanner {
+    static SCANNER: LinuxScanner = LinuxScanner;
+    &SCANNER
+}
+
+#[cfg(target_os = "windows")]
+fn get_platform_scanner() -> &'static dyn PlatformScanner {
+    static SCANNER: WindowsScanner = WindowsScanner;
+    &SCANNER
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+fn get_platform_scanner() -> &'static dyn PlatformScanner {
+    static SCANNER: FallbackScanner = FallbackScanner;
+    &SCANNER
+}
+
+/* ══════════════════════════════════════════════
+   LINUX SCANNER (In-Memory /proc + ss)
+   ══════════════════════════════════════════════ */
+
+#[cfg(target_os = "linux")]
+struct LinuxScanner;
+
+#[cfg(target_os = "linux")]
+impl PlatformScanner for LinuxScanner {
+    fn scan_listening_ports(&self) -> (HashMap<u16, u32>, HashMap<u32, Vec<u16>>) {
+        // Primary: ss -tlpn -H
+        let (mut port_to_pid, mut pid_to_ports) = parse_ss_listening_ports();
+
+        // Fallback: in-kernel /proc/net/tcp{,6} + /proc/[pid]/fd socket inode matching
+        if port_to_pid.is_empty() {
+            let (proc_p2p, proc_pid2p) = parse_proc_listening_ports();
+            port_to_pid = proc_p2p;
+            pid_to_ports = proc_pid2p;
+        }
+
+        // Ghost port prevention: filter out Proxync's own PID
+        let self_pid = std::process::id();
+        port_to_pid.retain(|_, &mut pid| pid != self_pid);
+        pid_to_ports.remove(&self_pid);
+
+        (port_to_pid, pid_to_ports)
+    }
+
+    fn scan_processes(&self) -> HashMap<u32, RawProcess> {
+        let mut map = HashMap::new();
+        let entries = match std::fs::read_dir("/proc") {
+            Ok(e) => e,
+            Err(_) => return map,
+        };
+
+        for entry in entries.flatten() {
+            let file_name = entry.file_name();
+            let pid_str = match file_name.to_str() {
+                Some(s) => s,
+                None => continue,
+            };
+            let pid: u32 = match pid_str.parse() {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+
+            let proc_dir = entry.path();
+
+            // 1. Process name: try /proc/[pid]/comm, fallback to stat
+            let mut name = std::fs::read_to_string(proc_dir.join("comm"))
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default();
+
+            // 2. Parent PID & name fallback: parse /proc/[pid]/stat
+            let mut parent_pid = None;
+            if let Ok(stat_content) = std::fs::read_to_string(proc_dir.join("stat")) {
+                if let Some(rparen) = stat_content.rfind(')') {
+                    let rest = &stat_content[rparen + 1..];
+                    let fields: Vec<&str> = rest.split_whitespace().collect();
+                    if fields.len() >= 2 {
+                        if let Ok(ppid) = fields[1].parse::<u32>() {
+                            parent_pid = Some(ppid);
+                        }
+                    }
+                    if name.is_empty() {
+                        if let Some(lparen) = stat_content.find('(') {
+                            name = stat_content[lparen + 1..rparen].to_string();
+                        }
+                    }
+                }
+            }
+
+            // 3. Command line: /proc/[pid]/cmdline (arguments separated by \0)
+            let cmd_line = match std::fs::read(proc_dir.join("cmdline")) {
+                Ok(bytes) if !bytes.is_empty() => {
+                    let parts: Vec<String> = bytes
+                        .split(|&b| b == 0)
+                        .filter(|slice| !slice.is_empty())
+                        .map(|slice| String::from_utf8_lossy(slice).trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                    if parts.is_empty() {
+                        None
+                    } else {
+                        Some(parts.join(" "))
+                    }
+                }
+                _ => None,
+            };
+
+            // 4. Executable path: readlink /proc/[pid]/exe
+            let exec_path = std::fs::read_link(proc_dir.join("exe"))
+                .ok()
+                .map(|p| p.to_string_lossy().to_string());
+
+            map.insert(pid, RawProcess {
+                pid,
+                parent_pid,
+                name,
+                exec_path,
+                cmd_line,
+            });
+        }
+
+        map
+    }
+
+    fn get_process_cwd(&self, pid: u32) -> Option<String> {
+        if let Ok(path) = std::fs::read_link(format!("/proc/{}/cwd", pid)) {
+            let s = path.to_string_lossy().to_string();
+            if !s.is_empty() {
+                return Some(s);
+            }
+        }
+        None
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn parse_ss_listening_ports() -> (HashMap<u16, u32>, HashMap<u32, Vec<u16>>) {
     let mut port_to_pid = HashMap::new();
     let mut pid_to_ports = HashMap::new();
 
-    let mut cmd = std::process::Command::new("netstat");
-    #[cfg(target_os = "windows")]
-    cmd.creation_flags(0x08000000);
+    let output = match std::process::Command::new("ss")
+        .args(&["-tlpn", "-H"])
+        .output()
+    {
+        Ok(out) if out.status.success() => out,
+        _ => return (port_to_pid, pid_to_ports),
+    };
 
-    // Note: Use `netstat -ano` without `-p tcp` because `-p tcp` restricts Windows netstat to IPv4 only,
-    // which misses services listening on IPv6 localhost (e.g. `[::1]:5173` or `[::]:5173` for Vite/Node).
-    if let Ok(output) = cmd.args(&["-ano"]).output() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        for line in stdout.lines() {
-            if line.contains("LISTENING") {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("LISTEN") {
+            continue;
+        }
+
+        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+        if parts.len() < 4 {
+            continue;
+        }
+
+        // ss -tlpn -H columns: state recv-q send-q local-addr peer-addr [users]
+        let local_addr = parts[3];
+        let port_opt = local_addr.rsplit(':').next().and_then(|s| {
+            let clean = s.trim_matches(|c: char| !c.is_ascii_digit());
+            clean.parse::<u16>().ok()
+        });
+
+        let port = match port_opt {
+            Some(p) if is_dev_port(p) => p,
+            _ => continue,
+        };
+
+        // Parse PID(s) from users:(("...",pid=1234,...))
+        let mut pids = Vec::new();
+        for chunk in line.split("pid=") {
+            let digits: String = chunk.chars().take_while(|c| c.is_ascii_digit()).collect();
+            if let Ok(pid) = digits.parse::<u32>() {
+                if pid > 0 && !pids.contains(&pid) {
+                    pids.push(pid);
+                }
+            }
+        }
+
+        for pid in pids {
+            port_to_pid.insert(port, pid);
+            pid_to_ports.entry(pid).or_insert_with(Vec::new).push(port);
+        }
+    }
+
+    (port_to_pid, pid_to_ports)
+}
+
+#[cfg(target_os = "linux")]
+fn parse_proc_listening_ports() -> (HashMap<u16, u32>, HashMap<u32, Vec<u16>>) {
+    let mut port_to_pid = HashMap::new();
+    let mut pid_to_ports = HashMap::new();
+    let mut inode_to_port: HashMap<u64, u16> = HashMap::new();
+
+    for tcp_path in &["/proc/net/tcp", "/proc/net/tcp6"] {
+        if let Ok(content) = std::fs::read_to_string(tcp_path) {
+            for line in content.lines().skip(1) {
+                // /proc/net/tcp columns: sl local_addr remote_addr st tx_q:rx_q ... inode
+                // parts[3] = "0A" means TCP_LISTEN state; parts[1] = hex local_addr:port; parts[9] = socket inode
                 let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 5 {
-                    let proto = parts[0];
-                    if !proto.eq_ignore_ascii_case("TCP") {
-                        continue;
-                    }
-                    let local_addr = parts[1];
-                    if let Some(port_str) = local_addr.split(':').last() {
-                        let clean_port = port_str.trim_matches(|c: char| !c.is_ascii_digit());
-                        if let (Ok(port), Ok(pid)) = (clean_port.parse::<u16>(), parts[parts.len() - 1].parse::<u32>()) {
+                if parts.len() > 9 && parts[3] == "0A" {
+                    if let Some(port_hex) = parts[1].rsplit(':').next() {
+                        if let Ok(port) = u16::from_str_radix(port_hex, 16) {
                             if is_dev_port(port) {
-                                port_to_pid.insert(port, pid);
-                                pid_to_ports.entry(pid).or_insert_with(Vec::new).push(port);
+                                if let Ok(inode) = parts[9].parse::<u64>() {
+                                    inode_to_port.insert(inode, port);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if inode_to_port.is_empty() {
+        return (port_to_pid, pid_to_ports);
+    }
+
+    // Correlate inode with /proc/[pid]/fd socket links
+    if let Ok(proc_entries) = std::fs::read_dir("/proc") {
+        for proc_entry in proc_entries.flatten() {
+            let pid_str = match proc_entry.file_name().to_str() {
+                Some(s) => s.to_string(),
+                None => continue,
+            };
+            let pid: u32 = match pid_str.parse() {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+
+            let fd_dir = proc_entry.path().join("fd");
+            if let Ok(fd_entries) = std::fs::read_dir(fd_dir) {
+                for fd_entry in fd_entries.flatten() {
+                    if let Ok(target) = std::fs::read_link(fd_entry.path()) {
+                        let target_str = target.to_string_lossy();
+                        if target_str.starts_with("socket:[") && target_str.ends_with(']') {
+                            let inode_str = &target_str[8..target_str.len() - 1];
+                            if let Ok(inode) = inode_str.parse::<u64>() {
+                                if let Some(&port) = inode_to_port.get(&inode) {
+                                    port_to_pid.insert(port, pid);
+                                    pid_to_ports.entry(pid).or_insert_with(Vec::new).push(port);
+                                }
                             }
                         }
                     }
@@ -98,63 +329,166 @@ fn get_listening_ports_map() -> (HashMap<u16, u32>, HashMap<u32, Vec<u16>>) {
     (port_to_pid, pid_to_ports)
 }
 
-#[tauri::command]
-pub async fn scan_ports() -> Result<Vec<u16>, String> {
-    let (port_to_pid, _) = get_listening_ports_map();
-    let mut ports: Vec<u16> = port_to_pid.into_keys().collect();
-    ports.sort_unstable();
-    Ok(ports)
-}
-
 /* ══════════════════════════════════════════════
-   BULK PROCESS RECON (Single WMI Query)
+   WINDOWS SCANNER (WMI / PowerShell & netstat)
    ══════════════════════════════════════════════ */
 
-fn get_all_processes_map() -> HashMap<u32, RawProcess> {
-    let mut map = HashMap::new();
-    let ps_cmd = "$procs = Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name, ExecutablePath, CommandLine; $procs | ConvertTo-Json -Depth 2";
+#[cfg(target_os = "windows")]
+struct WindowsScanner;
 
-    let mut cmd = std::process::Command::new("powershell");
-    #[cfg(target_os = "windows")]
-    cmd.creation_flags(0x08000000);
+#[cfg(target_os = "windows")]
+impl PlatformScanner for WindowsScanner {
+    fn scan_listening_ports(&self) -> (HashMap<u16, u32>, HashMap<u32, Vec<u16>>) {
+        let mut port_to_pid = HashMap::new();
+        let mut pid_to_ports = HashMap::new();
 
-    if let Ok(output) = cmd.args(&["-NoProfile", "-OutputFormat", "Text", "-Command", ps_cmd]).output() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let json_str = if let Some(idx) = stdout.find('[') {
-            &stdout[idx..]
-        } else if let Some(idx) = stdout.find('{') {
-            &stdout[idx..]
-        } else {
-            &stdout
-        };
+        let mut cmd = std::process::Command::new("netstat");
+        cmd.creation_flags(0x08000000);
 
-        if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
-            let list = match val {
-                serde_json::Value::Array(arr) => arr,
-                serde_json::Value::Object(_) => vec![val],
-                _ => vec![],
-            };
-
-            for item in list {
-                if let Some(pid) = item.get("ProcessId").and_then(|v| v.as_u64()).map(|v| v as u32) {
-                    let parent_pid = item.get("ParentProcessId").and_then(|v| v.as_u64()).map(|v| v as u32);
-                    let name = item.get("Name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let exec_path = item.get("ExecutablePath").and_then(|v| v.as_str()).map(|s| s.to_string());
-                    let cmd_line = item.get("CommandLine").and_then(|v| v.as_str()).map(|s| s.to_string());
-
-                    map.insert(pid, RawProcess {
-                        pid,
-                        parent_pid,
-                        name,
-                        exec_path,
-                        cmd_line,
-                    });
+        if let Ok(output) = cmd.args(&["-ano"]).output() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if line.contains("LISTENING") {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 5 {
+                        let proto = parts[0];
+                        if !proto.eq_ignore_ascii_case("TCP") {
+                            continue;
+                        }
+                        let local_addr = parts[1];
+                        if let Some(port_str) = local_addr.split(':').last() {
+                            let clean_port = port_str.trim_matches(|c: char| !c.is_ascii_digit());
+                            if let (Ok(port), Ok(pid)) = (clean_port.parse::<u16>(), parts[parts.len() - 1].parse::<u32>()) {
+                                if is_dev_port(port) {
+                                    port_to_pid.insert(port, pid);
+                                    pid_to_ports.entry(pid).or_insert_with(Vec::new).push(port);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
+
+        // Ghost port prevention: filter out Proxync's own PID
+        let self_pid = std::process::id();
+        port_to_pid.retain(|_, &mut pid| pid != self_pid);
+        pid_to_ports.remove(&self_pid);
+
+        (port_to_pid, pid_to_ports)
     }
 
-    map
+    fn scan_processes(&self) -> HashMap<u32, RawProcess> {
+        let mut map = HashMap::new();
+        let ps_cmd = "$procs = Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name, ExecutablePath, CommandLine; $procs | ConvertTo-Json -Depth 2";
+
+        let mut cmd = std::process::Command::new("powershell");
+        cmd.creation_flags(0x08000000);
+
+        if let Ok(output) = cmd.args(&["-NoProfile", "-OutputFormat", "Text", "-Command", ps_cmd]).output() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let json_str = if let Some(idx) = stdout.find('[') {
+                &stdout[idx..]
+            } else if let Some(idx) = stdout.find('{') {
+                &stdout[idx..]
+            } else {
+                &stdout
+            };
+
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str) {
+                let list = match val {
+                    serde_json::Value::Array(arr) => arr,
+                    serde_json::Value::Object(_) => vec![val],
+                    _ => vec![],
+                };
+
+                for item in list {
+                    if let Some(pid) = item.get("ProcessId").and_then(|v| v.as_u64()).map(|v| v as u32) {
+                        let parent_pid = item.get("ParentProcessId").and_then(|v| v.as_u64()).map(|v| v as u32);
+                        let name = item.get("Name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let exec_path = item.get("ExecutablePath").and_then(|v| v.as_str()).map(|s| s.to_string());
+                        let cmd_line = item.get("CommandLine").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+                        map.insert(pid, RawProcess {
+                            pid,
+                            parent_pid,
+                            name,
+                            exec_path,
+                            cmd_line,
+                        });
+                    }
+                }
+            }
+        }
+
+        map
+    }
+
+    fn get_process_cwd(&self, pid: u32) -> Option<String> {
+        win_peb::get_process_cwd(pid)
+    }
+}
+
+/* ══════════════════════════════════════════════
+   FALLBACK SCANNER (macOS / Unix)
+   ══════════════════════════════════════════════ */
+
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+struct FallbackScanner;
+
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+impl PlatformScanner for FallbackScanner {
+    fn scan_listening_ports(&self) -> (HashMap<u16, u32>, HashMap<u32, Vec<u16>>) {
+        let mut port_to_pid = HashMap::new();
+        let mut pid_to_ports = HashMap::new();
+
+        if let Ok(output) = std::process::Command::new("lsof")
+            .args(&["-iTCP", "-sTCP:LISTEN", "-P", "-n"])
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines().skip(1) {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 9 {
+                    if let Ok(pid) = parts[1].parse::<u32>() {
+                        let addr = parts[parts.len() - 2];
+                        if let Some(port_str) = addr.rsplit(':').next() {
+                            let clean = port_str.trim_matches(|c: char| !c.is_ascii_digit());
+                            if let Ok(port) = clean.parse::<u16>() {
+                                if is_dev_port(port) {
+                                    port_to_pid.insert(port, pid);
+                                    pid_to_ports.entry(pid).or_insert_with(Vec::new).push(port);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Ghost port prevention: filter out Proxync's own PID
+        let self_pid = std::process::id();
+        port_to_pid.retain(|_, &mut pid| pid != self_pid);
+        pid_to_ports.remove(&self_pid);
+
+        (port_to_pid, pid_to_ports)
+    }
+
+    fn scan_processes(&self) -> HashMap<u32, RawProcess> {
+        HashMap::new()
+    }
+
+    fn get_process_cwd(&self, _pid: u32) -> Option<String> {
+        None
+    }
+}
+
+#[tauri::command]
+pub async fn scan_ports() -> Result<Vec<u16>, String> {
+    let (port_to_pid, _) = get_platform_scanner().scan_listening_ports();
+    let mut ports: Vec<u16> = port_to_pid.into_keys().collect();
+    ports.sort_unstable();
+    Ok(ports)
 }
 
 /* ══════════════════════════════════════════════
@@ -200,6 +534,9 @@ fn is_system_process_name(name: &str) -> bool {
         || lower.starts_with("conhost")
         || lower.starts_with("dllhost")
         || lower.starts_with("ctfmon")
+        || lower.starts_with("systemd")
+        || lower.starts_with("avahi-daemon")
+        || lower.starts_with("cupsd")
 }
 
 fn is_infra_process_name(name: &str) -> bool {
@@ -226,7 +563,7 @@ fn detect_framework(cmd_line: &str) -> Option<String> {
         Some("Vite Dev Server".to_string())
     } else if lower.contains("next\\dist\\server") || lower.contains("next/dist/server") || lower.contains("next dev") || lower.contains("next start") {
         Some("Next.js App".to_string())
-    } else if lower.contains("@nestjs\\cli") || lower.contains("@nestjs/cli") || lower.contains("nest start") || (lower.contains("dist\\src") && lower.contains("node")) {
+    } else if lower.contains("@nestjs\\cli") || lower.contains("@nestjs/cli") || lower.contains("nest start") || (lower.contains("dist\\src") && lower.contains("node")) || (lower.contains("dist/src") && lower.contains("node")) {
         Some("NestJS App".to_string())
     } else if lower.contains("nuxt") {
         Some("Nuxt.js App".to_string())
@@ -262,9 +599,29 @@ fn classify_process(name: &str, cmd_line: Option<&str>) -> ProcessType {
     }
 
     let lower_name = name.to_lowercase();
+    if lower_name.starts_with("vite") {
+        return ProcessType::Dev {
+            runtime: "Node.js".to_string(),
+            framework: Some("Vite Dev Server".to_string()),
+        };
+    }
+    if lower_name.starts_with("fastapi") {
+        return ProcessType::Dev {
+            runtime: "Python".to_string(),
+            framework: Some("FastAPI App".to_string()),
+        };
+    }
+    if lower_name.starts_with("uvicorn") || lower_name.starts_with("gunicorn") {
+        let fw = cmd_line.and_then(detect_framework).unwrap_or_else(|| "FastAPI App".to_string());
+        return ProcessType::Dev {
+            runtime: "Python".to_string(),
+            framework: Some(fw),
+        };
+    }
+
     let runtime = if lower_name.starts_with("node") {
         "Node.js"
-    } else if lower_name.starts_with("python") || lower_name.starts_with("uvicorn") || lower_name.starts_with("gunicorn") {
+    } else if lower_name.starts_with("python") {
         "Python"
     } else if lower_name.starts_with("deno") {
         "Deno"
@@ -272,7 +629,7 @@ fn classify_process(name: &str, cmd_line: Option<&str>) -> ProcessType {
         "Bun"
     } else if lower_name.starts_with("java") {
         "Java"
-    } else if lower_name.starts_with("go") || lower_name == "main.exe" {
+    } else if lower_name.starts_with("go") || lower_name == "main.exe" || lower_name == "main" {
         "Go"
     } else if lower_name.starts_with("cargo") {
         "Rust/Cargo"
@@ -318,16 +675,32 @@ fn is_absolute_win_path(s: &str) -> bool {
         && third == Some('\\')
 }
 
+fn is_absolute_unix_path(s: &str) -> bool {
+    s.starts_with('/')
+}
+
 fn is_system_installation_dir(path_str: &str) -> bool {
     let lower = path_str.to_lowercase();
-    lower.contains("\\nvm")
+    lower.contains("/.nvm")
+        || lower.contains("\\.nvm")
+        || lower.contains("/nvm")
+        || lower.contains("\\nvm")
+        || lower.contains("/nodejs")
         || lower.contains("\\nodejs")
+        || lower.contains("/site-packages")
+        || lower.contains("\\site-packages")
+        || lower.contains("/dist-packages")
+        || lower.contains("\\dist-packages")
+        || lower.starts_with("/usr")
+        || lower.starts_with("/bin")
+        || lower.starts_with("/sbin")
+        || lower.starts_with("/lib")
+        || lower.starts_with("/opt")
+        || lower.starts_with("/etc")
         || lower.contains("\\appdata")
         || lower.contains("\\program files")
         || lower.contains("\\windows")
         || lower.contains("\\system32")
-        || lower.contains("\\site-packages")
-        || lower.contains("\\dist-packages")
 }
 
 const PROJECT_ROOT_INDICATORS: &[&str] = &[
@@ -388,8 +761,9 @@ fn extract_candidate_paths_from_cmd(cmd_line: &str) -> Vec<String> {
     let mut paths = Vec::new();
     for word in cmd_line.split_whitespace() {
         let clean = word.trim_matches('"').trim_matches('\'');
-        if is_absolute_win_path(clean) || clean.contains('/') || clean.contains('\\') {
-            if let Some(idx) = clean.to_lowercase().find("\\node_modules\\") {
+        if is_absolute_win_path(clean) || is_absolute_unix_path(clean) || clean.contains('/') || clean.contains('\\') {
+            let lower = clean.to_lowercase();
+            if let Some(idx) = lower.find("/node_modules/").or_else(|| lower.find("\\node_modules\\")) {
                 paths.push(clean[..idx].to_string());
             } else {
                 paths.push(clean.to_string());
@@ -555,25 +929,12 @@ mod win_peb {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
-mod win_peb {
-    pub fn get_process_cwd(_pid: u32) -> Option<String> {
-        #[cfg(target_os = "linux")]
-        {
-            if let Ok(path) = std::fs::read_link(format!("/proc/{}/cwd", _pid)) {
-                return Some(path.to_string_lossy().to_string());
-            }
-        }
-        None
-    }
-}
-
 fn resolve_directory_in_memory(
     proc: &RawProcess,
     all_procs: &HashMap<u32, RawProcess>,
 ) -> String {
-    // Stage 0: Direct Process CWD via OS PEB inspection (primary high-precision resolver)
-    if let Some(cwd) = win_peb::get_process_cwd(proc.pid) {
+    // Stage 0: Direct Process CWD via OS PEB / /proc inspection (primary high-precision resolver)
+    if let Some(cwd) = get_platform_scanner().get_process_cwd(proc.pid) {
         let path = std::path::Path::new(&cwd);
         if let Some(root) = walk_up_to_project_root(path) {
             return root;
@@ -598,7 +959,7 @@ fn resolve_directory_in_memory(
     while let Some(pid) = curr_pid {
         if depth >= 5 { break; }
 
-        if let Some(parent_cwd) = win_peb::get_process_cwd(pid) {
+        if let Some(parent_cwd) = get_platform_scanner().get_process_cwd(pid) {
             let path = std::path::Path::new(&parent_cwd);
             if let Some(root) = walk_up_to_project_root(path) {
                 return root;
@@ -638,8 +999,8 @@ fn resolve_directory_in_memory(
                 if let Ok(cwd) = std::env::current_dir() {
                     search_roots.push(cwd);
                 }
-                if let Ok(user_profile) = std::env::var("USERPROFILE") {
-                    search_roots.push(std::path::PathBuf::from(user_profile));
+                if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+                    search_roots.push(std::path::PathBuf::from(home));
                 }
 
                 for root in search_roots {
@@ -667,11 +1028,12 @@ fn resolve_directory_in_memory(
 
 #[tauri::command]
 pub async fn resolve_process_directory(port: u16, pid: Option<u32>) -> Result<String, String> {
-    let (port_to_pid, _) = get_listening_ports_map();
+    let scanner = get_platform_scanner();
+    let (port_to_pid, _) = scanner.scan_listening_ports();
     let target_pid = pid.or_else(|| port_to_pid.get(&port).copied());
 
     if let Some(pid_val) = target_pid {
-        let all_procs = get_all_processes_map();
+        let all_procs = scanner.scan_processes();
         if let Some(proc) = all_procs.get(&pid_val) {
             let resolved = resolve_directory_in_memory(proc, &all_procs);
             if resolved != "unknown" {
@@ -688,12 +1050,13 @@ pub async fn resolve_process_directory(port: u16, pid: Option<u32>) -> Result<St
 
 #[tauri::command]
 pub async fn scan_processes(bypass_cache: bool) -> Result<Vec<ProcessCandidate>, String> {
-    let (port_to_pid, _) = get_listening_ports_map();
+    let scanner = get_platform_scanner();
+    let (port_to_pid, _) = scanner.scan_listening_ports();
     if port_to_pid.is_empty() {
         return Ok(Vec::new());
     }
 
-    let all_procs = get_all_processes_map();
+    let all_procs = scanner.scan_processes();
     let mut candidates = Vec::new();
     let mut cache = RECON_PROCESS_CACHE.lock().await;
 
@@ -776,4 +1139,184 @@ pub async fn probe_port(port: u16) -> Result<bool, String> {
         return Ok(true);
     }
     Ok(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_dev_port() {
+        // Excluded system / noise ports
+        assert!(!is_dev_port(111));
+        assert!(!is_dev_port(135));
+        assert!(!is_dev_port(445));
+        assert!(!is_dev_port(631));
+        assert!(!is_dev_port(5353));
+        assert!(!is_dev_port(49152));
+
+        // Allowed dev ports
+        assert!(is_dev_port(80));
+        assert!(is_dev_port(443));
+        assert!(is_dev_port(3000));
+        assert!(is_dev_port(5173));
+        assert!(is_dev_port(8000));
+        assert!(is_dev_port(8080));
+    }
+
+    #[test]
+    fn test_path_detection() {
+        assert!(is_absolute_unix_path("/usr/bin/node"));
+        assert!(is_absolute_unix_path("/home/user/project"));
+        assert!(!is_absolute_unix_path("relative/path"));
+        assert!(!is_absolute_unix_path("./path"));
+
+        assert!(is_system_installation_dir("/usr/lib/node_modules"));
+        assert!(is_system_installation_dir("/usr/bin"));
+        assert!(is_system_installation_dir("/home/user/.nvm/versions/node"));
+        assert!(!is_system_installation_dir("/home/user/my-cool-project"));
+    }
+
+    #[test]
+    fn test_framework_detection() {
+        assert_eq!(detect_framework("vite --port 5173").as_deref(), Some("Vite Dev Server"));
+        assert_eq!(detect_framework("python3 -m uvicorn main:app").as_deref(), Some("FastAPI App"));
+        assert_eq!(detect_framework("node server.js").as_deref(), Some("Node.js / Express"));
+        assert_eq!(detect_framework("next dev").as_deref(), Some("Next.js App"));
+        assert_eq!(detect_framework("unknown_tool").as_deref(), None);
+    }
+
+    #[test]
+    fn test_classify_process() {
+        match classify_process("vite", None) {
+            ProcessType::Dev { runtime, framework } => {
+                assert_eq!(runtime, "Node.js");
+                assert_eq!(framework.as_deref(), Some("Vite Dev Server"));
+            }
+            _ => panic!("Expected Dev process for vite"),
+        }
+
+        match classify_process("fastapi", None) {
+            ProcessType::Dev { runtime, framework } => {
+                assert_eq!(runtime, "Python");
+                assert_eq!(framework.as_deref(), Some("FastAPI App"));
+            }
+            _ => panic!("Expected Dev process for fastapi"),
+        }
+
+        match classify_process("python3", Some("python3 -m uvicorn main:app")) {
+            ProcessType::Dev { runtime, framework } => {
+                assert_eq!(runtime, "Python");
+                assert_eq!(framework.as_deref(), Some("FastAPI App"));
+            }
+            _ => panic!("Expected Dev process for python3 + uvicorn"),
+        }
+
+        match classify_process("node", Some("node index.js")) {
+            ProcessType::Dev { runtime, framework } => {
+                assert_eq!(runtime, "Node.js");
+                assert_eq!(framework.as_deref(), Some("Node.js / Express"));
+            }
+            _ => panic!("Expected Dev process for node"),
+        }
+
+        match classify_process("cupsd", None) {
+            ProcessType::SystemOrUnknown => {}
+            _ => panic!("Expected SystemOrUnknown for cupsd"),
+        }
+
+        match classify_process("docker", None) {
+            ProcessType::Infra { name } => assert_eq!(name, "docker"),
+            _ => panic!("Expected Infra for docker"),
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_linux_scanner_self_process() {
+        let scanner = get_platform_scanner();
+        let procs = scanner.scan_processes();
+        let self_pid = std::process::id();
+        assert!(procs.contains_key(&self_pid), "Scanner should find current process");
+
+        let cwd = scanner.get_process_cwd(self_pid);
+        assert!(cwd.is_some(), "Scanner should find cwd for current process");
+    }
+
+    #[tokio::test]
+    #[cfg(target_os = "linux")]
+    async fn test_scan_ports_and_processes_live() {
+        use std::process::Command;
+        let mut child = Command::new("python3")
+            .args(&["-m", "http.server", "8998"])
+            .spawn()
+            .expect("Failed to start python on 8998");
+
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        let ports = scan_ports().await.expect("scan_ports failed");
+        assert!(ports.contains(&8998), "scan_ports should detect live listening port 8998");
+
+        let procs = scan_processes(true).await.expect("scan_processes failed");
+        let candidate = procs.iter().find(|p| p.port == 8998);
+        assert!(candidate.is_some(), "scan_processes should find candidate on port 8998");
+
+        let cand = candidate.unwrap();
+        assert_eq!(cand.port, 8998);
+        assert_eq!(cand.pid, Some(child.id()));
+        assert_eq!(cand.access, "ready");
+
+        let _ = child.kill();
+    }
+
+    #[tokio::test]
+    #[cfg(target_os = "linux")]
+    async fn test_scan_multiple_dev_servers() {
+        use std::process::Command;
+
+        let mut py_child = Command::new("python3")
+            .args(&["-m", "http.server", "8000"])
+            .spawn()
+            .expect("Failed to start python http.server");
+
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        let ports = scan_ports().await.expect("scan_ports failed");
+        assert!(ports.contains(&8000), "scan_ports should find python on port 8000");
+
+        let procs = scan_processes(true).await.expect("scan_processes failed");
+        let py_proc = procs.iter().find(|p| p.port == 8000);
+        assert!(py_proc.is_some(), "scan_processes should identify python candidate");
+        let cand = py_proc.unwrap();
+        assert_eq!(cand.port, 8000);
+        assert!(cand.name.to_lowercase().contains("python"));
+        assert!(cand.pid.is_some());
+
+        let _ = py_child.kill();
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_self_pid_filter() {
+        use std::net::TcpListener;
+        // Bind a dev port inside the Proxync test process itself
+        let _listener = TcpListener::bind("127.0.0.1:8997").expect("Failed to bind 8997");
+
+        // Proxync's own ephemeral sockets must not appear in scan results
+        let scanner = get_platform_scanner();
+        let (port_to_pid, pid_to_ports) = scanner.scan_listening_ports();
+        let self_pid = std::process::id();
+        assert!(
+            !port_to_pid.contains_key(&8997),
+            "scan_listening_ports must filter out ports bound by Proxync itself"
+        );
+        assert!(
+            !port_to_pid.values().any(|&pid| pid == self_pid),
+            "scan_listening_ports must not include any port owned by the Proxync process itself"
+        );
+        assert!(
+            !pid_to_ports.contains_key(&self_pid),
+            "pid_to_ports must not contain the Proxync self-PID"
+        );
+    }
 }
