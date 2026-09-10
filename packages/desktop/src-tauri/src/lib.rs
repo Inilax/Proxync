@@ -46,6 +46,16 @@ pub fn run() {
             read_logs_summary,
             save_support_bundle_dialog
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .on_window_event(|_window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                let _ = tauri::async_runtime::block_on(close_all_tunnels());
+            }
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app_handle, event| {
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                let _ = tauri::async_runtime::block_on(close_all_tunnels());
+            }
+        });
 }

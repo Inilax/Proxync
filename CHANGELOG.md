@@ -2,6 +2,18 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/develop-tunnel-process-teardown] - 2026-09-10 (Cross-Platform Subprocess Tree Teardown, Orphan Daemon Prevention & Tunnel Lifecycle Hardening)
+- **Feature Summary**:
+  - **Unified Subprocess Tree Teardown (`kill_child_process_tree`)**: Replaced scattered, duplicated process-killing logic with a shared cross-platform teardown helper. Uses `taskkill /F /T /PID` on Windows to recursively kill child process trees and POSIX `kill -KILL -- -<pid>` (process group kill) alongside `pkill -KILL -P <pid>` on Unix, preventing detached `node` and `cloudflared` background daemon leaks.
+  - **Linux `os error 2` Spawn Fix**: Replaced hardcoded `cmd.exe` calls with conditional branching (`cmd /C npx` on Windows with `CREATE_NO_WINDOW: 0x08000000`, direct `npx` on Unix/macOS). Added `process_group(0)` on Unix so spawned tunnels form dedicated process groups.
+  - **Startup Handshake Timeout & Error Teardown**: Fixed critical leak where handshake timeouts (15s for Localtunnel, 25s for Cloudflare) and connection errors bypassed tree-killing by invoking `kill_child_process_tree` across all failure paths.
+  - **Tauri Application Lifecycle Teardown (`lib.rs`)**: Registered `WindowEvent::CloseRequested` and `RunEvent::ExitRequested` hooks to guarantee `close_all_tunnels()` is invoked before window destruction or process termination.
+  - **Cloudflare Race Condition & Protocol Hardening**: Awaits `Registered tunnel connection` log line in Cloudflare stderr before dispatching public URL to UI (with a 4-second safety ceiling fallback), eliminating premature `Error 1033` / `NXDOMAIN` clicks. Forced `--protocol http2` over TCP 443 TLS to prevent UDP 7844 firewall stalls, and normalized targets to explicit `127.0.0.1` loopback to prevent IPv6 `::1` connection refused errors.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `CHANGELOG.md`
+
 ## [fix/develop-linux-recon-support] - 2026-09-09 (Native Linux Port Scanning, Process Detection & Ghost-Port Prevention #143)
 - **Feature Summary**:
   - **Native Linux Reconnaissance (`recon.rs`)**: Implemented cross-platform `PlatformScanner` compile-time strategy trait (`LinuxScanner`, `WindowsScanner`, `FallbackScanner`) with factory dispatch, bringing full port scanning and process discovery to Linux environments.
