@@ -2,14 +2,16 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
-## [fix/develop-prune-orphaned-glib] - 2026-09-10 (Prune Orphaned glib = "0.20" Dependency on Linux)
+## [fix/develop-prune-orphaned-glib] - 2026-09-10 (Prune Orphaned glib = "0.20" & Universal Cross-Platform Packaging Targets)
 - **Feature Summary**:
   - **Prune Orphaned `glib = "0.20"` Dependency (#160)**: Removed orphaned Linux target dependency `glib = "0.20"` from `Cargo.toml`. The crate was never imported in `src-tauri/src/`, while Tauri v2 internals run on `glib 0.18.5`. Forcing `0.20` caused Cargo to download, compile, and link two parallel GLib/GTK toolchains on Linux, doubling build times and risking C-FFI symbol collisions with system `libglib-2.0.so`.
+  - **Universal Packaging Targets (#156)**: Updated `bundle.targets` in `tauri.conf.json` from Windows-restricted `["nsis", "msi"]` to `"all"`. Enables host-adaptive packaging, allowing Linux builds to generate native `.deb` and `.AppImage` bundles (and macOS `.dmg`/`.app`) alongside Windows `.exe`/`.msi`.
   - **Dependency Graph & Lockfile Optimization**: Cleanly eliminated 165 lines of duplicate dependency noise from `Cargo.lock` (`glib 0.20`, `glib-sys 0.20`, `glib-macros 0.20`, `gobject-sys 0.20`). Rebuilt lockfile to resolve to a single unified `glib v0.18.5` across Tauri's runtime stack (`tao`, `wry`, `webkit2gtk`, `muda`).
-  - **Compilation Validation**: Reduced `cargo check` compile time from >14s to 3.39s; validated clean TypeScript compilation and Vite production build (`npm run build`).
+  - **Compilation Validation**: Reduced `cargo check` compile time from >14s to 1.88s; validated clean TypeScript compilation and Vite production build (`npm run build`).
 - **Modified Files**:
   - `packages/desktop/src-tauri/Cargo.toml`
   - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/tauri.conf.json`
 
 ## [fix/upgrade-browserslist-security] - 2026-09-08 [SECURITY-CVE] (Upgrade browserslist to 4.28.9 to Remediate GHSA-c83g-rgw3-j3cx & GHSA-73wf-gq98-2v4g)
 - **Feature Summary**:
