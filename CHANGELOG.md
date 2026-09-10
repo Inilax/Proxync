@@ -2,6 +2,15 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/develop-prune-orphaned-glib] - 2026-09-10 (Prune Orphaned glib = "0.20" Dependency on Linux)
+- **Feature Summary**:
+  - **Prune Orphaned `glib = "0.20"` Dependency (#160)**: Removed orphaned Linux target dependency `glib = "0.20"` from `Cargo.toml`. The crate was never imported in `src-tauri/src/`, while Tauri v2 internals run on `glib 0.18.5`. Forcing `0.20` caused Cargo to download, compile, and link two parallel GLib/GTK toolchains on Linux, doubling build times and risking C-FFI symbol collisions with system `libglib-2.0.so`.
+  - **Dependency Graph & Lockfile Optimization**: Cleanly eliminated 165 lines of duplicate dependency noise from `Cargo.lock` (`glib 0.20`, `glib-sys 0.20`, `glib-macros 0.20`, `gobject-sys 0.20`). Rebuilt lockfile to resolve to a single unified `glib v0.18.5` across Tauri's runtime stack (`tao`, `wry`, `webkit2gtk`, `muda`).
+  - **Compilation Validation**: Reduced `cargo check` compile time from >14s to 3.39s; validated clean TypeScript compilation and Vite production build (`npm run build`).
+- **Modified Files**:
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+
 ## [fix/upgrade-browserslist-security] - 2026-09-08 [SECURITY-CVE] (Upgrade browserslist to 4.28.9 to Remediate GHSA-c83g-rgw3-j3cx & GHSA-73wf-gq98-2v4g)
 - **Feature Summary**:
   - **Browserslist Security Remediation [TYPE: CVE-PATCH]**: Upgraded `browserslist` from `4.28.4` to `4.28.9` (along with `baseline-browser-mapping`, `caniuse-lite`, `electron-to-chromium`, and `node-releases`) via `npm audit fix`, remediating memory growth / OOM vulnerability (GHSA-c83g-rgw3-j3cx) and prototype write / uncaught crash vulnerability (GHSA-73wf-gq98-2v4g).
