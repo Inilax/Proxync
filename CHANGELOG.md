@@ -2,6 +2,17 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/develop-linux-recon-support] - 2026-09-09 (Native Linux Port Scanning, Process Detection & Ghost-Port Prevention #143)
+- **Feature Summary**:
+  - **Native Linux Reconnaissance (`recon.rs`)**: Implemented cross-platform `PlatformScanner` compile-time strategy trait (`LinuxScanner`, `WindowsScanner`, `FallbackScanner`) with factory dispatch, bringing full port scanning and process discovery to Linux environments.
+  - **Dual Discovery Pipeline (`recon.rs`)**: Added primary `ss -tlpn -H` parsing with zero-subprocess fallback to in-kernel `/proc/net/tcp{,6}` and `/proc/[pid]/fd` socket inode matching.
+  - **In-Memory `/proc` Process Traversal (`recon.rs`)**: Direct non-allocating traversal of `/proc` reading `comm`, `stat`, `cmdline`, and `exe` symlinks in < 5ms without disk I/O.
+  - **Ghost-Port Prevention (`recon.rs`)**: Fixed internal ephemeral proxy/tunnel listener leakage by filtering `std::process::id()` at the shared scanner boundary, preventing Proxync's own ports from appearing as ghost dev servers.
+  - **Path Normalization & Test Suite (`recon.rs`)**: Expanded system path checks to handle Unix root paths and hidden version managers (`.nvm`), backed by 8 automated unit and integration tests.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `CHANGELOG.md`
+
 ## [fix/upgrade-browserslist-security] - 2026-09-08 [SECURITY-CVE] (Upgrade browserslist to 4.28.9 to Remediate GHSA-c83g-rgw3-j3cx & GHSA-73wf-gq98-2v4g)
 - **Feature Summary**:
   - **Browserslist Security Remediation [TYPE: CVE-PATCH]**: Upgraded `browserslist` from `4.28.4` to `4.28.9` (along with `baseline-browser-mapping`, `caniuse-lite`, `electron-to-chromium`, and `node-releases`) via `npm audit fix`, remediating memory growth / OOM vulnerability (GHSA-c83g-rgw3-j3cx) and prototype write / uncaught crash vulnerability (GHSA-73wf-gq98-2v4g).
@@ -357,6 +368,8 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
   - `CHANGELOG.md`
+
+## [feature/develop-workspace-card-redesign-and-concurrency] - 2026-08-17 (Workspace Hub Card Redesign, Concurrent Tunnel Spawning & Responsive Layout)
 - **Feature Summary**:
   - **Multi-Service Concurrent Tunnel Spawning**: Replaced scalar `sharingPort` with `spawningPorts: number[]` in `App.tsx` and integrated `addSpawningPort` / `removeSpawningPort` across all sharing handlers (`shareProcessNative`, `shareProcessCloudflare`, `shareProcessLocaltunnel`, `shareProcess`), enabling simultaneous tunnel launches without UI state collisions.
   - **Instantaneous Spawning State**: When clicking tunnel launch options, action buttons are immediately replaced with an active animated loading indicator `[ 🔄 Spawning Tunnel Connection... ]`, preventing double-clicks and duplicate backend spawner execution.
