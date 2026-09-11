@@ -199,13 +199,13 @@ export default function App() {
     return () => {
       mounted = false;
       if (resizeTimer) clearTimeout(resizeTimer);
-      unlistenPromise.then((unlisten) => unlisten()).catch(() => {});
+      unlistenPromise.then((unlisten) => unlisten()).catch(() => { });
     };
   }, []);
 
   const handleMinimize = useCallback(() => {
     try {
-      void getCurrentWindow().minimize().catch(() => {});
+      void getCurrentWindow().minimize().catch(() => { });
     } catch {
       // ignore
     }
@@ -223,7 +223,7 @@ export default function App() {
 
   const handleClose = useCallback(() => {
     try {
-      void getCurrentWindow().close().catch(() => {});
+      void getCurrentWindow().close().catch(() => { });
     } catch {
       // ignore
     }
@@ -2361,26 +2361,48 @@ export default function App() {
     showToast(`Request saved to "${folder}"`, 'success');
   }
 
+  // ponytail: Pure deletion with contiguous sibling selection and decoupled state update
   function deleteSavedRequest(id: string) {
-    setSavedRequests((current) => {
-      const remaining = current.filter((r) => r.id !== id);
-      if (draftRequest.id === id) {
-        const next = remaining.find((r) => r.collectionName === draftRequest.collectionName) || remaining[0];
-        if (next) {
-          setDraftRequest(next);
-        } else {
-          // Reset to blank draft and clear stale response when collection empties after delete
-          setDraftRequest({
-            ...DEFAULT_REQUEST,
-            collectionName: draftRequest.collectionName || 'Default Collection',
-            queryParams: [],
-            description: '',
-          });
-          setPostmanResponse(null);
+    const getFolder = (r?: SavedRequest | null) =>
+      r?.collectionName || (r?.source === 'starter-scan' ? 'Scanned Endpoints' : r?.source === 'captured' ? 'Captured Traffic' : 'Default Collection');
+
+    const idx = savedRequests.findIndex((r) => r.id === id);
+    const deletingReq = idx !== -1 ? savedRequests[idx] : null;
+    const targetFolder = getFolder(deletingReq) || getFolder(draftRequest);
+
+    if (draftRequest.id === id) {
+      let next: SavedRequest | undefined;
+      if (deletingReq) {
+        const inFolder = savedRequests.filter((r) => getFolder(r) === targetFolder);
+        const folderIdx = inFolder.findIndex((r) => r.id === id);
+        if (folderIdx !== -1) {
+          if (folderIdx < inFolder.length - 1) {
+            next = inFolder[folderIdx + 1];
+          } else if (folderIdx > 0) {
+            next = inFolder[folderIdx - 1];
+          }
         }
       }
-      return remaining;
-    });
+      if (!next) {
+        next = savedRequests.filter((r) => r.id !== id).find((r) => getFolder(r) === targetFolder)
+          || savedRequests.filter((r) => r.id !== id)[0];
+      }
+
+      if (next) {
+        setDraftRequest(next);
+      } else {
+        // Reset to blank draft and clear stale response when collection empties after delete
+        setDraftRequest({
+          ...DEFAULT_REQUEST,
+          collectionName: targetFolder,
+          queryParams: [],
+          description: '',
+        });
+        setPostmanResponse(null);
+      }
+    }
+
+    setSavedRequests((current) => current.filter((r) => r.id !== id));
     showToast('Request removed from collection', 'info');
   }
 
@@ -2850,13 +2872,12 @@ export default function App() {
                             setSearchOpen(false);
                             setSearchQuery('');
                           }}
-                          className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all ${
-                            isHighlighted
+                          className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all ${isHighlighted
                               ? 'bg-primary/20 ring-1 ring-primary/40 text-on-surface'
                               : isActive
-                              ? 'bg-primary/10 border border-primary/30 text-on-surface'
-                              : 'hover:bg-surface-container-highest text-on-surface-variant hover:text-on-surface'
-                          }`}
+                                ? 'bg-primary/10 border border-primary/30 text-on-surface'
+                                : 'hover:bg-surface-container-highest text-on-surface-variant hover:text-on-surface'
+                            }`}
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
                             <span className={`material-symbols-outlined text-[18px] shrink-0 ${isActive ? 'text-primary' : 'text-outline'}`}>
@@ -3088,8 +3109,8 @@ export default function App() {
                       disabled={isDisabled}
                       title={item.label}
                       className={`nav-item flex items-center ${sidebarCollapsed ? 'collapsed justify-center px-1.5 py-2 mx-auto w-[42px] rounded-xl' : 'gap-3 px-6 py-2'} w-full text-left transition-colors font-label-md text-sm ${isSelected
-                          ? 'active text-on-surface border-secondary-container bg-surface-container-high font-semibold'
-                          : 'text-on-surface-variant hover:bg-surface-container-highest border-l-2 border-transparent'
+                        ? 'active text-on-surface border-secondary-container bg-surface-container-high font-semibold'
+                        : 'text-on-surface-variant hover:bg-surface-container-highest border-l-2 border-transparent'
                         } ${isDisabled ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'cursor-pointer'}`}
                       onClick={() => {
                         if (item.view === 'settings') {
@@ -3430,8 +3451,8 @@ export default function App() {
               {tunnels.filter((t) => t.status === 'ACTIVE').length > 0
                 ? `${tunnels.filter((t) => t.status === 'ACTIVE').length} Live ${tunnels.filter((t) => t.status === 'ACTIVE').length === 1 ? 'Tunnel' : 'Tunnels'} (${tunnels.filter((t) => t.status === 'ACTIVE').map((t) => `:${t.localPort}`).join(', ')})${tunnels.some((t) => t.status === 'STANDBY') ? ` + ${tunnels.filter((t) => t.status === 'STANDBY').length} Standby` : ''}`
                 : tunnels.filter((t) => t.status === 'STANDBY').length > 0
-                ? `${tunnels.filter((t) => t.status === 'STANDBY').length} Standby (${tunnels.filter((t) => t.status === 'STANDBY').map((t) => `:${t.localPort}`).join(', ')})`
-                : 'No Active Tunnels'}
+                  ? `${tunnels.filter((t) => t.status === 'STANDBY').length} Standby (${tunnels.filter((t) => t.status === 'STANDBY').map((t) => `:${t.localPort}`).join(', ')})`
+                  : 'No Active Tunnels'}
             </span>
           </span>
           <span className="text-outline/50 shrink-0">|</span>

@@ -2,6 +2,21 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/develop-postman-collections-shortcuts] - 2026-09-12 (API Playground Shortcuts, Hover Stability & Collection Deletion Safety #162)
+- **Feature Summary**:
+  - **Real-Time Active Pane Tracking & Workbench Shortcut Immunity (#162)**: Bound `Ctrl+T` (New Request) and `Delete` (Delete Request) strictly to the Collections sidebar via `getActivePane(e)` with capture-phase `pointerdown` and `focusin` listeners, eliminating accidental request creation or deletion when focused in the Workbench (Method select, Route selector, URL input, Params, Headers, Body, or tabs).
+  - **Zero-Movement Action Buttons (`CLS = 0`)**: Replaced flex-inserted action buttons with `absolute right-1.5 inset-y-0 my-auto h-fit` overlays. Replaced `translate-y` transforms and removed container-level `transition-all` to completely eliminate layout shifts and subpixel rendering jitter on hover.
+  - **Single-Request Deletion Warning Suppression**: Deleting collections with 0 or 1 request executes immediately without warning; collections with $\ge 2$ requests display an accessible confirmation modal (`Enter` to confirm, `Escape` to cancel).
+  - **Pure React Updater & Contiguous Sibling Auto-Selection**: Decoupled draft synchronization outside `setSavedRequests` updater, maintaining pure 1-line state updates without StrictMode re-render side-effects. Aligned fallback collection resolution across `starter-scan` (`'Scanned Endpoints'`) and `captured` (`'Captured Traffic'`).
+  - **Typography Refinement**: Upgraded collection and request titles to `13px` with natural letter-spacing; adjusted method badges to `11px` (`44px` $\times$ `21px`) and request counts to `11px`.
+  - **Asynchronous Focus Lifecycle Safety**: Managed post-deletion keyboard focus advancement with `focusTimerRef` and unmount cleanup, ensuring zero detached DOM timer leaks. Added `tabIndex={-1}` and `outline-none` across list items and containers for Chromium/WebView2 on Windows.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/KeyboardShortcutsDialog.tsx`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `CHANGELOG.md`
+
+
 ## [fix/develop-prune-orphaned-glib] - 2026-09-10 (Prune Orphaned glib = "0.20" & Universal Cross-Platform Packaging Targets)
 - **Feature Summary**:
   - **Prune Orphaned `glib = "0.20"` Dependency (#160)**: Removed orphaned Linux target dependency `glib = "0.20"` from `Cargo.toml`. The crate was never imported in `src-tauri/src/`, while Tauri v2 internals run on `glib 0.18.5`. Forcing `0.20` caused Cargo to download, compile, and link two parallel GLib/GTK toolchains on Linux, doubling build times and risking C-FFI symbol collisions with system `libglib-2.0.so`.
