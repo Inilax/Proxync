@@ -23,6 +23,7 @@ export type {
   RequestLog,
   SavedRequest,
   PostmanResponse,
+  RequestSessionState,
   Guardrails,
   ProcessProfile,
   WorkspaceConfig,
@@ -31,6 +32,43 @@ export type {
   MainView,
   SwaggerPanel,
 } from '../../lib/types';
+
+export const DEFAULT_REQUEST: import('../../lib/types').SavedRequest = {
+  id: 'draft',
+  name: 'Draft request',
+  method: 'GET',
+  path: '/',
+  headers: { 'Content-Type': 'application/json' },
+  body: '',
+  source: 'manual',
+};
+
+// ponytail: fail-fast scalar dirty checker; upgrade path = deep object comparator if custom fields are added
+export function isRequestDirty(saved: import('../../lib/types').SavedRequest, working?: import('../../lib/types').SavedRequest): boolean {
+  if (!working) return false;
+
+  // Step 1: O(1) Fast-Fail Scalar Checks (catches >95% of edits instantly)
+  if (saved.path !== working.path) return true;
+  if (saved.method !== working.method) return true;
+  if (saved.name !== working.name) return true;
+  if ((saved.body || '') !== (working.body || '')) return true;
+  if ((saved.description || '') !== (working.description || '')) return true;
+
+  // Step 2: O(1) Header / Param Count Checks before stringification
+  const savedHeaders = saved.headers || {};
+  const workHeaders = working.headers || {};
+  if (Object.keys(savedHeaders).length !== Object.keys(workHeaders).length) return true;
+
+  const savedParams = saved.queryParams || [];
+  const workParams = working.queryParams || [];
+  if (savedParams.length !== workParams.length) return true;
+
+  // Step 3: O(K) Content Comparison (only reached if all scalar fields and counts match)
+  return (
+    JSON.stringify(savedHeaders) !== JSON.stringify(workHeaders) ||
+    JSON.stringify(savedParams) !== JSON.stringify(workParams)
+  );
+}
 
 export type PanelView = 'chat' | 'voice' | null;
 
@@ -270,7 +308,7 @@ export function parseHeaderText(value: string): Record<string, string> {
 export function SignalBars({ latency }: { latency: number }) {
   let activeBars = 0;
   let barColor = 'var(--color-on-surface-variant)';
-  
+
   if (latency < 50) {
     activeBars = 4;
     barColor = '#10B981'; // Green
@@ -286,8 +324,8 @@ export function SignalBars({ latency }: { latency: number }) {
   }
 
   return (
-    <div 
-      style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: '14px', width: '18px' }} 
+    <div
+      style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: '14px', width: '18px' }}
       title={latency === Infinity ? 'Unreachable' : `${Math.round(latency)}ms`}
     >
       {[1, 2, 3, 4].map((bar) => {

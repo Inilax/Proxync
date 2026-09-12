@@ -17,6 +17,7 @@ use http::execute_http_request;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::AppleScript, Some(vec!["--autostart"])))
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -46,6 +47,16 @@ pub fn run() {
             read_logs_summary,
             save_support_bundle_dialog
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .on_window_event(|_window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                let _ = tauri::async_runtime::block_on(close_all_tunnels());
+            }
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app_handle, event| {
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                let _ = tauri::async_runtime::block_on(close_all_tunnels());
+            }
+        });
 }

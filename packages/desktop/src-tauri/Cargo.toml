@@ -1,6 +1,6 @@
 [package]
 name = "proxync"
-version = "0.2.1"
+version = "0.2.2"
 description = "Developer Tunneling Workspace Studio"
 authors = ["Inilax"]
 edition = "2021"
@@ -20,6 +20,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tauri-plugin-autostart = "2"
@@ -31,7 +32,4 @@ reqwest = { version = "0.12", features = ["json", "gzip", "deflate", "brotli"] }
 futures-util = "0.3"
 lazy_static = "1.5"
 base64 = "0.22"
-
-[target.'cfg(target_os = "linux")'.dependencies]
-glib = "0.20"
 

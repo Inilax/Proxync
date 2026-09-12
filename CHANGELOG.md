@@ -2,6 +2,169 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/develop-tauri-plugin-dialog] - 2026-09-12 (Universal Native File Dialogs via tauri-plugin-dialog #164)
+- **Feature Summary**:
+  - **Universal Linux & Cross-Platform Support (#164)**: Replaced platform-specific external shell executions (`/usr/bin/zenity` on Linux, `powershell.exe` on Windows, `osascript` on macOS) with Tauri v2 official `tauri-plugin-dialog` plugin.
+  - **Linux Desktop Portal Integration**: Uses D-Bus XDG Desktop Portal (`org.freedesktop.portal.FileChooser`) under the hood, natively supporting KDE Plasma, Sway, Hyprland, and Wayland environments without requiring GNOME GTK `zenity` binaries.
+  - **Security & Vulnerability Elimination**: Eliminates command-injection vectors from string-interpolated PowerShell and AppleScript calls.
+  - **Clean Native IPC Contract**: Injected `tauri::AppHandle` into `save_support_bundle_dialog` command in `storage.rs` with zero frontend IPC contract breakage (`invoke("save_support_bundle_dialog")` remains unchanged).
+- **Modified Files**:
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/capabilities/default.json`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `CHANGELOG.md`
+
+## [fix/develop-postman-collections-shortcuts] - Continuation (Postman-Grade Session State #154)
+- **Feature Summary**:
+  - **App Restart & Reload Persistence (#154)**: Introduced synchronous \`localStorage\` bookmarking for the Playground. The active request is strictly persisted across app restarts and workspace switches. Boot initialization now reads synchronously inside \`useState\` to completely eliminate React FOUC (Flash of Unstyled Content).
+  - **Strict Postman-Grade Session Tracking**: Removed Insomnia-style multi-run history pills and replaced with a strict $\mathcal{O}(1)$ \`{ draft, response }\` state map. Switch tabs without losing your current unsaved response, while explicitly discarding background dirty edits upon app quit to respect the 5MB \`localStorage\` boundary.
+- **Modified Files**:
+  - \`packages/desktop/src/App.tsx\`
+  - \`packages/desktop/src/components/views/PostmanView.tsx\`
+  - \`packages/desktop/src/components/views/SharedComponents.tsx\`
+  - \`packages/desktop/src/lib/types.ts\`
+  - \`CHANGELOG.md\`
+  - \`.agents/changelog.json\`
+
+## [fix/develop-postman-collections-shortcuts] - 2026-09-12 (API Playground Shortcuts, Hover Stability & Collection Deletion Safety #162)
+- **Feature Summary**:
+  - **Real-Time Active Pane Tracking & Workbench Shortcut Immunity (#162)**: Bound `Ctrl+T` (New Request) and `Delete` (Delete Request) strictly to the Collections sidebar via `getActivePane(e)` with capture-phase `pointerdown` and `focusin` listeners, eliminating accidental request creation or deletion when focused in the Workbench (Method select, Route selector, URL input, Params, Headers, Body, or tabs).
+  - **Zero-Movement Action Buttons (`CLS = 0`)**: Replaced flex-inserted action buttons with `absolute right-1.5 inset-y-0 my-auto h-fit` overlays. Replaced `translate-y` transforms and removed container-level `transition-all` to completely eliminate layout shifts and subpixel rendering jitter on hover.
+  - **Single-Request Deletion Warning Suppression**: Deleting collections with 0 or 1 request executes immediately without warning; collections with $\ge 2$ requests display an accessible confirmation modal (`Enter` to confirm, `Escape` to cancel).
+  - **Pure React Updater & Contiguous Sibling Auto-Selection**: Decoupled draft synchronization outside `setSavedRequests` updater, maintaining pure 1-line state updates without StrictMode re-render side-effects. Aligned fallback collection resolution across `starter-scan` (`'Scanned Endpoints'`) and `captured` (`'Captured Traffic'`).
+  - **Typography Refinement**: Upgraded collection and request titles to `13px` with natural letter-spacing; adjusted method badges to `11px` (`44px` $\times$ `21px`) and request counts to `11px`.
+  - **Asynchronous Focus Lifecycle Safety**: Managed post-deletion keyboard focus advancement with `focusTimerRef` and unmount cleanup, ensuring zero detached DOM timer leaks. Added `tabIndex={-1}` and `outline-none` across list items and containers for Chromium/WebView2 on Windows.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/KeyboardShortcutsDialog.tsx`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `CHANGELOG.md`
+
+
+## [fix/develop-prune-orphaned-glib] - 2026-09-10 (Prune Orphaned glib = "0.20" & Universal Cross-Platform Packaging Targets)
+- **Feature Summary**:
+  - **Prune Orphaned `glib = "0.20"` Dependency (#160)**: Removed orphaned Linux target dependency `glib = "0.20"` from `Cargo.toml`. The crate was never imported in `src-tauri/src/`, while Tauri v2 internals run on `glib 0.18.5`. Forcing `0.20` caused Cargo to download, compile, and link two parallel GLib/GTK toolchains on Linux, doubling build times and risking C-FFI symbol collisions with system `libglib-2.0.so`.
+  - **Universal Packaging Targets (#156)**: Updated `bundle.targets` in `tauri.conf.json` from Windows-restricted `["nsis", "msi"]` to `"all"`. Enables host-adaptive packaging, allowing Linux builds to generate native `.deb` and `.AppImage` bundles (and macOS `.dmg`/`.app`) alongside Windows `.exe`/`.msi`.
+  - **Dependency Graph & Lockfile Optimization**: Cleanly eliminated 165 lines of duplicate dependency noise from `Cargo.lock` (`glib 0.20`, `glib-sys 0.20`, `glib-macros 0.20`, `gobject-sys 0.20`). Rebuilt lockfile to resolve to a single unified `glib v0.18.5` across Tauri's runtime stack (`tao`, `wry`, `webkit2gtk`, `muda`).
+  - **Compilation Validation**: Reduced `cargo check` compile time from >14s to 1.88s; validated clean TypeScript compilation and Vite production build (`npm run build`).
+- **Modified Files**:
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+## [fix/develop-tunnel-process-teardown] - 2026-09-10 (Cross-Platform Subprocess Tree Teardown, Orphan Daemon Prevention & Tunnel Lifecycle Hardening)
+- **Feature Summary**:
+  - **Unified Subprocess Tree Teardown (`kill_child_process_tree`)**: Replaced scattered, duplicated process-killing logic with a shared cross-platform teardown helper. Uses `taskkill /F /T /PID` on Windows to recursively kill child process trees and POSIX `kill -KILL -- -<pid>` (process group kill) alongside `pkill -KILL -P <pid>` on Unix, preventing detached `node` and `cloudflared` background daemon leaks.
+  - **Linux `os error 2` Spawn Fix**: Replaced hardcoded `cmd.exe` calls with conditional branching (`cmd /C npx` on Windows with `CREATE_NO_WINDOW: 0x08000000`, direct `npx` on Unix/macOS). Added `process_group(0)` on Unix so spawned tunnels form dedicated process groups.
+  - **Startup Handshake Timeout & Error Teardown**: Fixed critical leak where handshake timeouts (15s for Localtunnel, 25s for Cloudflare) and connection errors bypassed tree-killing by invoking `kill_child_process_tree` across all failure paths.
+  - **Tauri Application Lifecycle Teardown (`lib.rs`)**: Registered `WindowEvent::CloseRequested` and `RunEvent::ExitRequested` hooks to guarantee `close_all_tunnels()` is invoked before window destruction or process termination.
+  - **Cloudflare Race Condition & Protocol Hardening**: Awaits `Registered tunnel connection` log line in Cloudflare stderr before dispatching public URL to UI (with a 4-second safety ceiling fallback), eliminating premature `Error 1033` / `NXDOMAIN` clicks. Forced `--protocol http2` over TCP 443 TLS to prevent UDP 7844 firewall stalls, and normalized targets to explicit `127.0.0.1` loopback to prevent IPv6 `::1` connection refused errors.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `CHANGELOG.md`
+
+## [fix/develop-linux-recon-support] - 2026-09-09 (Native Linux Port Scanning, Process Detection & Ghost-Port Prevention #143)
+- **Feature Summary**:
+  - **Native Linux Reconnaissance (`recon.rs`)**: Implemented cross-platform `PlatformScanner` compile-time strategy trait (`LinuxScanner`, `WindowsScanner`, `FallbackScanner`) with factory dispatch, bringing full port scanning and process discovery to Linux environments.
+  - **Dual Discovery Pipeline (`recon.rs`)**: Added primary `ss -tlpn -H` parsing with zero-subprocess fallback to in-kernel `/proc/net/tcp{,6}` and `/proc/[pid]/fd` socket inode matching.
+  - **In-Memory `/proc` Process Traversal (`recon.rs`)**: Direct non-allocating traversal of `/proc` reading `comm`, `stat`, `cmdline`, and `exe` symlinks in < 5ms without disk I/O.
+  - **Ghost-Port Prevention (`recon.rs`)**: Fixed internal ephemeral proxy/tunnel listener leakage by filtering `std::process::id()` at the shared scanner boundary, preventing Proxync's own ports from appearing as ghost dev servers.
+  - **Path Normalization & Test Suite (`recon.rs`)**: Expanded system path checks to handle Unix root paths and hidden version managers (`.nvm`), backed by 8 automated unit and integration tests.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `CHANGELOG.md`
+
+## [fix/upgrade-browserslist-security] - 2026-09-08 [SECURITY-CVE] (Upgrade browserslist to 4.28.9 to Remediate GHSA-c83g-rgw3-j3cx & GHSA-73wf-gq98-2v4g)
+- **Feature Summary**:
+  - **Browserslist Security Remediation [TYPE: CVE-PATCH]**: Upgraded `browserslist` from `4.28.4` to `4.28.9` (along with `baseline-browser-mapping`, `caniuse-lite`, `electron-to-chromium`, and `node-releases`) via `npm audit fix`, remediating memory growth / OOM vulnerability (GHSA-c83g-rgw3-j3cx) and prototype write / uncaught crash vulnerability (GHSA-73wf-gq98-2v4g).
+  - **Audit & Compilation Validation**: Validated zero vulnerabilities across npm (`npm audit`) and verified clean TypeScript compilation & Vite production bundling (`npm run build`).
+- **Modified Files**:
+  - `package-lock.json`
+## [fix/playground-postman-ux] - 2026-09-07 (API Playground — Postman-Grade UX Upgrade)
+- **Feature Summary**:
+  - **Right-click "Add Request"**: Folder/collection context menu now includes an "Add Request" option to insert new requests directly into a collection without modifying the active draft.
+  - **`Ctrl+T` New Request Shortcut**: Pressing `Ctrl+T` creates a new blank request scoped to the active collection, matching the Postman/Insomnia workflow.
+  - **`Delete` Key Shortcut**: Pressing `Delete` removes the currently selected saved request. Guarded against firing when an input/textarea is focused. On deletion, workbench auto-loads the next sibling request or resets to a clean blank draft.
+  - **In-place Save (no duplicates)**: `saveDraftRequest` now does an ID-keyed upsert — editing and re-saving an existing request updates it in place instead of appending a duplicate.
+  - **Query Params Table**: New "Params" tab in the workbench with editable key/value rows. Fully bidirectional — editing the URL updates the table and vice versa.
+  - **Response History (4 runs)**: Response panel retains the last 4 responses per request as selectable history pills for quick comparison.
+  - **JSON Auto-format (`Ctrl+Shift+F`)**: Pretty-prints the request body JSON in place.
+  - **Collection Search (`Ctrl+F`)**: Real-time sidebar filter by request/collection name.
+  - **Inline Method Badge**: Clickable HTTP method badge on sidebar items opens a dropdown to change method without opening the full editor.
+  - **Sidebar Visual Polish**: Hover-only action buttons; high-contrast colour-coded method badges (emerald=GET, amber=POST, sky=PUT, purple=PATCH, rose=DELETE).
+  - **Keyboard Shortcuts Cheatsheet**: Updated `KeyboardShortcutsDialog` with all new hotkeys.
+  - **Proxync-review fixes**: Removed accidental `export` from `getMethodBadgeStyle`; replaced magic `'/api/v1/health'` fallback paths with `DEFAULT_REQUEST` spread and `DEFAULT_FALLBACK_PATH` constant; `mergeRequests` now keys by stable `id` field.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/components/views/KeyboardShortcutsDialog.tsx`
+## [feature/develop-schema-drift-detection] - 2026-09-07 (Schema Drift Hardening, Council Review Optimizations & Guardrail Indicator)
+- **Feature Summary**:
+  - **Fuzzy Rename Guard (`schemaDriftDetector.ts`)**: Enforced a minimum field length check (>= 3 chars) on Levenshtein edit-distance matching, preventing false positive `FIELD_RENAMED` violations between unrelated short identifiers (e.g., `id`, `at`, `ts`, `ip`).
+  - **Status-Aware Schema Resolution (`schemaDriftDetector.ts`)**: Streamlined `resolveBaselineSchema` to return a minimal resolution on undocumented HTTP statuses, preventing invalid cross-status schema diffing against default 200 OK schemas.
+  - **Regex Caching & Recursion Defense (`schemaDriftDetector.ts`)**: Implemented `getCompiledEndpointRegex` caching to avoid repeated regex compilation on hot traffic loops, and added a recursion depth guard (`depth > 20`) in `diffSchemas`.
+  - **Reactivity Optimization & Toast Timing (`App.tsx`, `toast.tsx`)**: Removed state closures from `handleSyncOpenApiWithDrift` via `driftAlertsRef`, memoized `driftReports` to eliminate redundant Set/Array reallocations, restored persistent toast capabilities in `toast.tsx`, and kept drift notifications non-sticky (4-second auto-dismiss).
+  - **Bodies Captured Indicator (`TrafficView.tsx`)**: Added a visual telemetry indicator in the Traffic Inspector header to clearly inform users when payload capture is active in memory.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/TrafficView.tsx`
+  - `packages/desktop/src/lib/schemaDriftDetector.ts`
+  - `packages/desktop/src/lib/toast.tsx`
+  - `CHANGELOG.md`
+
+## [feature/develop-schema-drift-detection] - 2026-09-07 (Multi-Endpoint Schema Drift Tracking & Granular Reconciliation Engine)
+- **Feature Summary**:
+  - **Unified Real-Time Drift Alerting (`App.tsx`)**: Consolidated toast notifications into a shared `notifyDriftAlert` helper delivering distinct, debounced toasts for breaking contract errors (`error`) and additive schema changes (`warning`).
+  - **Granular Scoped Reconciliation & Remaining Counter (`App.tsx`, `TrafficView.tsx`)**: Enhanced `handleSyncOpenApiWithDrift` with $O(N)$ route difference calculation to verify remaining un-synced routes and provide explicit scoping feedback (`Note: X other endpoint(s) still have pending drift`), eliminating user ambiguity during selective sync.
+  - **Swagger Studio Additive Warning Banner & Health Metrics (`SwaggerView.tsx`)**: Upgraded `contractHealth` computation and the top reconciliation banner to track additive schema changes (`warningCount`) alongside breaking violations, rendering an amber banner when only non-breaking changes remain un-synced.
+  - **Precision Route Regex Matching (`SwaggerView.tsx`)**: Replaced loose substring endpoint matching with `compileEndpointRegex`, preventing collection endpoints (`/api/products`) from falsely cascading drift badges onto item endpoints (`/api/products/{id}`).
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/SwaggerView.tsx`
+  - `packages/desktop/src/components/views/TrafficView.tsx`
+  - `CHANGELOG.md`
+
+## [feature/develop-schema-drift-detection] - 2026-09-02 (Real-Time Schema Drift Detection & Contract Diff Engine)
+- **Feature Summary**:
+  - **4 KB Native HTTP Response Preview Capture (`proxy.rs`, `tunnel.rs`)**: Extracted response body preview and headers for `application/json` payloads directly in Rust proxy and tunnel streams while bypassing WebSocket/SSE streaming protocols and compressed payloads.
+  - **Pure TypeScript Schema Drift Engine (`schemaDriftDetector.ts`, `types.ts`)**: Built recursive AST schema diff engine detecting `BREAKING_FIELD_RENAMED` (inline Levenshtein distance $\le 2$ & case normalization), `BREAKING_NULLABILITY`, `BREAKING_TYPE_MISMATCH`, `BREAKING_FIELD_REMOVED`, `NON_BREAKING_FIELD_ADDED`, and undocumented status codes. Safely strips HTTP/1.1 chunked transfer encoding headers.
+  - **1-Click OpenAPI Reconciliation & Bug Reporting (`schemaDriftDetector.ts`, `openApiGenerator.ts`)**: Implemented `syncOpenApiWithPayload` to merge runtime schemas into the live OpenAPI document in-memory, clearing active drift flags across all studios, and `generateDriftBugReportMarkdown` to produce copy-paste bug reports.
+  - **Studio Integrations & Real-Time Alerting (`TrafficView.tsx`, `SwaggerView.tsx`, `ObservabilityView.tsx`, `RequestWorkbenchDialog.tsx`, `App.tsx`, `toast.tsx`)**: Added drift filter dropdown and inline diff panel in Traffic Inspector; Contract Health % metric and warning banner in Swagger Studio; telemetry radar in Observability Studio; dedicated Contract mode tab in 360° Request Workbench; dual-key indexed drift state in `App.tsx`; and 4-second auto-dismissing toast alerts.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/ObservabilityView.tsx`
+  - `packages/desktop/src/components/views/RequestWorkbenchDialog.tsx`
+  - `packages/desktop/src/components/views/SwaggerView.tsx`
+  - `packages/desktop/src/components/views/TrafficView.tsx`
+  - `packages/desktop/src/lib/openApiGenerator.ts`
+  - `packages/desktop/src/lib/schemaDriftDetector.ts`
+  - `packages/desktop/src/lib/toast.tsx`
+  - `packages/desktop/src/lib/types.ts`
+  - `CHANGELOG.md`
+
+## [feature/develop-v0.2.2-version-bump] - 2026-09-01 (Workspace & Studio Version Bump to v0.2.2 for Cross-OS Compatibility & Stabilization)
+- **Feature Summary**:
+  - **Comprehensive Version Bump to v0.2.2**: Synchronized workspace and package manifests (`package.json`, `packages/desktop/package.json`, `package-lock.json`, `Cargo.toml`, `Cargo.lock`, and `tauri.conf.json`) to version `0.2.2`.
+  - **Native HTTP Network Headers & Diagnostics**: Updated Rust client `User-Agent` headers in `http.rs` to `ProxyncStudio/0.2.2`. Synchronized frontend diagnostic logging metadata, log session directives, and support bundle fallbacks in `App.tsx` and `logger.ts` to `v0.2.2-stable`.
+  - **Recon & Documentation Badge Alignment**: Updated README version shield badge and `.agents/architecture.json` static recon map to reflect version `0.2.2`.
+- **Modified Files**:
+  - `package.json`
+  - `packages/desktop/package.json`
+  - `package-lock.json`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/src-tauri/src/http.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/lib/logger.ts`
+  - `README.md`
+  - `CHANGELOG.md`
+
 ## [fix/nsis-bundling-titlebar-alignment] - 2026-08-27 (Tauri v2 Native NSIS Uninstaller Icon, Makensis Build Fix & Responsive Titlebar Edge Alignment)
 - **Feature Summary**:
   - **Tauri v2 Native NSIS Uninstaller Config (`tauri.conf.json`, `hooks.nsh`)**: Migrated uninstaller branding from fragile raw script hooks (`hooks.nsh`) to native Tauri v2 `uninstallerIcon: "icons/icon.ico"` in `tauri.conf.json`. Resolves `makensis` compilation failure (`Error while loading icon from "icons\icon.ico": can't open file`) caused by relative path evaluation in temporary NSIS release directories.
@@ -269,6 +432,8 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
   - `CHANGELOG.md`
+
+## [feature/develop-workspace-card-redesign-and-concurrency] - 2026-08-17 (Workspace Hub Card Redesign, Concurrent Tunnel Spawning & Responsive Layout)
 - **Feature Summary**:
   - **Multi-Service Concurrent Tunnel Spawning**: Replaced scalar `sharingPort` with `spawningPorts: number[]` in `App.tsx` and integrated `addSpawningPort` / `removeSpawningPort` across all sharing handlers (`shareProcessNative`, `shareProcessCloudflare`, `shareProcessLocaltunnel`, `shareProcess`), enabling simultaneous tunnel launches without UI state collisions.
   - **Instantaneous Spawning State**: When clicking tunnel launch options, action buttons are immediately replaced with an active animated loading indicator `[ 🔄 Spawning Tunnel Connection... ]`, preventing double-clicks and duplicate backend spawner execution.

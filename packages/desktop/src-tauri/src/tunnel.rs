@@ -210,6 +210,8 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
                                     body: String::new(),
                                 };
 
+                                let mut preview_str: Option<String> = None;
+
                                 if let Ok(res) = response {
                                     res_payload.status = res.status().as_u16();
                                     for (k, v) in res.headers() {
@@ -222,15 +224,29 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
                                         }
                                     }
                                     if let Ok(bytes) = res.bytes().await {
+                                        let is_json = res_payload.headers.get("content-type")
+                                            .map(|ct| ct.to_lowercase().contains("json"))
+                                            .unwrap_or(false);
+                                        if is_json {
+                                            if let Ok(raw_s) = std::str::from_utf8(&bytes) {
+                                                let p: String = raw_s.trim().chars().take(4096).collect();
+                                                if !p.is_empty() {
+                                                    preview_str = Some(p);
+                                                }
+                                            }
+                                        }
                                         res_payload.body = BASE64_STANDARD.encode(&bytes);
                                         res_payload.headers.insert("content-length".to_string(), bytes.len().to_string());
                                     }
                                 }
 
                                 let res_meta = serde_json::json!({
+                                    "id": res_payload.request_id.clone(),
                                     "requestId": res_payload.request_id,
                                     "status": res_payload.status,
                                     "durationMs": duration_ms,
+                                    "responseHeaders": res_payload.headers,
+                                    "responseBodyPreview": preview_str,
                                     "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()
                                 });
                                 let _ = app_clone.emit("request:log:response", res_meta);
@@ -255,6 +271,32 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
     Ok(())
 }
 
+// Helper Function: Unified tree teardown for cross-platform tunnel subprocesses (kills process groups and child daemons).
+async fn kill_child_process_tree(child: &mut tokio::process::Child) {
+    #[cfg(target_os = "windows")]
+    if let Some(pid) = child.id() {
+        let mut cmd = std::process::Command::new("taskkill");
+        cmd.creation_flags(0x08000000);
+        let _ = cmd.args(&["/F", "/T", "/PID", &pid.to_string()]).output();
+    } else {
+        let _ = child.kill().await;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Some(pid) = child.id() {
+            // Kill entire process group using '--' delimiter to avoid POSIX option parsing ambiguities on BSD/macOS
+            let _ = std::process::Command::new("kill")
+                .args(&["-KILL", "--", &format!("-{}", pid)])
+                .output();
+            let _ = std::process::Command::new("pkill")
+                .args(&["-KILL", "-P", &pid.to_string()])
+                .output();
+        }
+        let _ = child.kill().await;
+    }
+}
+
 #[tauri::command]
 pub async fn close_tunnel(tunnel_id: String, local_port: Option<u16>) -> Result<(), String> {
     let mut found = false;
@@ -267,20 +309,7 @@ pub async fn close_tunnel(tunnel_id: String, local_port: Option<u16>) -> Result<
 
     let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
     if let Some(mut child) = lt_procs.remove(&tunnel_id) {
-        if let Some(pid) = child.id() {
-            #[cfg(target_os = "windows")]
-            {
-                let mut cmd = std::process::Command::new("taskkill");
-                cmd.creation_flags(0x08000000);
-                let _ = cmd.args(&["/F", "/T", "/PID", &pid.to_string()]).output();
-            }
-            #[cfg(not(target_os = "windows"))]
-            {
-                let _ = child.kill().await;
-            }
-        } else {
-            let _ = child.kill().await;
-        }
+        kill_child_process_tree(&mut child).await;
         found = true;
     }
 
@@ -304,20 +333,8 @@ pub async fn close_all_tunnels() -> Result<(), String> {
 
     let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
     for (_, mut child) in lt_procs.drain() {
-        if let Some(pid) = child.id() {
-            #[cfg(target_os = "windows")]
-            {
-                let mut cmd = std::process::Command::new("taskkill");
-                cmd.creation_flags(0x08000000);
-                let _ = cmd.args(&["/F", "/T", "/PID", &pid.to_string()]).output();
-            }
-            #[cfg(not(target_os = "windows"))]
-            {
-                let _ = child.kill().await;
-            }
-        } else {
-            let _ = child.kill().await;
-        }
+        //helper function Used
+        kill_child_process_tree(&mut child).await;
     }
 
     stop_proxy(None).await;
@@ -331,10 +348,22 @@ pub async fn open_localtunnel(
     local_port: u16,
     subdomain: Option<String>
 ) -> Result<String, String> {
-    let mut cmd = tokio::process::Command::new("cmd");
     #[cfg(target_os = "windows")]
-    cmd.creation_flags(0x08000000);
-    cmd.args(&["/C", "npx", "-y", "localtunnel@2.0.2", "--port", &local_port.to_string()]);
+    let mut cmd = {
+        let mut c = tokio::process::Command::new("cmd");
+        c.creation_flags(0x08000000);
+        c.args(&["/C", "npx"]);
+        c
+    };
+    #[cfg(not(target_os = "windows"))]
+    let mut cmd = tokio::process::Command::new("npx");
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.as_std_mut().process_group(0);
+    }
+
+    cmd.args(&["-y", "localtunnel@2.0.2", "--port", &local_port.to_string(), "--local-host", "127.0.0.1"]);
     if let Some(sub) = subdomain {
         let clean_sub: String = sub
             .to_lowercase()
@@ -375,11 +404,11 @@ pub async fn open_localtunnel(
     let url = match tokio::time::timeout(timeout_duration, rx).await {
         Ok(Ok(Ok(resolved_url))) => resolved_url,
         Ok(Ok(Err(err))) => {
-            let _ = child.kill().await;
+            kill_child_process_tree(&mut child).await;
             return Err(err);
         }
         _ => {
-            let _ = child.kill().await;
+            kill_child_process_tree(&mut child).await;
             return Err("Timed out waiting for localtunnel URL".to_string());
         }
     };
@@ -416,17 +445,29 @@ pub async fn open_cloudflare_tunnel(
     tunnel_id: String,
     local_port: u16,
 ) -> Result<String, String> {
-    let mut cmd = tokio::process::Command::new("cmd");
+    let local_target = format!("127.0.0.1:{}", local_port);
     #[cfg(target_os = "windows")]
-    cmd.creation_flags(0x08000000);
-    let local_target = format!("localhost:{}", local_port);
+    let mut cmd = {
+        let mut c = tokio::process::Command::new("cmd");
+        c.creation_flags(0x08000000);
+        c.args(&["/C", "npx"]);
+        c
+    };
+    #[cfg(not(target_os = "windows"))]
+    let mut cmd = tokio::process::Command::new("npx");
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.as_std_mut().process_group(0);
+    }
+
     cmd.args(&[
-        "/C",
-        "npx",
         "-y",
         "--package=cloudflared",
         "cloudflared",
         "tunnel",
+        "--protocol",
+        "http2",
         "--metrics",
         "localhost:0",
         "--no-autoupdate",
@@ -441,32 +482,57 @@ pub async fn open_cloudflare_tunnel(
     let stderr = child.stderr.take().ok_or("Failed to open cloudflared stderr".to_string())?;
 
     let (tx, rx) = tokio::sync::oneshot::channel();
+    let tx_shared = std::sync::Arc::new(tokio::sync::Mutex::new(Some(tx)));
+    let tx_timer = tx_shared.clone();
+    let tx_reader = tx_shared.clone();
 
     tokio::spawn(async move {
         let mut reader = tokio::io::BufReader::new(stderr).lines();
-        let mut tx_opt = Some(tx);
+        let mut found_url: Option<String> = None;
+
         while let Ok(Some(line)) = reader.next_line().await {
-            if let Some(tx_sender) = tx_opt.take() {
-                if line.contains(".trycloudflare.com") {
-                    if let Some(start_idx) = line.find("https://") {
-                        let rest = &line[start_idx..];
-                        let url = rest
-                            .split_whitespace()
-                            .next()
-                            .unwrap_or("")
-                            .trim_matches(|c| c == '|' || c == ' ' || c == '\r' || c == '\n')
-                            .to_string();
-                        if !url.is_empty() {
-                            let _ = tx_sender.send(Ok(url));
-                            continue;
-                        }
+            if found_url.is_none() && line.contains(".trycloudflare.com") {
+                if let Some(start_idx) = line.find("https://") {
+                    let rest = &line[start_idx..];
+                    let url = rest
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or("")
+                        .trim_matches(|c| c == '|' || c == ' ' || c == '\r' || c == '\n')
+                        .to_string();
+                    if !url.is_empty() {
+                        found_url = Some(url.clone());
+                        // ponytail: 4s safety ceiling — if Cloudflare alters its "Registered tunnel connection" stdout string in a future CLI release, falls back to parsed URL to avoid stalling UI.
+                        let tx_clone = tx_timer.clone();
+                        let url_fallback = url.clone();
+                        tokio::spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_millis(4000)).await;
+                            let mut lock = tx_clone.lock().await;
+                            if let Some(sender) = lock.take() {
+                                let _ = sender.send(Ok(url_fallback));
+                            }
+                        });
                     }
                 }
-                tx_opt = Some(tx_sender);
+            }
+
+            if let Some(ref url) = found_url {
+                if line.contains("Registered tunnel connection") || (line.contains("registered") && line.contains("connIndex")) {
+                    let mut lock = tx_reader.lock().await;
+                    if let Some(sender) = lock.take() {
+                        let _ = sender.send(Ok(url.clone()));
+                    }
+                }
             }
         }
-        if let Some(tx_sender) = tx_opt {
-            let _ = tx_sender.send(Err("cloudflared process exited without returning URL".to_string()));
+
+        let mut lock = tx_reader.lock().await;
+        if let Some(sender) = lock.take() {
+            if let Some(url) = found_url {
+                let _ = sender.send(Ok(url));
+            } else {
+                let _ = sender.send(Err("cloudflared process exited without returning URL".to_string()));
+            }
         }
     });
 
@@ -474,11 +540,11 @@ pub async fn open_cloudflare_tunnel(
     let url = match tokio::time::timeout(timeout_duration, rx).await {
         Ok(Ok(Ok(resolved_url))) => resolved_url,
         Ok(Ok(Err(err))) => {
-            let _ = child.kill().await;
+            kill_child_process_tree(&mut child).await;
             return Err(err);
         }
         _ => {
-            let _ = child.kill().await;
+            kill_child_process_tree(&mut child).await;
             return Err("Timed out waiting for trycloudflare URL".to_string());
         }
     };
