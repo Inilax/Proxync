@@ -101,7 +101,7 @@ export function KeyboardShortcutsDialog({
     {
       name: 'Delete Request',
       keys: ['Delete'],
-      description: 'Delete current or selected request from collection',
+      description: 'Delete selected request from collection sidebar',
       category: 'contextual',
       view: 'postman',
     },
