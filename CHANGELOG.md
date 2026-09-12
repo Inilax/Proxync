@@ -2,6 +2,21 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/develop-tauri-plugin-dialog] - 2026-09-12 (Universal Native File Dialogs via tauri-plugin-dialog #164)
+- **Feature Summary**:
+  - **Universal Linux & Cross-Platform Support (#164)**: Replaced platform-specific external shell executions (`/usr/bin/zenity` on Linux, `powershell.exe` on Windows, `osascript` on macOS) with Tauri v2 official `tauri-plugin-dialog` plugin.
+  - **Linux Desktop Portal Integration**: Uses D-Bus XDG Desktop Portal (`org.freedesktop.portal.FileChooser`) under the hood, natively supporting KDE Plasma, Sway, Hyprland, and Wayland environments without requiring GNOME GTK `zenity` binaries.
+  - **Security & Vulnerability Elimination**: Eliminates command-injection vectors from string-interpolated PowerShell and AppleScript calls.
+  - **Clean Native IPC Contract**: Injected `tauri::AppHandle` into `save_support_bundle_dialog` command in `storage.rs` with zero frontend IPC contract breakage (`invoke("save_support_bundle_dialog")` remains unchanged).
+- **Modified Files**:
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/capabilities/default.json`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `CHANGELOG.md`
+
 ## [fix/develop-prune-orphaned-glib] - 2026-09-10 (Prune Orphaned glib = "0.20" & Universal Cross-Platform Packaging Targets)
 - **Feature Summary**:
   - **Prune Orphaned `glib = "0.20"` Dependency (#160)**: Removed orphaned Linux target dependency `glib = "0.20"` from `Cargo.toml`. The crate was never imported in `src-tauri/src/`, while Tauri v2 internals run on `glib 0.18.5`. Forcing `0.20` caused Cargo to download, compile, and link two parallel GLib/GTK toolchains on Linux, doubling build times and risking C-FFI symbol collisions with system `libglib-2.0.so`.
