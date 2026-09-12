@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import type { SavedRequest, PostmanResponse, Tunnel, ProcessCandidate } from './SharedComponents';
-import { formatHeaders, stripMethodPrefix } from './SharedComponents';
+import type { SavedRequest, PostmanResponse, Tunnel, ProcessCandidate, RequestSessionState } from './SharedComponents';
+import { formatHeaders, stripMethodPrefix, DEFAULT_REQUEST, isRequestDirty } from './SharedComponents';
 import { showToast } from '../../lib/toast';
 import { importSwaggerToSavedRequests, importPostmanToOpenApi } from '../../lib/openApiGenerator';
 import { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
@@ -58,6 +58,7 @@ function getMethodBadgeStyle(method: string): string {
 export function PostmanView({
   draft,
   savedRequests,
+  requestSessions,
   response,
   sending,
   starterSuggestions,
@@ -81,6 +82,7 @@ export function PostmanView({
 }: {
   draft: SavedRequest;
   savedRequests: SavedRequest[];
+  requestSessions?: Record<string, RequestSessionState>;
   response: PostmanResponse | null;
   sending: boolean;
   starterSuggestions: SavedRequest[];
@@ -106,10 +108,6 @@ export function PostmanView({
   const [requestTab, setRequestTab] = useState<'params' | 'body' | 'headers' | 'auth' | 'response'>('body');
   const [responseSubTab, setResponseSubTab] = useState<'body' | 'headers'>('body');
 
-  // Response History State (Memory only, capped at 4 runs)
-  const [responseHistory, setResponseHistory] = useState<PostmanResponse[]>([]);
-  const [selectedHistoryIndex, setSelectedHistoryIndex] = useState<number | null>(null);
-
   // Collection Search & Filter State
   const [collectionSearch, setCollectionSearch] = useState<string>('');
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -122,6 +120,15 @@ export function PostmanView({
 
   // Auth Helper State
   const [bearerToken, setBearerToken] = useState<string>('');
+
+  // Check if current workbench draft has unsaved changes compared to saved version
+  const isCurrentDraftDirty = useMemo(() => {
+    const savedVersion = savedRequests.find((r) => r.id === draft.id);
+    if (!savedVersion) {
+      return isRequestDirty(DEFAULT_REQUEST, draft);
+    }
+    return isRequestDirty(savedVersion, draft);
+  }, [draft, savedRequests]);
 
   // Resizable Panel Width for Collections Rail
   const [collectionsWidth, setCollectionsWidth] = useState<number>(() => {
@@ -169,6 +176,73 @@ export function PostmanView({
   };
 
   const [showHotkeysModal, setShowHotkeysModal] = useState(false);
+  const [deletingFolderTarget, setDeletingFolderTarget] = useState<string | null>(null);
+
+  const deletingFolderRequestCount = useMemo(() => {
+    if (!deletingFolderTarget) return 0;
+    return savedRequests.filter((r) => {
+      const folder = r.collectionName || (r.source === 'starter-scan' ? 'Scanned Endpoints' : r.source === 'captured' ? 'Captured Traffic' : 'Default Collection');
+      return folder === deletingFolderTarget;
+    }).length;
+  }, [deletingFolderTarget, savedRequests]);
+
+  // Active Pane Tracking (tracks whether user is interacting with Collections Rail vs Main Workbench)
+  const activePaneRef = useRef<'collections' | 'workbench'>('collections');
+
+  const switchActivePane = (pane: 'collections' | 'workbench') => {
+    activePaneRef.current = pane;
+  };
+
+  const isTargetInWorkbench = (target: EventTarget | null) => {
+    if (!target || !(target instanceof HTMLElement)) return false;
+    return Boolean(target.closest('[data-workbench-pane="true"]'));
+  };
+
+  const isTargetInCollections = (target: EventTarget | null) => {
+    if (!target || !(target instanceof HTMLElement)) return false;
+    return Boolean(target.closest('[data-collections-rail="true"]'));
+  };
+
+  const getActivePane = (e?: KeyboardEvent | MouseEvent): 'collections' | 'workbench' => {
+    const activeEl = document.activeElement as HTMLElement | null;
+    const targetEl = e?.target as HTMLElement | null;
+
+    if (isTargetInWorkbench(targetEl) || isTargetInWorkbench(activeEl)) {
+      return 'workbench';
+    }
+    if (isTargetInCollections(targetEl) || isTargetInCollections(activeEl)) {
+      return 'collections';
+    }
+    return activePaneRef.current;
+  };
+
+  // Synchronize activePaneRef on any pointer interaction or focus change (e.g. clicking a <select>, input, button, or tab)
+  useEffect(() => {
+    const handleCaptureActivity = (e: Event) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest('[data-workbench-pane="true"]')) {
+        activePaneRef.current = 'workbench';
+      } else if (target.closest('[data-collections-rail="true"]')) {
+        activePaneRef.current = 'collections';
+      }
+    };
+    window.addEventListener('pointerdown', handleCaptureActivity, true);
+    window.addEventListener('focusin', handleCaptureActivity, true);
+    return () => {
+      window.removeEventListener('pointerdown', handleCaptureActivity, true);
+      window.removeEventListener('focusin', handleCaptureActivity, true);
+    };
+  }, []);
+
+  // ponytail: Focus Timer Ref to ensure DOM focus callbacks never leak across unmount
+  const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (focusTimerRef.current) clearTimeout(focusTimerRef.current);
+    };
+  }, []);
 
   // Static Folder Ordering State (Stored in localStorage)
   const [folderOrder, setFolderOrder] = useState<string[]>(() => {
@@ -326,22 +400,8 @@ export function PostmanView({
     onDraftChange({ ...draft, path: newPath, queryParams: nextParams });
   };
 
-  // Response History Tracking (Memory-only, capped at 4 entries)
-  useEffect(() => {
-    if (!response) return;
-    setResponseHistory((prev) => {
-      const filtered = prev.filter((r) => r !== response);
-      return [response, ...filtered].slice(0, 4);
-    });
-    setSelectedHistoryIndex(0);
-  }, [response]);
-
-  const currentDisplayResponse = useMemo(() => {
-    if (selectedHistoryIndex !== null && responseHistory[selectedHistoryIndex]) {
-      return responseHistory[selectedHistoryIndex];
-    }
-    return response;
-  }, [selectedHistoryIndex, responseHistory, response]);
+  // Single source of truth for the active response (latest run for this session)
+  const currentDisplayResponse = response;
 
   // Handle Send button click -> Auto-switch to Response tab!
   const handleSendRequest = () => {
@@ -449,8 +509,13 @@ export function PostmanView({
         e.preventDefault();
         onSave();
       } else if ((e.ctrlKey || e.metaKey) && (e.key === 't' || e.key === 'T')) {
-        e.preventDefault();
-        handleAddNewRequest();
+        const pane = getActivePane(e);
+        const isExternalInput = ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName || '') &&
+          !isTargetInCollections(document.activeElement);
+        if (pane === 'collections' && !isExternalInput) {
+          e.preventDefault();
+          handleAddNewRequest();
+        }
       } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'f' || e.key === 'F')) {
         e.preventDefault();
         if (isCollectionsCollapsed) setIsCollectionsCollapsed(false);
@@ -465,19 +530,47 @@ export function PostmanView({
         } else {
           setShowHotkeysModal((prev) => !prev);
         }
-      } else if (!(['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName || '') || (document.activeElement as HTMLElement)?.isContentEditable) && (e.key === 'Delete' || ((e.ctrlKey || e.metaKey) && (e.key === 'Delete' || e.key === 'Backspace')))) {
-        e.preventDefault();
+      } else if (
+        !(['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName || '') || (document.activeElement as HTMLElement)?.isContentEditable) &&
+        (e.key === 'Delete' || ((e.ctrlKey || e.metaKey) && (e.key === 'Delete' || e.key === 'Backspace')))
+      ) {
+        // Suspend background deletions when modals or method dropdowns are open
+        if (importSwaggerModalOpen || showHotkeysModal || methodDropdownId || deletingFolderTarget) {
+          return;
+        }
+
+        // 1. Right-Click Context Menu: Delete the right-clicked request or folder
         if (contextMenu?.request) {
+          e.preventDefault();
           handleDeleteRequestItem(contextMenu.request.id);
           setContextMenu(null);
-        } else {
+          return;
+        }
+        if (contextMenu?.folderName && contextMenu.folderName !== 'Default Collection') {
+          e.preventDefault();
+          const targetFolder = contextMenu.folderName;
+          setContextMenu(null);
+          handleRequestDeleteFolder(targetFolder);
+          return;
+        }
+
+        // 2. Collections Rail is active (user clicked on a request, or in the empty whitespace at the bottom of collections)
+        const pane = getActivePane(e);
+        if (pane === 'collections') {
           const reqToDelete = savedRequests.find((r) => r.id === draft.id);
           if (reqToDelete) {
+            e.preventDefault();
             handleDeleteRequestItem(reqToDelete.id);
+            return;
           }
         }
+
+        // 3. Main Workbench (Params, Headers, Response, Send button, whitespace):
+        // ponytail: Intentionally do nothing. Saved requests are protected from accidental deletion.
       } else if (e.key === 'Escape') {
-        if (isCreatingFolder) {
+        if (deletingFolderTarget) {
+          setDeletingFolderTarget(null);
+        } else if (isCreatingFolder) {
           setIsCreatingFolder(false);
         } else if (editingFolderId) {
           setEditingFolderId(null);
@@ -497,7 +590,7 @@ export function PostmanView({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onRun, onSave, isCreatingFolder, editingFolderId, editingRequestId, contextMenu, methodDropdownId, importSwaggerModalOpen, showHotkeysModal, draft, savedRequests, visibleFoldersList, isCollectionsCollapsed]);
+  }, [onRun, onSave, isCreatingFolder, editingFolderId, editingRequestId, contextMenu, methodDropdownId, importSwaggerModalOpen, showHotkeysModal, deletingFolderTarget, draft, savedRequests, visibleFoldersList, isCollectionsCollapsed]);
 
   // Drag handlers for Collections Rail
   const handleCollectionsMouseDown = (e: React.MouseEvent) => {
@@ -551,7 +644,7 @@ export function PostmanView({
 
     if (onUpdateSavedRequests) onUpdateSavedRequests(next);
     if (draft.id === reqId) onDraftChange({ ...draft, name: editingRequestName.trim() });
-    
+
     setEditingRequestId(null);
     showToast('Request renamed', 'success');
   };
@@ -559,13 +652,33 @@ export function PostmanView({
   // Delete Request Handler
   const handleDeleteRequestItem = (reqId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+
+    // Determine the next request to select and focus before removing
+    const deletingReq = savedRequests.find((r) => r.id === reqId);
+    const folderName = deletingReq?.collectionName || draft.collectionName || 'Default Collection';
+    let nextReq: SavedRequest | undefined;
+    if (deletingReq) {
+      const folderAll = savedRequests.filter((r) => (r.collectionName || 'Default Collection') === folderName);
+      const idxInFolder = folderAll.findIndex((r) => r.id === reqId);
+      if (idxInFolder !== -1) {
+        if (idxInFolder < folderAll.length - 1) {
+          nextReq = folderAll[idxInFolder + 1];
+        } else if (idxInFolder > 0) {
+          nextReq = folderAll[idxInFolder - 1];
+        }
+      }
+    }
+    if (!nextReq) {
+      nextReq = savedRequests.filter((r) => r.id !== reqId).find((r) => (r.collectionName || 'Default Collection') === folderName)
+        || savedRequests.filter((r) => r.id !== reqId)[0];
+    }
+
     if (onDeleteRequest) {
       onDeleteRequest(reqId);
     } else if (onUpdateSavedRequests) {
       const remaining = savedRequests.filter((r) => r.id !== reqId);
       onUpdateSavedRequests(remaining);
       if (draft.id === reqId) {
-        const nextReq = remaining.find((r) => r.collectionName === draft.collectionName) || remaining[0];
         if (nextReq) {
           onLoad(nextReq);
         } else {
@@ -575,7 +688,7 @@ export function PostmanView({
             name: 'Draft request',
             method: 'GET',
             path: DEFAULT_FALLBACK_PATH,
-            collectionName: draft.collectionName || 'Default Collection',
+            collectionName: folderName,
             headers: { 'Content-Type': 'application/json' },
             body: '',
             source: 'manual',
@@ -586,6 +699,21 @@ export function PostmanView({
         }
       }
       showToast('Request deleted', 'success');
+    }
+
+    // Auto-advance keyboard focus to the newly selected request or folder header in the Collections Rail
+    if (focusTimerRef.current) clearTimeout(focusTimerRef.current);
+    if (nextReq) {
+      const nextId = nextReq.id;
+      focusTimerRef.current = setTimeout(() => {
+        const nextEl = document.querySelector<HTMLElement>(`[data-collections-request-id="${nextId}"]`);
+        nextEl?.focus();
+      }, 50);
+    } else {
+      focusTimerRef.current = setTimeout(() => {
+        const folderEl = document.querySelector<HTMLElement>(`[data-collections-folder="${folderName}"]`);
+        folderEl?.focus();
+      }, 50);
     }
   };
 
@@ -630,16 +758,63 @@ export function PostmanView({
     showToast(`Folder renamed to ${trimmed}`, 'success');
   };
 
-  // Delete Folder Handler
-  const handleDeleteFolder = (folderName: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  // Confirm Delete Folder Handler (executed upon modal confirmation or directly when <= 1 request)
+  const handleConfirmDeleteFolder = (folderName: string) => {
     const next = savedRequests.filter((r) => {
       const folder = r.collectionName || (r.source === 'starter-scan' ? 'Scanned Endpoints' : r.source === 'captured' ? 'Captured Traffic' : 'Default Collection');
       return folder !== folderName;
     });
 
     if (onUpdateSavedRequests) onUpdateSavedRequests(next);
+
+    // If the active draft was inside the deleted collection, switch to next available request or reset to clean draft
+    if ((draft.collectionName || 'Default Collection') === folderName) {
+      if (next.length > 0) {
+        onLoad(next[0]);
+      } else {
+        onDraftChange({
+          id: 'draft',
+          name: 'Draft request',
+          method: 'GET',
+          path: DEFAULT_FALLBACK_PATH,
+          collectionName: 'Default Collection',
+          headers: { 'Content-Type': 'application/json' },
+          body: '',
+          source: 'manual',
+          queryParams: [],
+          description: '',
+        });
+        if (onClearResponse) onClearResponse();
+      }
+    }
+
+    setFolderOrder((prev) => prev.filter((f) => f !== folderName));
+    setCollapsedFolders((prev) => {
+      const copy = { ...prev };
+      delete copy[folderName];
+      return copy;
+    });
+
     showToast(`Deleted collection "${folderName}"`, 'info');
+  };
+
+  // Request Delete Folder (opens confirmation modal only if multiple requests exist)
+  const handleRequestDeleteFolder = (folderName: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (folderName === 'Default Collection') return;
+
+    const count = savedRequests.filter((r) => {
+      const folder = r.collectionName || (r.source === 'starter-scan' ? 'Scanned Endpoints' : r.source === 'captured' ? 'Captured Traffic' : 'Default Collection');
+      return folder === folderName;
+    }).length;
+
+    // If 1 or 0 requests in the collection, delete immediately without showing warning
+    if (count <= 1) {
+      handleConfirmDeleteFolder(folderName);
+      return;
+    }
+
+    setDeletingFolderTarget(folderName);
   };
 
   // Create New Collection Folder
@@ -662,7 +837,7 @@ export function PostmanView({
     };
 
     if (onUpdateSavedRequests) onUpdateSavedRequests([...savedRequests, newReq]);
-    
+
     setFolderOrder((prev) => [...prev, trimmed]);
 
     onDraftChange({ ...draft, collectionName: trimmed });
@@ -691,9 +866,14 @@ export function PostmanView({
   return (
     <div className="flex h-[calc(100dvh-120px)] gap-3 fade-in items-stretch">
       {/* ── 1. Left Collections Rail ── */}
-      <div 
-        style={{ width: isCollectionsCollapsed ? '52px' : `${collectionsWidth}px` }} 
-        className={`shrink-0 bg-surface-container border border-outline-variant/30 rounded-2xl ${isCollectionsCollapsed ? 'p-2 items-center' : 'p-4'} flex flex-col gap-3 overflow-y-auto transition-all select-none`}
+      <div
+        data-collections-rail="true"
+        tabIndex={-1}
+        onFocusCapture={() => switchActivePane('collections')}
+        onMouseDown={() => switchActivePane('collections')}
+        onClick={() => switchActivePane('collections')}
+        style={{ width: isCollectionsCollapsed ? '52px' : `${collectionsWidth}px` }}
+        className={`shrink-0 bg-surface-container border border-outline-variant/30 rounded-2xl ${isCollectionsCollapsed ? 'p-2 items-center' : 'p-4'} flex flex-col gap-3 overflow-y-auto transition-[width] duration-200 ease-out select-none outline-none`}
       >
         {/* Rail Header */}
         <div className={`flex items-center ${isCollectionsCollapsed ? 'flex-col gap-2' : 'justify-between'} border-b border-outline-variant/20 pb-3 w-full`}>
@@ -810,256 +990,273 @@ export function PostmanView({
               </div>
             )}
 
-        {/* Static Tree Folders & Request Items */}
-        <div className="flex flex-col gap-3 flex-1 overflow-y-auto pr-1">
-          {visibleFoldersList.map((folderName, idx) => {
-            const requests = filteredCollections[folderName] || [];
-            const isCollapsed = searchLower ? false : !!collapsedFolders[folderName];
-            const isEditingThisFolder = editingFolderId === folderName;
-            const isActiveFolder = (draft.collectionName || 'Default Collection') === folderName;
+            {/* Static Tree Folders & Request Items */}
+            <div className="flex flex-col gap-3 flex-1 overflow-y-auto pr-1">
+              {visibleFoldersList.map((folderName, idx) => {
+                const requests = filteredCollections[folderName] || [];
+                const isCollapsed = searchLower ? false : !!collapsedFolders[folderName];
+                const isEditingThisFolder = editingFolderId === folderName;
+                const isActiveFolder = (draft.collectionName || 'Default Collection') === folderName;
 
-            return (
-              <div key={folderName} className="space-y-1">
-                {/* Folder Header Item */}
-                <div 
-                  onClick={() => handleSelectFolder(folderName)}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setContextMenu({ x: e.clientX, y: e.clientY, folderName });
-                  }}
-                  className={`group flex items-center justify-between py-1.5 px-2 rounded-lg cursor-pointer transition-colors ${
-                    isActiveFolder
-                      ? 'bg-surface-container-high/60 text-on-surface'
-                      : 'hover:bg-surface-container-high/40 text-on-surface/80'
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                    <button
-                      onClick={(e) => toggleFolder(folderName, e)}
-                      className="p-0.5 rounded hover:bg-surface-container-highest transition-colors cursor-pointer text-outline/70 hover:text-on-surface flex items-center justify-center"
-                      title={isCollapsed ? 'Expand folder' : 'Collapse folder'}
-                    >
-                      <span className="material-symbols-outlined text-sm transition-transform duration-150">
-                        {isCollapsed ? 'chevron_right' : 'expand_more'}
-                      </span>
-                    </button>
-
-                    <span className={`material-symbols-outlined text-base transition-colors ${
-                      isActiveFolder ? 'text-primary' : 'text-primary/70 group-hover:text-primary'
-                    }`}>
-                      {isCollapsed ? 'folder' : 'folder_open'}
-                    </span>
-
-                    {isEditingThisFolder ? (
-                      <input
-                        type="text"
-                        value={editingFolderName}
-                        onChange={(e) => setEditingFolderName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveRenameFolder(folderName);
-                          if (e.key === 'Escape') setEditingFolderId(null);
-                        }}
-                        onBlur={() => handleSaveRenameFolder(folderName)}
-                        onClick={(e) => e.stopPropagation()}
-                        className="bg-surface-container-lowest border border-primary rounded px-2 py-0.5 text-xs text-on-surface focus:outline-none font-semibold w-full"
-                        autoFocus
-                      />
-                    ) : (
-                      <span className="text-xs font-semibold text-on-surface/90 truncate flex-1 tracking-tight" title={folderName}>
-                        {folderName}
-                      </span>
-                    )}
-
-                    <span className="text-[10px] font-mono font-medium text-outline/70 px-1.5 py-0.5 bg-surface-container-highest/60 rounded-md shrink-0">
-                      {requests.length}
-                    </span>
-                  </div>
-
-                  {/* Folder Actions & Move Up/Down Controls */}
-                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
-                    <button
-                      onClick={(e) => {
+                return (
+                  <div key={folderName} className="space-y-1">
+                    {/* Folder Header Item */}
+                    <div
+                      tabIndex={-1}
+                      data-collections-folder={folderName}
+                      onClick={() => handleSelectFolder(folderName)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
                         e.stopPropagation();
-                        handleAddNewRequest(folderName);
+                        setContextMenu({ x: e.clientX, y: e.clientY, folderName });
                       }}
-                      className="p-1 rounded hover:bg-surface-container-highest text-outline hover:text-primary transition-colors cursor-pointer"
-                      title="Add request to collection (Ctrl+T)"
+                      className={`group relative flex items-center justify-between py-1.5 px-2 rounded-lg cursor-pointer transition-colors outline-none ${isActiveFolder
+                        ? 'bg-surface-container-high/60 text-on-surface'
+                        : 'hover:bg-surface-container-high/40 text-on-surface/80'
+                        }`}
                     >
-                      <span className="material-symbols-outlined text-xs">add</span>
-                    </button>
-                    {!searchLower && idx > 0 && (
-                      <button
-                        onClick={(e) => moveFolderUp(idx, e)}
-                        className="p-1 rounded hover:bg-surface-container-highest text-outline hover:text-on-surface transition-colors cursor-pointer"
-                        title="Move folder up"
-                      >
-                        <span className="material-symbols-outlined text-xs">arrow_upward</span>
-                      </button>
-                    )}
-                    {!searchLower && idx < visibleFoldersList.length - 1 && (
-                      <button
-                        onClick={(e) => moveFolderDown(idx, e)}
-                        className="p-1 rounded hover:bg-surface-container-highest text-outline hover:text-on-surface transition-colors cursor-pointer"
-                        title="Move folder down"
-                      >
-                        <span className="material-symbols-outlined text-xs">arrow_downward</span>
-                      </button>
-                    )}
-                    <button
-                      onClick={(e) => handleStartRenameFolder(folderName, e)}
-                      className="p-1 rounded hover:bg-surface-container-highest text-outline hover:text-on-surface transition-colors cursor-pointer"
-                      title="Rename folder"
-                    >
-                      <span className="material-symbols-outlined text-xs">edit</span>
-                    </button>
-                    {folderName !== 'Default Collection' && (
-                      <button
-                        onClick={(e) => handleDeleteFolder(folderName, e)}
-                        className="p-1 rounded hover:bg-error/20 text-outline hover:text-error transition-colors cursor-pointer"
-                        title="Delete folder"
-                      >
-                        <span className="material-symbols-outlined text-xs">delete</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Nested Requests */}
-                {!isCollapsed && (
-                  <div className="pl-3.5 space-y-0.5 border-l border-outline-variant/20 ml-3.5 my-0.5">
-                    {requests.map((request) => {
-                      const isEditingThisReq = editingRequestId === request.id;
-                      const isActiveDraft = draft.id === request.id;
-                      const cleanReqName = stripMethodPrefix(request.name || '');
-
-                      return (
-                        <div
-                          key={request.id}
-                          onClick={() => {
-                            handleSelectFolder(folderName);
-                            onLoad(request);
-                          }}
-                          onContextMenu={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setContextMenu({ x: e.clientX, y: e.clientY, request, folderName });
-                          }}
-                          className={`group/req w-full text-left flex items-center justify-between py-1.5 px-2 rounded-lg cursor-pointer transition-all border ${
-                            isActiveDraft
-                              ? 'bg-primary/15 border-primary/40 text-on-surface font-medium shadow-xs'
-                              : 'border-transparent hover:bg-surface-container-high/60 text-on-surface/80 hover:text-on-surface'
-                          }`}
+                      <div className="flex items-center gap-1.5 min-w-0 flex-1 pr-1">
+                        <button
+                          onClick={(e) => toggleFolder(folderName, e)}
+                          className="p-0.5 rounded hover:bg-surface-container-highest transition-colors cursor-pointer text-outline/70 hover:text-on-surface flex items-center justify-center shrink-0"
+                          title={isCollapsed ? 'Expand folder' : 'Collapse folder'}
                         >
-                          <div className="flex items-center gap-2 min-w-0 flex-1">
-                            {/* Inline Method Badge with Click-to-Change Dropdown */}
-                            <div className="relative shrink-0">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setMethodDropdownId(methodDropdownId === request.id ? null : request.id);
-                                }}
-                                className={`w-[42px] h-[20px] rounded text-[10px] font-bold font-mono tracking-tight flex items-center justify-center transition-all cursor-pointer ${getMethodBadgeStyle(request.method)}`}
-                                title="Click to change HTTP method"
-                              >
-                                {request.method}
-                              </button>
+                          <span className="material-symbols-outlined text-sm transition-transform duration-150">
+                            {isCollapsed ? 'chevron_right' : 'expand_more'}
+                          </span>
+                        </button>
 
-                              {methodDropdownId === request.id && (
-                                <div
-                                  className="absolute left-0 top-6 z-30 bg-surface-container-high border border-outline-variant/50 rounded-lg shadow-xl py-1 px-0.5 flex flex-col gap-0.5 min-w-[76px] animate-in fade-in zoom-in-95"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  {['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'].map((m) => (
-                                    <button
-                                      key={m}
-                                      onClick={(e) => handleInlineMethodChange(request.id, m, e)}
-                                      className={`text-left px-2 py-1 rounded text-[10px] font-mono font-bold transition-colors cursor-pointer flex items-center justify-between ${
-                                        request.method === m
-                                          ? 'bg-primary/20 text-primary'
-                                          : 'text-on-surface hover:bg-surface-container-highest'
-                                      }`}
+                        <span className={`material-symbols-outlined text-base transition-colors shrink-0 ${isActiveFolder ? 'text-primary' : 'text-primary/70 group-hover:text-primary'
+                          }`}>
+                          {isCollapsed ? 'folder' : 'folder_open'}
+                        </span>
+
+                        {isEditingThisFolder ? (
+                          <input
+                            type="text"
+                            value={editingFolderName}
+                            onChange={(e) => setEditingFolderName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSaveRenameFolder(folderName);
+                              if (e.key === 'Escape') setEditingFolderId(null);
+                            }}
+                            onBlur={() => handleSaveRenameFolder(folderName)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="bg-surface-container-lowest border border-primary rounded px-2 py-0.5 text-[13px] text-on-surface focus:outline-none font-semibold w-full"
+                            autoFocus
+                          />
+                        ) : (
+                          <span className="text-[13px] font-semibold text-on-surface/90 truncate min-w-0" title={folderName}>
+                            {folderName}
+                          </span>
+                        )}
+
+                        {!isEditingThisFolder && (
+                          <span className="text-[11px] font-mono font-medium text-outline/70 px-1.5 py-0.5 bg-surface-container-highest/60 rounded-md shrink-0">
+                            {requests.length}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Folder Actions & Move Up/Down Controls */}
+                      {!isEditingThisFolder && (
+                        <div className="absolute right-1.5 inset-y-0 my-auto h-fit flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-surface-container-high/95 px-1 py-0.5 rounded-lg shadow-sm pointer-events-none group-hover:pointer-events-auto">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAddNewRequest(folderName);
+                            }}
+                            className="p-1 rounded hover:bg-surface-container-highest text-outline hover:text-primary transition-colors cursor-pointer"
+                            title="Add request to collection (Ctrl+T)"
+                          >
+                            <span className="material-symbols-outlined text-xs">add</span>
+                          </button>
+                          {!searchLower && idx > 0 && (
+                            <button
+                              onClick={(e) => moveFolderUp(idx, e)}
+                              className="p-1 rounded hover:bg-surface-container-highest text-outline hover:text-on-surface transition-colors cursor-pointer"
+                              title="Move folder up"
+                            >
+                              <span className="material-symbols-outlined text-xs">arrow_upward</span>
+                            </button>
+                          )}
+                          {!searchLower && idx < visibleFoldersList.length - 1 && (
+                            <button
+                              onClick={(e) => moveFolderDown(idx, e)}
+                              className="p-1 rounded hover:bg-surface-container-highest text-outline hover:text-on-surface transition-colors cursor-pointer"
+                              title="Move folder down"
+                            >
+                              <span className="material-symbols-outlined text-xs">arrow_downward</span>
+                            </button>
+                          )}
+                          <button
+                            onClick={(e) => handleStartRenameFolder(folderName, e)}
+                            className="p-1 rounded hover:bg-surface-container-highest text-outline hover:text-on-surface transition-colors cursor-pointer"
+                            title="Rename folder"
+                          >
+                            <span className="material-symbols-outlined text-xs">edit</span>
+                          </button>
+                          {folderName !== 'Default Collection' && (
+                            <button
+                              onClick={(e) => handleRequestDeleteFolder(folderName, e)}
+                              className="p-1 rounded hover:bg-error/20 text-outline hover:text-error transition-colors cursor-pointer"
+                              title="Delete folder"
+                            >
+                              <span className="material-symbols-outlined text-xs">delete</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Nested Requests */}
+                    {!isCollapsed && (
+                      <div className="pl-3.5 space-y-0.5 border-l border-outline-variant/20 ml-3.5 my-0.5">
+                        {requests.map((request) => {
+                          const isEditingThisReq = editingRequestId === request.id;
+                          const isActiveDraft = draft.id === request.id;
+                          const cleanReqName = stripMethodPrefix(request.name || '');
+
+                          // In-memory working draft for dirty checking
+                          const activeWorkingDraft = draft.id === request.id ? draft : requestSessions?.[request.id]?.draft;
+                          const isDirty = activeWorkingDraft ? isRequestDirty(request, activeWorkingDraft) : false;
+                          const displayMethod = activeWorkingDraft?.method || request.method;
+
+                          return (
+                            <div
+                              key={request.id}
+                              tabIndex={-1}
+                              data-collections-request-id={request.id}
+                              onClick={() => {
+                                handleSelectFolder(folderName);
+                                onLoad(request);
+                              }}
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setContextMenu({ x: e.clientX, y: e.clientY, request, folderName });
+                              }}
+                              className={`group/req relative w-full text-left flex items-center justify-between py-1.5 px-2 rounded-lg cursor-pointer transition-colors border outline-none ${isActiveDraft
+                                ? 'bg-primary/15 border-primary/40 text-on-surface font-medium shadow-xs'
+                                : 'border-transparent hover:bg-surface-container-high/60 text-on-surface/80 hover:text-on-surface'
+                                }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0 flex-1 pr-1">
+                                {/* Inline Method Badge with Click-to-Change Dropdown */}
+                                <div className="relative shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setMethodDropdownId(methodDropdownId === request.id ? null : request.id);
+                                    }}
+                                    className={`w-[44px] h-[21px] rounded text-[11px] font-bold font-mono flex items-center justify-center transition-colors cursor-pointer ${getMethodBadgeStyle(displayMethod)}`}
+                                    title="Click to change HTTP method"
+                                  >
+                                    {displayMethod}
+                                  </button>
+
+                                  {methodDropdownId === request.id && (
+                                    <div
+                                      className="absolute left-0 top-6 z-30 bg-surface-container-high border border-outline-variant/50 rounded-lg shadow-xl py-1 px-0.5 flex flex-col gap-0.5 min-w-[76px] animate-in fade-in zoom-in-95"
+                                      onClick={(e) => e.stopPropagation()}
                                     >
-                                      <span>{m}</span>
-                                      <span className={`w-1.5 h-1.5 rounded-full ${
-                                        m === 'GET' ? 'bg-emerald-400' :
-                                        m === 'POST' ? 'bg-amber-400' :
-                                        m === 'PUT' ? 'bg-sky-400' :
-                                        m === 'PATCH' ? 'bg-purple-400' :
-                                        m === 'DELETE' ? 'bg-rose-400' : 'bg-outline'
-                                      }`} />
-                                    </button>
-                                  ))}
+                                      {['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'].map((m) => (
+                                        <button
+                                          key={m}
+                                          onClick={(e) => handleInlineMethodChange(request.id, m, e)}
+                                          className={`text-left px-2 py-1 rounded text-[10px] font-mono font-bold transition-colors cursor-pointer flex items-center justify-between ${request.method === m
+                                            ? 'bg-primary/20 text-primary'
+                                            : 'text-on-surface hover:bg-surface-container-highest'
+                                            }`}
+                                        >
+                                          <span>{m}</span>
+                                          <span className={`w-1.5 h-1.5 rounded-full ${m === 'GET' ? 'bg-emerald-400' :
+                                            m === 'POST' ? 'bg-amber-400' :
+                                              m === 'PUT' ? 'bg-sky-400' :
+                                                m === 'PATCH' ? 'bg-purple-400' :
+                                                  m === 'DELETE' ? 'bg-rose-400' : 'bg-outline'
+                                            }`} />
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {isEditingThisReq ? (
+                                  <input
+                                    type="text"
+                                    value={editingRequestName}
+                                    onChange={(e) => setEditingRequestName(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') handleSaveRenameRequest(request.id);
+                                      if (e.key === 'Escape') setEditingRequestId(null);
+                                    }}
+                                    onBlur={() => handleSaveRenameRequest(request.id)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="bg-surface-container-lowest border border-primary rounded px-1.5 py-0.5 text-[13px] text-on-surface focus:outline-none w-full font-medium"
+                                    autoFocus
+                                  />
+                                ) : (
+                                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                    <span
+                                      className={`text-[13px] truncate ${isActiveDraft ? 'font-semibold text-on-surface' : 'font-normal text-on-surface/85 group-hover/req:text-on-surface'
+                                        }`}
+                                      title={`${cleanReqName}${request.description ? `\n${request.description}` : ''}`}
+                                    >
+                                      {cleanReqName}
+                                    </span>
+                                    {isDirty && (
+                                      <span
+                                        className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 shadow-xs animate-pulse"
+                                        title="Unsaved changes (in-memory)"
+                                      />
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Request Actions (Edit & Delete) */}
+                              {!isEditingThisReq && (
+                                <div className="absolute right-1.5 inset-y-0 my-auto h-fit flex items-center gap-0.5 opacity-0 group-hover/req:opacity-100 transition-opacity bg-surface-container-high/95 px-1 py-0.5 rounded-lg shadow-sm pointer-events-none group-hover/req:pointer-events-auto">
+                                  <button
+                                    onClick={(e) => handleStartRenameRequest(request, e)}
+                                    className="p-1 rounded hover:bg-surface-container-highest text-outline hover:text-on-surface transition-colors cursor-pointer"
+                                    title="Rename request"
+                                  >
+                                    <span className="material-symbols-outlined text-[13px]">edit</span>
+                                  </button>
+                                  <button
+                                    onClick={(e) => handleDeleteRequestItem(request.id, e)}
+                                    className="p-1 rounded hover:bg-error/20 text-outline hover:text-error transition-colors cursor-pointer"
+                                    title="Delete request"
+                                  >
+                                    <span className="material-symbols-outlined text-[13px]">delete</span>
+                                  </button>
                                 </div>
                               )}
                             </div>
-
-                            {isEditingThisReq ? (
-                              <input
-                                type="text"
-                                value={editingRequestName}
-                                onChange={(e) => setEditingRequestName(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') handleSaveRenameRequest(request.id);
-                                  if (e.key === 'Escape') setEditingRequestId(null);
-                                }}
-                                onBlur={() => handleSaveRenameRequest(request.id)}
-                                onClick={(e) => e.stopPropagation()}
-                                className="bg-surface-container-lowest border border-primary rounded px-1.5 py-0.5 text-xs text-on-surface focus:outline-none w-full font-medium"
-                                autoFocus
-                              />
-                            ) : (
-                              <span
-                                className={`text-xs truncate flex-1 tracking-tight ${
-                                  isActiveDraft ? 'font-semibold text-on-surface' : 'font-normal text-on-surface/85 group-hover/req:text-on-surface'
-                                }`}
-                                title={`${cleanReqName}${request.description ? `\n${request.description}` : ''}`}
-                              >
-                                {cleanReqName}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Request Actions (Edit & Delete) */}
-                          <div className="flex items-center gap-0.5 opacity-0 group-hover/req:opacity-100 transition-opacity ml-1 shrink-0">
-                            <button
-                              onClick={(e) => handleStartRenameRequest(request, e)}
-                              className="p-1 rounded hover:bg-surface-container-highest text-outline hover:text-on-surface transition-colors cursor-pointer"
-                              title="Rename request"
-                            >
-                              <span className="material-symbols-outlined text-[13px]">edit</span>
-                            </button>
-                            <button
-                              onClick={(e) => handleDeleteRequestItem(request.id, e)}
-                              className="p-1 rounded hover:bg-error/20 text-outline hover:text-error transition-colors cursor-pointer"
-                              title="Delete request"
-                            >
-                              <span className="material-symbols-outlined text-[13px]">delete</span>
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            );
-          })}
+                );
+              })}
 
-          {savedRequests.length === 0 && !isCreatingFolder && (
-            <div className="text-center p-8 text-xs text-on-surface-variant">
-              No collections yet. Click + to create a folder.
-            </div>
-          )}
+              {savedRequests.length === 0 && !isCreatingFolder && (
+                <div className="text-center p-8 text-xs text-on-surface-variant">
+                  No collections yet. Click + to create a folder.
+                </div>
+              )}
 
-          {savedRequests.length > 0 && visibleFoldersList.length === 0 && searchLower && (
-            <div className="text-center p-6 text-xs text-on-surface-variant">
-              No matching requests found for "{collectionSearch}".
+              {savedRequests.length > 0 && visibleFoldersList.length === 0 && searchLower && (
+                <div className="text-center p-6 text-xs text-on-surface-variant">
+                  No matching requests found for "{collectionSearch}".
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        </>
+          </>
         )}
       </div>
 
@@ -1067,19 +1264,24 @@ export function PostmanView({
       {!isCollectionsCollapsed && (
         <div
           onMouseDown={handleCollectionsMouseDown}
-          className={`w-2.5 -mx-1.5 z-20 cursor-col-resize flex items-center justify-center group transition-colors select-none ${
-            isResizingLeft ? 'bg-primary/20' : 'hover:bg-primary/10'
-          }`}
+          className={`w-2.5 -mx-1.5 z-20 cursor-col-resize flex items-center justify-center group transition-colors select-none ${isResizingLeft ? 'bg-primary/20' : 'hover:bg-primary/10'
+            }`}
           title="Drag left/right to resize Collections pane"
         >
-          <div className={`w-1 h-10 rounded-full transition-colors ${
-            isResizingLeft ? 'bg-primary' : 'bg-outline-variant/40 group-hover:bg-primary'
-          }`} />
+          <div className={`w-1 h-10 rounded-full transition-colors ${isResizingLeft ? 'bg-primary' : 'bg-outline-variant/40 group-hover:bg-primary'
+            }`} />
         </div>
       )}
 
       {/* ── 2. Main Request & Response Workspace (Flex-1) ── */}
-      <div className="flex-1 min-w-0 bg-surface-container border border-outline-variant/30 rounded-2xl p-5 flex flex-col gap-4 overflow-y-auto shadow-sm select-none">
+      <div
+        data-workbench-pane="true"
+        tabIndex={-1}
+        onFocusCapture={() => switchActivePane('workbench')}
+        onMouseDown={() => switchActivePane('workbench')}
+        onClick={() => switchActivePane('workbench')}
+        className="flex-1 min-w-0 bg-surface-container border border-outline-variant/30 rounded-2xl p-5 flex flex-col gap-4 overflow-y-auto shadow-sm select-none outline-none"
+      >
         {/* Starter Suggestion Banner */}
         {!bannerDismissed && unimportedSuggestions.length > 0 && (
           <div className="p-3.5 bg-primary-container/10 border-l-4 border-primary rounded-r-xl flex items-center justify-between gap-4">
@@ -1132,11 +1334,18 @@ export function PostmanView({
               </button>
             )}
             <button
-              className="btn-secondary shrink-0 font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-sm"
+              className={`shrink-0 font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer ${isCurrentDraftDirty
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 hover:bg-amber-500/30'
+                : 'btn-secondary'
+                }`}
               onClick={onSave}
-              title="Save request (Ctrl + S)"
+              title={isCurrentDraftDirty ? "Save changes (Ctrl + S) • Unsaved changes" : "Save request (Ctrl + S)"}
             >
-              <span className="material-symbols-outlined text-sm">bookmark</span>
+              {isCurrentDraftDirty ? (
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+              ) : (
+                <span className="material-symbols-outlined text-sm">bookmark</span>
+              )}
               <span>Save</span>
             </button>
             <button
@@ -1185,13 +1394,12 @@ export function PostmanView({
         <div className="flex flex-wrap sm:flex-nowrap items-stretch sm:items-center gap-2 bg-surface-container-lowest border border-outline-variant/40 p-1.5 rounded-xl shadow-inner">
           <div className="flex items-center gap-2 flex-1 min-w-[200px]">
             <select
-              className={`shrink-0 font-mono font-bold text-center cursor-pointer border border-outline-variant/40 bg-surface-container-high rounded-lg py-2 text-xs focus:outline-none focus:border-primary ${
-                draft.method === 'GET' ? 'text-emerald-400' :
+              className={`shrink-0 font-mono font-bold text-center cursor-pointer border border-outline-variant/40 bg-surface-container-high rounded-lg py-2 text-xs focus:outline-none focus:border-primary ${draft.method === 'GET' ? 'text-emerald-400' :
                 draft.method === 'POST' ? 'text-amber-400' :
-                draft.method === 'PUT' ? 'text-sky-400' :
-                draft.method === 'PATCH' ? 'text-purple-400' :
-                draft.method === 'DELETE' ? 'text-rose-400' : 'text-primary'
-              }`}
+                  draft.method === 'PUT' ? 'text-sky-400' :
+                    draft.method === 'PATCH' ? 'text-purple-400' :
+                      draft.method === 'DELETE' ? 'text-rose-400' : 'text-primary'
+                }`}
               style={{ width: '90px', minWidth: '90px' }}
               value={draft.method}
               onChange={(event) => onDraftChange({ ...draft, method: event.target.value })}
@@ -1215,17 +1423,16 @@ export function PostmanView({
             {/* Target Environment & Public Tunnel Dropdown Selector */}
             <div className="relative flex-1 sm:flex-initial flex items-center min-w-0">
               <select
-                className={`route-badge cursor-pointer appearance-none pr-6 pl-2.5 py-1.5 font-mono text-[11px] font-bold rounded-lg border focus:outline-none transition-all w-full sm:max-w-[180px] truncate ${
-                  activeTunnel
-                    ? 'route-tunnel border-primary/50 bg-primary/10 text-primary hover:bg-primary/15'
-                    : 'route-local border-outline-variant/40 bg-surface-container-high text-on-surface hover:border-primary/40'
-                }`}
+                className={`route-badge cursor-pointer appearance-none pr-6 pl-2.5 py-1.5 font-mono text-[11px] font-bold rounded-lg border focus:outline-none transition-all w-full sm:max-w-[180px] truncate ${activeTunnel
+                  ? 'route-tunnel border-primary/50 bg-primary/10 text-primary hover:bg-primary/15'
+                  : 'route-local border-outline-variant/40 bg-surface-container-high text-on-surface hover:border-primary/40'
+                  }`}
                 value={
                   activeTunnel
                     ? `tunnel-${activeTunnel.id}`
                     : selectedProcessPort
-                    ? `local-${selectedProcessPort}`
-                    : 'local-default'
+                      ? `local-${selectedProcessPort}`
+                      : 'local-default'
                 }
                 onChange={(e) => {
                   const val = e.target.value;
@@ -1313,11 +1520,10 @@ export function PostmanView({
           <div className="flex items-center gap-1 bg-surface-container-low px-4 py-2 border-b border-outline-variant/20">
             <button
               onClick={() => setRequestTab('params')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                requestTab === 'params'
-                  ? 'bg-surface-container-highest text-primary border border-primary/30 shadow-sm'
-                  : 'text-on-surface-variant hover:text-on-surface'
-              }`}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${requestTab === 'params'
+                ? 'bg-surface-container-highest text-primary border border-primary/30 shadow-sm'
+                : 'text-on-surface-variant hover:text-on-surface'
+                }`}
             >
               <span className="material-symbols-outlined text-sm">tune</span>
               <span>Params</span>
@@ -1330,11 +1536,10 @@ export function PostmanView({
 
             <button
               onClick={() => setRequestTab('body')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                requestTab === 'body'
-                  ? 'bg-surface-container-highest text-primary border border-primary/30 shadow-sm'
-                  : 'text-on-surface-variant hover:text-on-surface'
-              }`}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${requestTab === 'body'
+                ? 'bg-surface-container-highest text-primary border border-primary/30 shadow-sm'
+                : 'text-on-surface-variant hover:text-on-surface'
+                }`}
             >
               <span className="material-symbols-outlined text-sm">code</span>
               <span>Body (JSON)</span>
@@ -1342,11 +1547,10 @@ export function PostmanView({
 
             <button
               onClick={() => setRequestTab('headers')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                requestTab === 'headers'
-                  ? 'bg-surface-container-highest text-primary border border-primary/30 shadow-sm'
-                  : 'text-on-surface-variant hover:text-on-surface'
-              }`}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${requestTab === 'headers'
+                ? 'bg-surface-container-highest text-primary border border-primary/30 shadow-sm'
+                : 'text-on-surface-variant hover:text-on-surface'
+                }`}
             >
               <span className="material-symbols-outlined text-sm">list_alt</span>
               <span>Headers</span>
@@ -1359,11 +1563,10 @@ export function PostmanView({
 
             <button
               onClick={() => setRequestTab('auth')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                requestTab === 'auth'
-                  ? 'bg-surface-container-highest text-primary border border-primary/30 shadow-sm'
-                  : 'text-on-surface-variant hover:text-on-surface'
-              }`}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${requestTab === 'auth'
+                ? 'bg-surface-container-highest text-primary border border-primary/30 shadow-sm'
+                : 'text-on-surface-variant hover:text-on-surface'
+                }`}
             >
               <span className="material-symbols-outlined text-sm">key</span>
               <span>Authorization</span>
@@ -1372,20 +1575,18 @@ export function PostmanView({
             {/* Response Sub-Tab directly beside Authorization */}
             <button
               onClick={() => setRequestTab('response')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                requestTab === 'response'
-                  ? 'bg-surface-container-highest text-secondary border border-secondary/40 shadow-sm'
-                  : 'text-on-surface-variant hover:text-on-surface'
-              }`}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${requestTab === 'response'
+                ? 'bg-surface-container-highest text-secondary border border-secondary/40 shadow-sm'
+                : 'text-on-surface-variant hover:text-on-surface'
+                }`}
             >
               <span className="material-symbols-outlined text-sm">output</span>
               <span>Response</span>
               {currentDisplayResponse && (
-                <span className={`px-1.5 py-0.2 text-[10px] font-mono rounded font-bold ${
-                  currentDisplayResponse.status >= 200 && currentDisplayResponse.status < 300
-                    ? 'bg-secondary/20 text-secondary'
-                    : 'bg-error/20 text-error'
-                }`}>
+                <span className={`px-1.5 py-0.2 text-[10px] font-mono rounded font-bold ${currentDisplayResponse.status >= 200 && currentDisplayResponse.status < 300
+                  ? 'bg-secondary/20 text-secondary'
+                  : 'bg-error/20 text-error'
+                  }`}>
                   {currentDisplayResponse.status}
                 </span>
               )}
@@ -1442,9 +1643,8 @@ export function PostmanView({
                               placeholder="key"
                               value={param.key}
                               onChange={(e) => handleUpdateParamRow(idx, { key: e.target.value })}
-                              className={`w-full bg-transparent border-none focus:outline-none text-xs ${
-                                param.enabled ? 'text-on-surface' : 'text-outline line-through'
-                              }`}
+                              className={`w-full bg-transparent border-none focus:outline-none text-xs ${param.enabled ? 'text-on-surface' : 'text-outline line-through'
+                                }`}
                             />
                           </td>
                           <td className="px-3 py-1.5">
@@ -1453,9 +1653,8 @@ export function PostmanView({
                               placeholder="value"
                               value={param.value}
                               onChange={(e) => handleUpdateParamRow(idx, { value: e.target.value })}
-                              className={`w-full bg-transparent border-none focus:outline-none text-xs ${
-                                param.enabled ? 'text-on-surface' : 'text-outline'
-                              }`}
+                              className={`w-full bg-transparent border-none focus:outline-none text-xs ${param.enabled ? 'text-on-surface' : 'text-outline'
+                                }`}
                             />
                           </td>
                           <td className="px-3 py-1.5 text-center">
@@ -1547,60 +1746,15 @@ export function PostmanView({
 
             {requestTab === 'response' && (
               <div className="flex flex-col flex-1 gap-3 min-h-0">
-                {/* Response History Timeline (Insomnia-inspired, max 4 runs) */}
-                {responseHistory.length > 0 && (
-                  <div className="flex items-center justify-between bg-surface-container-low px-3 py-1.5 rounded-xl border border-outline-variant/20 text-xs">
-                    <div className="flex items-center gap-2 overflow-x-auto py-0.5">
-                      <span className="text-[10px] font-mono uppercase font-bold text-outline shrink-0 flex items-center gap-1">
-                        <span className="material-symbols-outlined text-xs">history</span>
-                        History ({responseHistory.length}/4)
-                      </span>
-                      {responseHistory.map((hist, hIdx) => {
-                        const isSelected = selectedHistoryIndex === hIdx;
-                        const isSuccess = hist.status >= 200 && hist.status < 300;
-                        return (
-                          <button
-                            key={hIdx}
-                            onClick={() => setSelectedHistoryIndex(hIdx)}
-                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
-                              isSelected
-                                ? 'bg-primary text-on-primary shadow-sm'
-                                : 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest border border-outline-variant/30'
-                            }`}
-                            title={`Run #${hIdx + 1}: Status ${hist.status} in ${hist.duration}ms`}
-                          >
-                            <span className={`w-2 h-2 rounded-full ${isSuccess ? 'bg-secondary' : 'bg-error'}`} />
-                            <span>#{hIdx + 1}: {hist.status}</span>
-                            <span className="text-[10px] opacity-75 font-normal">({hist.duration}ms)</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        setResponseHistory([]);
-                        setSelectedHistoryIndex(null);
-                        if (onClearResponse) onClearResponse();
-                      }}
-                      className="text-[10px] font-mono text-outline hover:text-error transition-colors px-1.5 py-0.5 rounded hover:bg-error/10 shrink-0 cursor-pointer"
-                      title="Clear response history"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                )}
-
                 {currentDisplayResponse ? (
                   <>
                     {/* Status & Copy Header Bar */}
                     <div className="flex items-center justify-between text-xs font-mono bg-surface-container-low p-2.5 rounded-xl border border-outline-variant/20">
                       <div className="flex items-center gap-3">
-                        <span className={`font-bold px-2.5 py-0.5 rounded text-xs ${
-                          currentDisplayResponse.status >= 200 && currentDisplayResponse.status < 300
-                            ? 'bg-secondary/20 text-secondary border border-secondary/30'
-                            : 'bg-error/20 text-error border border-error/30'
-                        }`}>
+                        <span className={`font-bold px-2.5 py-0.5 rounded text-xs ${currentDisplayResponse.status >= 200 && currentDisplayResponse.status < 300
+                          ? 'bg-secondary/20 text-secondary border border-secondary/30'
+                          : 'bg-error/20 text-error border border-error/30'
+                          }`}>
                           {currentDisplayResponse.status} {currentDisplayResponse.status === 200 ? 'OK' : ''}
                         </span>
                         <span className="text-on-surface font-bold">{currentDisplayResponse.duration}ms</span>
@@ -1631,6 +1785,17 @@ export function PostmanView({
                           <span className="material-symbols-outlined text-sm">content_copy</span>
                           <span>Copy</span>
                         </button>
+
+                        {onClearResponse && (
+                          <button
+                            onClick={onClearResponse}
+                            className="px-2.5 py-1 rounded bg-surface-container-high hover:bg-error/10 text-outline hover:text-error transition-colors font-bold text-xs flex items-center gap-1 border border-outline-variant/30 cursor-pointer"
+                            title="Clear response"
+                          >
+                            <span className="material-symbols-outlined text-sm">close</span>
+                            <span>Clear</span>
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -1703,6 +1868,65 @@ export function PostmanView({
                 className="btn-primary px-5 py-2 text-xs font-semibold"
               >
                 Import Collections
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Confirm Delete Collection Modal ── */}
+      {deletingFolderTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm fade-in"
+          onClick={() => setDeletingFolderTarget(null)}
+        >
+          <div
+            tabIndex={-1}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleConfirmDeleteFolder(deletingFolderTarget);
+                setDeletingFolderTarget(null);
+              }
+            }}
+            className="bg-surface-container-low border border-outline-variant rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl animate-in zoom-in-95 outline-none"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 border-b border-outline-variant/30 pb-3">
+              <div className="w-10 h-10 rounded-full bg-error/15 text-error flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-[22px]">delete_forever</span>
+              </div>
+              <div>
+                <h3 className="font-headline-sm text-sm font-bold text-on-surface">Delete Collection</h3>
+                <p className="text-xs text-on-surface-variant">Permanent collection removal</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-on-surface-variant leading-relaxed">
+              Are you sure you want to delete collection <strong className="text-on-surface font-semibold">"{deletingFolderTarget}"</strong>
+              {deletingFolderRequestCount > 0 ? (
+                <> and all <strong className="text-error font-semibold">{deletingFolderRequestCount} saved {deletingFolderRequestCount === 1 ? 'request' : 'requests'}</strong> inside it</>
+              ) : ''}? This action cannot be undone.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingFolderTarget(null)}
+                className="px-4 py-2 rounded-lg text-xs font-label-md text-on-surface-variant hover:text-on-surface cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleConfirmDeleteFolder(deletingFolderTarget);
+                  setDeletingFolderTarget(null);
+                }}
+                className="btn-danger compact px-4 py-2 text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-md"
+              >
+                <span className="material-symbols-outlined text-[16px]">delete</span>
+                <span>Delete Collection</span>
               </button>
             </div>
           </div>
@@ -1782,7 +2006,7 @@ export function PostmanView({
               {contextMenu.folderName !== 'Default Collection' && (
                 <button
                   onClick={(e) => {
-                    handleDeleteFolder(contextMenu.folderName!, e);
+                    handleRequestDeleteFolder(contextMenu.folderName!, e);
                     setContextMenu(null);
                   }}
                   className="w-full text-left px-3 py-2 rounded-lg hover:bg-error/20 text-error transition-colors flex items-center gap-2 cursor-pointer"
