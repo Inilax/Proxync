@@ -358,8 +358,10 @@ pub async fn open_file_in_editor(file_path: String, line_number: Option<u32>, ed
     }
 }
 
+use tauri_plugin_dialog::DialogExt;
+
 #[tauri::command]
-pub async fn save_support_bundle_dialog(json_content: String) -> Result<Option<String>, String> {
+pub async fn save_support_bundle_dialog(app: tauri::AppHandle, json_content: String) -> Result<Option<String>, String> {
     let default_name = format!(
         "proxync-support-bundle-{}.json",
         std::time::SystemTime::now()
@@ -368,60 +370,16 @@ pub async fn save_support_bundle_dialog(json_content: String) -> Result<Option<S
             .as_secs()
     );
 
-    #[cfg(target_os = "windows")]
-    {
-        let script = format!(
-            "[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms') | Out-Null; $f = New-Object System.Windows.Forms.SaveFileDialog; $f.Title = 'Save Proxync Support Diagnostic Bundle'; $f.Filter = 'JSON Files (*.json)|*.json|All Files (*.*)|*.*'; $f.FileName = '{}'; if($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK){{ $f.FileName }}",
-            default_name
-        );
-        let output = std::process::Command::new("powershell")
-            .args(&["-NoProfile", "-NonInteractive", "-Command", &script])
-            .output();
+    let file_path = app.dialog()
+        .file()
+        .add_filter("JSON Diagnostic Bundle", &["json"])
+        .set_file_name(&default_name)
+        .blocking_save_file();
 
-        if let Ok(out) = output {
-            let path_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if !path_str.is_empty() {
-                std::fs::write(&path_str, json_content).map_err(|e| e.to_string())?;
-                return Ok(Some(path_str));
-            }
-            return Ok(None);
-        }
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        let script = format!(
-            "POSIX path of (choose file name with prompt \"Save Proxync Support Diagnostic Bundle:\" default name \"{}\")",
-            default_name
-        );
-        let output = std::process::Command::new("osascript")
-            .args(&["-e", &script])
-            .output();
-
-        if let Ok(out) = output {
-            let path_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if !path_str.is_empty() {
-                std::fs::write(&path_str, json_content).map_err(|e| e.to_string())?;
-                return Ok(Some(path_str));
-            }
-            return Ok(None);
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        let output = std::process::Command::new("zenity")
-            .args(&["--file-selection", "--save", "--confirm-overwrite", "--title=Save Proxync Support Diagnostic Bundle", &format!("--filename={}", default_name)])
-            .output();
-
-        if let Ok(out) = output {
-            let path_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if !path_str.is_empty() {
-                std::fs::write(&path_str, json_content).map_err(|e| e.to_string())?;
-                return Ok(Some(path_str));
-            }
-            return Ok(None);
-        }
+    if let Some(path) = file_path {
+        let path_str = path.to_string();
+        std::fs::write(&path_str, json_content).map_err(|e| e.to_string())?;
+        return Ok(Some(path_str));
     }
 
     Ok(None)

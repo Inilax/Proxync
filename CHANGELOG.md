@@ -2,6 +2,21 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/develop-tauri-plugin-dialog] - 2026-09-12 (Universal Native File Dialogs via tauri-plugin-dialog #164)
+- **Feature Summary**:
+  - **Universal Linux & Cross-Platform Support (#164)**: Replaced platform-specific external shell executions (`/usr/bin/zenity` on Linux, `powershell.exe` on Windows, `osascript` on macOS) with Tauri v2 official `tauri-plugin-dialog` plugin.
+  - **Linux Desktop Portal Integration**: Uses D-Bus XDG Desktop Portal (`org.freedesktop.portal.FileChooser`) under the hood, natively supporting KDE Plasma, Sway, Hyprland, and Wayland environments without requiring GNOME GTK `zenity` binaries.
+  - **Security & Vulnerability Elimination**: Eliminates command-injection vectors from string-interpolated PowerShell and AppleScript calls.
+  - **Clean Native IPC Contract**: Injected `tauri::AppHandle` into `save_support_bundle_dialog` command in `storage.rs` with zero frontend IPC contract breakage (`invoke("save_support_bundle_dialog")` remains unchanged).
+- **Modified Files**:
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/capabilities/default.json`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `CHANGELOG.md`
+
 ## [fix/develop-postman-collections-shortcuts] - Continuation (Postman-Grade Session State #154)
 - **Feature Summary**:
   - **App Restart & Reload Persistence (#154)**: Introduced synchronous \`localStorage\` bookmarking for the Playground. The active request is strictly persisted across app restarts and workspace switches. Boot initialization now reads synchronously inside \`useState\` to completely eliminate React FOUC (Flash of Unstyled Content).
