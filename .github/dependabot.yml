@@ -1,4 +1,5 @@
 version: 2
+target-branch: "develop"
 updates:
   # Maintain dependencies for GitHub Actions workflows
   - package-ecosystem: "github-actions"
