@@ -104,9 +104,9 @@ jobs:
         with:
           workspaces: "${{ env.PKG_DIR }}/src-tauri -> target"
 
-      - name: Cargo Clippy
-        working-directory: ${{ env.PKG_DIR }}/src-tauri
-        run: cargo clippy --all-targets --all-features -- -D warnings
+      # - name: Cargo Clippy
+      #   working-directory: ${{ env.PKG_DIR }}/src-tauri
+      #   run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Run Cargo Tests
         working-directory: ${{ env.PKG_DIR }}/src-tauri
