@@ -8,6 +8,16 @@ pub struct NativeHttpResponsePayload {
     pub body: String,
 }
 
+fn default_user_agent() -> &'static str {
+    if cfg!(target_os = "windows") {
+        concat!("Mozilla/5.0 (Windows NT 10.0; Win64; x64) ProxyncStudio/", env!("CARGO_PKG_VERSION"))
+    } else if cfg!(target_os = "macos") {
+        concat!("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ProxyncStudio/", env!("CARGO_PKG_VERSION"))
+    } else {
+        concat!("Mozilla/5.0 (X11; Linux x86_64) ProxyncStudio/", env!("CARGO_PKG_VERSION"))
+    }
+}
+
 #[tauri::command]
 pub async fn execute_http_request(
     method: String,
@@ -17,7 +27,7 @@ pub async fn execute_http_request(
 ) -> Result<NativeHttpResponsePayload, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) ProxyncStudio/0.2.1")
+        .user_agent(default_user_agent())
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -25,11 +35,6 @@ pub async fn execute_http_request(
         .map_err(|e| format!("Invalid HTTP method: {}", e))?;
 
     let mut req_builder = client.request(req_method, &url);
-
-    let has_user_agent = headers.keys().any(|k| k.eq_ignore_ascii_case("user-agent"));
-    if !has_user_agent {
-        req_builder = req_builder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ProxyncStudio/0.2.1");
-    }
 
     for (k, v) in headers {
         req_builder = req_builder.header(&k, &v);
@@ -60,4 +65,21 @@ pub async fn execute_http_request(
         headers: res_headers,
         body: body_text,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_user_agent() {
+        let ua = default_user_agent();
+        assert!(ua.contains("ProxyncStudio/"));
+        #[cfg(target_os = "windows")]
+        assert!(ua.contains("Windows NT 10.0; Win64; x64"));
+        #[cfg(target_os = "macos")]
+        assert!(ua.contains("Macintosh; Intel Mac OS X"));
+        #[cfg(target_os = "linux")]
+        assert!(ua.contains("X11; Linux x86_64"));
+    }
 }
