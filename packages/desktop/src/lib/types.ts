@@ -81,6 +81,11 @@ export interface PostmanResponse {
   body: string;
 }
 
+export interface RequestSessionState {
+  draft: SavedRequest;
+  response: PostmanResponse | null;
+}
+
 export interface Guardrails {
   authMode: 'guest' | 'shared-secret' | 'workspace-only';
   piiRedaction: boolean;

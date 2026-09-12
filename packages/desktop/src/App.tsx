@@ -32,6 +32,7 @@ import {
   type RequestLog,
   type SavedRequest,
   type PostmanResponse,
+  type RequestSessionState,
   type Guardrails,
   type ProcessProfile,
   type WorkspaceConfig,
@@ -285,8 +286,34 @@ export default function App() {
   });
   const [selectedRequest, setSelectedRequest] = useState<RequestLog | null>(null);
   const [savedRequests, setSavedRequests] = useState<SavedRequest[]>([]);
-  const [draftRequest, setDraftRequest] = useState<SavedRequest>(DEFAULT_REQUEST);
+  const [draftRequest, setDraftRequest] = useState<SavedRequest>(() => {
+    try {
+      const stored = localStorage.getItem(LOCAL_WORKSPACES_KEY);
+      const parsedWorkspaces = stored ? (JSON.parse(stored) as WorkspaceConfig[]) : [];
+      const activeWsId = localStorage.getItem(ACTIVE_WORKSPACE_KEY) ?? (parsedWorkspaces.length > 0 ? parsedWorkspaces[0].id : null);
+      if (activeWsId) {
+        const activeWs = parsedWorkspaces.find(w => w.id === activeWsId);
+        if (activeWs) {
+          const wsSaved = activeWs.savedRequests || [];
+          const bookmarkedId = localStorage.getItem(`PLAYGROUND_ACTIVE_${activeWsId}`);
+          if (bookmarkedId) {
+            const found = wsSaved.find(r => r.id === bookmarkedId);
+            if (found) return found;
+          }
+          if (wsSaved.length > 0) return wsSaved[0];
+        }
+      }
+    } catch (e) {
+      console.error('Failed to restore draftRequest bookmark', e);
+    }
+    return DEFAULT_REQUEST;
+  });
   const [postmanResponse, setPostmanResponse] = useState<PostmanResponse | null>(null);
+  // In-memory working sessions (draft + response + history) for requests touched during this desktop session
+  // ponytail: in-memory session only; upgrade path = persist dirty drafts in AppData if multi-tab workbench is unified
+  const [requestSessions, setRequestSessions] = useState<Record<string, RequestSessionState>>({});
+  const draftRequestRef = useRef(draftRequest);
+  draftRequestRef.current = draftRequest;
   const [mainView, setMainView] = useState<MainView>(() => {
     const stored = localStorage.getItem(LOCAL_WORKSPACES_KEY);
     const parsed = stored ? (JSON.parse(stored) as WorkspaceConfig[]) : [];
@@ -1164,15 +1191,31 @@ export default function App() {
 
   useEffect(() => {
     if (!activeWorkspace) return;
-    setSavedRequests(activeWorkspace.savedRequests || []);
+    const wsSaved = activeWorkspace.savedRequests || [];
+    setSavedRequests(wsSaved);
     // ponytail: merge workspace requests into pool without wiping previous workspace captures
     if (activeWorkspace.capturedRequests && activeWorkspace.capturedRequests.length > 0) {
       setRequests((current) => mergeUniqueRequests(current, activeWorkspace.capturedRequests));
     }
-    setStarterSuggestions((activeWorkspace.savedRequests || []).filter((r) => r.source === 'starter-scan'));
+    setStarterSuggestions(wsSaved.filter((r) => r.source === 'starter-scan'));
     if (activeWorkspace.remoteWorkspaceId) {
       localStorage.setItem('proxync_workspace', activeWorkspace.remoteWorkspaceId);
     }
+
+    // Restore Playground Bookmark on workspace switch
+    const bookmarkKey = `PLAYGROUND_ACTIVE_${activeWorkspace.id}`;
+    const bookmarkedId = localStorage.getItem(bookmarkKey);
+    const bookmarkedReq = bookmarkedId ? wsSaved.find((r) => r.id === bookmarkedId) : null;
+    if (bookmarkedReq) {
+      setDraftRequest(bookmarkedReq);
+    } else {
+      setDraftRequest(wsSaved[0] || DEFAULT_REQUEST);
+      if (bookmarkedId) localStorage.removeItem(bookmarkKey);
+    }
+
+    // ponytail: reset in-memory working sessions on workspace change (zero cross-workspace pollution)
+    setRequestSessions({});
+    setPostmanResponse(null);
   }, [activeWorkspaceId]);
 
   useEffect(() => {
@@ -2253,7 +2296,45 @@ export default function App() {
     return `https://${trimmed}`;
   }
 
+  // Unified draft change handler syncing active draft and in-memory session store
+  // ponytail: sparse session hash map prevents disk auto-save while persisting session work
+  const handleDraftChange = useCallback((updated: SavedRequest) => {
+    setDraftRequest(updated);
+    if (updated.id) {
+      setRequestSessions((prev) => {
+        const existing = prev[updated.id];
+        return {
+          ...prev,
+          [updated.id]: {
+            draft: updated,
+            response: existing ? existing.response : null,
+          },
+        };
+      });
+    }
+  }, []);
+
+  // Smart request loader restoring in-memory session (draft + response) or falling back to saved pristine version
+  const handleLoadRequest = useCallback((target: SavedRequest) => {
+    if (activeWorkspaceId) {
+      if (target.id && target.id !== 'draft') {
+        localStorage.setItem(`PLAYGROUND_ACTIVE_${activeWorkspaceId}`, target.id);
+      } else {
+        localStorage.removeItem(`PLAYGROUND_ACTIVE_${activeWorkspaceId}`);
+      }
+    }
+    const session = requestSessions[target.id];
+    if (session) {
+      setDraftRequest(session.draft);
+      setPostmanResponse(session.response);
+    } else {
+      setDraftRequest(target);
+      setPostmanResponse(null);
+    }
+  }, [requestSessions, activeWorkspaceId]);
+
   async function runPostmanRequest() {
+    const executingId = draftRequest.id;
     setSendingRequest(true); setPostmanResponse(null);
     const startedAt = Date.now();
     const targetUrl = resolveTargetUrl(draftRequest.path);
@@ -2289,7 +2370,26 @@ export default function App() {
         bodyText = await response.text();
       }
 
-      setPostmanResponse({ status, duration: durationMs, headers: resHeaders, body: bodyText });
+      const newResponse: PostmanResponse = { status, duration: durationMs, headers: resHeaders, body: bodyText };
+
+      // 1. Always bind latest response to executingId's session
+      if (executingId) {
+        setRequestSessions((prev) => {
+          const existing = prev[executingId];
+          return {
+            ...prev,
+            [executingId]: {
+              draft: existing?.draft || draftRequest,
+              response: newResponse,
+            },
+          };
+        });
+      }
+
+      // 2. Race-Safe view update: only update active postmanResponse if user is still on executingId
+      if (draftRequestRef.current.id === executingId) {
+        setPostmanResponse(newResponse);
+      }
 
       let sendDrift: SchemaDriftReport | null = null;
       if (bodyText) {
@@ -2344,7 +2444,8 @@ export default function App() {
 
   function saveDraftRequest() {
     const folder = draftRequest.collectionName || 'Default Collection';
-    const id = draftRequest.id === 'draft' ? crypto.randomUUID() : draftRequest.id;
+    const oldId = draftRequest.id;
+    const id = oldId === 'draft' ? crypto.randomUUID() : oldId;
     const saved: SavedRequest = {
       ...draftRequest,
       id,
@@ -2358,6 +2459,25 @@ export default function App() {
         : [...current, saved];
     });
     setDraftRequest(saved);
+
+    if (activeWorkspaceId) {
+      localStorage.setItem(`PLAYGROUND_ACTIVE_${activeWorkspaceId}`, id);
+    }
+
+    // Commit working draft to session and migrate temporary 'draft' key if needed
+    setRequestSessions((prev) => {
+      const next = { ...prev };
+      const existingSession = prev[oldId];
+      if (oldId === 'draft') {
+        delete next['draft'];
+      }
+      next[id] = {
+        draft: saved,
+        response: existingSession ? existingSession.response : postmanResponse,
+      };
+      return next;
+    });
+
     showToast(`Request saved to "${folder}"`, 'success');
   }
 
@@ -2389,8 +2509,17 @@ export default function App() {
       }
 
       if (next) {
-        setDraftRequest(next);
+        if (activeWorkspaceId) localStorage.setItem(`PLAYGROUND_ACTIVE_${activeWorkspaceId}`, next.id);
+        const nextSession = requestSessions[next.id];
+        if (nextSession) {
+          setDraftRequest(nextSession.draft);
+          setPostmanResponse(nextSession.response);
+        } else {
+          setDraftRequest(next);
+          setPostmanResponse(null);
+        }
       } else {
+        if (activeWorkspaceId) localStorage.removeItem(`PLAYGROUND_ACTIVE_${activeWorkspaceId}`);
         // Reset to blank draft and clear stale response when collection empties after delete
         setDraftRequest({
           ...DEFAULT_REQUEST,
@@ -2401,6 +2530,14 @@ export default function App() {
         setPostmanResponse(null);
       }
     }
+
+    // Purge deleted request from in-memory sessions (zero memory leak)
+    setRequestSessions((prev) => {
+      if (!prev[id]) return prev;
+      const copy = { ...prev };
+      delete copy[id];
+      return copy;
+    });
 
     setSavedRequests((current) => current.filter((r) => r.id !== id));
     showToast('Request removed from collection', 'info');
@@ -2505,7 +2642,10 @@ export default function App() {
     showToast(`Loaded ${starterSuggestions.length} starter requests. Test the likely endpoints and refine from there.`, 'success');
   }
 
-  function updateDraftHeader(rawHeaders: string) { setDraftRequest((current) => ({ ...current, headers: parseHeaderText(rawHeaders) })); }
+  function updateDraftHeader(rawHeaders: string) {
+    const next = { ...draftRequest, headers: parseHeaderText(rawHeaders) };
+    handleDraftChange(next);
+  }
 
   function updateGuardrails(patch: Partial<Guardrails>) {
     const nextGuardrails = { ...appSettings.guardrails, ...patch };
@@ -2873,10 +3013,10 @@ export default function App() {
                             setSearchQuery('');
                           }}
                           className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all ${isHighlighted
-                              ? 'bg-primary/20 ring-1 ring-primary/40 text-on-surface'
-                              : isActive
-                                ? 'bg-primary/10 border border-primary/30 text-on-surface'
-                                : 'hover:bg-surface-container-highest text-on-surface-variant hover:text-on-surface'
+                            ? 'bg-primary/20 ring-1 ring-primary/40 text-on-surface'
+                            : isActive
+                              ? 'bg-primary/10 border border-primary/30 text-on-surface'
+                              : 'hover:bg-surface-container-highest text-on-surface-variant hover:text-on-surface'
                             }`}
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
@@ -3249,6 +3389,7 @@ export default function App() {
               <PostmanView
                 draft={draftRequest}
                 savedRequests={savedRequests}
+                requestSessions={requestSessions}
                 response={postmanResponse}
                 sending={sendingRequest}
                 starterSuggestions={starterSuggestions}
@@ -3263,12 +3404,20 @@ export default function App() {
                   }
                 }}
                 selectedProcessPort={selectedProcess?.port}
-                onDraftChange={setDraftRequest}
+                onDraftChange={handleDraftChange}
                 onHeaderTextChange={updateDraftHeader}
                 onRun={runPostmanRequest}
-                onClearResponse={() => setPostmanResponse(null)}
+                onClearResponse={() => {
+                  setPostmanResponse(null);
+                  if (draftRequest.id) {
+                    setRequestSessions((prev) => prev[draftRequest.id] ? {
+                      ...prev,
+                      [draftRequest.id]: { ...prev[draftRequest.id], response: null }
+                    } : prev);
+                  }
+                }}
                 onSave={saveDraftRequest}
-                onLoad={setDraftRequest}
+                onLoad={handleLoadRequest}
                 onImportStarterRequests={importStarterRequests}
                 onDeleteRequest={deleteSavedRequest}
                 onUpdateSavedRequests={updateSavedRequests}

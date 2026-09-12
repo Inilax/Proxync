@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import type { SavedRequest, PostmanResponse, Tunnel, ProcessCandidate } from './SharedComponents';
-import { formatHeaders, stripMethodPrefix } from './SharedComponents';
+import type { SavedRequest, PostmanResponse, Tunnel, ProcessCandidate, RequestSessionState } from './SharedComponents';
+import { formatHeaders, stripMethodPrefix, DEFAULT_REQUEST, isRequestDirty } from './SharedComponents';
 import { showToast } from '../../lib/toast';
 import { importSwaggerToSavedRequests, importPostmanToOpenApi } from '../../lib/openApiGenerator';
 import { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
@@ -58,6 +58,7 @@ function getMethodBadgeStyle(method: string): string {
 export function PostmanView({
   draft,
   savedRequests,
+  requestSessions,
   response,
   sending,
   starterSuggestions,
@@ -81,6 +82,7 @@ export function PostmanView({
 }: {
   draft: SavedRequest;
   savedRequests: SavedRequest[];
+  requestSessions?: Record<string, RequestSessionState>;
   response: PostmanResponse | null;
   sending: boolean;
   starterSuggestions: SavedRequest[];
@@ -106,10 +108,6 @@ export function PostmanView({
   const [requestTab, setRequestTab] = useState<'params' | 'body' | 'headers' | 'auth' | 'response'>('body');
   const [responseSubTab, setResponseSubTab] = useState<'body' | 'headers'>('body');
 
-  // Response History State (Memory only, capped at 4 runs)
-  const [responseHistory, setResponseHistory] = useState<PostmanResponse[]>([]);
-  const [selectedHistoryIndex, setSelectedHistoryIndex] = useState<number | null>(null);
-
   // Collection Search & Filter State
   const [collectionSearch, setCollectionSearch] = useState<string>('');
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -122,6 +120,15 @@ export function PostmanView({
 
   // Auth Helper State
   const [bearerToken, setBearerToken] = useState<string>('');
+
+  // Check if current workbench draft has unsaved changes compared to saved version
+  const isCurrentDraftDirty = useMemo(() => {
+    const savedVersion = savedRequests.find((r) => r.id === draft.id);
+    if (!savedVersion) {
+      return isRequestDirty(DEFAULT_REQUEST, draft);
+    }
+    return isRequestDirty(savedVersion, draft);
+  }, [draft, savedRequests]);
 
   // Resizable Panel Width for Collections Rail
   const [collectionsWidth, setCollectionsWidth] = useState<number>(() => {
@@ -393,22 +400,8 @@ export function PostmanView({
     onDraftChange({ ...draft, path: newPath, queryParams: nextParams });
   };
 
-  // Response History Tracking (Memory-only, capped at 4 entries)
-  useEffect(() => {
-    if (!response) return;
-    setResponseHistory((prev) => {
-      const filtered = prev.filter((r) => r !== response);
-      return [response, ...filtered].slice(0, 4);
-    });
-    setSelectedHistoryIndex(0);
-  }, [response]);
-
-  const currentDisplayResponse = useMemo(() => {
-    if (selectedHistoryIndex !== null && responseHistory[selectedHistoryIndex]) {
-      return responseHistory[selectedHistoryIndex];
-    }
-    return response;
-  }, [selectedHistoryIndex, responseHistory, response]);
+  // Single source of truth for the active response (latest run for this session)
+  const currentDisplayResponse = response;
 
   // Handle Send button click -> Auto-switch to Response tab!
   const handleSendRequest = () => {
@@ -1124,6 +1117,11 @@ export function PostmanView({
                           const isActiveDraft = draft.id === request.id;
                           const cleanReqName = stripMethodPrefix(request.name || '');
 
+                          // In-memory working draft for dirty checking
+                          const activeWorkingDraft = draft.id === request.id ? draft : requestSessions?.[request.id]?.draft;
+                          const isDirty = activeWorkingDraft ? isRequestDirty(request, activeWorkingDraft) : false;
+                          const displayMethod = activeWorkingDraft?.method || request.method;
+
                           return (
                             <div
                               key={request.id}
@@ -1152,10 +1150,10 @@ export function PostmanView({
                                       e.stopPropagation();
                                       setMethodDropdownId(methodDropdownId === request.id ? null : request.id);
                                     }}
-                                    className={`w-[44px] h-[21px] rounded text-[11px] font-bold font-mono flex items-center justify-center transition-colors cursor-pointer ${getMethodBadgeStyle(request.method)}`}
+                                    className={`w-[44px] h-[21px] rounded text-[11px] font-bold font-mono flex items-center justify-center transition-colors cursor-pointer ${getMethodBadgeStyle(displayMethod)}`}
                                     title="Click to change HTTP method"
                                   >
-                                    {request.method}
+                                    {displayMethod}
                                   </button>
 
                                   {methodDropdownId === request.id && (
@@ -1200,13 +1198,21 @@ export function PostmanView({
                                     autoFocus
                                   />
                                 ) : (
-                                  <span
-                                    className={`text-[13px] truncate flex-1 ${isActiveDraft ? 'font-semibold text-on-surface' : 'font-normal text-on-surface/85 group-hover/req:text-on-surface'
-                                      }`}
-                                    title={`${cleanReqName}${request.description ? `\n${request.description}` : ''}`}
-                                  >
-                                    {cleanReqName}
-                                  </span>
+                                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                    <span
+                                      className={`text-[13px] truncate ${isActiveDraft ? 'font-semibold text-on-surface' : 'font-normal text-on-surface/85 group-hover/req:text-on-surface'
+                                        }`}
+                                      title={`${cleanReqName}${request.description ? `\n${request.description}` : ''}`}
+                                    >
+                                      {cleanReqName}
+                                    </span>
+                                    {isDirty && (
+                                      <span
+                                        className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 shadow-xs animate-pulse"
+                                        title="Unsaved changes (in-memory)"
+                                      />
+                                    )}
+                                  </div>
                                 )}
                               </div>
 
@@ -1328,11 +1334,18 @@ export function PostmanView({
               </button>
             )}
             <button
-              className="btn-secondary shrink-0 font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-sm"
+              className={`shrink-0 font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer ${isCurrentDraftDirty
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 hover:bg-amber-500/30'
+                : 'btn-secondary'
+                }`}
               onClick={onSave}
-              title="Save request (Ctrl + S)"
+              title={isCurrentDraftDirty ? "Save changes (Ctrl + S) • Unsaved changes" : "Save request (Ctrl + S)"}
             >
-              <span className="material-symbols-outlined text-sm">bookmark</span>
+              {isCurrentDraftDirty ? (
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+              ) : (
+                <span className="material-symbols-outlined text-sm">bookmark</span>
+              )}
               <span>Save</span>
             </button>
             <button
@@ -1733,49 +1746,6 @@ export function PostmanView({
 
             {requestTab === 'response' && (
               <div className="flex flex-col flex-1 gap-3 min-h-0">
-                {/* Response History Timeline (Insomnia-inspired, max 4 runs) */}
-                {responseHistory.length > 0 && (
-                  <div className="flex items-center justify-between bg-surface-container-low px-3 py-1.5 rounded-xl border border-outline-variant/20 text-xs">
-                    <div className="flex items-center gap-2 overflow-x-auto py-0.5">
-                      <span className="text-[10px] font-mono uppercase font-bold text-outline shrink-0 flex items-center gap-1">
-                        <span className="material-symbols-outlined text-xs">history</span>
-                        History ({responseHistory.length}/4)
-                      </span>
-                      {responseHistory.map((hist, hIdx) => {
-                        const isSelected = selectedHistoryIndex === hIdx;
-                        const isSuccess = hist.status >= 200 && hist.status < 300;
-                        return (
-                          <button
-                            key={hIdx}
-                            onClick={() => setSelectedHistoryIndex(hIdx)}
-                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${isSelected
-                              ? 'bg-primary text-on-primary shadow-sm'
-                              : 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest border border-outline-variant/30'
-                              }`}
-                            title={`Run #${hIdx + 1}: Status ${hist.status} in ${hist.duration}ms`}
-                          >
-                            <span className={`w-2 h-2 rounded-full ${isSuccess ? 'bg-secondary' : 'bg-error'}`} />
-                            <span>#{hIdx + 1}: {hist.status}</span>
-                            <span className="text-[10px] opacity-75 font-normal">({hist.duration}ms)</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        setResponseHistory([]);
-                        setSelectedHistoryIndex(null);
-                        if (onClearResponse) onClearResponse();
-                      }}
-                      className="text-[10px] font-mono text-outline hover:text-error transition-colors px-1.5 py-0.5 rounded hover:bg-error/10 shrink-0 cursor-pointer"
-                      title="Clear response history"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                )}
-
                 {currentDisplayResponse ? (
                   <>
                     {/* Status & Copy Header Bar */}
@@ -1815,6 +1785,17 @@ export function PostmanView({
                           <span className="material-symbols-outlined text-sm">content_copy</span>
                           <span>Copy</span>
                         </button>
+
+                        {onClearResponse && (
+                          <button
+                            onClick={onClearResponse}
+                            className="px-2.5 py-1 rounded bg-surface-container-high hover:bg-error/10 text-outline hover:text-error transition-colors font-bold text-xs flex items-center gap-1 border border-outline-variant/30 cursor-pointer"
+                            title="Clear response"
+                          >
+                            <span className="material-symbols-outlined text-sm">close</span>
+                            <span>Clear</span>
+                          </button>
+                        )}
                       </div>
                     </div>
 

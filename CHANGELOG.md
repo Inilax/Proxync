@@ -2,6 +2,18 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/develop-postman-collections-shortcuts] - Continuation (Postman-Grade Session State #154)
+- **Feature Summary**:
+  - **App Restart & Reload Persistence (#154)**: Introduced synchronous \`localStorage\` bookmarking for the Playground. The active request is strictly persisted across app restarts and workspace switches. Boot initialization now reads synchronously inside \`useState\` to completely eliminate React FOUC (Flash of Unstyled Content).
+  - **Strict Postman-Grade Session Tracking**: Removed Insomnia-style multi-run history pills and replaced with a strict $\mathcal{O}(1)$ \`{ draft, response }\` state map. Switch tabs without losing your current unsaved response, while explicitly discarding background dirty edits upon app quit to respect the 5MB \`localStorage\` boundary.
+- **Modified Files**:
+  - \`packages/desktop/src/App.tsx\`
+  - \`packages/desktop/src/components/views/PostmanView.tsx\`
+  - \`packages/desktop/src/components/views/SharedComponents.tsx\`
+  - \`packages/desktop/src/lib/types.ts\`
+  - \`CHANGELOG.md\`
+  - \`.agents/changelog.json\`
+
 ## [fix/develop-postman-collections-shortcuts] - 2026-09-12 (API Playground Shortcuts, Hover Stability & Collection Deletion Safety #162)
 - **Feature Summary**:
   - **Real-Time Active Pane Tracking & Workbench Shortcut Immunity (#162)**: Bound `Ctrl+T` (New Request) and `Delete` (Delete Request) strictly to the Collections sidebar via `getActivePane(e)` with capture-phase `pointerdown` and `focusin` listeners, eliminating accidental request creation or deletion when focused in the Workbench (Method select, Route selector, URL input, Params, Headers, Body, or tabs).
