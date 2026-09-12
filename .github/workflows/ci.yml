@@ -1,0 +1,113 @@
+name: Fast CI
+
+on:
+  pull_request:
+    branches:
+      - develop
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: read-all
+
+env:
+  PKG_DIR: packages/desktop
+
+jobs:
+  changes:
+    name: Detect File Changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'packages/desktop/src/**'
+              - 'packages/desktop/package.json'
+              - 'packages/desktop/package-lock.json'
+              - 'packages/desktop/tsconfig.json'
+            backend:
+              - 'packages/desktop/src-tauri/**'
+              - 'packages/desktop/src-tauri/Cargo.*'
+
+  test-frontend:
+    name: Frontend Checks
+    if: ${{ needs.changes.outputs.frontend == 'true' || github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Node
+        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+        with:
+          node-version: 22
+          cache: "npm"
+          cache-dependency-path: "${{ env.PKG_DIR }}/package-lock.json"
+
+      - name: Install dependencies
+        working-directory: ${{ env.PKG_DIR }}
+        run: npm ci
+
+      # Fail-fast ordering: cheapest/fastest checks first
+      - name: TypeScript type check
+        working-directory: ${{ env.PKG_DIR }}
+        run: npm run typecheck --if-present
+
+      - name: Lint
+        working-directory: ${{ env.PKG_DIR }}
+        run: npm run lint --if-present
+
+      - name: Unit Tests
+        working-directory: ${{ env.PKG_DIR }}
+        run: npm test --if-present
+
+      - name: Production Build Check
+        working-directory: ${{ env.PKG_DIR }}
+        run: npm run build
+
+  test-backend:
+    name: Rust Backend Test
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' || github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libglib2.0-dev libwebkit2gtk-4.1-dev libgtk-3-dev
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
+        with:
+          toolchain: stable
+          components: clippy
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@f0deed1e0edfc6a9be95417288c0e1099b1eeec3 # v2.7.7
+        with:
+          workspaces: "${{ env.PKG_DIR }}/src-tauri -> target"
+
+      # - name: Cargo Clippy
+      #   working-directory: ${{ env.PKG_DIR }}/src-tauri
+      #   run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run Cargo Tests
+        working-directory: ${{ env.PKG_DIR }}/src-tauri
+        run: cargo test
