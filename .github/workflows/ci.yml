@@ -55,10 +55,9 @@ jobs:
         with:
           node-version: 22
           cache: "npm"
-          cache-dependency-path: "${{ env.PKG_DIR }}/package-lock.json"
+          cache-dependency-path: "package-lock.json"
 
       - name: Install dependencies
-        working-directory: ${{ env.PKG_DIR }}
         run: npm ci
 
       # Fail-fast ordering: cheapest/fastest checks first
