@@ -2,8 +2,10 @@ name: "CodeQL Analysis"
 
 on:
   pull_request:
+  pull_request:
     branches:
       - main
+      - develop
 
   schedule:
     - cron: '15 3 * * 1'
