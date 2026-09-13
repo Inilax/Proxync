@@ -47,7 +47,7 @@ export function DocsView() {
                 <span>2. Edge Tunneling</span>
               </div>
               <p className="text-xs text-on-surface-variant leading-relaxed">
-                Expose any local port via Proxync Native SSH Tunnels (hosted on Azure Edge), Cloudflare Quick Tunnels, Localtunnel, or LAN broadcast.
+                Expose any local port via Proxync Native SSH Tunnels (hosted on Azure Edge), Cloudflare Quick Tunnels, or LAN broadcast.
               </p>
             </div>
 
@@ -116,19 +116,7 @@ export function DocsView() {
               </p>
             </div>
 
-            {/* Localtunnel */}
-            <div className="p-5 bg-surface-container/60 rounded-xl border border-outline-variant/30 space-y-2 hover:border-outline-variant transition-colors">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-sky-400 text-lg">link</span>
-                  <h3 className="text-sm font-bold text-on-surface">Localtunnel Proxy</h3>
-                </div>
-                <span className="badge muted">Public Relay</span>
-              </div>
-              <p className="text-xs text-on-surface-variant leading-relaxed">
-                Connects through public Localtunnel gateway nodes (<code className="text-on-surface font-mono">*.loca.lt</code>). Ideal for testing when strict enterprise firewalls restrict custom SSH ports.
-              </p>
-            </div>
+
 
             {/* Local Loopback */}
             <div className="p-5 bg-surface-container/60 rounded-xl border border-outline-variant/30 space-y-2 hover:border-emerald-500/40 transition-colors">

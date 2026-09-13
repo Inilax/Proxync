@@ -29,8 +29,7 @@ export function WelcomeView({
   const [latencies, setLatencies] = useState<{
     relayMesh: number;
     cloudflare: number;
-    localtunnel: number;
-  }>({ relayMesh: 0, cloudflare: 0, localtunnel: 0 });
+  }>({ relayMesh: 0, cloudflare: 0 });
 
   const [tunnelLatencies, setTunnelLatencies] = useState<Record<string, number>>({});
   const [tick, setTick] = useState(0);
@@ -96,10 +95,9 @@ export function WelcomeView({
     async function measureAll() {
       const activeTunnelsList = tunnels.filter((t) => t.status === 'ACTIVE' || t.status === 'STANDBY');
 
-      const [relayMeshLatency, cloudflareLatency, localtunnelLatency, tunnelResults] = await Promise.all([
+      const [relayMeshLatency, cloudflareLatency, tunnelResults] = await Promise.all([
         pingUrl('https://api.proxync.dev/health', 1500),
         pingUrl('https://1.1.1.1', 1200),
-        pingUrl('https://localtunnel.me', 1500),
         Promise.all(
           activeTunnelsList.map(async (t) => {
             const p = await pingUrl(t.publicUrl, 1500);
@@ -112,7 +110,6 @@ export function WelcomeView({
         setLatencies({
           relayMesh: relayMeshLatency === Infinity ? 28 : relayMeshLatency,
           cloudflare: cloudflareLatency === Infinity ? 42 : cloudflareLatency,
-          localtunnel: localtunnelLatency === Infinity ? 115 : localtunnelLatency,
         });
         const tunnelPings: Record<string, number> = {};
         for (const [id, ping] of tunnelResults) {
@@ -446,23 +443,7 @@ export function WelcomeView({
                 </p>
               </div>
 
-              {/* Option 3: Localtunnel */}
-              <div className="p-4 bg-surface-container border border-outline-variant rounded-lg group hover:bg-surface-container-high transition-all">
-                <div className="flex justify-between items-center mb-1">
-                  <div className="flex items-center gap-2">
-                    <h5 className="font-label-md text-label-md text-on-surface">Localtunnel</h5>
-                    {latencies.localtunnel !== 0 && (
-                      <SignalBars latency={latencies.localtunnel} />
-                    )}
-                  </div>
-                  <span className="material-symbols-outlined text-on-surface-variant opacity-0 group-hover:opacity-100 transition-opacity">
-                    hub
-                  </span>
-                </div>
-                <p className="text-[11px] text-on-surface-variant leading-relaxed">
-                  Quick, temporary public URLs for rapid testing.
-                </p>
-              </div>
+
 
               {/* Action Buttons */}
               <div className="flex gap-2 pt-2">
