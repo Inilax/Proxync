@@ -166,6 +166,19 @@ export interface LogsSummary {
   traffic_log_lines: number;
 }
 
+export interface SystemInfo {
+  os_name: string;
+  os_version: string;
+  distro: string;
+  arch: string;
+  bitness: string;
+  formatted: string;
+  hostname: string;
+  local_ip: string;
+  webview_version: string;
+  pid: number;
+}
+
 export interface ExecutionRun {
   id: string;
   runIndex: number;

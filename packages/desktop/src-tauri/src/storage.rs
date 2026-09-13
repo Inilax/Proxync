@@ -58,15 +58,40 @@ pub struct LogsSummary {
     pub traffic_log_lines: usize,
 }
 
+pub const MAX_APP_LOG_BYTES: u64 = 5 * 1024 * 1024; // 5 MB
+pub const MAX_TRAFFIC_LOG_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
+
+pub fn check_and_rotate_log(file_path: &std::path::Path, max_bytes: u64, is_app_log: bool) {
+    if let Ok(meta) = std::fs::metadata(file_path) {
+        if meta.len() >= max_bytes {
+            let old_path = file_path.with_extension("log.old");
+            let _ = std::fs::remove_file(&old_path);
+            let _ = std::fs::rename(file_path, &old_path);
+            if is_app_log {
+                let now = get_current_iso_timestamp();
+                let banner = build_system_banner(None);
+                let rotation_entry = format!(
+                    "[{}] [WARN] [SYSTEM] Log rotated: previous log exceeded 5MB and was archived to app.log.old\n",
+                    now
+                );
+                let _ = std::fs::write(file_path, format!("{}\n\n{}", banner.trim_start(), rotation_entry));
+            }
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn append_log_entry(category: String, line: String) -> Result<(), String> {
     use std::io::Write;
     let logs_dir = get_logs_dir();
-    let filename = match category.as_str() {
-        "traffic" => "traffic.log",
-        _ => "app.log",
+    let (filename, max_bytes, is_app_log) = match category.as_str() {
+        "traffic" => ("traffic.log", MAX_TRAFFIC_LOG_BYTES, false),
+        _ => ("app.log", MAX_APP_LOG_BYTES, true),
     };
     let file_path = logs_dir.join(filename);
+
+    check_and_rotate_log(&file_path, max_bytes, is_app_log);
+
     let mut file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -82,8 +107,21 @@ pub async fn clear_log_files() -> Result<(), String> {
     let logs_dir = get_logs_dir();
     let app_log = logs_dir.join("app.log");
     let traffic_log = logs_dir.join("traffic.log");
-    let _ = std::fs::write(&app_log, "");
     let _ = std::fs::write(&traffic_log, "");
+
+    // Clean up archive files if present
+    let _ = std::fs::remove_file(logs_dir.join("app.log.old"));
+    let _ = std::fs::remove_file(logs_dir.join("traffic.log.old"));
+
+    let now = get_current_iso_timestamp();
+    let banner = build_system_banner(Some(&now));
+    let initial_entry = format!(
+        "[{}] [INFO] [SYSTEM] Log history cleared by user request | previousLogsPurged=true\n",
+        now
+    );
+    let full_content = format!("{}\n\n{}", banner.trim_start(), initial_entry);
+
+    std::fs::write(&app_log, full_content).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -383,6 +421,292 @@ pub async fn save_support_bundle_dialog(app: tauri::AppHandle, json_content: Str
     }
 
     Ok(None)
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct SystemInfo {
+    pub os_name: String,
+    pub os_version: String,
+    pub distro: String,
+    pub arch: String,
+    pub bitness: String,
+    pub formatted: String,
+    pub hostname: String,
+    pub local_ip: String,
+    pub webview_version: String,
+    pub pid: u32,
+}
+
+pub fn get_hostname_sync() -> String {
+    if let Ok(name) = std::env::var("COMPUTERNAME") {
+        return name;
+    }
+    if let Ok(name) = std::env::var("HOSTNAME") {
+        return name;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Ok(name) = std::fs::read_to_string("/etc/hostname") {
+            let trimmed = name.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+        if let Ok(output) = std::process::Command::new("hostname").output() {
+            let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !name.is_empty() {
+                return name;
+            }
+        }
+    }
+    "localhost".to_string()
+}
+
+pub fn get_local_ip_sync() -> String {
+    if let Ok(socket) = std::net::UdpSocket::bind("0.0.0.0:0") {
+        if socket.connect("8.8.8.8:80").is_ok() {
+            if let Ok(local_addr) = socket.local_addr() {
+                return local_addr.ip().to_string();
+            }
+        }
+    }
+    "127.0.0.1".to_string()
+}
+
+pub fn get_system_info_sync() -> SystemInfo {
+    let info = os_info::get();
+    let os_type = info.os_type();
+    let os_type_str = os_type.to_string();
+    let os_name = match os_type {
+        os_info::Type::Windows => "Windows".to_string(),
+        os_info::Type::Macos => "macOS".to_string(),
+        os_info::Type::Linux => "Linux".to_string(),
+        _ => os_type_str.clone(),
+    };
+    let os_version = info.version().to_string();
+    let edition = info.edition().unwrap_or("").trim();
+
+    // Prevent duplicate OS prefix (e.g. "Windows Windows 11 Professional")
+    let distro = if !edition.is_empty() {
+        if edition.to_lowercase().starts_with(&os_type_str.to_lowercase()) {
+            edition.to_string()
+        } else {
+            format!("{} {}", os_type_str, edition)
+        }
+    } else {
+        os_type_str.clone()
+    };
+
+    let arch = info.architecture().unwrap_or(std::env::consts::ARCH).to_string();
+    let bitness = info.bitness().to_string();
+
+    let formatted = if !edition.is_empty() {
+        if edition.to_lowercase().starts_with(&os_type_str.to_lowercase()) {
+            format!("{} {} ({}, {})", edition, os_version, bitness, arch)
+        } else {
+            format!("{} {} {} ({}, {})", os_type_str, edition, os_version, bitness, arch)
+        }
+    } else {
+        format!("{} {} ({}, {})", os_type_str, os_version, bitness, arch)
+    };
+
+    let hostname = get_hostname_sync();
+    let local_ip = get_local_ip_sync();
+    let webview_version = tauri::webview_version().unwrap_or_else(|_| "Unknown".to_string());
+    let pid = std::process::id();
+
+    SystemInfo {
+        os_name,
+        os_version,
+        distro,
+        arch,
+        bitness,
+        formatted,
+        hostname,
+        local_ip,
+        webview_version,
+        pid,
+    }
+}
+
+fn get_current_iso_timestamp() -> String {
+    let now = std::time::SystemTime::now();
+    let duration = now.duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+    let secs = duration.as_secs();
+    let millis = duration.subsec_millis();
+
+    let days = secs / 86400;
+    let rem_secs = secs % 86400;
+    let hours = rem_secs / 3600;
+    let mins = (rem_secs % 3600) / 60;
+    let s = rem_secs % 60;
+
+    let z = days as i64 + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = (z - era * 146097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = (yoe as i64) + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if m <= 2 { y + 1 } else { y };
+
+    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z", year, m, d, hours, mins, s, millis)
+}
+
+static SESSION_BOOT_TIME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+pub fn get_session_boot_time() -> &'static str {
+    SESSION_BOOT_TIME.get_or_init(get_current_iso_timestamp)
+}
+
+pub fn build_system_banner(last_cleared: Option<&str>) -> String {
+    let sys = get_system_info_sync();
+    let boot_time = get_session_boot_time();
+    let cleared_str = last_cleared.unwrap_or("Never (Active Session)");
+
+    format!(
+r#"
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                     PROXYNC STUDIO ENGINE DIAGNOSTICS                        ║
+║                     ─────────────────────────────────                        ║
+║  SYSTEM ENVIRONMENT & HARDWARE FINGERPRINT                                   ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║  Host Platform:    {:<58}║
+║  Kernel / Build:   {:<58}║
+║  Architecture:     {:<58}║
+║  Local Hostname:   {:<58}║
+║  Local Network IP: {:<58}║
+║  Process ID (PID): {:<58}║
+║  WebView Engine:   {:<58}║
+║  Application Ver:  {:<58}║
+║  Diagnostic Mode:  {:<58}║
+║  Session Boot:     {:<58}║
+║  Last Cleared:     {:<58}║
+╚══════════════════════════════════════════════════════════════════════════════╝"#,
+        format!("{} [{}]", sys.distro, sys.bitness),
+        sys.os_version,
+        sys.arch,
+        sys.hostname,
+        sys.local_ip,
+        sys.pid.to_string(),
+        sys.webview_version,
+        "Proxync v0.2.2 (Engine: Tauri v2.11 Core)",
+        "Standard (app.log active, traffic.log on-demand)",
+        boot_time,
+        cleared_str
+    )
+}
+
+pub fn log_panic_sync(payload: &str) {
+    use std::io::Write;
+    let logs_dir = get_logs_dir();
+    let app_log_path = logs_dir.join("app.log");
+    let now = get_current_iso_timestamp();
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&app_log_path) {
+        let _ = writeln!(
+            file,
+            "\n[FATAL_CRASH_DUMP] [{}] [SYSTEM] Process panic occurred:\n{}\n",
+            now, payload
+        );
+    }
+}
+
+pub fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        log_panic_sync(&format!("{}", info));
+        default_hook(info);
+    }));
+}
+
+pub fn init_app_log_header() {
+    use std::io::Write;
+    let logs_dir = get_logs_dir();
+    let app_log_path = logs_dir.join("app.log");
+    
+    // Ensure boot time is registered
+    let _ = get_session_boot_time();
+    let banner = build_system_banner(None);
+
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&app_log_path)
+    {
+        let _ = writeln!(file, "{}", banner.trim_start());
+    }
+}
+
+#[tauri::command]
+pub async fn get_system_info() -> Result<SystemInfo, String> {
+    Ok(get_system_info_sync())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_get_system_info() {
+        let res = get_system_info().await;
+        assert!(res.is_ok(), "Failed to retrieve system info");
+        let info = res.unwrap();
+        assert!(!info.os_name.is_empty(), "OS name must not be empty");
+        assert!(!info.arch.is_empty(), "Architecture must not be empty");
+        assert!(!info.formatted.is_empty(), "Formatted string must not be empty");
+        assert!(!info.hostname.is_empty(), "Hostname must not be empty");
+        assert!(!info.local_ip.is_empty(), "Local IP must not be empty");
+        assert!(!info.webview_version.is_empty(), "WebView version must not be empty");
+        assert!(info.pid > 0, "PID must be greater than 0");
+        assert!(
+            !info.distro.contains("Windows Windows"),
+            "Distro must not have duplicate 'Windows Windows' prefix: {}",
+            info.distro
+        );
+        assert!(
+            !info.formatted.contains("Windows Windows"),
+            "Formatted string must not have duplicate 'Windows Windows' prefix: {}",
+            info.formatted
+        );
+    }
+
+    #[tokio::test]
+    async fn test_clear_log_files_populates_system_banner() {
+        let res = clear_log_files().await;
+        assert!(res.is_ok(), "clear_log_files must succeed");
+
+        let logs_dir = get_logs_dir();
+        let app_log = logs_dir.join("app.log");
+        let content = std::fs::read_to_string(&app_log).expect("Failed to read app.log");
+        assert!(content.contains("SYSTEM ENVIRONMENT & HARDWARE FINGERPRINT"), "app.log must contain system header");
+        assert!(content.contains("Last Cleared:"), "app.log must contain Last Cleared field");
+        assert!(content.contains("Process ID (PID):"), "app.log must contain PID field");
+        assert!(content.contains("WebView Engine:"), "app.log must contain WebView Engine field");
+        assert!(content.contains("Log history cleared by user request"), "app.log must contain log clear event line");
+    }
+
+    #[test]
+    fn test_log_rotation_logic() {
+        let temp_dir = std::env::temp_dir().join(format!("proxync_test_rot_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let test_log = temp_dir.join("app.log");
+        let old_log = temp_dir.join("app.log.old");
+
+        // Write content exceeding 20 bytes
+        let _ = std::fs::write(&test_log, "01234567890123456789extra");
+        check_and_rotate_log(&test_log, 20, true);
+
+        assert!(old_log.exists(), "Old log file must exist after rotation");
+        let old_content = std::fs::read_to_string(&old_log).unwrap();
+        assert!(old_content.contains("0123456789"), "Old log content preserved");
+
+        let new_content = std::fs::read_to_string(&test_log).unwrap();
+        assert!(new_content.contains("Log rotated: previous log exceeded"), "New log must have rotation notice");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
 }
 
 

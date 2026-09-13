@@ -66,6 +66,9 @@ import {
   logError,
   logTraffic,
   clearLogs,
+  logAppLaunch,
+  logTunnelSessionStart,
+  logTunnelSessionStop,
 } from './lib/logger';
 
 /* ══════════════════════════════════════════════
@@ -500,6 +503,7 @@ export default function App() {
   }, [workbenchTabs]);
 
   const [discovering, setDiscovering] = useState(false);
+  const discoveringRef = useRef(false);
   const [sharingPort, setSharingPort] = useState<number | null>(null);
   const [spawningPorts, setSpawningPorts] = useState<number[]>([]);
 
@@ -1117,11 +1121,12 @@ export default function App() {
       appLogging: appSettings.appLogging ?? true,
       trafficLogging: appSettings.trafficLogging ?? false,
     });
-    logApp(
-      'SYSTEM',
-      'INFO',
-      `Proxync studio initialized (Theme: ${appSettings.theme || 'slate'}, Telemetry: ${appSettings.telemetry || 'enhanced'}, AppLogging: ${appSettings.appLogging ?? true ? 'ON' : 'OFF'}, TrafficLogging: ${appSettings.trafficLogging ?? false ? 'ON' : 'OFF'})`
-    );
+    void logAppLaunch({
+      appVersion: 'v0.2.2',
+      theme: appSettings.theme || 'slate',
+      telemetry: appSettings.telemetry || 'enhanced',
+      autoUpdate: appSettings.autoUpdate ?? true,
+    });
 
     if (!navigator.onLine) {
       logApp('SYSTEM', 'WARN', 'Application started while offline');
@@ -1531,6 +1536,8 @@ export default function App() {
   /* ── Action handlers ── */
 
   async function discoverProcesses(bypassCache: boolean = false, silent: boolean = false) {
+    if (discoveringRef.current) return;
+    discoveringRef.current = true;
     setDiscovering(true);
     try {
       const discovered = await readNativeProcesses(bypassCache);
@@ -1848,7 +1855,6 @@ export default function App() {
     const token = getToken();
 
     try {
-      logApp('TUNNEL', 'INFO', `Initiating Cloudflare Tunnel for port :${process.port}...`);
       localStorage.setItem('proxync_workspace', targetWorkspaceId);
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
       const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
@@ -1857,6 +1863,14 @@ export default function App() {
         invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined),
         invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port),
       ]);
+      logTunnelSessionStart({
+        provider: 'Cloudflare Tunnel',
+        localPort: process.port,
+        proxyPort,
+        processName: process.name,
+        workspaceName: activeWorkspace.name,
+        workspaceId: targetWorkspaceId,
+      });
       logApp('PROXY', 'INFO', `Bound ephemeral proxy to 127.0.0.1:${proxyPort} -> :${process.port}`);
       showToast('Starting Cloudflare Tunnel service...', 'info');
       const cfTunnelUrl = await invoke<string>('open_cloudflare_tunnel', { tunnelId: tunnel.id, localPort: proxyPort });
@@ -1922,7 +1936,6 @@ export default function App() {
     const token = getToken();
 
     try {
-      logApp('TUNNEL', 'INFO', `Initiating Proxync Native SSH Tunnel for port :${process.port}...`);
       localStorage.setItem('proxync_workspace', targetWorkspaceId);
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
       const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
@@ -1931,6 +1944,14 @@ export default function App() {
         invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined),
         invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port),
       ]);
+      logTunnelSessionStart({
+        provider: 'Proxync Native SSH',
+        localPort: process.port,
+        proxyPort,
+        processName: process.name,
+        workspaceName: activeWorkspace.name,
+        workspaceId: targetWorkspaceId,
+      });
       logApp('PROXY', 'INFO', `Bound ephemeral proxy to 127.0.0.1:${proxyPort} -> :${process.port}`);
       const suggestedSub = generateRandomSubdomain('px');
       showToast('Starting Proxync Native SSH tunnel...', 'info');
@@ -1995,6 +2016,7 @@ export default function App() {
     const token = getToken();
 
     try {
+      const suggestedSub = customSubdomain || `${activeWorkspace.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${process.port}`;
       localStorage.setItem('proxync_workspace', targetWorkspaceId);
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
       const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
@@ -2003,7 +2025,16 @@ export default function App() {
         invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined),
         invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port),
       ]);
-      const suggestedSub = customSubdomain || `${activeWorkspace.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${process.port}`;
+      logTunnelSessionStart({
+        provider: 'Localtunnel',
+        localPort: process.port,
+        proxyPort,
+        processName: process.name,
+        subdomain: suggestedSub,
+        workspaceName: activeWorkspace.name,
+        workspaceId: targetWorkspaceId,
+      });
+      logApp('PROXY', 'INFO', `Bound ephemeral proxy to 127.0.0.1:${proxyPort} -> :${process.port}`);
       showToast('Starting localtunnel service...', 'info');
       const localtunnelUrl = await invoke<string>('open_localtunnel', { tunnelId: tunnel.id, localPort: proxyPort, subdomain: suggestedSub });
       const localtunnelBoundTunnel: Tunnel = { ...tunnel, publicUrl: localtunnelUrl, subdomain: localtunnelUrl.replace('https://', '').replace('.localtunnel.me', '') };
@@ -2080,6 +2111,15 @@ export default function App() {
         languageHint: detectLanguageLabel(process),
       }));
       const proxyPort = await invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port);
+      logTunnelSessionStart({
+        provider: customDomain ? `Custom Domain (${customDomain})` : 'Local Proxy',
+        localPort: process.port,
+        proxyPort,
+        processName: process.name,
+        subdomain: customDomain,
+        workspaceName: activeWorkspace.name,
+        workspaceId: targetWorkspaceId,
+      });
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined, customDomain);
       if (customDomain) {
         tunnel.publicUrl = customDomain.includes(':') ? customDomain : `http://${customDomain}:${proxyPort}`;
@@ -2121,6 +2161,11 @@ export default function App() {
   async function stopTunnel(tunnel: Tunnel) {
     if (!activeWorkspace) return;
     touchWorkspaceActivity(activeWorkspace.id);
+    logTunnelSessionStop({
+      provider: tunnel.publicUrl?.includes('cloudflare') ? 'Cloudflare Tunnel' : tunnel.publicUrl?.includes('localtunnel') ? 'Localtunnel' : 'Tunnel',
+      localPort: tunnel.localPort,
+      tunnelId: tunnel.id,
+    });
     logApp('TUNNEL', 'INFO', `Stopping tunnel ${tunnel.id} (Port :${tunnel.localPort})`);
     try {
       await invoke('close_tunnel', { tunnelId: tunnel.id, localPort: tunnel.localPort }).catch(() => undefined);
