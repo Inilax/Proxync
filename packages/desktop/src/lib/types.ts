@@ -35,6 +35,7 @@ export interface Tunnel {
   localPort: number;
   status: 'ACTIVE' | 'STANDBY' | 'CLOSED' | string;
   subdomain?: string;
+  customDomain?: string;
   createdAt?: string;
 }
 
@@ -164,6 +165,19 @@ export interface LogsSummary {
   traffic_log_bytes: number;
   app_log_lines: number;
   traffic_log_lines: number;
+}
+
+export interface SystemInfo {
+  os_name: string;
+  os_version: string;
+  distro: string;
+  arch: string;
+  bitness: string;
+  formatted: string;
+  hostname: string;
+  local_ip: string;
+  webview_version: string;
+  pid: number;
 }
 
 export interface ExecutionRun {

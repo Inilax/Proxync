@@ -605,6 +605,11 @@ pub async fn open_native_tunnel(
     let temp_dir = std::env::temp_dir().join(format!("proxync_ssh_{}", tunnel_id));
     let _ = std::fs::remove_dir_all(&temp_dir);
     let _ = std::fs::create_dir_all(&temp_dir);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&temp_dir, std::fs::Permissions::from_mode(0o700));
+    }
     let _guard = TempDirGuard(temp_dir.clone());
     
     let key_path = temp_dir.join("id_ed25519");
@@ -617,6 +622,9 @@ pub async fn open_native_tunnel(
         keygen_cmd.creation_flags(0x08000000);
         keygen_cmd
             .args(&["-t", "ed25519", "-f", key_path_for_keygen.to_str().unwrap_or(""), "-q", "-N", ""])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
             .status()
             .map(|s| s.success())
             .unwrap_or(false)
@@ -694,6 +702,9 @@ pub async fn open_native_tunnel(
                     std::process::Command::new("icacls")
                         .args(&[key_str.as_str(), "/inheritance:r", "/grant:r", user_arg.as_str()])
                         .creation_flags(0x08000000)
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
                         .output()
                 }).await;
             }
@@ -712,6 +723,7 @@ pub async fn open_native_tunnel(
     cmd.args(&[
         "-i", active_key_path.to_str().unwrap(),
         "-N",
+        "-o", "BatchMode=yes",
         "-o", &format!("StrictHostKeyChecking={}", strict_host_checking),
         "-o", &format!("UserKnownHostsFile={}", known_hosts_path.to_str().unwrap()),
         "-o", if cfg!(target_os = "windows") { "GlobalKnownHostsFile=NUL" } else { "GlobalKnownHostsFile=/dev/null" },
@@ -726,6 +738,10 @@ pub async fn open_native_tunnel(
         &format!("-R {}:80:127.0.0.1:{}", clean_subdomain, local_port),
         &format!("{}@{}", clean_subdomain, ssh_host),
     ]);
+    
+    cmd.stdin(std::process::Stdio::null());
+    cmd.stdout(std::process::Stdio::null());
+    cmd.stderr(std::process::Stdio::null());
     
     let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn ssh: {}", e))?;
     
