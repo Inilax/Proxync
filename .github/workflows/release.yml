@@ -231,4 +231,5 @@ jobs:
           releaseBody: ${{ needs.prepare-tag.outputs.body }}
           releaseDraft: true
           prerelease: false
+          includeUpdaterJson: true
           args: ${{ matrix.args }}
