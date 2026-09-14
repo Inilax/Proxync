@@ -1,10 +1,11 @@
 name: Prepare Release
 
 # Run this manually from the "Actions" tab in GitHub when develop is ready.
-# It tests develop, bumps the version, and opens a PR into main.
-# Stakeholders review/approve that PR on GitHub -- merging it triggers
-# release.yml, which builds the Windows installer, tags the release,
-# creates the permanent release-vX.Y.Z branch, and publishes the GitHub Release.
+# It tests develop across Windows, Linux, and macOS, bumps the version,
+# and opens a PR into main.
+# Merging that PR into main triggers release.yml, which builds and signs the
+# installers for Windows, Linux, and macOS, creates the permanent release-vX.Y.Z
+# branch, and publishes the GitHub Release.
 
 on:
   workflow_dispatch:
@@ -14,42 +15,55 @@ on:
         required: false
         default: ""
 
-permissions:
-  contents: write
-  pull-requests: write
+# Declare default permissions as read only.
+permissions: read-all
 
 env:
-  # Path to the Tauri app inside the monorepo
   PKG_DIR: packages/desktop
 
 jobs:
-  prepare-release:
-    runs-on: windows-latest
+  test-matrix:
+    name: Test (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'windows-latest'
+          - platform: 'ubuntu-22.04'
+          - platform: 'macos-latest'
+    runs-on: ${{ matrix.platform }}
+    permissions:
+      contents: read
+
     steps:
       - name: Checkout develop
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: develop
           fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
         with:
           node-version: 22
           cache: "npm"
 
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libglib2.0-dev libgtk-3-dev
+
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
-        uses: swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@f0deed1e0edfc6a9be95417288c0e1099b1eeec3 # v2.7.7
         with:
           workspaces: "${{ env.PKG_DIR }}/src-tauri -> target"
 
-      # Assumes npm workspaces with a single lockfile at the repo root.
-      # If packages/desktop has its own lockfile instead, change this to:
-      #   run: npm ci
-      #   working-directory: ${{ env.PKG_DIR }}
       - name: Install dependencies
         run: npm ci
 
@@ -63,9 +77,33 @@ jobs:
           cd "${PKG_DIR}/src-tauri"
           cargo test
 
+      - name: Build frontend
+        working-directory: ${{ env.PKG_DIR }}
+        run: npm run build
+
       - name: Sanity build (debug, fast)
         working-directory: ${{ env.PKG_DIR }}
         run: npm run tauri build -- --debug
+
+  prepare-release:
+    name: Bump Version & Open PR
+    needs: test-matrix
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+        with:
+          node-version: 22
+          cache: "npm"
 
       - name: Determine new version
         id: version
@@ -121,11 +159,8 @@ jobs:
           EOF
 
       - name: Open release pull request into main
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c # v6.1.0
         with:
-          # Transient staging branch just for this PR (safe to auto-delete on merge).
-          # The permanent release-vX.Y.Z snapshot branch is created separately
-          # by release.yml once this PR is merged.
           branch: release-staging/v${{ steps.version.outputs.version }}
           base: main
           title: "Release v${{ steps.version.outputs.version }}"
@@ -134,10 +169,15 @@ jobs:
           body: |
             Automated release PR for **v${{ steps.version.outputs.version }}**.
 
-            - All tests and a sanity build passed on `develop`.
-            - Merging this PR into `main` will automatically:
-              - tag the release
-              - create the permanent `release-v${{ steps.version.outputs.version }}` branch
-              - build the Windows installer and publish the GitHub Release
+            ### Pre-release Verification
+            - :white_check_mark: Automated tests passed across **Windows**, **Linux**, and **macOS**.
 
-            Please review and approve to proceed.
+            ### Release Scope
+            Merging this PR into `main` triggers `release.yml`, which will build, sign, and publish:
+            - **Windows**: NSIS Setup (`.exe`) and Windows Installer (`.msi`)
+            - **Linux**: Debian package (`.deb`) and AppImage (`.AppImage`)
+            - **macOS**: Universal Binary (`.dmg`, `.app`) for Apple Silicon & Intel
+            - **Updater Metadata**: Signed update bundles & signatures (`.sig`, `updater.json`)
+            - **Git Snapshot**: Tag `v${{ steps.version.outputs.version }}` & permanent branch `release-v${{ steps.version.outputs.version }}`
+
+            Please review and approve to release.
