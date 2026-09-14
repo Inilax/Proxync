@@ -2,6 +2,56 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/decomission-LT] - 2026-09-13 (Decommission Localtunnel & Python HTTP Server Reconnaissance)
+- **Feature Summary**:
+  - **Complete Localtunnel (LT) Decommissioning**: Removed the legacy `open_localtunnel` Tauri command and `shareProcessLocaltunnel` pipeline from `App.tsx`. Replaced the provider-specific process table with generalized `SPAWNED_TUNNEL_PROCESSES` in `tunnel.rs`. Purged Localtunnel tabs, options, badges, and documentation across `Dialogs.tsx`, `DocsView.tsx`, `WelcomeView.tsx`, `ProcessView.tsx`, `TerminalDrawer.tsx`, `logger.ts`, and `README.md`.
+  - **Python HTTP Server Reconnaissance (`recon.rs`)**: Added `http.server` detection in framework scanner to automatically recognize Python built-in HTTP server instances as `"Python HTTP Server"`.
+  - **Process Discovery Concurrency Fix (`App.tsx`)**: Guaranteed `discoveringRef.current = false` inside `discoverProcesses` `finally` block to prevent scanner concurrency lockups following unhandled errors.
+- **Modified Files**:
+  - `README.md`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/ui/TerminalDrawer.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/DocsView.tsx`
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/lib/logger.ts`
+  - `CHANGELOG.md`
+
+## [fix/161-OpenSSH] - 2026-09-13 (OpenSSH Ephemeral Key Permissions & BatchMode Hang on Linux #161)
+- **Feature Summary**:
+  - **POSIX Ephemeral Key Permissions (#161)**: Enforced strict `0o700` mode permissions on temporary SSH directories (`proxync_ssh_<id>`) on Unix systems via `std::os::unix::fs::PermissionsExt`, eliminating OpenSSH client connection aborts triggered by overly permissive directory modes.
+  - **Headless Non-Interactive BatchMode & Stdio Hardening**: Appended `-o BatchMode=yes` to prevent background OpenSSH subcommands from blocking indefinitely on interactive passphrase/password prompts. Nullified `stdin`, `stdout`, and `stderr` (`Stdio::null()`) across `ssh-keygen` and `ssh` execution to eliminate I/O pipe buffer deadlocks.
+  - **Windows ACL Permission Alignment**: Configured Windows `icacls` to grant full control (`:(F)`) with hidden console flags and nullified stdio streams.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+
+## [fix/feat-logger] - 2026-09-13 (Startup OS Environment Diagnostics, High-Precision Timestamps & Log Rotation #167)
+- **Feature Summary**:
+  - **Diagnostic System Banner & Hardware Fingerprinting (#167)**: Integrated `os_info` crate (v3.15) to detect host platform, kernel/distribution version, CPU architecture, bitness, local hostname, network IP, WebView engine version, and process PID on startup. Emits a structured ASCII diagnostic banner into `app.log` during startup, log rotations, and log history resets.
+  - **High-Precision ISO 8601 UTC Timestamping**: Implemented custom zero-dependency RFC 3339 UTC timestamping (`YYYY-MM-DDTHH:MM:SS.mmmZ`) across backend and frontend log writers.
+  - **Dual-Stream Log Rotation & Panic Telemetry**: Implemented file-size based log rotation archiving `app.log` at 5MB (`app.log.old`) and `traffic.log` at 10MB (`traffic.log.old`). Registered `storage::install_panic_hook()` to capture Rust panic dumps with stack traces directly into `app.log`.
+  - **System Telemetry IPC (`get_system_info`)**: Added `get_system_info` Tauri command and frontend typing in `types.ts` and `logger.ts` for unified environment diagnostic telemetry.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/lib/logger.ts`
+  - `packages/desktop/src/lib/types.ts`
+
+## [fix/multi-platform-cors] - 2026-09-12 (Multi-Platform User-Agent in Native CORS Bypass Engine #163)
+- **Feature Summary**:
+  - **OS-Adaptive User-Agent Header (#163)**: Replaced hardcoded Windows `User-Agent` with compile-time platform detection (`default_user_agent()`), dynamically emitting Windows (`Windows NT 10.0; Win64; x64`), macOS (`Macintosh; Intel Mac OS X 10_15_7`), or Linux (`X11; Linux x86_64`) strings containing `CARGO_PKG_VERSION`.
+  - **Header Injection Cleanliness**: Streamlined `execute_http_request` by relying on the client-level default user agent while allowing custom `User-Agent` header overrides without duplicate injection.
+  - **Cross-Platform Target Unit Tests**: Added unit tests verifying correct User-Agent string formatting across Windows, macOS, and Linux targets.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/http.rs`
+
 ## [fix/develop-tauri-plugin-dialog] - 2026-09-12 (Universal Native File Dialogs via tauri-plugin-dialog #164)
 - **Feature Summary**:
   - **Universal Linux & Cross-Platform Support (#164)**: Replaced platform-specific external shell executions (`/usr/bin/zenity` on Linux, `powershell.exe` on Windows, `osascript` on macOS) with Tauri v2 official `tauri-plugin-dialog` plugin.
