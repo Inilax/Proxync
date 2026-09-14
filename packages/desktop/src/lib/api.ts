@@ -323,6 +323,7 @@ export const api = {
         localPort,
         status: 'ACTIVE',
         subdomain: customDomain ?? '',
+        customDomain,
         createdAt: new Date().toISOString(),
       });
     },
