@@ -81,6 +81,10 @@ jobs:
         working-directory: ${{ env.PKG_DIR }}
         run: npm run build
 
+      - name: Sanity build (debug, fast)
+        working-directory: ${{ env.PKG_DIR }}
+        run: npm run tauri build -- --debug
+
   prepare-release:
     name: Bump Version & Open PR
     needs: test-matrix
