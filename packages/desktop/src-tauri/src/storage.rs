@@ -102,9 +102,8 @@ pub async fn append_log_entry(category: String, line: String) -> Result<(), Stri
     Ok(())
 }
 
-#[tauri::command]
-pub async fn clear_log_files() -> Result<(), String> {
-    let logs_dir = get_logs_dir();
+pub fn clear_log_files_at(logs_dir: &std::path::Path) -> Result<(), String> {
+    let _ = std::fs::create_dir_all(logs_dir);
     let app_log = logs_dir.join("app.log");
     let traffic_log = logs_dir.join("traffic.log");
     let _ = std::fs::write(&traffic_log, "");
@@ -123,6 +122,11 @@ pub async fn clear_log_files() -> Result<(), String> {
 
     std::fs::write(&app_log, full_content).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn clear_log_files() -> Result<(), String> {
+    clear_log_files_at(&get_logs_dir())
 }
 
 #[tauri::command]
@@ -796,7 +800,7 @@ pub async fn get_system_info() -> Result<SystemInfo, String> {
 }
 
 #[cfg(test)]
-mod tests {
+mod logging_tests {
     use super::*;
 
     #[tokio::test]
@@ -825,17 +829,21 @@ mod tests {
 
     #[tokio::test]
     async fn test_clear_log_files_populates_system_banner() {
-        let res = clear_log_files().await;
-        assert!(res.is_ok(), "clear_log_files must succeed");
+        let temp_dir = std::env::temp_dir().join(format!("proxync_test_clear_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_dir);
 
-        let logs_dir = get_logs_dir();
-        let app_log = logs_dir.join("app.log");
+        let res = clear_log_files_at(&temp_dir);
+        assert!(res.is_ok(), "clear_log_files_at must succeed");
+
+        let app_log = temp_dir.join("app.log");
         let content = std::fs::read_to_string(&app_log).expect("Failed to read app.log");
         assert!(content.contains("SYSTEM ENVIRONMENT & HARDWARE FINGERPRINT"), "app.log must contain system header");
         assert!(content.contains("Last Cleared:"), "app.log must contain Last Cleared field");
         assert!(content.contains("Process ID (PID):"), "app.log must contain PID field");
         assert!(content.contains("WebView Engine:"), "app.log must contain WebView Engine field");
         assert!(content.contains("Log history cleared by user request"), "app.log must contain log clear event line");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 
     #[test]

@@ -503,6 +503,7 @@ export default function App() {
   }, [workbenchTabs]);
 
   const [discovering, setDiscovering] = useState(false);
+  // Concurrency guard ref to prevent overlapping background process scans
   const discoveringRef = useRef(false);
   const [sharingPort, setSharingPort] = useState<number | null>(null);
   const [spawningPorts, setSpawningPorts] = useState<number[]>([]);
@@ -1536,6 +1537,7 @@ export default function App() {
   /* ── Action handlers ── */
 
   async function discoverProcesses(bypassCache: boolean = false, silent: boolean = false) {
+    // Prevent overlapping discovery scans while in-flight
     if (discoveringRef.current) return;
     discoveringRef.current = true;
     setDiscovering(true);
@@ -2050,6 +2052,7 @@ export default function App() {
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined, customDomain);
       if (customDomain) {
         tunnel.publicUrl = customDomain.includes(':') ? customDomain : `http://${customDomain}:${proxyPort}`;
+        tunnel.customDomain = customDomain;
       }
       const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
       const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
@@ -2088,8 +2091,16 @@ export default function App() {
   async function stopTunnel(tunnel: Tunnel) {
     if (!activeWorkspace) return;
     touchWorkspaceActivity(activeWorkspace.id);
+    const providerName = tunnel.publicUrl?.includes('cloudflare')
+      ? 'Cloudflare Tunnel'
+      : tunnel.publicUrl?.includes('inilax') || tunnel.subdomain?.startsWith('px-')
+        ? 'Proxync Native SSH'
+        : tunnel.customDomain
+          ? `Custom Domain (${tunnel.customDomain})`
+          : 'Local Proxy';
+
     logTunnelSessionStop({
-      provider: tunnel.publicUrl?.includes('cloudflare') ? 'Cloudflare Tunnel' : tunnel.publicUrl?.includes('proxync') ? 'Proxync Native SSH' : 'Tunnel',
+      provider: providerName,
       localPort: tunnel.localPort,
       tunnelId: tunnel.id,
     });
@@ -2130,7 +2141,7 @@ export default function App() {
       await Promise.all(
         listToClose.map(async (tunnel) => {
           await invoke('close_tunnel', { tunnelId: tunnel.id, localPort: tunnel.localPort }).catch(() => undefined);
-          if (!tunnel.id.startsWith('lt-') && activeWorkspace?.remoteWorkspaceId) {
+          if (activeWorkspace?.remoteWorkspaceId) {
             await api.tunnels.close(activeWorkspace.remoteWorkspaceId, tunnel.id).catch(() => undefined);
           }
         })

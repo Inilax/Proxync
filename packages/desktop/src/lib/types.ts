@@ -35,6 +35,7 @@ export interface Tunnel {
   localPort: number;
   status: 'ACTIVE' | 'STANDBY' | 'CLOSED' | string;
   subdomain?: string;
+  customDomain?: string;
   createdAt?: string;
 }
 
