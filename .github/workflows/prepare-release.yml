@@ -77,6 +77,10 @@ jobs:
           cd "${PKG_DIR}/src-tauri"
           cargo test
 
+      - name: Build frontend
+        working-directory: ${{ env.PKG_DIR }}
+        run: npm run build
+
   prepare-release:
     name: Bump Version & Open PR
     needs: test-matrix
