@@ -1056,10 +1056,12 @@ export default function App() {
         console.error('[AutoUpdater] Failed to check for updates:', err);
         if (isManual) {
           const msg = err instanceof Error ? err.message : String(err);
-          showToast(
-            `Update check failed: ${msg.includes('404') ? 'No release manifest found on server (HTTP 404).' : msg}`,
-            'error'
-          );
+          // If the remote lacks a valid release JSON or returns a 404, we assume there is no newer release available yet.
+          if (msg.includes('404') || msg.toLowerCase().includes('could not fetch a valid release')) {
+            showToast('✅ Proxync is up to date', 'success');
+          } else {
+            showToast(`Update check failed: ${msg}`, 'error');
+          }
         }
       }
     },
