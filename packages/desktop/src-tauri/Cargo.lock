@@ -2938,6 +2938,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-process",
  "tauri-plugin-updater",
+ "tempfile",
  "tokio",
  "tokio-tungstenite",
 ]

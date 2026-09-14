@@ -215,23 +215,88 @@ pub async fn scan_directory(path: String) -> Result<Vec<String>, String> {
         return Err("Provided path is not a directory".to_string());
     }
 
-    fn visit_dirs(dir: &std::path::Path, files: &mut Vec<String>, root_len: usize) -> std::io::Result<()> {
-        if dir.is_dir() {
-            for entry in std::fs::read_dir(dir)? {
-                let entry = entry?;
-                let path = entry.path();
-                if path.is_dir() {
-                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                    if name == "node_modules" || name == "target" || name == ".git" || name == "build" || name == "bin" || name == ".gradle" {
-                        continue;
-                    }
-                    visit_dirs(&path, files, root_len)?;
-                } else {
-                    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                        let ext = ext.to_lowercase();
-                        if ext == "java" || ext == "ts" || ext == "js" || ext == "py" || ext == "go" || ext == "cs" || ext == "controller" {
-                            let rel_path = path.to_str().unwrap_or("")[root_len..].to_string();
-                            files.push(rel_path);
+    // ponytail: 3-layer defence against symlink infinite loops:
+    //   1. Canonical path cycle detection (HashSet<PathBuf>) — primary fix
+    //   2. Max recursion depth of 16 from root — hard safety net
+    //   3. Graceful error recovery on every fallible I/O call
+    // Upgrade path: expose MAX_SCAN_DEPTH via AppSettings if users need deeper scans.
+    const MAX_SCAN_DEPTH: usize = 16;
+
+    fn visit_dirs(
+        dir: &std::path::Path,
+        files: &mut Vec<String>,
+        root: &std::path::Path,
+        depth: usize,
+        visited: &mut std::collections::HashSet<std::path::PathBuf>,
+    ) -> std::io::Result<()> {
+        if depth >= MAX_SCAN_DEPTH {
+            return Ok(());
+        }
+
+        let read_dir = match std::fs::read_dir(dir) {
+            Ok(rd) => rd,
+            Err(_) => return Ok(()), // Permission denied or unreadable — skip gracefully
+        };
+
+        for entry in read_dir {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue, // Skip unreadable entries without aborting the scan
+            };
+
+            let path = entry.path();
+
+            if path.is_dir() {
+                // Skip common non-source directories to avoid wasted I/O
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if matches!(
+                    name,
+                    "node_modules"
+                        | "target"
+                        | ".git"
+                        | "build"
+                        | "bin"
+                        | ".gradle"
+                        | ".venv"
+                        | "venv"
+                        | "env"
+                        | ".next"
+                        | ".nuxt"
+                        | ".turbo"
+                        | "dist"
+                        | "out"
+                        | ".idea"
+                        | ".vscode"
+                ) {
+                    continue;
+                }
+
+                // Cycle detection: resolve to the true physical path.
+                // path.is_dir() follows symlinks transparently, so we must canonicalize
+                // to detect when two different paths point to the same real directory.
+                // If canonicalize fails (broken/dangling symlink) we skip gracefully.
+                let canonical = match std::fs::canonicalize(&path) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                // visited.insert returns false if the canonical path was already in the set
+                if !visited.insert(canonical) {
+                    continue; // Already visited — loop or duplicate traversal blocked
+                }
+
+                visit_dirs(&path, files, root, depth + 1, visited)?;
+            } else if path.is_file() {
+                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                    let ext = ext.to_lowercase();
+                    if matches!(
+                        ext.as_str(),
+                        "java" | "ts" | "js" | "py" | "go" | "cs" | "controller"
+                    ) {
+                        // strip_prefix is safe on non-UTF-8 filenames (unlike raw string slicing).
+                        // to_string_lossy() replaces invalid bytes with U+FFFD instead of panicking.
+                        if let Ok(rel_path) = path.strip_prefix(root) {
+                            let rel = rel_path.to_string_lossy().to_string();
+                            files.push(rel);
                         }
                     }
                 }
@@ -240,8 +305,94 @@ pub async fn scan_directory(path: String) -> Result<Vec<String>, String> {
         Ok(())
     }
 
-    visit_dirs(root, &mut files, root.to_str().unwrap_or("").len()).map_err(|e| e.to_string())?;
+    let mut visited = std::collections::HashSet::new();
+    // Seed with the canonical root so symlinks pointing directly back to root
+    // are caught immediately at depth 1 without needing a recursion
+    if let Ok(canonical_root) = std::fs::canonicalize(root) {
+        visited.insert(canonical_root);
+    }
+    visit_dirs(root, &mut files, root, 0, &mut visited).map_err(|e| e.to_string())?;
     Ok(files)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    // Test 1: Circular symlink (loop_link -> dir itself) must NOT crash.
+    // Without the fix, this hangs the process until a stack overflow kills the app.
+    // With cycle detection, the loop is killed the moment loop_link is seen the second time.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn test_scan_circular_symlink_does_not_crash() {
+        let dir = tempfile::tempdir().unwrap();
+        // loop_link -> dir (points back to its own parent)
+        std::os::unix::fs::symlink(dir.path(), dir.path().join("loop_link")).unwrap();
+
+        let result = scan_directory(dir.path().to_str().unwrap().to_string()).await;
+        assert!(result.is_ok()); // Must complete — not crash or hang
+        assert!(result.unwrap().is_empty()); // No source files in the temp dir
+    }
+
+    // Test 2: Legitimate symlinked DIRECTORY with real API files must BE scanned.
+    // Proves that cycle detection only blocks loops — not valid cross-package symlinks.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn test_scan_legitimate_symlinked_directory_is_included() {
+        let dir = tempfile::tempdir().unwrap();
+        let external_dir = tempfile::tempdir().unwrap();
+        fs::write(external_dir.path().join("api.ts"), "export const r = '';").unwrap();
+
+        // shared_api -> external_dir (monorepo-style symlinked shared module)
+        std::os::unix::fs::symlink(external_dir.path(), dir.path().join("shared_api")).unwrap();
+
+        let result = scan_directory(dir.path().to_str().unwrap().to_string()).await;
+        let files = result.unwrap();
+        assert!(files.iter().any(|f| f.contains("api.ts")));
+    }
+
+    // Test 3: Symlinked FILE (not folder) must also be collected.
+    // This is the critical test proving we do NOT blanket-skip all symlinks —
+    // only directory loops are blocked. Symlinked .ts files must still be scanned.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn test_scan_symlinked_file_is_included() {
+        let dir = tempfile::tempdir().unwrap();
+        let external_dir = tempfile::tempdir().unwrap();
+        fs::write(external_dir.path().join("routes.ts"), "export const r = '';").unwrap();
+
+        // Symlink a single FILE into project root (not a folder)
+        std::os::unix::fs::symlink(
+            external_dir.path().join("routes.ts"),
+            dir.path().join("routes.ts"),
+        )
+        .unwrap();
+
+        let result = scan_directory(dir.path().to_str().unwrap().to_string()).await;
+        let files = result.unwrap();
+        assert!(files.iter().any(|f| f.contains("routes.ts")));
+    }
+
+    // Test 4: Depth guard — file at depth 20 must NOT appear (MAX_SCAN_DEPTH = 16).
+    // Depth is counted from root (depth 0), so level 20 is 4 levels beyond the hard limit.
+    #[tokio::test]
+    async fn test_scan_max_depth_guard_stops_at_16() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut current = dir.path().to_path_buf();
+        for _ in 0..20 {
+            current = current.join("deep");
+            fs::create_dir_all(&current).unwrap();
+        }
+        fs::write(current.join("buried.ts"), "export const x = 1;").unwrap();
+
+        let result = scan_directory(dir.path().to_str().unwrap().to_string()).await;
+        let files = result.unwrap();
+        assert!(
+            files.iter().all(|f| !f.contains("buried.ts")),
+            "File at depth 20 must not be returned — depth guard must have stopped at 16"
+        );
+    }
 }
 
 #[tauri::command]
