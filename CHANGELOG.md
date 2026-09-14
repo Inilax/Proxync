@@ -2,6 +2,20 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/develop-gui-environment-path] - 2026-09-14 (Packaged App GUI Environment PATH Injection for Cloudflare & Subprocess Tunnels)
+- **Feature Summary**:
+  - **Packaged App Desktop Environment PATH Resolution**: Fixed a critical failure where Cloudflare tunnels (`open_cloudflare_tunnel`) and Native SSH tunnels (`open_native_tunnel`) fail to spawn (`os error 2: No such file or directory`) when running inside packaged Linux and macOS desktop builds (`.deb`, `.rpm`, AppImage, `.dmg`, `.app`).
+  - **Non-Login Desktop Session Root Cause**: Desktop display managers (GNOME, KDE Plasma, Wayland, systemd user sessions, macOS Finder/LaunchServices) spawn applications without sourcing interactive shell startup files (`~/.bashrc`, `~/.zshrc`), leaving GUI processes with only minimal default system paths (`/usr/bin:/bin`).
+  - **Comprehensive Toolchain Coverage**: Added `gui_toolchain_path()` helper that dynamically injects user-space Node version managers and toolchain directories into the child subprocess environment before spawning:
+    - User local binaries: `$HOME/.local/bin`
+    - Node & JS package managers: PNPM (`$HOME/.local/share/pnpm`), Bun (`$HOME/.bun/bin`), Volta (`$HOME/.volta/bin`), ASDF (`$HOME/.asdf/shims`)
+    - NVM: Respects `$NVM_BIN`, `$HOME/.nvm/current/bin`, and dynamically scans `$HOME/.nvm/versions/node` selecting the highest installed Node version
+    - macOS & Linux Homebrew: Apple Silicon default (`/opt/homebrew/bin`) and Intel/Linux default (`/usr/local/bin`)
+    - Preserves existing system `$PATH` (`/usr/bin`, `/bin`, etc.) at the end of the search hierarchy.
+  - **CWE-426 Untrusted Search Path Hardening**: Filtered out all empty string segments prior to joining with `:`, preventing double colons (`::`) which in POSIX would inadvertently execute binaries from the current working directory (`.`).
+  - **Cross-Platform Safety & Zero Overhead**: Gated under `#[cfg(not(target_os = "windows"))]` and called inside `#[cfg(unix)]`, leaving Windows execution (`cmd.exe /C npx` with `CREATE_NO_WINDOW`) intact without semicolon/colon delimiter conflicts. Avoids slow `$SHELL -ilc` startup stalls and POSIX `std::env::set_var` multi-threading race conditions by scoping PATH injection strictly to the child command.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/tunnel.rs`
 ## [fix/auto-update] - 2026-09-14 (Auto-Updater IPC Permissions, Manifest Artifacts & Automated Relaunch Flow)
 - **Feature Summary**:
   - **Tauri v2 Process Relaunch Capabilities (`default.json`)**: Added `process:allow-restart` and `process:allow-exit` to `capabilities/default.json`. Resolves fatal Tauri IPC security permission denial (`Operation not permitted (os error 1)`) when calling `relaunch()` from `@tauri-apps/plugin-process` following an update installation.

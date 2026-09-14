@@ -341,6 +341,38 @@ pub async fn close_all_tunnels() -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(not(target_os = "windows"))]
+fn gui_toolchain_path() -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let mut paths = vec![
+        format!("{home}/.local/bin"),
+        format!("{home}/.local/share/pnpm"),
+        format!("{home}/.bun/bin"),
+        format!("{home}/.volta/bin"),
+        format!("{home}/.asdf/shims"),
+        format!("{home}/.nvm/current/bin"),
+    ];
+    if let Ok(nvm_bin) = std::env::var("NVM_BIN") {
+        paths.push(nvm_bin);
+    } else if let Ok(entries) = std::fs::read_dir(format!("{home}/.nvm/versions/node")) {
+        let mut vers: Vec<_> = entries.filter_map(|e| e.ok().map(|e| e.path().join("bin"))).collect();
+        vers.sort();
+        if let Some(latest) = vers.pop() {
+            paths.push(latest.to_string_lossy().to_string());
+        }
+    }
+    paths.extend(["/opt/homebrew/bin".into(), "/usr/local/bin".into()]);
+    if let Ok(cur) = std::env::var("PATH") {
+        paths.push(cur);
+    }
+    paths.into_iter().filter(|p| !p.is_empty()).collect::<Vec<_>>().join(":")
+}
+
+#[cfg(not(target_os = "windows"))]
+fn inject_gui_toolchain_path(cmd: &mut tokio::process::Command) {
+    cmd.env("PATH", gui_toolchain_path());
+}
+
 #[tauri::command]
 pub async fn open_cloudflare_tunnel(
     app: tauri::AppHandle,
@@ -361,6 +393,7 @@ pub async fn open_cloudflare_tunnel(
     {
         use std::os::unix::process::CommandExt;
         cmd.as_std_mut().process_group(0);
+        inject_gui_toolchain_path(&mut cmd);
     }
 
     cmd.args(&[
@@ -522,6 +555,8 @@ pub async fn open_native_tunnel(
         let mut keygen_cmd = std::process::Command::new("ssh-keygen");
         #[cfg(target_os = "windows")]
         keygen_cmd.creation_flags(0x08000000);
+        #[cfg(unix)]
+        keygen_cmd.env("PATH", gui_toolchain_path());
         keygen_cmd
             .args(&["-t", "ed25519", "-f", key_path_for_keygen.to_str().unwrap_or(""), "-q", "-N", ""])
             .stdin(std::process::Stdio::null())
@@ -621,6 +656,8 @@ pub async fn open_native_tunnel(
     let mut cmd = tokio::process::Command::new("ssh");
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000);
+    #[cfg(unix)]
+    inject_gui_toolchain_path(&mut cmd);
 
     cmd.args(&[
         "-i", active_key_path.to_str().unwrap(),
