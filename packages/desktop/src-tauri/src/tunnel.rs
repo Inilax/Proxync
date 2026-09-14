@@ -697,7 +697,7 @@ pub async fn open_native_tunnel(
             let trimmed = username.trim();
             if !trimmed.is_empty() {
                 let key_str = active_key_path.to_str().unwrap_or("").to_string();
-                let user_arg = format!("{}:(F)", trimmed);
+                let user_arg = format!("{}:(R)", trimmed);
                 let _ = tokio::task::spawn_blocking(move || {
                     std::process::Command::new("icacls")
                         .args(&[key_str.as_str(), "/inheritance:r", "/grant:r", user_arg.as_str()])
