@@ -4,7 +4,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [fix/develop-gui-environment-path] - 2026-09-14 (Packaged App GUI Environment PATH Injection for Cloudflare & Subprocess Tunnels)
 - **Feature Summary**:
-  - **Packaged App Desktop Environment PATH Resolution**: Fixed a critical failure where Cloudflare tunnels (`open_cloudflare_tunnel`), Localtunnels (`open_localtunnel`), and Native SSH tunnels (`open_native_tunnel`) fail to spawn (`os error 2: No such file or directory`) when running inside packaged Linux and macOS desktop builds (`.deb`, `.rpm`, AppImage, `.dmg`, `.app`).
+  - **Packaged App Desktop Environment PATH Resolution**: Fixed a critical failure where Cloudflare tunnels (`open_cloudflare_tunnel`) and Native SSH tunnels (`open_native_tunnel`) fail to spawn (`os error 2: No such file or directory`) when running inside packaged Linux and macOS desktop builds (`.deb`, `.rpm`, AppImage, `.dmg`, `.app`).
   - **Non-Login Desktop Session Root Cause**: Desktop display managers (GNOME, KDE Plasma, Wayland, systemd user sessions, macOS Finder/LaunchServices) spawn applications without sourcing interactive shell startup files (`~/.bashrc`, `~/.zshrc`), leaving GUI processes with only minimal default system paths (`/usr/bin:/bin`).
   - **Comprehensive Toolchain Coverage**: Added `gui_toolchain_path()` helper that dynamically injects user-space Node version managers and toolchain directories into the child subprocess environment before spawning:
     - User local binaries: `$HOME/.local/bin`

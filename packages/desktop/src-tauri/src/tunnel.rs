@@ -393,7 +393,6 @@ pub async fn open_localtunnel(
     {
         use std::os::unix::process::CommandExt;
         cmd.as_std_mut().process_group(0);
-        inject_gui_toolchain_path(&mut cmd);
     }
 
     cmd.args(&["-y", "localtunnel@2.0.2", "--port", &local_port.to_string(), "--local-host", "127.0.0.1"]);
