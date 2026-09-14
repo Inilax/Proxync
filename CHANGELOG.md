@@ -2,6 +2,21 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/develop-symlink-recursion] - 2026-09-14 (Symlink Infinite Recursion & Stack Overflow Defense in scan_directory #159)
+- **Feature Summary**:
+  - **Canonical Path Cycle Detection (#159)**: Solved infinite recursion and fatal `SIGSEGV`/stack overflow crashes caused by self-referential or circular symlinks (`link -> .`, `.venv/lib64 -> lib`, `pnpm` monorepos) during project route scanning. Traversal tracks resolved physical paths via a thread-safe `HashSet<PathBuf>` seeded with the canonicalized root directory.
+  - **Hard Recursion Depth Ceiling (`MAX_SCAN_DEPTH = 16`)**: Enforced a root-relative depth ceiling terminating recursion at depth 16, providing an unbreakable stack guardrail against deep hierarchies.
+  - **Preserved Legitimate Symlinks & Single-File Route Links**: Unlike naive blanket symlink skipping, route scanning continues to transparently inspect legitimate cross-package symlinked directories and symlinked single source files (e.g. `routes.ts -> ../shared/routes.ts`).
+  - **Path Slicing & UTF-8 Panic Hardening**: Replaced fragile `[root_len..]` manual byte-slicing with `Path::strip_prefix` and `to_string_lossy`, eliminating out-of-bounds panics on non-UTF-8 filesystem entries.
+  - **Graceful Error Recovery**: Wrapped directory read and entry lookups in resilient `match` guards so permission-denied directories or broken symlinks are skipped cleanly without aborting the entire workspace scan.
+  - **Expanded Ignore List**: Expanded skip filter to automatically bypass `.venv`, `venv`, `env`, `.next`, `.nuxt`, `.turbo`, `dist`, `out`, `.idea`, and `.vscode` alongside `node_modules` and `.git`.
+  - **Automated Test Suite**: Added 4 unit and integration tests in `storage.rs` validating circular symlink termination, valid symlinked directory discovery, symlinked single-file route discovery, and depth 16 truncation limits using isolated `tempfile` fixtures.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `CHANGELOG.md`
+
 ## [fix/develop-tauri-plugin-dialog] - 2026-09-12 (Universal Native File Dialogs via tauri-plugin-dialog #164)
 - **Feature Summary**:
   - **Universal Linux & Cross-Platform Support (#164)**: Replaced platform-specific external shell executions (`/usr/bin/zenity` on Linux, `powershell.exe` on Windows, `osascript` on macOS) with Tauri v2 official `tauri-plugin-dialog` plugin.
