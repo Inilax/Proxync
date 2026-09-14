@@ -12,9 +12,6 @@ export function getTunnelProviderLabel(tunnel: Tunnel | null): string {
   if (lower.includes('trycloudflare.com') || lower.includes('cloudflare')) {
     return 'Cloudflare Tunnel';
   }
-  if (lower.includes('localtunnel.me') || lower.includes('localtunnel')) {
-    return 'Localtunnel';
-  }
   if (lower.includes('proxync') || tunnel.subdomain?.startsWith('px-')) {
     return 'Proxync Tunnel';
   }

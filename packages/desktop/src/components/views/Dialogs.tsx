@@ -167,15 +167,13 @@ export function DomainSelectDialog({
   process: ProcessCandidate;
   domains: any[];
   onClose: () => void;
-  onConfirm: (customDomainOrOption: string, ltSubdomain?: string) => void;
+  onConfirm: (customDomainOrOption: string) => void;
 }) {
   useEscape(onClose);
   const [selectedDomain, setSelectedDomain] = useState<string>('proxync_native');
-  const [customSubdomain, setCustomSubdomain] = useState<string>('');
   const [latencies, setLatencies] = useState<Record<string, number>>({
     default: Infinity,
     cloudflare: Infinity,
-    localtunnel: Infinity,
     proxync_native: Infinity,
   });
 
@@ -201,14 +199,12 @@ export function DomainSelectDialog({
       const endpoints = {
         default: `${apiBase.replace(/\/$/, '')}/health`,
         cloudflare: 'https://1.1.1.1/cdn-cgi/trace',
-        localtunnel: 'https://loca.lt',
         proxync_native: 'http://proxync.dev',
       };
 
       const results = await Promise.all([
         ping(endpoints.default),
         ping(endpoints.cloudflare),
-        ping(endpoints.localtunnel),
         ping(endpoints.proxync_native),
       ]);
 
@@ -216,8 +212,7 @@ export function DomainSelectDialog({
         setLatencies({
           default: results[0],
           cloudflare: results[1],
-          localtunnel: results[2],
-          proxync_native: results[3],
+          proxync_native: results[2],
         });
       }
     };
@@ -250,13 +245,6 @@ export function DomainSelectDialog({
         </span>
       );
     }
-    if (selectedDomain === 'localtunnel') {
-      return (
-        <span className="domain-desc accent">
-          🌐 <strong>Localtunnel:</strong> Generates a real, secure public HTTPS URL (e.g., <code>https://*.loca.lt</code>) instantly. Accessible from any phone or computer on the internet.
-        </span>
-      );
-    }
     return (
       <span className="domain-desc blue">
         🏷️ <strong>Custom Domain:</strong> Routes traffic through your verified custom domain <code>{selectedDomain}</code>. Note: requires pointing your domain to the active relay.
@@ -286,13 +274,6 @@ export function DomainSelectDialog({
       icon: '☁️',
       latency: latencies.cloudflare,
     },
-    {
-      id: 'localtunnel',
-      title: 'Localtunnel',
-      desc: 'Free public HTTPS URL via localtunnel.me proxy',
-      icon: '🌐',
-      latency: latencies.localtunnel,
-    },
     ...domains.map((d) => ({
       id: d.name,
       title: `Custom Domain (${d.name})`,
@@ -317,7 +298,7 @@ export function DomainSelectDialog({
           {!navigator.onLine && (
             <div style={{ padding: '8px 12px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', fontSize: '11px', color: '#f87171', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>wifi_off</span>
-              <span><strong>You are offline:</strong> Cloud tunnels (Cloudflare / Localtunnel) require internet connection.</span>
+              <span><strong>You are offline:</strong> Cloud tunnels (Proxync Tunnel / Cloudflare) require internet connection.</span>
             </div>
           )}
           <label className="field-label">Sharing Target</label>
@@ -352,8 +333,8 @@ export function DomainSelectDialog({
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '12px' }}>
-                    <span style={{ fontSize: '10px', color: (opt.id === 'cloudflare' || opt.id === 'localtunnel') && opt.latency === Infinity ? '#f87171' : isSelected ? 'var(--color-primary)' : 'var(--color-on-surface-variant)' }}>
-                      {hasMeasured ? `${Math.round(opt.latency)} ms` : (opt.id === 'cloudflare' || opt.id === 'localtunnel') ? 'Offline' : 'pinging...'}
+                    <span style={{ fontSize: '10px', color: opt.id === 'cloudflare' && opt.latency === Infinity ? '#f87171' : isSelected ? 'var(--color-primary)' : 'var(--color-on-surface-variant)' }}>
+                      {hasMeasured ? `${Math.round(opt.latency)} ms` : opt.id === 'cloudflare' ? 'Offline' : 'pinging...'}
                     </span>
                     <SignalBars latency={opt.latency} />
                   </div>
@@ -361,19 +342,6 @@ export function DomainSelectDialog({
               );
             })}
           </div>
-
-          {selectedDomain === 'localtunnel' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
-              <label className="field-label">Localtunnel Subdomain (Optional)</label>
-              <input
-                className="form-input"
-                type="text"
-                placeholder="e.g. demo-port-3000"
-                value={customSubdomain}
-                onChange={(e) => setCustomSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-              />
-            </div>
-          )}
 
           <div className="domain-desc-box">
             {getDescription()}
@@ -384,7 +352,7 @@ export function DomainSelectDialog({
           <button className="btn-ghost" onClick={onClose}>Cancel</button>
           <button
             className="btn-primary"
-            onClick={() => onConfirm(selectedDomain, selectedDomain === 'localtunnel' ? (customSubdomain || undefined) : undefined)}
+            onClick={() => onConfirm(selectedDomain)}
           >
             Go Live
           </button>

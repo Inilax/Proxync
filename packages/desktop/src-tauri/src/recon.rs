@@ -581,6 +581,8 @@ fn detect_framework(cmd_line: &str) -> Option<String> {
         Some("Django App".to_string())
     } else if lower.contains("flask") {
         Some("Flask App".to_string())
+    } else if lower.contains("http.server") {
+        Some("Python HTTP Server".to_string())
     } else if lower.contains("spring-boot") || lower.contains("springframework") {
         Some("Spring Boot App".to_string())
     } else if lower.contains("express") || lower.contains("server.js") || lower.contains("app.js") || lower.contains("index.js") {

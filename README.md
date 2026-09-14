@@ -33,7 +33,7 @@ We got tired of switching between five tabs and apps just to test a single webho
 
 ### What you get
 
-- **Native High-Speed Proxync Tunneling** — Ultra-low latency, zero-setup proprietary tunneling infrastructure built for high throughput and instantaneous connections alongside Cloudflare Tunnels and Localtunnel.
+- **Native High-Speed Proxync Tunneling** — Ultra-low latency, zero-setup proprietary tunneling infrastructure built for high throughput and instantaneous connections alongside Cloudflare Quick Tunnels.
 - **Resilient Standby Mode** — Server restarts (`Ctrl+C` or hot-reload) won't kill your tunnel. Proxync preserves your public URL in standby and automatically recovers the moment your local dev server boots back up.
 - **Live Traffic Inspector & Intercepting TCP Proxy** — Real-time request and response logging with full header inspection, body formatting (JSON/XML/form-data), timing breakdown, and status codes.
 - **Auto-Generated OpenAPI / Swagger Docs** — Analyzes your live incoming and outgoing HTTP traffic to build OpenAPI 3.0 specifications on the fly — no manual YAML writing required.

@@ -1,8 +1,21 @@
 // ponytail: functional closure logger; minimal RAM overhead with bounded ring buffers
 import { invoke } from '@tauri-apps/api/core';
-import { AppLogEntry, RequestLog, LogsSummary, AppSettings, WorkspaceConfig } from './types';
+import { AppLogEntry, RequestLog, LogsSummary, AppSettings, WorkspaceConfig, SystemInfo } from './types';
 
-export type { LogsSummary, AppLogEntry };
+export type { LogsSummary, AppLogEntry, SystemInfo };
+
+let _cachedSystemInfo: SystemInfo | null = null;
+
+export async function getSystemInfo(): Promise<SystemInfo | null> {
+  if (_cachedSystemInfo) return _cachedSystemInfo;
+  try {
+    _cachedSystemInfo = await invoke<SystemInfo>('get_system_info');
+    return _cachedSystemInfo;
+  } catch (err) {
+    console.warn('[Logger] Failed to query native system info:', err);
+    return null;
+  }
+}
 
 let _seq = 0;
 const nextLogId = () => ++_seq;
@@ -72,31 +85,7 @@ export async function setAppLogging(enabled: boolean, envMeta?: Record<string, a
 
   if (enabled && !wasEnabled) {
     _sessionStartTime = Date.now();
-    const appVersion = envMeta?.appVersion || 'v0.2.2-stable';
-    const platform = envMeta?.platform || (typeof navigator !== 'undefined' ? navigator.platform : 'desktop');
-    const theme = envMeta?.theme || 'slate';
-
-    const header = [
-      '══════════════════════════════════════════════════════════════════════════════',
-      'PROXYNC PRO DEBUGGER LOG — APPLICATION ENGINE DIAGNOSTICS',
-      '── AI AGENT & DEVELOPER DIAGNOSTIC DIRECTIVE ──',
-      '  Schema:   [<ISO8601_TIMESTAMP>] [<LEVEL>] [<SUBSYSTEM>] <Message> [| <ContextKey>=<ContextVal>]',
-      '  Levels:   DEBUG (trace/internal), INFO (lifecycle/actions), WARN (degraded/retry), ERROR (failure)',
-      '  Subsystems: SYSTEM (app lifecycle), RECON (port scans), TUNNEL (tunnels & subprocesses),',
-      '              PROXY (HTTP proxy engine), HTTP (traffic events), SCANNER (OpenAPI/codebase), UPDATER (updater)',
-      '  Errors:   Formatted with error="<Reason>" | target="<PortOrURL>" | hint="<ActionableFix>"',
-      '  Privacy:  All authorization tokens and sensitive cookies are automatically replaced with [REDACTED].',
-      `Session Started: ${now} | App Version: ${appVersion} | Platform: ${platform} | Theme: ${theme}`,
-      '══════════════════════════════════════════════════════════════════════════════',
-    ].join('\n');
-
-    try {
-      await invoke('append_log_entry', { category: 'app', line: header });
-    } catch {
-      // Non-blocking in dev / test mode
-    }
-
-    logApp('SYSTEM', 'INFO', `═══ Application Diagnostics Logging Enabled [${now}] (Version: ${appVersion}) ═══`);
+    await logAppLaunch(envMeta);
   } else if (!enabled && wasEnabled) {
     const durationMs = _sessionStartTime ? Date.now() - _sessionStartTime : 0;
     const durationSec = Math.round(durationMs / 1000);
@@ -116,6 +105,111 @@ export async function setAppLogging(enabled: boolean, envMeta?: Record<string, a
       // Non-blocking
     }
   }
+}
+
+let _hasLoggedAppLaunch = false;
+
+export async function logAppLaunch(envMeta?: Record<string, any>): Promise<void> {
+  if (_hasLoggedAppLaunch) return;
+  _hasLoggedAppLaunch = true;
+
+  const sysInfo = await getSystemInfo();
+  const now = new Date().toISOString();
+  const appVersion = envMeta?.appVersion || 'v0.2.2-stable';
+  const theme = envMeta?.theme || 'slate';
+  const telemetry = envMeta?.telemetry || 'enhanced';
+  const autoUpdate = envMeta?.autoUpdate ?? true;
+
+  const sessionCard = [
+    '┌──────────────────────────────────────────────────────────────────────────────┐',
+    '│ ▶ APPLICATION STUDIO SESSION INITIALIZED                                     │',
+    '├──────────────────────────────────────────────────────────────────────────────┤',
+    `│  Session ID:    ${now}`,
+    `│  Host Target:   ${sysInfo?.distro || 'Desktop'} (${sysInfo?.arch || 'x86_64'}) | PID=${sysInfo?.pid || 'N/A'}`,
+    `│  Engine Core:   WebView ${sysInfo?.webview_version || 'standard'}`,
+    `│  Studio UI:     v${appVersion} | Theme=${theme} | Telemetry=${telemetry} | AutoUpdate=${autoUpdate ? 'ON' : 'OFF'}`,
+    `│  Network:       ${typeof navigator !== 'undefined' && navigator.onLine ? 'ONLINE' : 'OFFLINE'}`,
+    `│  Directives:    Schema: [<ISO8601>] [<LEVEL>] [<SUBSYSTEM>] <Message>`,
+    '└──────────────────────────────────────────────────────────────────────────────┘',
+  ].join('\n');
+
+  if (_appLogEnabled) {
+    try {
+      await invoke('append_log_entry', { category: 'app', line: sessionCard });
+    } catch {
+      // Non-blocking in dev / test mode
+    }
+  }
+
+  logApp(
+    'SYSTEM',
+    'INFO',
+    `Proxync studio session started (v${appVersion}, Theme: ${theme}, Telemetry: ${telemetry}, Host: ${sysInfo?.distro || 'Desktop'})`
+  );
+}
+
+export interface TunnelSessionParams {
+  provider: 'Cloudflare Tunnel' | 'Proxync Native SSH' | 'Custom Domain' | string;
+  localPort: number;
+  proxyPort?: number;
+  tunnelId?: string;
+  subdomain?: string;
+  publicUrl?: string;
+  workspaceName?: string;
+  workspaceId?: string;
+  processName?: string;
+}
+
+export function logTunnelSessionStart(params: TunnelSessionParams): void {
+  const now = new Date().toISOString();
+  const sysDisplay = _cachedSystemInfo?.formatted || (typeof navigator !== 'undefined' ? navigator.platform : 'desktop');
+  const routeStr = params.proxyPort
+    ? `127.0.0.1:${params.proxyPort} ➔ :${params.localPort}`
+    : `:${params.localPort}`;
+
+  const banner = [
+    '┌──────────────────────────────────────────────────────────────────────────────┐',
+    '│ ▲ TUNNEL SESSION STARTED                                                     │',
+    '├──────────────────────────────────────────────────────────────────────────────┤',
+    `│  Timestamp:    ${now}`,
+    `│  Provider:     ${params.provider}`,
+    `│  Local Route:  ${routeStr}${params.processName ? ` (${params.processName})` : ''}`,
+    params.tunnelId ? `│  Tunnel ID:    ${params.tunnelId}` : null,
+    params.subdomain ? `│  Subdomain:    ${params.subdomain}` : null,
+    params.workspaceName ? `│  Workspace:    ${params.workspaceName}${params.workspaceId ? ` (${params.workspaceId})` : ''}` : null,
+    `│  Environment:  ${sysDisplay}`,
+    '└──────────────────────────────────────────────────────────────────────────────┘',
+  ].filter(Boolean).join('\n');
+
+  if (_appLogEnabled) {
+    invoke('append_log_entry', { category: 'app', line: banner }).catch(() => {});
+  }
+
+  logApp(
+    'TUNNEL',
+    'INFO',
+    `Started ${params.provider} tunnel session for port :${params.localPort}${params.subdomain ? ` (${params.subdomain})` : ''}`
+  );
+}
+
+export function logTunnelSessionStop(params: {
+  provider?: string;
+  localPort?: number;
+  tunnelId?: string;
+  reason?: string;
+  durationSec?: number;
+}): void {
+  const now = new Date().toISOString();
+  const durationStr = params.durationSec !== undefined ? ` (Active Duration: ${Math.floor(params.durationSec / 60)}m ${params.durationSec % 60}s)` : '';
+  const portStr = params.localPort ? ` on port :${params.localPort}` : '';
+  const idStr = params.tunnelId ? ` [${params.tunnelId}]` : '';
+  const reasonStr = params.reason ? ` — ${params.reason}` : '';
+
+  logApp(
+    'TUNNEL',
+    'INFO',
+    `■ Closed ${params.provider || 'tunnel'}${idStr}${portStr}${durationStr}${reasonStr} [${now}]`
+  );
 }
 
 export async function setTrafficLogging(enabled: boolean, envMeta?: Record<string, any>): Promise<void> {
@@ -324,6 +418,15 @@ export async function clearLogs(): Promise<void> {
   _trafficLogs = [];
   try {
     await invoke('clear_log_files');
+    const now = new Date().toISOString();
+    _appLogs.push({
+      seq: nextLogId(),
+      timestamp: now,
+      level: 'INFO',
+      source: 'SYSTEM',
+      message: 'Log history cleared by user request',
+      details: 'previousLogsPurged=true',
+    });
   } catch (err) {
     console.error('Failed to clear log files:', err);
   }
@@ -349,12 +452,21 @@ export interface SupportBundleContext {
 export async function exportSupportBundle(ctx: SupportBundleContext): Promise<{ success: boolean; path?: string; cancelled?: boolean }> {
   const generatedAt = new Date().toISOString();
   const appVersion = ctx.appVersion || 'v0.2.2-stable';
+  const sysInfo = await getSystemInfo();
 
   const bundle = {
     bundleSchema: '1.0.0',
     generatedAt,
     systemInfo: {
       appVersion,
+      osName: sysInfo?.os_name || (typeof navigator !== 'undefined' ? navigator.platform : 'Unknown'),
+      osVersion: sysInfo?.os_version || 'Unknown',
+      distro: sysInfo?.distro || 'Unknown',
+      arch: sysInfo?.arch || 'Unknown',
+      bitness: sysInfo?.bitness || 'Unknown',
+      formattedOS: sysInfo?.formatted || (typeof navigator !== 'undefined' ? navigator.platform : 'Unknown'),
+      webviewVersion: sysInfo?.webview_version || 'Unknown',
+      pid: sysInfo?.pid || 0,
       userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown',
       platform: typeof navigator !== 'undefined' ? navigator.platform : 'Unknown',
       language: typeof navigator !== 'undefined' ? navigator.language : 'Unknown',

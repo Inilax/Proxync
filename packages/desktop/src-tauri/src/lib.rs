@@ -5,17 +5,20 @@ mod http;
 mod tunnel;
 
 use recon::{scan_ports, scan_processes, resolve_process_directory, probe_port};
-use tunnel::{open_tunnel, close_tunnel, close_all_tunnels, open_localtunnel, open_cloudflare_tunnel, open_native_tunnel};
+use tunnel::{open_tunnel, close_tunnel, close_all_tunnels, open_cloudflare_tunnel, open_native_tunnel};
 use proxy::start_proxy;
 use storage::{
     scan_directory, read_file_content, get_local_ip, save_app_state, load_app_state,
     append_log_entry, clear_log_files, open_logs_folder, read_logs_summary, open_file_in_editor,
-    save_support_bundle_dialog
+    save_support_bundle_dialog, get_system_info
 };
 use http::execute_http_request;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    storage::install_panic_hook();
+    storage::init_app_log_header();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::AppleScript, Some(vec!["--autostart"])))
@@ -30,7 +33,6 @@ pub fn run() {
             open_tunnel, 
             close_tunnel,
             close_all_tunnels,
-            open_localtunnel,
             open_cloudflare_tunnel,
             open_native_tunnel,
             scan_directory,
@@ -45,7 +47,8 @@ pub fn run() {
             clear_log_files,
             open_logs_folder,
             read_logs_summary,
-            save_support_bundle_dialog
+            save_support_bundle_dialog,
+            get_system_info
         ])
         .on_window_event(|_window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
