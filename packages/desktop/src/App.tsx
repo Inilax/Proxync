@@ -66,6 +66,9 @@ import {
   logError,
   logTraffic,
   clearLogs,
+  logAppLaunch,
+  logTunnelSessionStart,
+  logTunnelSessionStop,
 } from './lib/logger';
 
 /* ══════════════════════════════════════════════
@@ -500,6 +503,8 @@ export default function App() {
   }, [workbenchTabs]);
 
   const [discovering, setDiscovering] = useState(false);
+  // Concurrency guard ref to prevent overlapping background process scans
+  const discoveringRef = useRef(false);
   const [sharingPort, setSharingPort] = useState<number | null>(null);
   const [spawningPorts, setSpawningPorts] = useState<number[]>([]);
 
@@ -525,6 +530,7 @@ export default function App() {
   const [busyDomainId, setBusyDomainId] = useState<string | null>(null);
   const [sharingProcessCandidate, setSharingProcessCandidate] = useState<ProcessCandidate | null>(null);
   const [localIp, setLocalIp] = useState<string>('127.0.0.1');
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
 
   /* ── Derived state ── */
   const searchedWorkspaces = useMemo(() => {
@@ -874,28 +880,121 @@ export default function App() {
     );
   }
 
-  useEffect(() => {
-    let mounted = true;
-    let updaterInterval: ReturnType<typeof setInterval> | null = null;
+  const runUpdateCheck = useCallback(
+    async (isStartupCheck = false, isManual = false) => {
+      if (isManual) {
+        setCheckingUpdates(true);
+        showToast('🔍 Checking for Proxync updates...', 'info');
+      }
 
-    async function runUpdateCheck(isStartupCheck = false) {
       try {
         const update = await check();
-        if (!mounted || !update) return;
+        if (isManual) setCheckingUpdates(false);
+
+        if (!update) {
+          if (isManual) {
+            showToast('✅ Proxync is up to date (v0.2.2)', 'success');
+          }
+          return;
+        }
 
         const isCVE = isCriticalSecurityUpdate(update);
         const forced = isCVE || isForceUpdate(update.currentVersion, update.version);
 
-        // Standard Feature Release: Respect autoUpdate preference on startup if not forced/CVE
-        if (!forced && !appSettings.autoUpdate && isStartupCheck) {
+        // Standard Feature Release: Respect autoUpdate preference on startup if not forced/CVE and not manual
+        if (!forced && !appSettings.autoUpdate && isStartupCheck && !isManual) {
           return;
         }
 
-        // Skip logic only applies to non-forced (patch-only) updates
-        if (!forced) {
+        // Skip logic only applies to non-forced (patch-only) updates, unless user initiated manually
+        if (!forced && !isManual) {
           const skipped = localStorage.getItem(SKIP_UPDATE_KEY);
           if (skipped === update.version) return;
         }
+
+        const triggerAutomatedRestart = (version: string) => {
+          let timer: ReturnType<typeof setTimeout> | null = null;
+          let restarted = false;
+
+          const executeRestart = async () => {
+            if (restarted) return;
+            restarted = true;
+            if (timer) clearTimeout(timer);
+            try {
+              await relaunch();
+            } catch (relaunchErr) {
+              restarted = false;
+              console.error('[AutoUpdater] Relaunch failed:', relaunchErr);
+              showToast(
+                `Restart failed: ${relaunchErr instanceof Error ? relaunchErr.message : String(relaunchErr)}. Please restart Proxync manually.`,
+                'error'
+              );
+            }
+          };
+
+          showToast(
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ fontWeight: 600 }}>✅ Update v{version} installed!</div>
+              <div style={{ fontSize: '0.82em', opacity: 0.9 }}>
+                Restarting Proxync in 2 seconds to apply update...
+              </div>
+              <button
+                style={{
+                  alignSelf: 'flex-start',
+                  padding: '5px 12px',
+                  cursor: 'pointer',
+                  background: '#10b981',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '5px',
+                  fontWeight: 600,
+                }}
+                onClick={executeRestart}
+              >
+                Restart Now
+              </button>
+            </div>,
+            'success',
+            true
+          );
+
+          timer = setTimeout(executeRestart, 2000);
+        };
+
+        const executeDownloadAndInstall = async (btn: HTMLButtonElement, toastId: string) => {
+          btn.disabled = true;
+          btn.innerText = 'Downloading...';
+
+          let downloaded = 0;
+          let contentLength = 0;
+          try {
+            await update.downloadAndInstall((event: any) => {
+              switch (event.event) {
+                case 'Started':
+                  contentLength = event.data.contentLength || 0;
+                  break;
+                case 'Progress':
+                  downloaded += event.data.chunkLength;
+                  if (contentLength) {
+                    const pct = Math.round((downloaded / contentLength) * 100);
+                    btn.innerText = `Downloading... ${pct}%`;
+                  }
+                  break;
+                case 'Finished':
+                  btn.innerText = 'Installing...';
+                  break;
+              }
+            });
+
+            dismissToast(toastId);
+            triggerAutomatedRestart(update.version);
+          } catch (downloadErr) {
+            btn.disabled = false;
+            btn.innerText = 'Retry Update';
+            console.error('[AutoUpdater] Download/Install failed:', downloadErr);
+            showToast(`Download failed: ${downloadErr instanceof Error ? downloadErr.message : String(downloadErr)}`, 'error');
+          }
+        };
 
         if (forced) {
           // ── FORCE UPDATE TOAST ── No Skip, No Later ────────────────
@@ -913,47 +1012,7 @@ export default function App() {
                 <button
                   id={`updater-force-btn-${update.version}`}
                   style={{ padding: '5px 14px', cursor: 'pointer', background: '#ef4444', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 700 }}
-                  onClick={async (e) => {
-                    const btn = e.currentTarget as HTMLButtonElement;
-                    btn.disabled = true;
-                    btn.innerText = 'Downloading...';
-
-                    let downloaded = 0;
-                    let contentLength = 0;
-                    await update.downloadAndInstall((event: any) => {
-                      switch (event.event) {
-                        case 'Started':
-                          contentLength = event.data.contentLength || 0;
-                          break;
-                        case 'Progress':
-                          downloaded += event.data.chunkLength;
-                          if (contentLength) {
-                            const pct = Math.round((downloaded / contentLength) * 100);
-                            btn.innerText = `Downloading... ${pct}%`;
-                          }
-                          break;
-                        case 'Finished':
-                          btn.innerText = 'Done!';
-                          break;
-                      }
-                    });
-
-                    dismissToast(forceToastId);
-                    showToast(
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        <div style={{ fontWeight: 600 }}>✅ Update v{update.version} ready</div>
-                        <div style={{ fontSize: '0.82em', opacity: 0.8 }}>Restart Proxync to apply the update.</div>
-                        <button
-                          style={{ padding: '5px 10px', cursor: 'pointer', background: '#10b981', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 600 }}
-                          onClick={() => relaunch()}
-                        >
-                          Restart Now
-                        </button>
-                      </div>,
-                      'success',
-                      true
-                    );
-                  }}
+                  onClick={(e) => executeDownloadAndInstall(e.currentTarget as HTMLButtonElement, forceToastId)}
                 >
                   Update Now
                 </button>
@@ -972,56 +1031,7 @@ export default function App() {
                 <button
                   id={`updater-btn-${update.version}`}
                   style={{ padding: '5px 10px', cursor: 'pointer', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 600 }}
-                  onClick={async (e) => {
-                    const btn = e.currentTarget as HTMLButtonElement;
-                    btn.disabled = true;
-                    btn.innerText = 'Starting...';
-
-                    let downloaded = 0;
-                    let contentLength = 0;
-                    await update.downloadAndInstall((event: any) => {
-                      switch (event.event) {
-                        case 'Started':
-                          contentLength = event.data.contentLength || 0;
-                          btn.innerText = 'Downloading...';
-                          break;
-                        case 'Progress':
-                          downloaded += event.data.chunkLength;
-                          if (contentLength) {
-                            const pct = Math.round((downloaded / contentLength) * 100);
-                            btn.innerText = `Downloading... ${pct}%`;
-                          }
-                          break;
-                        case 'Finished':
-                          btn.innerText = 'Done!';
-                          break;
-                      }
-                    });
-
-                    dismissToast(toastId);
-                    const restartId = showToast(
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        <div style={{ fontWeight: 600 }}>✅ Update v{update.version} ready</div>
-                        <div style={{ fontSize: '0.82em', opacity: 0.8 }}>Restart Proxync to apply the update.</div>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button
-                            style={{ padding: '5px 10px', cursor: 'pointer', background: '#10b981', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 600 }}
-                            onClick={() => relaunch()}
-                          >
-                            Restart Now
-                          </button>
-                          <button
-                            style={{ padding: '5px 10px', cursor: 'pointer', background: 'transparent', color: 'inherit', border: '1px solid currentColor', borderRadius: '5px' }}
-                            onClick={() => dismissToast(restartId)}
-                          >
-                            Later
-                          </button>
-                        </div>
-                      </div>,
-                      'success',
-                      true
-                    );
-                  }}
+                  onClick={(e) => executeDownloadAndInstall(e.currentTarget as HTMLButtonElement, toastId)}
                 >
                   Update Now
                 </button>
@@ -1047,17 +1057,32 @@ export default function App() {
           );
         }
       } catch (err) {
+        if (isManual) setCheckingUpdates(false);
         console.error('[AutoUpdater] Failed to check for updates:', err);
+        if (isManual) {
+          const msg = err instanceof Error ? err.message : String(err);
+          // If the remote lacks a valid release JSON or returns a 404, we assume there is no newer release available yet.
+          if (msg.includes('404') || msg.toLowerCase().includes('could not fetch a valid release')) {
+            showToast('✅ Proxync is up to date', 'success');
+          } else {
+            showToast(`Update check failed: ${msg}`, 'error');
+          }
+        }
       }
-    }
+    },
+    [appSettings.autoUpdate]
+  );
 
-    // ── Schedule update checks based on autoUpdate setting ────────
+  useEffect(() => {
+    let mounted = true;
+    let updaterInterval: ReturnType<typeof setInterval> | null = null;
+
     // Startup pre-flight check runs unconditionally for CVE security radar
-    void runUpdateCheck(true);
+    void runUpdateCheck(true, false);
 
     if (appSettings.autoUpdate) {
       // Auto-update ON: check periodically every 2 hours
-      updaterInterval = setInterval(() => { void runUpdateCheck(false); }, 2 * 60 * 60 * 1000);
+      updaterInterval = setInterval(() => { void runUpdateCheck(false, false); }, 2 * 60 * 60 * 1000);
     } else {
       // Auto-update OFF: check every 7 days as background fallback
       const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
@@ -1065,11 +1090,11 @@ export default function App() {
       const now = Date.now();
       if (now - lastCheck >= sevenDaysMs) {
         localStorage.setItem(LAST_UPDATE_CHECK_KEY, String(now));
-        void runUpdateCheck(false);
+        void runUpdateCheck(false, false);
       }
       updaterInterval = setInterval(() => {
         localStorage.setItem(LAST_UPDATE_CHECK_KEY, String(Date.now()));
-        void runUpdateCheck(false);
+        void runUpdateCheck(false, false);
       }, sevenDaysMs);
     }
 
@@ -1117,16 +1142,17 @@ export default function App() {
       appLogging: appSettings.appLogging ?? true,
       trafficLogging: appSettings.trafficLogging ?? false,
     });
-    logApp(
-      'SYSTEM',
-      'INFO',
-      `Proxync studio initialized (Theme: ${appSettings.theme || 'slate'}, Telemetry: ${appSettings.telemetry || 'enhanced'}, AppLogging: ${appSettings.appLogging ?? true ? 'ON' : 'OFF'}, TrafficLogging: ${appSettings.trafficLogging ?? false ? 'ON' : 'OFF'})`
-    );
+    void logAppLaunch({
+      appVersion: 'v0.2.2',
+      theme: appSettings.theme || 'slate',
+      telemetry: appSettings.telemetry || 'enhanced',
+      autoUpdate: appSettings.autoUpdate ?? true,
+    });
 
     if (!navigator.onLine) {
       logApp('SYSTEM', 'WARN', 'Application started while offline');
       showToast(
-        '⚠️ You are currently offline. Cloud tunnels (Cloudflare & Localtunnel) require internet connection. Local network sharing is active.',
+        '⚠️ You are currently offline. Cloud tunnels (Proxync Tunnel & Cloudflare) require internet connection. Local network sharing is active.',
         'warning'
       );
     }
@@ -1142,7 +1168,7 @@ export default function App() {
     const handleOnline = () => {
       logApp('SYSTEM', 'INFO', 'Network connection restored — online');
       showToast(
-        '🌐 Network connected: Back online! Cloud tunnels (Cloudflare & Localtunnel) are ready.',
+        '🌐 Network connected: Back online! Cloud tunnels (Proxync Tunnel & Cloudflare) are ready.',
         'success'
       );
     };
@@ -1531,6 +1557,9 @@ export default function App() {
   /* ── Action handlers ── */
 
   async function discoverProcesses(bypassCache: boolean = false, silent: boolean = false) {
+    // Prevent overlapping discovery scans while in-flight
+    if (discoveringRef.current) return;
+    discoveringRef.current = true;
     setDiscovering(true);
     try {
       const discovered = await readNativeProcesses(bypassCache);
@@ -1557,7 +1586,10 @@ export default function App() {
       if (!silent) {
         showToast(error instanceof Error ? error.message : 'Process discovery failed', 'error');
       }
-    } finally { setDiscovering(false); }
+    } finally {
+      discoveringRef.current = false;
+      setDiscovering(false);
+    }
   }
 
   // ponytail: Reused createWorkspace helper accepting optional explicit name
@@ -1848,7 +1880,6 @@ export default function App() {
     const token = getToken();
 
     try {
-      logApp('TUNNEL', 'INFO', `Initiating Cloudflare Tunnel for port :${process.port}...`);
       localStorage.setItem('proxync_workspace', targetWorkspaceId);
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
       const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
@@ -1857,6 +1888,14 @@ export default function App() {
         invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined),
         invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port),
       ]);
+      logTunnelSessionStart({
+        provider: 'Cloudflare Tunnel',
+        localPort: process.port,
+        proxyPort,
+        processName: process.name,
+        workspaceName: activeWorkspace.name,
+        workspaceId: targetWorkspaceId,
+      });
       logApp('PROXY', 'INFO', `Bound ephemeral proxy to 127.0.0.1:${proxyPort} -> :${process.port}`);
       showToast('Starting Cloudflare Tunnel service...', 'info');
       const cfTunnelUrl = await invoke<string>('open_cloudflare_tunnel', { tunnelId: tunnel.id, localPort: proxyPort });
@@ -1922,7 +1961,6 @@ export default function App() {
     const token = getToken();
 
     try {
-      logApp('TUNNEL', 'INFO', `Initiating Proxync Native SSH Tunnel for port :${process.port}...`);
       localStorage.setItem('proxync_workspace', targetWorkspaceId);
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
       const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
@@ -1931,6 +1969,14 @@ export default function App() {
         invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined),
         invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port),
       ]);
+      logTunnelSessionStart({
+        provider: 'Proxync Native SSH',
+        localPort: process.port,
+        proxyPort,
+        processName: process.name,
+        workspaceName: activeWorkspace.name,
+        workspaceId: targetWorkspaceId,
+      });
       logApp('PROXY', 'INFO', `Bound ephemeral proxy to 127.0.0.1:${proxyPort} -> :${process.port}`);
       const suggestedSub = generateRandomSubdomain('px');
       showToast('Starting Proxync Native SSH tunnel...', 'info');
@@ -1951,72 +1997,6 @@ export default function App() {
     finally { removeSpawningPort(process.port); }
   }
 
-  async function shareProcessLocaltunnel(process: ProcessCandidate, customSubdomain?: string) {
-    if (!activeWorkspace) return;
-    const existingActive = tunnels.find((t) => t.localPort === process.port && t.status === 'ACTIVE');
-    if (existingActive) {
-      showToast(`Tunnel is already active for port ${process.port} (${existingActive.publicUrl}). Stop the existing tunnel first.`, 'warning');
-      setActiveTunnel(existingActive);
-      setSelectedProcessId(process.id);
-      return;
-    }
-    if (spawningPorts.includes(process.port) || sharingPort === process.port) {
-      showToast(`A tunnel is currently launching for port ${process.port}. Please wait...`, 'info');
-      return;
-    }
-
-    const isLive = await verifyPortIsLive(process.port);
-    if (!isLive) {
-      showToast(`⚠️ Port :${process.port} is offline. Please start your local server on port ${process.port} before creating a localtunnel.`, 'warning');
-      void discoverProcesses(true, true);
-      return;
-    }
-
-    const isConnected = await checkRealInternetConnection();
-    if (!isConnected) {
-      showToast('⚠️ No internet connection detected. Localtunnel service requires an active internet connection. Please connect to the internet and try again.', 'error');
-      return;
-    }
-    if (!process.directory || process.directory === 'unknown') {
-      void refreshProcessDirectory(process);
-    }
-    if (isViteProcess(process)) {
-      showToast('⚠️ Sharing Vite dev servers over public tunnel is currently under development.', 'warning');
-      return;
-    }
-    addSpawningPort(process.port);
-    setProcesses((curr) => [process, ...curr.filter((p) => p.id !== process.id)]);
-    const starterScan = buildStarterRequests(process);
-    setStarterSuggestions(starterScan);
-    setSavedRequests((current) => mergeRequests(current, starterScan));
-    updateActiveWorkspace((ws) => ({ ...ws, profiles: upsertProfile(ws.profiles, process, starterScan.length), selectedProfileId: makeProfileId(process), languageHint: detectLanguageLabel(process) }));
-
-    const targetWorkspaceId = activeWorkspace.remoteWorkspaceId || activeWorkspace.id;
-    const token = getToken();
-
-    try {
-      localStorage.setItem('proxync_workspace', targetWorkspaceId);
-      const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
-      const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
-      const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
-      const [, proxyPort] = await Promise.all([
-        invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined),
-        invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port),
-      ]);
-      const suggestedSub = customSubdomain || `${activeWorkspace.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${process.port}`;
-      showToast('Starting localtunnel service...', 'info');
-      const localtunnelUrl = await invoke<string>('open_localtunnel', { tunnelId: tunnel.id, localPort: proxyPort, subdomain: suggestedSub });
-      const localtunnelBoundTunnel: Tunnel = { ...tunnel, publicUrl: localtunnelUrl, subdomain: localtunnelUrl.replace('https://', '').replace('.localtunnel.me', '') };
-      setActiveTunnel(localtunnelBoundTunnel);
-      setTunnels((current) => [localtunnelBoundTunnel, ...current.filter((item) => item.id !== tunnel.id)]);
-      setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false);
-      // ponytail: scope clear to active workspace only — preserve other workspaces' traffic history
-      setRequests((current) => current.filter((r) => r.workspaceId && r.workspaceId !== activeWorkspaceIdRef.current));
-      showToast(`Localtunnel is active! URL: ${localtunnelUrl}`, 'success');
-      updateActiveWorkspace((ws) => ({ ...ws, profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: localtunnelUrl } : p) }));
-    } catch (error) { showToast(error instanceof Error ? error.message : String(error), 'error'); }
-    finally { removeSpawningPort(process.port); }
-  }
 
   async function shareProcess(process: ProcessCandidate, customDomain?: string) {
     if (!activeWorkspace) return;
@@ -2080,9 +2060,19 @@ export default function App() {
         languageHint: detectLanguageLabel(process),
       }));
       const proxyPort = await invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port);
+      logTunnelSessionStart({
+        provider: customDomain ? `Custom Domain (${customDomain})` : 'Local Proxy',
+        localPort: process.port,
+        proxyPort,
+        processName: process.name,
+        subdomain: customDomain,
+        workspaceName: activeWorkspace.name,
+        workspaceId: targetWorkspaceId,
+      });
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined, customDomain);
       if (customDomain) {
         tunnel.publicUrl = customDomain.includes(':') ? customDomain : `http://${customDomain}:${proxyPort}`;
+        tunnel.customDomain = customDomain;
       }
       const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
       const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
@@ -2121,10 +2111,23 @@ export default function App() {
   async function stopTunnel(tunnel: Tunnel) {
     if (!activeWorkspace) return;
     touchWorkspaceActivity(activeWorkspace.id);
+    const providerName = tunnel.publicUrl?.includes('cloudflare')
+      ? 'Cloudflare Tunnel'
+      : tunnel.publicUrl?.includes('inilax') || tunnel.subdomain?.startsWith('px-')
+        ? 'Proxync Native SSH'
+        : tunnel.customDomain
+          ? `Custom Domain (${tunnel.customDomain})`
+          : 'Local Proxy';
+
+    logTunnelSessionStop({
+      provider: providerName,
+      localPort: tunnel.localPort,
+      tunnelId: tunnel.id,
+    });
     logApp('TUNNEL', 'INFO', `Stopping tunnel ${tunnel.id} (Port :${tunnel.localPort})`);
     try {
       await invoke('close_tunnel', { tunnelId: tunnel.id, localPort: tunnel.localPort }).catch(() => undefined);
-      if (!tunnel.id.startsWith('lt-') && activeWorkspace.remoteWorkspaceId) {
+      if (activeWorkspace.remoteWorkspaceId) {
         await api.tunnels.close(activeWorkspace.remoteWorkspaceId, tunnel.id).catch(() => undefined);
       }
       setTunnels((current) => current.filter((item) => item.id !== tunnel.id));
@@ -2158,7 +2161,7 @@ export default function App() {
       await Promise.all(
         listToClose.map(async (tunnel) => {
           await invoke('close_tunnel', { tunnelId: tunnel.id, localPort: tunnel.localPort }).catch(() => undefined);
-          if (!tunnel.id.startsWith('lt-') && activeWorkspace?.remoteWorkspaceId) {
+          if (activeWorkspace?.remoteWorkspaceId) {
             await api.tunnels.close(activeWorkspace.remoteWorkspaceId, tunnel.id).catch(() => undefined);
           }
         })
@@ -3540,6 +3543,9 @@ export default function App() {
                 onUpdateEnableDevTools={updateEnableDevTools}
                 onUpdateAppLogging={updateAppLogging}
                 onUpdateTrafficLogging={updateTrafficLogging}
+                onCheckForUpdates={() => runUpdateCheck(false, true)}
+                checkingUpdates={checkingUpdates}
+                appVersion="v0.2.2"
                 initialSection={settingsSection}
               />
             )}
@@ -3666,9 +3672,8 @@ export default function App() {
           process={sharingProcessCandidate}
           domains={domains.filter((d) => d.verified)}
           onClose={() => setSharingProcessCandidate(null)}
-          onConfirm={(selectedOption, ltSubdomain) => {
+          onConfirm={(selectedOption) => {
             if (selectedOption === 'proxync_native') { void shareProcessNative(sharingProcessCandidate); }
-            else if (selectedOption === 'localtunnel') { void shareProcessLocaltunnel(sharingProcessCandidate, ltSubdomain); }
             else if (selectedOption === 'cloudflare') { void shareProcessCloudflare(sharingProcessCandidate); }
             else { void shareProcess(sharingProcessCandidate, selectedOption === 'default' ? undefined : selectedOption); }
             setSharingProcessCandidate(null);

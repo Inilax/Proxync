@@ -16,6 +16,20 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Cross-Platform Safety & Zero Overhead**: Gated under `#[cfg(not(target_os = "windows"))]` and called inside `#[cfg(unix)]`, leaving Windows execution (`cmd.exe /C npx` with `CREATE_NO_WINDOW`) intact without semicolon/colon delimiter conflicts. Avoids slow `$SHELL -ilc` startup stalls and POSIX `std::env::set_var` multi-threading race conditions by scoping PATH injection strictly to the child command.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/tunnel.rs`
+## [fix/auto-update] - 2026-09-14 (Auto-Updater IPC Permissions, Manifest Artifacts & Automated Relaunch Flow)
+- **Feature Summary**:
+  - **Tauri v2 Process Relaunch Capabilities (`default.json`)**: Added `process:allow-restart` and `process:allow-exit` to `capabilities/default.json`. Resolves fatal Tauri IPC security permission denial (`Operation not permitted (os error 1)`) when calling `relaunch()` from `@tauri-apps/plugin-process` following an update installation.
+  - **Tauri v2 Updater Artifact Generation (`tauri.conf.json`)**: Enabled `"createUpdaterArtifacts": true` under `"bundle"` in `tauri.conf.json`. Instructs the Tauri build engine to output Minisign signatures (`.sig`) and the update manifest metadata, resolving missing updater assets in production release builds.
+  - **Dual-Manifest Endpoint Resolution (`tauri.conf.json`)**: Updated `plugins.updater.endpoints` to query the standard Tauri v2 manifest `latest.json` first, retaining `updater.json` as a backward-compatible fallback to prevent HTTP 404 Not Found aborts against GitHub release URLs.
+  - **Automated Graceful Relaunch with Race Protection (`App.tsx`)**: Replaced the previous manual two-step toast interaction with an automated 2-second grace countdown (`"Update installed! Restarting Proxync in 2 seconds..."`) that invokes `relaunch()` automatically upon installation completion. Hardened with a `restarted` state lock and timer cancellation to prevent duplicate IPC restart calls if the user clicks "Restart Now" immediately.
+  - **Deduplicated Installation Pipeline (`App.tsx`)**: Extracted a unified `executeDownloadAndInstall` helper shared across both forced (Major/CVE) and optional (Patch) update paths, eliminating 50 lines of duplicate event-streaming and error-handling code.
+  - **Interactive "Check for Updates" Control (`SettingsView.tsx` & `App.tsx`)**: Added a dedicated "Check for updates" button to the Automatic Updates setting tile in `SettingsView`, featuring a spinning sync animation, active-check disablement, dynamic app version display (`v0.2.2`), and live user feedback (`🔍 Checking...`, `✅ Proxync is up to date`, or server error details).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/capabilities/default.json`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
   - `CHANGELOG.md`
 
 ## [fix/develop-symlink-recursion] - 2026-09-14 (Symlink Infinite Recursion & Stack Overflow Defense in scan_directory #159)
@@ -27,11 +41,62 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Graceful Error Recovery**: Wrapped directory read and entry lookups in resilient `match` guards so permission-denied directories or broken symlinks are skipped cleanly without aborting the entire workspace scan.
   - **Expanded Ignore List**: Expanded skip filter to automatically bypass `.venv`, `venv`, `env`, `.next`, `.nuxt`, `.turbo`, `dist`, `out`, `.idea`, and `.vscode` alongside `node_modules` and `.git`.
   - **Automated Test Suite**: Added 4 unit and integration tests in `storage.rs` validating circular symlink termination, valid symlinked directory discovery, symlinked single-file route discovery, and depth 16 truncation limits using isolated `tempfile` fixtures.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/Cargo.toml`
   - `packages/desktop/src-tauri/Cargo.lock`
   - `packages/desktop/src-tauri/src/storage.rs`
   - `CHANGELOG.md`
+
+## [fix/decomission-LT] - 2026-09-13 (Decommission Localtunnel & Python HTTP Server Reconnaissance)
+- **Feature Summary**:
+  - **Complete Localtunnel (LT) Decommissioning**: Removed the legacy `open_localtunnel` Tauri command and `shareProcessLocaltunnel` pipeline from `App.tsx`. Replaced the provider-specific process table with generalized `SPAWNED_TUNNEL_PROCESSES` in `tunnel.rs`. Purged Localtunnel tabs, options, badges, and documentation across `Dialogs.tsx`, `DocsView.tsx`, `WelcomeView.tsx`, `ProcessView.tsx`, `TerminalDrawer.tsx`, `logger.ts`, and `README.md`.
+  - **Python HTTP Server Reconnaissance (`recon.rs`)**: Added `http.server` detection in framework scanner to automatically recognize Python built-in HTTP server instances as `"Python HTTP Server"`.
+  - **Process Discovery Concurrency Fix (`App.tsx`)**: Guaranteed `discoveringRef.current = false` inside `discoverProcesses` `finally` block to prevent scanner concurrency lockups following unhandled errors.
+- **Modified Files**:
+  - `README.md`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/ui/TerminalDrawer.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/DocsView.tsx`
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/lib/logger.ts`
+  - `CHANGELOG.md`
+
+## [fix/161-OpenSSH] - 2026-09-13 (OpenSSH Ephemeral Key Permissions & BatchMode Hang on Linux #161)
+- **Feature Summary**:
+  - **POSIX Ephemeral Key Permissions (#161)**: Enforced strict `0o700` mode permissions on temporary SSH directories (`proxync_ssh_<id>`) on Unix systems via `std::os::unix::fs::PermissionsExt`, eliminating OpenSSH client connection aborts triggered by overly permissive directory modes.
+  - **Headless Non-Interactive BatchMode & Stdio Hardening**: Appended `-o BatchMode=yes` to prevent background OpenSSH subcommands from blocking indefinitely on interactive passphrase/password prompts. Nullified `stdin`, `stdout`, and `stderr` (`Stdio::null()`) across `ssh-keygen` and `ssh` execution to eliminate I/O pipe buffer deadlocks.
+  - **Windows ACL Permission Alignment**: Configured Windows `icacls` to grant full control (`:(F)`) with hidden console flags and nullified stdio streams.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+
+## [fix/feat-logger] - 2026-09-13 (Startup OS Environment Diagnostics, High-Precision Timestamps & Log Rotation #167)
+- **Feature Summary**:
+  - **Diagnostic System Banner & Hardware Fingerprinting (#167)**: Integrated `os_info` crate (v3.15) to detect host platform, kernel/distribution version, CPU architecture, bitness, local hostname, network IP, WebView engine version, and process PID on startup. Emits a structured ASCII diagnostic banner into `app.log` during startup, log rotations, and log history resets.
+  - **High-Precision ISO 8601 UTC Timestamping**: Implemented custom zero-dependency RFC 3339 UTC timestamping (`YYYY-MM-DDTHH:MM:SS.mmmZ`) across backend and frontend log writers.
+  - **Dual-Stream Log Rotation & Panic Telemetry**: Implemented file-size based log rotation archiving `app.log` at 5MB (`app.log.old`) and `traffic.log` at 10MB (`traffic.log.old`). Registered `storage::install_panic_hook()` to capture Rust panic dumps with stack traces directly into `app.log`.
+  - **System Telemetry IPC (`get_system_info`)**: Added `get_system_info` Tauri command and frontend typing in `types.ts` and `logger.ts` for unified environment diagnostic telemetry.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/lib/logger.ts`
+  - `packages/desktop/src/lib/types.ts`
+
+## [fix/multi-platform-cors] - 2026-09-12 (Multi-Platform User-Agent in Native CORS Bypass Engine #163)
+- **Feature Summary**:
+  - **OS-Adaptive User-Agent Header (#163)**: Replaced hardcoded Windows `User-Agent` with compile-time platform detection (`default_user_agent()`), dynamically emitting Windows (`Windows NT 10.0; Win64; x64`), macOS (`Macintosh; Intel Mac OS X 10_15_7`), or Linux (`X11; Linux x86_64`) strings containing `CARGO_PKG_VERSION`.
+  - **Header Injection Cleanliness**: Streamlined `execute_http_request` by relying on the client-level default user agent while allowing custom `User-Agent` header overrides without duplicate injection.
+  - **Cross-Platform Target Unit Tests**: Added unit tests verifying correct User-Agent string formatting across Windows, macOS, and Linux targets.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/http.rs`
 
 ## [fix/develop-tauri-plugin-dialog] - 2026-09-12 (Universal Native File Dialogs via tauri-plugin-dialog #164)
 - **Feature Summary**:
@@ -39,6 +104,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Linux Desktop Portal Integration**: Uses D-Bus XDG Desktop Portal (`org.freedesktop.portal.FileChooser`) under the hood, natively supporting KDE Plasma, Sway, Hyprland, and Wayland environments without requiring GNOME GTK `zenity` binaries.
   - **Security & Vulnerability Elimination**: Eliminates command-injection vectors from string-interpolated PowerShell and AppleScript calls.
   - **Clean Native IPC Contract**: Injected `tauri::AppHandle` into `save_support_bundle_dialog` command in `storage.rs` with zero frontend IPC contract breakage (`invoke("save_support_bundle_dialog")` remains unchanged).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/package.json`
   - `packages/desktop/src-tauri/Cargo.toml`
@@ -52,6 +118,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 - **Feature Summary**:
   - **App Restart & Reload Persistence (#154)**: Introduced synchronous \`localStorage\` bookmarking for the Playground. The active request is strictly persisted across app restarts and workspace switches. Boot initialization now reads synchronously inside \`useState\` to completely eliminate React FOUC (Flash of Unstyled Content).
   - **Strict Postman-Grade Session Tracking**: Removed Insomnia-style multi-run history pills and replaced with a strict $\mathcal{O}(1)$ \`{ draft, response }\` state map. Switch tabs without losing your current unsaved response, while explicitly discarding background dirty edits upon app quit to respect the 5MB \`localStorage\` boundary.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - \`packages/desktop/src/App.tsx\`
   - \`packages/desktop/src/components/views/PostmanView.tsx\`
@@ -68,6 +135,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Pure React Updater & Contiguous Sibling Auto-Selection**: Decoupled draft synchronization outside `setSavedRequests` updater, maintaining pure 1-line state updates without StrictMode re-render side-effects. Aligned fallback collection resolution across `starter-scan` (`'Scanned Endpoints'`) and `captured` (`'Captured Traffic'`).
   - **Typography Refinement**: Upgraded collection and request titles to `13px` with natural letter-spacing; adjusted method badges to `11px` (`44px` $\times$ `21px`) and request counts to `11px`.
   - **Asynchronous Focus Lifecycle Safety**: Managed post-deletion keyboard focus advancement with `focusTimerRef` and unmount cleanup, ensuring zero detached DOM timer leaks. Added `tabIndex={-1}` and `outline-none` across list items and containers for Chromium/WebView2 on Windows.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/components/views/KeyboardShortcutsDialog.tsx`
@@ -81,6 +149,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Universal Packaging Targets (#156)**: Updated `bundle.targets` in `tauri.conf.json` from Windows-restricted `["nsis", "msi"]` to `"all"`. Enables host-adaptive packaging, allowing Linux builds to generate native `.deb` and `.AppImage` bundles (and macOS `.dmg`/`.app`) alongside Windows `.exe`/`.msi`.
   - **Dependency Graph & Lockfile Optimization**: Cleanly eliminated 165 lines of duplicate dependency noise from `Cargo.lock` (`glib 0.20`, `glib-sys 0.20`, `glib-macros 0.20`, `gobject-sys 0.20`). Rebuilt lockfile to resolve to a single unified `glib v0.18.5` across Tauri's runtime stack (`tao`, `wry`, `webkit2gtk`, `muda`).
   - **Compilation Validation**: Reduced `cargo check` compile time from >14s to 1.88s; validated clean TypeScript compilation and Vite production build (`npm run build`).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/Cargo.toml`
   - `packages/desktop/src-tauri/Cargo.lock`
@@ -92,6 +161,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Startup Handshake Timeout & Error Teardown**: Fixed critical leak where handshake timeouts (15s for Localtunnel, 25s for Cloudflare) and connection errors bypassed tree-killing by invoking `kill_child_process_tree` across all failure paths.
   - **Tauri Application Lifecycle Teardown (`lib.rs`)**: Registered `WindowEvent::CloseRequested` and `RunEvent::ExitRequested` hooks to guarantee `close_all_tunnels()` is invoked before window destruction or process termination.
   - **Cloudflare Race Condition & Protocol Hardening**: Awaits `Registered tunnel connection` log line in Cloudflare stderr before dispatching public URL to UI (with a 4-second safety ceiling fallback), eliminating premature `Error 1033` / `NXDOMAIN` clicks. Forced `--protocol http2` over TCP 443 TLS to prevent UDP 7844 firewall stalls, and normalized targets to explicit `127.0.0.1` loopback to prevent IPv6 `::1` connection refused errors.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/tunnel.rs`
   - `packages/desktop/src-tauri/src/lib.rs`
@@ -104,6 +174,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **In-Memory `/proc` Process Traversal (`recon.rs`)**: Direct non-allocating traversal of `/proc` reading `comm`, `stat`, `cmdline`, and `exe` symlinks in < 5ms without disk I/O.
   - **Ghost-Port Prevention (`recon.rs`)**: Fixed internal ephemeral proxy/tunnel listener leakage by filtering `std::process::id()` at the shared scanner boundary, preventing Proxync's own ports from appearing as ghost dev servers.
   - **Path Normalization & Test Suite (`recon.rs`)**: Expanded system path checks to handle Unix root paths and hidden version managers (`.nvm`), backed by 8 automated unit and integration tests.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/recon.rs`
   - `CHANGELOG.md`
@@ -112,6 +183,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 - **Feature Summary**:
   - **Browserslist Security Remediation [TYPE: CVE-PATCH]**: Upgraded `browserslist` from `4.28.4` to `4.28.9` (along with `baseline-browser-mapping`, `caniuse-lite`, `electron-to-chromium`, and `node-releases`) via `npm audit fix`, remediating memory growth / OOM vulnerability (GHSA-c83g-rgw3-j3cx) and prototype write / uncaught crash vulnerability (GHSA-73wf-gq98-2v4g).
   - **Audit & Compilation Validation**: Validated zero vulnerabilities across npm (`npm audit`) and verified clean TypeScript compilation & Vite production bundling (`npm run build`).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `package-lock.json`
 ## [fix/playground-postman-ux] - 2026-09-07 (API Playground — Postman-Grade UX Upgrade)
@@ -128,6 +200,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Sidebar Visual Polish**: Hover-only action buttons; high-contrast colour-coded method badges (emerald=GET, amber=POST, sky=PUT, purple=PATCH, rose=DELETE).
   - **Keyboard Shortcuts Cheatsheet**: Updated `KeyboardShortcutsDialog` with all new hotkeys.
   - **Proxync-review fixes**: Removed accidental `export` from `getMethodBadgeStyle`; replaced magic `'/api/v1/health'` fallback paths with `DEFAULT_REQUEST` spread and `DEFAULT_FALLBACK_PATH` constant; `mergeRequests` now keys by stable `id` field.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/components/views/PostmanView.tsx`
@@ -139,6 +212,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Regex Caching & Recursion Defense (`schemaDriftDetector.ts`)**: Implemented `getCompiledEndpointRegex` caching to avoid repeated regex compilation on hot traffic loops, and added a recursion depth guard (`depth > 20`) in `diffSchemas`.
   - **Reactivity Optimization & Toast Timing (`App.tsx`, `toast.tsx`)**: Removed state closures from `handleSyncOpenApiWithDrift` via `driftAlertsRef`, memoized `driftReports` to eliminate redundant Set/Array reallocations, restored persistent toast capabilities in `toast.tsx`, and kept drift notifications non-sticky (4-second auto-dismiss).
   - **Bodies Captured Indicator (`TrafficView.tsx`)**: Added a visual telemetry indicator in the Traffic Inspector header to clearly inform users when payload capture is active in memory.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/components/views/TrafficView.tsx`
@@ -152,6 +226,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Granular Scoped Reconciliation & Remaining Counter (`App.tsx`, `TrafficView.tsx`)**: Enhanced `handleSyncOpenApiWithDrift` with $O(N)$ route difference calculation to verify remaining un-synced routes and provide explicit scoping feedback (`Note: X other endpoint(s) still have pending drift`), eliminating user ambiguity during selective sync.
   - **Swagger Studio Additive Warning Banner & Health Metrics (`SwaggerView.tsx`)**: Upgraded `contractHealth` computation and the top reconciliation banner to track additive schema changes (`warningCount`) alongside breaking violations, rendering an amber banner when only non-breaking changes remain un-synced.
   - **Precision Route Regex Matching (`SwaggerView.tsx`)**: Replaced loose substring endpoint matching with `compileEndpointRegex`, preventing collection endpoints (`/api/products`) from falsely cascading drift badges onto item endpoints (`/api/products/{id}`).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/components/views/SwaggerView.tsx`
@@ -164,6 +239,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Pure TypeScript Schema Drift Engine (`schemaDriftDetector.ts`, `types.ts`)**: Built recursive AST schema diff engine detecting `BREAKING_FIELD_RENAMED` (inline Levenshtein distance $\le 2$ & case normalization), `BREAKING_NULLABILITY`, `BREAKING_TYPE_MISMATCH`, `BREAKING_FIELD_REMOVED`, `NON_BREAKING_FIELD_ADDED`, and undocumented status codes. Safely strips HTTP/1.1 chunked transfer encoding headers.
   - **1-Click OpenAPI Reconciliation & Bug Reporting (`schemaDriftDetector.ts`, `openApiGenerator.ts`)**: Implemented `syncOpenApiWithPayload` to merge runtime schemas into the live OpenAPI document in-memory, clearing active drift flags across all studios, and `generateDriftBugReportMarkdown` to produce copy-paste bug reports.
   - **Studio Integrations & Real-Time Alerting (`TrafficView.tsx`, `SwaggerView.tsx`, `ObservabilityView.tsx`, `RequestWorkbenchDialog.tsx`, `App.tsx`, `toast.tsx`)**: Added drift filter dropdown and inline diff panel in Traffic Inspector; Contract Health % metric and warning banner in Swagger Studio; telemetry radar in Observability Studio; dedicated Contract mode tab in 360° Request Workbench; dual-key indexed drift state in `App.tsx`; and 4-second auto-dismissing toast alerts.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/proxy.rs`
   - `packages/desktop/src-tauri/src/tunnel.rs`
@@ -183,6 +259,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Comprehensive Version Bump to v0.2.2**: Synchronized workspace and package manifests (`package.json`, `packages/desktop/package.json`, `package-lock.json`, `Cargo.toml`, `Cargo.lock`, and `tauri.conf.json`) to version `0.2.2`.
   - **Native HTTP Network Headers & Diagnostics**: Updated Rust client `User-Agent` headers in `http.rs` to `ProxyncStudio/0.2.2`. Synchronized frontend diagnostic logging metadata, log session directives, and support bundle fallbacks in `App.tsx` and `logger.ts` to `v0.2.2-stable`.
   - **Recon & Documentation Badge Alignment**: Updated README version shield badge and `.agents/architecture.json` static recon map to reflect version `0.2.2`.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `package.json`
   - `packages/desktop/package.json`
@@ -200,6 +277,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 - **Feature Summary**:
   - **Tauri v2 Native NSIS Uninstaller Config (`tauri.conf.json`, `hooks.nsh`)**: Migrated uninstaller branding from fragile raw script hooks (`hooks.nsh`) to native Tauri v2 `uninstallerIcon: "icons/icon.ico"` in `tauri.conf.json`. Resolves `makensis` compilation failure (`Error while loading icon from "icons\icon.ico": can't open file`) caused by relative path evaluation in temporary NSIS release directories.
   - **Clean Titlebar Flush Alignment (`App.tsx`, `index.css`)**: Removed brittle negative margin overrides (`margin-right: -16px` / `-24px`) in favor of clean header padding (`pl-2 sm:pl-4 pr-0`) and explicit `h-full` / `shrink-0` on `.window-controls`. Ensures the close button and window controls are pixel-perfect and flush with the top-right corner across all viewport sizes (small screens, standard desktop, and fullscreen).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/tauri.conf.json`
   - `packages/desktop/src-tauri/hooks.nsh` (deleted)
@@ -215,6 +293,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Technical Documentation Overhaul (`DocsView.tsx`)**: Replaced generic placeholder content with an in-depth developer manual covering Tauri v2/Rust architecture, all 4 tunnel providers (Native Azure SSH, Cloudflare Quick Tunnels, Localtunnel, Loopback `*.localtest.me`), DNS CNAME setup, Postman/Swagger studios, and keyboard hotkeys. Streamlined navigation with punchy 1-word tab titles.
   - **Navigation Real Estate Optimization (`App.tsx`)**: Relocated `Docs` to the sidebar footer utility bar alongside `Support`, decluttering the primary `OBSERVABILITY & TOOLS` category.
   - **IPC & Window Exception Hardening (`App.tsx`)**: Wrapped window management actions in safe, unhandled-rejection-proof handlers with clean listener teardown.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/index.css`
@@ -240,6 +319,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Stop All Tunnels Hotkey in Explore (`WelcomeView.tsx`, `KeyboardShortcutsDialog.tsx`)**: Added `Ctrl+Shift+X` / `Cmd+Shift+X` hotkey to immediately terminate all active tunnels from the Network Hub.
   - **Request Workbench Stacking Context & Responsive CSS Fix (`RequestWorkbenchDialog.tsx`)**: Fixed sticky subheader stacking context by elevating to `z-30` with `bg-surface-container-low/95 backdrop-blur-xl`, removing conflicting child `z-10`s, and restructuring controls into a responsive `flex-col md:flex-row` grid for compact/small screens.
   - **UI & Documentation Polish (`App.tsx`, `README.md`)**: Removed text-decoration underline on *All Workspaces Studio* button in favor of clean interactive styling, and refined README feature highlights and platform support statuses.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/components/views/KeyboardShortcutsDialog.tsx`
@@ -254,6 +334,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **v0.2.1 Release Status**: Updated project version badge and documentation references across the studio README to reflect version v0.2.1.
   - **Native High-Speed Proxync Tunneling**: Added prominent feature documentation for Native High-Speed Proxync Tunneling, ultra-low latency WebSocket/SSH origin relay infrastructure, and Resilient Standby Mode with automatic URL preservation.
   - **Platform Support Matrix & Roadmap**: Clarified current Windows 10/11 desktop support, updated platform state paths (`%APPDATA%\Proxync\`), and added pending Linux and macOS cross-platform releases to the roadmap and platform matrix.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `README.md`
   - `CHANGELOG.md`
@@ -264,6 +345,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Vite Dev Server Detection & Launch Guard (`App.tsx`)**: Added `isViteProcess(process)` helper checking framework signature, command, directory, process name, and default port `5173`. When a user attempts to share a Vite dev server across any tunnel mode (`shareProcess`, `shareProcessCloudflare`, `shareProcessNative`, `shareProcessLocaltunnel`), cleanly halts execution and displays an informative warning toast (`⚠️ Sharing Vite dev servers over public tunnel is currently under development`).
   - **Bidirectional Stream Latency & Status Code Telemetry (`proxy.rs`)**: Captured initial HTTP response chunk to emit precise HTTP status codes and round-trip duration metadata (`request:log:response`) before transitioning into full-duplex `tokio::io::copy_bidirectional`.
   - **Cleaned Up Experimental Rust Pipeline (`tunnel.rs`, `proxy.rs`)**: Cleaned up experimental HTML injection and compression pipelines, keeping standard base64 response transport clean and reliable.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src-tauri/src/proxy.rs`
@@ -277,6 +359,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **50 MB Upload Cap Protection**: Added a strict 50 MB upload body size cap (`MAX_UPLOAD_BODY_BYTES` and `MAX_RELAY_BODY_BYTES`) across both local TCP proxy and relay pipelines, rejecting oversized payloads with explicit `413 Payload Too Large` JSON responses.
   - **Cross-Platform Diagnostic Support Bundle Export (`storage.rs`, `logger.ts`)**: Implemented `save_support_bundle_dialog` in Rust with native OS save pickers (PowerShell on Windows, AppleScript on macOS, Zenity on Linux) alongside Web File System Access API and blob download fallbacks, and upgraded `get_base_data_dir` to support macOS (`Library/Application Support`) and Linux (`~/.config`).
   - **Zero Hardcoded Environment Paths**: Cleaned up hardcoded `%APPDATA%` strings from toasts and settings views in `App.tsx` and `SettingsView.tsx`.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/proxy.rs`
   - `packages/desktop/src-tauri/src/tunnel.rs`
@@ -293,6 +376,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **3-Tier Cross-Platform IDE Engine**: Refactored `open_file_in_editor` in `storage.rs` with discrete argument quoting (`code -g "<root>/<path>:<line>"`) on Windows to prevent space splitting in paths, and implemented resilient 3-tier fallbacks (CLI with line jump $\rightarrow$ OS URI scheme $\rightarrow$ system default file opener) across Windows, macOS, and Linux.
   - **Inactive Port Pre-Flight Probe & Residue Purge**: Implemented `probe_port` in `recon.rs` (300ms dual-stack TCP check) and wired `verifyPortIsLive` in `App.tsx`. Prevents creating tunnels on offline ports (e.g. `:4500` after `Ctrl+C`) with clear warning toasts, and triggers background `discoverProcesses(true, true)` to automatically purge dead process cards from the UI.
   - **Global Traffic Logs Clearance**: Fixed `clearTrafficLogs()` in `App.tsx` to completely reset in-memory `requests`, wipe `capturedRequests` across all workspaces in `localStorage`, and delete underlying disk logs via `clearLogs()`.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/recon.rs`
   - `packages/desktop/src-tauri/src/lib.rs`
@@ -307,6 +391,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Branded 502 Bad Gateway Standby Fallback**: Configured `proxy.rs` to serve a responsive, branded HTML 502 Bad Gateway fallback page when incoming public traffic reaches an offline local target, informing external clients and browsers that the local server is in standby.
   - **Background Port Liveness Engine**: Added a lightweight 1000ms loop in `proxy.rs` using 250ms bounded TCP probes across `127.0.0.1` and `[::1]`. Emits `tunnel:status-changed` events (`ACTIVE` $\leftrightarrow$ `STANDBY`) with automatic UI recovery the instant a developer restarts their server (`npm run dev`).
   - **Frontend Standby Indicators & Badges**: Integrated `STANDBY` status handling across `ProcessView`, `WorkspaceDashboardView`, `WelcomeView`, and `SwaggerView` with amber status badges (`🟡 Standby • Target Offline`), status footer counters, and transition toasts.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/proxy.rs`
   - `packages/desktop/src-tauri/src/tunnel.rs`
@@ -323,6 +408,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Streamlined Workbench Studio Command Bar**: Refactored the sticky sub-header in `RequestWorkbenchDialog.tsx` into a high-density, compact Studio Action Bar ($\sim 48\text{px}$). Consolidated the primary segmented mode switcher (`[DevTools & Mapping] [Traffic & Replay]`) and quick action triggers (`[Export Code]`, `[Save to Collection]`, `[Browser]`) onto a single balanced bar, eliminating triple information redundancy and reclaiming vertical screen real estate.
   - **Traffic Inspector Table Isolation & Typography**: Upgraded table row typography to `text-[13px] font-mono` in `TrafficView.tsx`. Restructured column widths (`Method w-24`, `Status w-20`, `Request Path flex-1 min-w-[180px]`, `Scope w-44`, `Time w-28`, `Duration w-32 text-left`, `Actions w-72`) inside an `overflow-x-auto min-w-[1080px]` container to ensure absolute separation between latency timestamps and action triggers across all viewport sizes.
   - **Non-Destructive Cross-Workspace Telemetry Retention**: Replaced 4 destructive global `setRequests([])` wipes in `App.tsx` with active-workspace scoped filtering (`setRequests(curr => curr.filter(r => r.workspaceId && r.workspaceId !== activeWorkspaceIdRef.current))`) to preserve historical traffic records across workspace switches.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/components/views/RequestWorkbenchDialog.tsx`
@@ -335,6 +421,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Interactive Target Environment & Public Tunnel Dropdown**: Replaced static route badge in `PostmanView.tsx` with an interactive dropdown selector grouping active public tunnels (`🌐 <hostname> (:<port>)`) and local servers (`⚡ Localhost (:<port>)`). Developers can instantly view and switch active target environments with automatic URL resolution.
   - **State Purge & Stale Response Clearance**: Added `onClearResponse` callback in `PostmanView.tsx` and `App.tsx` to automatically purge cached responses whenever switching target dropdown options, preventing cross-tunnel response confusion.
   - **NSIS Uninstaller Brand Customization**: Created `hooks.nsh` and wired `"installerHooks": "hooks.nsh"` in `tauri.conf.json` defining `MUI_UNICON "icons\\icon.ico"` so the Windows uninstaller dialog displays the official Proxync branding icon instead of the default Nullsoft tin box icon.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/components/views/PostmanView.tsx`
   - `packages/desktop/src/App.tsx`
@@ -347,6 +434,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Native Bulk Tunnel Teardown Command**: Implemented `close_all_tunnels()` in Rust (`tunnel.rs`, `lib.rs`) to cleanly drain and abort all active WebSocket relay handles, terminate all child subprocesses (`ssh`, `cloudflared`, `localtunnel`) with OS process tree killing (`taskkill /F /T /PID` on Windows), and shut down all ephemeral TCP stream proxies (`stop_proxy(None)`).
   - **Cross-Workspace Tunnel Teardown on Switch & Create**: Updated `selectWorkspace` and `createWorkspace` in `App.tsx` to automatically invoke `stopAllTunnels(true)` and `close_all_tunnels` whenever switching between workspaces or creating new workspaces. This guarantees running public tunnels from previous workspaces are never orphaned or left accessible in the background.
   - **Frontend State Containment**: Automatically resets `tunnels`, `activeTunnel`, `selectedProcessId`, and `sharingPort` upon workspace switching with informative transition toasts (e.g. `Closed tunnels from "Workspace A"`).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/lib.rs`
   - `packages/desktop/src-tauri/src/tunnel.rs`
@@ -358,6 +446,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Stage 0 Native Process CWD Extraction**: Implemented Win32 `PEB` (Process Environment Block) inspection in `recon.rs` (`win_peb::get_process_cwd`) via `NtQueryInformationProcess` and `ReadProcessMemory` to read `RTL_USER_PROCESS_PARAMETERS.CurrentDirectory.DosPath` directly from the OS for any running process and its parent process tree.
   - **Accurate Relative Script & NPM Dev Server Discovery**: Resolved a critical release blocker where servers launched with relative arguments (e.g. `node --watch server.js`, `node server.js`, `npm run dev`) failed directory resolution and fell back to `localhost:<port>`. Directory resolution now deterministically resolves to the exact project root (e.g. `E:\to-do`) across any drive or directory structure.
   - **Preserved Heuristic Fallback Pipeline**: Maintained existing command-line argument parsing, parent process walking, and fallback script search as graceful secondary layers when PEB access is unavailable.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/recon.rs`
   - `CHANGELOG.md`
@@ -367,6 +456,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Live Latency & Duration Capture**: Added `Instant::now()` elapsed duration calculation in `proxy.rs` and `tunnel.rs` to compute response round-trip latency in milliseconds (`durationMs`) and emit it inside `request:log:response`. Added `capturedAtMs` tracking and fallback computation in `App.tsx` so durations never remain in a stuck `'pending'` state.
   - **Column Width & Spacing Isolation**: Restructured the Traffic table layout in `TrafficView.tsx` by expanding the `DURATION` column to `w-28` (`112px`) with `pr-6` right-padding, and the `ACTIONS` column to `w-72` (`288px`). Replaced oversized global `.btn-ghost` classes with isolated compact button tokens (`px-2.5 py-1`) to completely eliminate horizontal collision between the latency badge and the Workbench / Playground action triggers.
   - **Sanity & POC Sandbox Isolation**: Added `sanity/` to `.gitignore` and relocated experimental Proof-of-Concept folders to `sanity/POC/` to maintain a pristine, production-clean repository root.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/proxy.rs`
   - `packages/desktop/src-tauri/src/tunnel.rs`
@@ -386,6 +476,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Fresh Request Log Ingestion & Execution History Runs**: Enhanced Workbench to dynamically merge newly intercepted request events into active tabs as discrete `ExecutionRun` history snapshots with automatic focus on fresh runs.
   - **Process Discovery & Dashboard UX Polish**: Upgraded `DiscoverDialog.tsx` with an `ALREADY EXPOSED` emerald badge, streamlined actions to dedicated `[ Inspect Traffic ➔ ]` navigation, and separated dashboard server card clicks (Process view) from direct traffic inspection.
   - **Zero Hardcoded Environment Paths Enforced**: Stripped all developer test paths and machine-specific fallbacks across UI code in compliance with new workspace Rule 8.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/lib.rs`
   - `packages/desktop/src-tauri/src/recon.rs`
@@ -405,6 +496,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **NSIS Setup Wizard High-DPI Visual Assets**: Replaced legacy prototype installer graphics with high-definition 24-bit RGB Windows bitmaps: `nsis-sidebar.bmp` (164×314 px, 154 KB) featuring 3D isometric server nodes and neon fiber-optic conduits on deep midnight slate (`#0b0f19`) with zero smartphone bezels or text artifacts, and `nsis-header.bmp` (150×57 px, 25.8 KB) featuring a high-contrast glowing network proxy hub.
   - **Open-Source License Agreement Integration**: Embedded the root MIT License agreement (`LICENSE`, Copyright © 2026 Inilax) into the Tauri installer bundle via `licenseFile: "LICENSE"`.
   - **Enhanced App Description & Metadata**: Updated `longDescription` in `tauri.conf.json` to `"Proxync — Instant Local-First Tunneling, API Inspection & Developer Workspace Studio"` for Windows Installed Apps & Tooltips.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/icons/nsis-header.bmp`
   - `packages/desktop/src-tauri/icons/nsis-sidebar.bmp`
@@ -421,6 +513,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **1-Click Support Diagnostic Bundle Exporter**: Created `exportSupportBundle()` to package active workspace state, settings, active tunnels, discovered processes, and sanitized diagnostic logs into `proxync-support-bundle.json`.
   - **360° Event Instrumentation & StrictMode Idempotency**: Hooked logging across all app operations (OpenAPI generation, Postman requests, replays, scans, workspaces, domains, settings) with active lifecycle listener cleanup in `App.tsx` preventing duplicate log emissions on hot reloads.
   - **Settings Danger Zone UI & Purge Integration**: Overhauled Settings Danger Zone (`SettingsView.tsx`) with side-by-side stream cards, glowing monospaced badges (`● Enabled (Default)` / `● Active • Recording`), disk metrics, path copy pill, and integrated `clearLogs()` into the Purge All Data confirmation dialog (`Dialogs.tsx`).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/lib.rs`
   - `packages/desktop/src-tauri/src/storage.rs`
@@ -439,6 +532,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Incremental OpenAPI Spec Ingestion (Endpoint Persistence)**: Enhanced `generateOpenApiSpec` to accept `existingDoc` and deep-merge newly captured traffic with previously generated routes (`GET`, `POST`, `PUT`, `DELETE`), preventing spec overwrites when testing endpoints sequentially.
   - **Swagger Studio UI & Server Filter Refinement**: Overhauled server dropdown in `SwaggerView.tsx` with clear public tunnel URLs and ports (`⚡ Port :4000 — px-subdomain (https://...)`), added clickable tunnel URL badges on endpoint cards, and streamlined the filter header by removing redundant tag filter pills while keeping semantic tag badges on cards.
   - **CSS Flex Properties Fix**: Corrected invalid `shrink: 0` CSS properties to standard `flex-shrink: 0` in `index.css` for `.btn-cloud-option` and `.btn-lan-option`.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/proxy.rs`
   - `packages/desktop/src-tauri/src/tunnel.rs`
@@ -456,6 +550,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **System & Infrastructure Classification**: Implemented multi-layered process filtering to block Windows background services, IDE daemons, and system noise (`svchost`, `System`, `lsass`, `Discord`, `Teams`, `SearchIndexer`, `Antigravity IDE`, `language_server`) while surfacing active dev runtimes (`node`, `python`, `deno`, `bun`, `go`, `cargo`, `java`, `ruby`, `php`, `dotnet`, `proxync`).
   - **Dynamic Framework Fingerprinting**: Integrated command-line argument analysis to identify `Next.js`, `Vite`, `NestJS`, `FastAPI`, `Django`, `Flask`, `Express / Node.js`, `Nuxt`, `Remix`, `Astro`, `Spring Boot`, etc.
   - **IPv6 Target Connectivity & Host Header Normalization in Local Proxy**: Refactored `start_proxy` in `proxy.rs` to connect to `127.0.0.1` with automatic fallback to `[::1]` (IPv6 localhost), resolving the 502 Bad Gateway issue on IPv6-bound servers like Vite. Added automatic `Host: localhost:{port}` header normalization so dev servers with strict host validation (e.g. Vite 5/6, Next.js) accept incoming public tunnel traffic without 403 / Bad Gateway errors.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/recon.rs`
   - `packages/desktop/src-tauri/src/proxy.rs`
@@ -471,6 +566,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Workspace Hub Card Redesign**: Overhauled `WorkspaceDashboardView.tsx` with Emerald code avatars, normalized framework subtitles, and isolated Local Endpoint container matching design mockups.
   - **Action Button Styling & Containment**: Styled `⚡ Expose (Proxync)` with theme periwinkle purple (`#7c82ff`), `Cloudflare` and `LAN` with dark slate containers (`#20293d`), and added `min-w-0` / `truncate` text containment.
   - **Responsive Layout & Screen Adaptation**: Tuned grid breakpoint to `grid-cols-1 md:grid-cols-2 2xl:grid-cols-3` to ensure generous card width on standard desktop window sizes with sidebar.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
@@ -487,6 +583,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Credential Redaction in WebSocket Relay**: Sanitized incoming request headers (`Authorization`, `Cookie`, `Set-Cookie`, `x-api-key`, `api-key`) to `[REDACTED]` before broadcasting `request:log` events across the desktop IPC event bus.
   - **Parallel Tunnel & Proxy Spawning**: Refactored `App.tsx` to concurrently invoke `open_tunnel` and `start_proxy` using `Promise.all`, reducing tunnel startup latency by ~40–50%. Converted process directory resolution to asynchronous background execution (`void refreshProcessDirectory`).
   - **Single-User Windows ACLs**: Hardened ephemeral private key file permissions via `spawn_blocking` `icacls ... /inheritance:r /grant:r %USERNAME%:(R)` without insecure "Everyone" fallback.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src-tauri/src/tunnel.rs`
@@ -497,6 +594,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 - **Feature Summary**:
   - **Batch Multi-Tunnel Teardown**: Added a prominent "Stop All" action button beside the active session counter in the Explore screen (`WelcomeView.tsx`) and Workspace Dashboard (`WorkspaceDashboardView.tsx`), conditionally displayed when active sessions exist.
   - **Concurrent Teardown Handler**: Implemented `stopAllTunnels` in `App.tsx` executing concurrent native `close_tunnel` invocations and remote API terminations via `Promise.all` with resilient per-tunnel error handling, synchronous state pruning, and toast notifications.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/components/views/WelcomeView.tsx`
@@ -511,6 +609,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **High-Throughput SSH Ciphers & QoS**: Configured native SSH connection with high-speed, hardware-accelerated cipher suites (`chacha20-poly1305@openssh.com,aes128-gcm@openssh.com`), disabled compression CPU overhead (`Compression=no`), enforced `IPQoS=throughput`, and tuned keepalive parameters (`TCPKeepAlive=yes`, `ServerAliveCountMax=3`, `ConnectTimeout=5`).
   - **Windows ACL Permission Optimization**: Streamlined Windows file permissions into a single-pass `icacls` invocation (`/inheritance:r /grant:r %USERNAME%:(R)`).
   - **Modular Rust Backend Architecture**: Refactored monolithic `lib.rs` (1000+ lines) into clean, decoupled domain modules: `http.rs` (CORS-bypassing HTTP executor & decompression), `proxy.rs` (local TCP proxy & event emitters), `recon.rs` (process recognition & directory resolution), `storage.rs` (local data serialization), and `tunnel.rs` (Proxync Native SSH, Localtunnel & Cloudflare tunnel managers).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/http.rs`
   - `packages/desktop/src-tauri/src/lib.rs`
@@ -527,6 +626,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Tauri Content Security Policy Activation**: Configured a robust Content Security Policy in `tauri.conf.json` (`default-src 'self'`, `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`, `font-src 'self' https://fonts.gstatic.com data:`, `connect-src 'self' ws: wss: http: https: ipc:;`) to protect the desktop webview container against unauthorized external script execution.
   - **CI/CD Workflow Script Injection Protection**: Hardened `prepare-release.yml` by encapsulating `${{ github.event.inputs.version }}` inside `env: INPUT_VERSION` with strict semantic version regex format validation (`^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$`) and cross-platform Node.js `Cargo.toml` updates.
   - **Local Security Report Protection**: Added `.gstack/` to `.gitignore` to prevent local AI security audit reports from being tracked or exposed.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `.github/workflows/prepare-release.yml`
   - `.gitignore`
@@ -541,6 +641,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Process Tree Teardown Fix**: Upgraded Rust `close_tunnel` backend command to execute `taskkill /F /T` on Windows, terminating child process trees (`cmd.exe`, `cloudflared.exe`, `ssh.exe`) and aborting `PROXY_HANDLES` TCP proxy listeners to prevent orphan background connections.
   - **Public Share Scrollbar RCA Fix**: Expanded `.domain-select-dialog` modal grid bounds (`max-width: 520px; max-height: min(820px, 92vh)`) and removed hardcoded `maxHeight: '420px'` on options container in `Dialogs.tsx`, permanently eliminating vertical scrollbar flakiness across all selection states.
   - **Dynamic Directory Resolution Security Audit**: Removed hardcoded developer machine path candidates (`candidate_roots` containing `E:\to-do`, `E:\release`, etc.) in `lib.rs` (`resolve_directory_advanced`) and replaced with dynamic current working directory and user home profile resolution.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/lib.rs`
   - `packages/desktop/src/App.tsx`
@@ -557,6 +658,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Ephemeral JIT Certificate Signing**: Integrated on-demand Ed25519 keypair generation and JIT certificate signing request via `api.proxync.dev/api/tunnel/sign-jit-cert` with Bearer auth token validation.
   - **Zero-Trace Security (`TempDirGuard`)**: Implemented RAII `TempDirGuard` in Rust ensuring temporary SSH private keys and `known_hosts` files are securely erased on tunnel termination. Enforced strict file permissions (`icacls` / `0600`) on Windows and Unix platforms.
   - **Random Subdomain Auto-Generation**: Native SSH tunnels auto-generate secure 8-character random subdomains (e.g. `px-a1b2c3d4.proxync.dev`) without user input, while Localtunnel retains optional custom subdomain configuration.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/lib.rs`
   - `packages/desktop/src-tauri/.gitignore`
@@ -571,6 +673,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Emergency CVE Radar**: Implemented deterministic `isCriticalSecurityUpdate()` helper in `App.tsx` scanning GitHub Release notes for explicit security tags (`[SECURITY-CVE]`, `[TYPE: CVE-PATCH]`, `[CVE]`, or `"critical": true`).
   - **Unconditional Startup Security Check**: Refactored `runUpdateCheck(isStartupCheck)` to run an immediate pre-flight scan on every app launch. Automatically overrides `autoUpdate: OFF` settings and bypasses skipped versions only when a `[SECURITY-CVE]` tagged release is detected.
   - **Streamlined Force Update UI**: Displays a clean, non-scary `🛡️ Required Security Update vX.Y.Z` force update banner with live percentage progress tracking during download and instant `Restart Now` relaunch action.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/App.tsx`
   - `CHANGELOG.md`
@@ -580,6 +683,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Auto-Updater Capability Fix**: Fixed missing Tauri v2 security IPC permissions in `packages/desktop/src-tauri/capabilities/default.json`. Added `"updater:default"` and `"process:default"` permissions so the existing auto-updater (`check()`, `downloadAndInstall()`) and restart (`relaunch()`) pass Tauri v2 IPC security checks without runtime permission errors.
   - **Status Footer Responsiveness**: Fixed fixed-positioning gaps and text overlapping issues on narrow viewports in `App.tsx` and `index.css`. Added `@media (max-width: 820px)` rule setting `.app-footer` and `.output-console-dock` to `left: 0 !important` when the sidebar slides offscreen. Added smooth transition (`left 200ms ease`), `overflow-hidden`, and `whitespace-nowrap` to prevent vertical line clipping. Added responsive truncation for active tunnel URLs and responsive visibility breakpoints (`hidden sm:inline`, `hidden md:inline`) for latency, encoding, and console text labels.
   - **Release Version Bump**: Bumped release version from `0.2.0` to `0.2.1` across workspace manifests (`package.json`, `packages/desktop/package.json`, `package-lock.json`, `Cargo.toml`, `tauri.conf.json`), Rust HTTP client `User-Agent` (`lib.rs`), sidebar badge (`App.tsx`), and architecture reference map (`.agents/architecture.json`).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `package.json`
   - `package-lock.json`
@@ -601,6 +705,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Traffic Interception Fix**: Fixed `open_tunnel` invocation to pass `proxyPort` (Rust TCP proxy port) instead of the raw `process.port`, enabling Traffic View log interception for custom domain tunnels. Fixed `tunnels.create()` to build the correct `http://domain:port` URL format.
   - **Domain State Sync**: Improved `addDomain`, `verifyDomain`, and `removeDomain` handlers to properly sync domain state changes into `activeWorkspace` via `updateActiveWorkspace` so Settings and process views stay in sync.
   - **Settings UX Polish**: Enter key now submits the Add Domain form. DNS configuration table polished with new `.dns-table` CSS classes. `Host`/`Value` copy buttons upgraded from `btn-ghost` to `btn-secondary`. Verify button shows dynamic `✓ Re-verify` / `Verify Domain` labels. Remove button upgraded to `btn-danger` with label `Remove Domain`.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/lib/api.ts`
@@ -613,6 +718,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Button Contrast Overhaul**: Updated `--color-on-primary` and `--color-on-primary-container` theme tokens in `index.css` to `#ffffff` for high contrast text. Updated inline collection folder `Create` button styling in `PostmanView.tsx` to `text-white font-bold shadow-sm shadow-primary/25`.
   - **Active Internet Connectivity Guard**: Added `checkRealInternetConnection()` edge ping check to prevent `cloudflared` CLI timeout delays when attempting to open cloud tunnels offline. Added `offline` and `online` event listeners with bottom-right toast notifications and added an offline callout banner inside `DomainSelectDialog`.
   - **Global Escape Key Dismissals & Ponytail Refactoring**: Added `useEscape` custom hook in `SharedComponents.tsx` to handle Esc key dismissals across inline workspace creation (`LobbyView.tsx`), collection creation and renaming (`PostmanView.tsx`), and all modal dialogs (`Dialogs.tsx`, `App.tsx`).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/components/views/Dialogs.tsx`
@@ -629,6 +735,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Generic Replay Engine**: Upgraded `replayRequest` in `App.tsx` to generically execute any HTTP method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) via native Rust HTTP executor and append newly replayed packages directly to Traffic Logs. Raised modal overlay z-index to `9999` with glassmorphic backdrop blur.
   - **Type Safety & Enterprise Preview**: Resolved `AppSettings` and `MainView` type drift in `types.ts`. Re-exported shared interfaces in `SharedComponents.tsx`. Replaced static fake API key box with Enterprise API Key Management preview card in `SettingsView.tsx`. Upgraded Account Settings to Proxync Enterprise & Cloud Sync preview card. Added Enterprise RBAC and Policy badges to Workspace Guardrails. Updated official website domain URLs across `SettingsView`, `WelcomeView`, and `DocsView` to `https://proxync.dev/`.
   - **Playground Hotkeys & Code Generator Fix**: Added `Ctrl + /` and `Ctrl + ?` keyboard hotkey binding in Playground (`PostmanView.tsx`) displaying a glassmorphic hotkey reference modal overlay. Replaced TODO comment stub in `codeSnippetGenerator.ts` with working JSON response handler template.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/lib.rs`
   - `packages/desktop/src/App.tsx`
@@ -646,6 +753,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [feature/develop-playground-ux-and-context-menu-enhancements] - 2026-08-06 (Playground UX Overhaul, Glass Context Menu & Smart Banner Hiding)
 - **Feature Summary**: Expanded Collections Rail sidebar width to 280px and eliminated duplicate HTTP method badges in sidebar items. Built a custom glassmorphic right-click context menu (Rename, Copy URL, Duplicate Request, Delete) with global contextmenu suppression unless Developer Inspect Tools is enabled. Added Developer Inspect Tools toggle in Settings under Danger Zone. Centralized `HTTP_METHODS` and `stripMethodPrefix()` utility in `SharedComponents.tsx` to strip method prefixes from request titles. Added unimported endpoint deduplication to starter suggestions banner so it automatically stays hidden when all scanned endpoints are already in collections.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/components/views/Dialogs.tsx`
@@ -660,6 +768,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 ## [PR #69] - 2026-08-06 (Target Route Badge in Playground - Contributed by @slegarraga)
 - **Feature Summary**: Added a compact, pill-shaped Target Route Badge (`.route-badge`) next to the Send button in Playground request builder. Displays dynamic route target indicators (`Cloudflare Edge`, `Public Tunnel`, or `Local Loopback`) so developers immediately know whether traffic traveled through a public edge tunnel or local loopback. Upgraded design tokens across `Dialogs.tsx`, `SharedComponents.tsx`, and `index.css` to Material 3 palette tokens. Made local loopback tooltip URL 100% dynamic based on active process port.
 - **Contributor**: @slegarraga (PR #69)
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/components/views/PostmanView.tsx`
   - `packages/desktop/src/components/views/Dialogs.tsx`
@@ -670,6 +779,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [feature/develop-workspace-activity-and-tunnel-ux-upgrades] - 2026-08-06 (Dynamic Workspace Activity, 7-Day Inactive Auto-Categorization, Custom Glass Modals & 1-Click Open in Browser)
 - **Feature Summary**: Implemented dynamic workspace activity tracking (`lastActivityAt`) with relative time formatting (`Just now`, `4m ago`, `18h ago`, `3d ago`), auto-activating on workspace selection, tunnel sharing, and HTTP traffic logs. Renamed `Archived` tab to `Inactive` with automatic 7-day inactivity filtering, auto-disappearing dormant workspaces into `Inactive` tab and restricting Provision Workspace inline card to `Active` tab. Replaced native `confirm()` on Purge All Data with glassmorphic `ConfirmPurgeDialog`. Enhanced Active Workspace selector typography and contrast. Added 1-click **Open in Browser** option to Active Tunnels three-dot menu (`⋮`) in `WelcomeView` and endpoint action tiles in `ProcessView`. Fixed horizontal icon alignment in Coming Soon modal. Renamed Postman navigation label to single-word industry-standard **Playground**.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/Cargo.toml`
   - `packages/desktop/src/App.tsx`
@@ -684,6 +794,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [feature/develop-patch-socketio-parser-vulnerability] - 2026-08-06 (Socket.IO Vulnerability Patch & Orphaned Dependency Pruning)
 - **Feature Summary**: Resolved Dependabot security vulnerability `GHSA-2m8v-j782-fhvr` (**Socket.IO: Zero-attachment Memory Exhaustion**) and conducted full codebase audit. Completely pruned 3 orphaned, 100% unused dependencies (`socket.io-client`, `socket.io-parser`, `react-router`) from `packages/desktop/package.json` and root `package.json` overrides, removing 9 unneeded node packages. Verified via `npm audit` (0 vulnerabilities) and clean `npm run build`.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `package.json`
   - `packages/desktop/package.json`
@@ -692,6 +803,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [feature/main-telemetry-options] - 2026-08-06 (Persistent Telemetry System with Low-CPU Basic Mode)
 - **Feature Summary**: Fully wired persistent **Enhanced** vs **Basic** telemetry options into `AppSettings` with storage persistence. **Enhanced Mode** (default) enables full P50/P90/P99 latency calculations, route leaderboards, and bandwidth meters. **Basic Mode** bypasses array sorting (`durations.sort`) and non-fatal percentile math to minimize CPU/RAM computational overhead, logging only critical 5xx errors. Features clean inline descriptions in Settings and an active Low CPU Mode indicator banner in Observability Hub.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/components/views/SharedComponents.tsx`
   - `packages/desktop/src/components/views/SettingsView.tsx`
@@ -702,6 +814,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [feature/main-smart-auto-update] - 2026-08-05 (Smart Version-Aware Auto-Update System)
 - **Feature Summary**: Fully wired the Settings "Automatic Updates" toggle to the real update scheduler. When **ON** (default), the app checks for updates on startup and every **2 hours**. When **OFF**, it checks only every **7 days** using a persisted timestamp. Introduced a semver `isForceUpdate()` helper: if the **minor or major** version segment increments (e.g. `1.1.x → 1.2.0`, `0.2.x → 0.3.0`), a **forced update** dialog is shown — red, persistent, no Skip or Later buttons, only "Update Now". Pure **patch-only bumps** (e.g. `1.1.4 → 1.1.6`) show the standard optional toast with Skip this version and Later. Toggle state is now persisted to `AppSettings` and survives restarts.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/components/views/SharedComponents.tsx`
   - `packages/desktop/src/components/views/SettingsView.tsx`
@@ -714,6 +827,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [feature/main-observability-autostart-hub] - 2026-08-05 (Observability Hub, Auto-Start on Boot & Silent Process Spawning)
 - **Feature Summary**: Integrated zero-config Observability Hub featuring P50/P90/P99 latency analytics, status code heatmap, bandwidth meter, public Webhook stream replay, Error Center, and high-contrast theme styling for Midnight Slate and Dracula Dark. Integrated native Auto-Start on Boot functionality using `tauri-plugin-autostart` with silent process spawning on Windows (`CREATE_NO_WINDOW`).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/components/views/ObservabilityView.tsx`
   - `packages/desktop/src/components/views/SettingsView.tsx`
@@ -729,6 +843,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [feature/main-observability-hub] - 2026-08-05 (Zero-Config Observability Hub, Latency Analytics & Webhook Stream)
 - **Feature Summary**: Implemented high-performance O(N) zero-config Observability Hub in `ObservabilityView.tsx` featuring percentile latency metrics (P50/P90/P99), status code distribution gauge, total bandwidth meter, shared public tunnel telemetry, public Webhook interception stream with 1-click Webhook Replay, structured Error Center eliminating terminal console log soup, slowest routes leaderboard, and 1-click debugging navigation to Traffic Inspector and Postman Studio.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/components/views/ObservabilityView.tsx`
   - `packages/desktop/src/App.tsx`
@@ -736,6 +851,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [feature/develop-auto-updater] - 2026-08-04 (Production-Ready Auto Updater)
 - **Feature Summary**: Implemented a fully production-ready automatic update system using Tauri v2 native plugins (`tauri-plugin-updater`, `tauri-plugin-process`), modelled after the POSINX Electron auto-updater pattern. On startup (and every 2 hours), the app silently checks GitHub Releases for a newer version. When an update is found, a persistent non-auto-dismissing toast appears with three actions: **Update Now** (silent background download with live % progress shown on the button), **Skip this version** (version saved to `localStorage` — won't prompt again for that version), and **Later** (dismisses until next check). After downloading, a second persistent toast prompts **Restart Now** or **Later**. Upgraded `toast.tsx` to support persistent toasts with a new `dismissToast(id)` API. Updated `release.yml` GitHub Actions workflow to pass `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets to `tauri-action` with `includeUpdaterJson: true`, enabling automatic signed `updater.json` generation and upload on every release. Set real public key in `tauri.conf.json`. Added `*.key` and `*.key.pub` to `.gitignore` to protect signing keys from accidental commits.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/Cargo.toml`
   - `packages/desktop/src-tauri/Cargo.lock`
@@ -751,6 +867,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [fix/develop-swagger-redirection] - 2026-08-04 (Swagger Postman Export Auto-Redirection & Theme Filter Pill High-Contrast Contrast Fix)
 - **Feature Summary**: Added automatic view redirection to Postman Studio (`setMainView('postman')`) upon clicking 'Export to Postman' in Swagger Studio. Fixed active tag filter pill text contrast across Dracula Dark, Midnight, Cyberpunk, and all themes by setting bright white bold text (`text-white font-bold shadow-md shadow-primary/25`).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/components/views/SwaggerView.tsx`
@@ -760,6 +877,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [fix/develop-postman-response-and-decompression] - 2026-08-04 (Postman Response Payload Decompression & Native Execution Fix)
 - **Feature Summary**: Resolved empty HTTP response payload issue in Postman Studio when requesting Cloudflare Tunnels or relative endpoints. Added gzip, deflate, and brotli automatic decompression features to reqwest in `Cargo.toml`, updated `Cargo.lock`, set desktop User-Agent header in Rust native HTTP executor (`lib.rs`), and bypassed offline mock response handler.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/Cargo.toml`
   - `packages/desktop/src-tauri/Cargo.lock`
@@ -769,6 +887,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [feature/develop-swagger-generator] - 2026-08-04 (Automatic OpenAPI Spec Generator, Multi-Framework Codebase Scanner & Swagger Studio UX Overhaul)
 - **Feature Summary**: Implemented an automatic multi-framework codebase route scanner (Express, Fastify, Next.js, NestJS, FastAPI, Spring Boot, Go) and manual on-demand OpenAPI 3.0 spec generation engine. Added traffic-driven JSON schema inferrer, framework code annotation generator ('Add to Codebase' snippet tab for NestJS, Express JSDoc, FastAPI, Spring Boot, Go), 2-way Postman collection export/import, and redesigned Swagger Studio UX with search filtering, endpoint drawers, parameter tables, raw JSON/YAML views, and spec downloads.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/lib/codebaseScanner.ts`
   - `packages/desktop/src/lib/openApiGenerator.ts`
@@ -782,6 +901,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [v0.2.0-dev] - 2026-08-03 (Postman Studio Redesign, Hotkeys & Developer UX Refresh)
 - **Feature Summary**: Redesigned Postman Studio (`PostmanView.tsx`) with static collection tree ordering, inline folder renaming/deletion, custom collection hotkeys (`Ctrl+Enter` to Send, `Ctrl+S` to Save directly to selected collection), inline Response tab, native Rust HTTP executor (`execute_http_request`) to bypass CORS, and Windows console signal handler (`SetConsoleCtrlHandler`). Bumped application version to `0.2.0` across workspace manifests (`package.json`, `packages/desktop/package.json`, `tauri.conf.json`, `Cargo.toml`, `Cargo.lock`, `package-lock.json`, and `.agents/architecture.json`). Established application-wide `Nunito Sans` font typography system in `assets/typography.css`. Redesigned `DocsView.tsx` into a clean 2-column documentation hub with direct portal links to `https://proxync.dev/docs`.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `package.json`
   - `package-lock.json`
@@ -801,6 +921,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [v0.1.8] - 2026-08-02 (PostCSS Security Patch & Version Bump)
 - **Feature Summary**: Patched Dependabot security vulnerability by upgrading `postcss` from `8.5.16` to `8.5.25` and `nanoid` from `3.3.15` to `3.3.16` in `package-lock.json`. Bumped version to `0.1.8` across root `package.json`, `packages/desktop/package.json`, `tauri.conf.json`, `Cargo.toml`, and `.agents/architecture.json`.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `package.json`
   - `package-lock.json`
@@ -814,6 +935,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [feature/main-fix-postcss-vulnerability] - 2026-08-01 (PostCSS Security Patch)
 - **Feature Summary**: Patched Dependabot security vulnerability by upgrading `postcss` from `8.5.16` to `8.5.25` and `nanoid` from `3.3.15` to `3.3.16` in `package-lock.json`.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `package.json`
   - `package-lock.json`
@@ -827,6 +949,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [v0.1.7] - 2026-08-01 (React Router CVE Patch & Version Bump)
 - **Feature Summary**: Patched Dependabot security vulnerability (CVE-2026-22030 / GHSA-h5cw-625j-3rxh) by upgrading `react-router` to `^8.3.0` (>= 8.3.0) and removing the unused legacy `react-router-dom` dependency. Bumped version to `0.1.7` across root `package.json`, `packages/desktop/package.json`, `tauri.conf.json`, `Cargo.toml`, and `.agents/architecture.json`, and updated `package-lock.json` and `Cargo.lock` accordingly.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `package.json`
   - `package-lock.json`
@@ -840,6 +963,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [v0.1.6] - 2026-07-23 (Installer UI Panel Fix & Version Bump)
 - **Feature Summary**: Fixed blank setup screen in NSIS installer by generating and configuring custom BMP images (`nsis-sidebar.bmp` and `nsis-header.bmp`) for the welcome page sidebar and header. Bumped version to `0.1.6` across root `package.json`, `packages/desktop/package.json`, `tauri.conf.json`, `Cargo.toml`, and `.agents/architecture.json`, and updated `package-lock.json` and `Cargo.lock` accordingly.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `package.json`
   - `package-lock.json`
@@ -855,6 +979,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [v0.1.3] - 2026-07-21 (Vulnerability Patch & Release Branding)
 - **Feature Summary**: Updated desktop package name from generic `desktop` to `proxync`, set author to `Inilax`, and added project description across package.json, Cargo.toml, and tauri.conf.json. Configured NSIS installerIcon under bundle.windows in tauri.conf.json to display custom Proxync ico branding during setup. Patched glib dependency to >= 0.20.12 in Cargo.lock to resolve Dependabot memory unsoundness advisory #4. Updated workspace architecture recon map (.agents) and bumped version to v0.1.3 across all workspace config files.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `package.json`
   - `packages/desktop/package.json`
@@ -898,6 +1023,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [feature/main-dynamic-processes-notes] - 2026-07-18
 - **Feature Summary**: Implemented dynamic process directory and executable path lookup on Windows using native netstat parsing and WMI/CIM queries with a high-performance local process cache in Rust to prevent OS overhead; shifted Workspace Notes input from SettingsView to WelcomeView; removed obsolete relayDeploymentHint settings from AppSettings.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/lib.rs`
   - `packages/desktop/src/lib/types.ts`
@@ -908,6 +1034,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [feature/main-modular-ui-redesign] - 2026-07-18
 - **Feature Summary**: Redesigned the desktop UI/UX completely with a premium glassmorphism theme and modular structure, refactoring App.tsx into independent views under components/views; successfully merged with upstream branch changes, preserving Cloudflare tunnel support, state hydration logic, and Control Plane connection options; resolved all merge conflicts and validated TypeScript compilation.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/index.css`
@@ -926,6 +1053,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [feature/main-cloudflare-refactor] - 2026-07-17
 - **Feature Summary**: Integrated Cloudflare Tunnel support using npx cloudflared quick tunnels with automatic trycloudflare URL parsing; built premium visual antenna latency signal bars displaying ping times to Local loopback, Cloudflare edge, and Localtunnel endpoints; refactored App.tsx monolith into independent views (LobbyView, ProcessView, TrafficView, PostmanView, SwaggerView, ObservabilityView, SettingsView) and dialog components; resolved workspaces state hydration race condition by loading local state synchronously on mount; added seamless silent workspace auto-registration during public domain sharing; added permanent Control Plane Connection section inside Settings with reconnect actions; bypassed guest user active tunnel count limits for offline/local MVP mode.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/api/src/tunnels/tunnels.service.ts`
   - `packages/desktop/src-tauri/src/lib.rs`
@@ -945,6 +1073,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [feature/main-responsive-ui-cleanup] - 2026-07-17
 - **Feature Summary**: Removed duplicate top navbar and tab-strip navigation bars — all navigation now lives exclusively in the sidebar, eliminating the dual-nav confusion. Added a compact 48px mobile-nav-bar (hamburger + current view label) that only appears on screens ≤820px where the sidebar becomes a slide-in overlay drawer. Fixed full-screen layout breakage caused by grid display:none row collapse — workspace-shell converted from CSS grid to flexbox column so content fills 100% height on all screen sizes. Added tunnel status pill inside the sidebar replacing the removed topbar session pill. Redesigned RequestPlayground with sub-tab switcher (REST Client / AI Endpoint Scanner) to prevent input squashing inside narrow inspector panels. Added onClose callback to ChatPanel with dismiss button in header. Implemented 2-step onboarding wizard in LobbyView when no workspaces exist (welcome step → workspace name input step). Added responsive CSS breakpoints for inspector/chat panel overlays at ≤1200px and full-width at ≤768px. Sidebar now auto-closes when any nav item is clicked on mobile.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/components/ChatPanel.tsx`
@@ -955,6 +1084,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [feature/main-shared-domains-pool] - 2026-07-16
 - **Feature Summary**: Refactored custom domains relationship from workspace level to user level to enable sharing domains globally across workspaces; added customDomain unique reference to Tunnels; implemented DomainSelectDialog dropdown choice for exposing tunnels on random subdomains, custom domains, or public Localtunnel proxies; integrated Localtunnel client spawning in Rust layer routing through API port 3939 to support 100% traffic capturing/logging; added local WiFi LAN Tunnel resolver and premium helper select card styling with preferred subdomain selection support.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/api/prisma/schema.prisma`
   - `packages/api/src/domains/domains.controller.ts`
@@ -969,6 +1099,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [feature/main-dns-table-and-local-shares-ui] - 2026-07-16
 - **Feature Summary**: Reordered and styled custom domains DNS configuration table to match Namesilo/GoDaddy layout; implemented public direct DNS resolver (1.1.1.1/8.8.8.8) to bypass local cached lookup delays; added explicit WAN (public tunnel) vs LAN (local server) share choices; fixed active tunnel state resetting upon re-entering workspaces from Lobby.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/api/src/domains/domains.service.ts`
   - `packages/desktop/src/App.tsx`
@@ -978,6 +1109,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [feature/main-agents-and-env-config] - 2026-07-16
 - **Feature Summary**: Created workspace rules (AGENTS.md), system architecture recon map (architecture.json), and release logs (changelog.json); shifted .env.example from root to packages/api/ with updated default port 3939.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `.agents/AGENTS.md`
   - `.agents/architecture.json`
@@ -987,6 +1119,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 
 ## [main] - 2026-07-16
 - **Feature Summary**: Shifted API server to custom port 3939 to avoid local developer port conflicts; introduced workspace onboarding experience for zero-workspace startup; implemented cancel option for local LAN shares in offline modes; resolved NestJS module circular references via decoupled events broker; added active tunnel state hydration on startup; resolved sidebar layout overlapping via scrollbar overrides.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `packages/api/src/main.ts`
   - `packages/api/src/tunnels/tunnels.service.ts`

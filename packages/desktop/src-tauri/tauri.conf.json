@@ -44,11 +44,13 @@
         "headerImage": "icons/nsis-header.bmp",
         "sidebarImage": "icons/nsis-sidebar.bmp"
       }
-    }
+    },
+    "createUpdaterArtifacts": true
   },
   "plugins": {
     "updater": {
       "endpoints": [
+        "https://github.com/Inilax/Proxync/releases/latest/download/latest.json",
         "https://github.com/Inilax/Proxync/releases/latest/download/updater.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE3MTlEODBGOUQ4OUU2NkMKUldSczVvbWREOWdaRjlEaGthd2d5czRRVEpHNWxnVmMzbDNndm9VZEplVis4dTR0ZlJ0M3FtWTAK"
