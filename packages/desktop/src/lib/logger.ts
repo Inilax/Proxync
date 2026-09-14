@@ -149,7 +149,7 @@ export async function logAppLaunch(envMeta?: Record<string, any>): Promise<void>
 }
 
 export interface TunnelSessionParams {
-  provider: 'Cloudflare Tunnel' | 'Localtunnel' | 'Proxync Native SSH' | 'Custom Domain' | string;
+  provider: 'Cloudflare Tunnel' | 'Proxync Native SSH' | 'Custom Domain' | string;
   localPort: number;
   proxyPort?: number;
   tunnelId?: string;

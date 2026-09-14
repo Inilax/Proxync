@@ -1132,7 +1132,7 @@ export default function App() {
     if (!navigator.onLine) {
       logApp('SYSTEM', 'WARN', 'Application started while offline');
       showToast(
-        '⚠️ You are currently offline. Cloud tunnels (Cloudflare & Localtunnel) require internet connection. Local network sharing is active.',
+        '⚠️ You are currently offline. Cloud tunnels (Proxync Tunnel & Cloudflare) require internet connection. Local network sharing is active.',
         'warning'
       );
     }
@@ -1148,7 +1148,7 @@ export default function App() {
     const handleOnline = () => {
       logApp('SYSTEM', 'INFO', 'Network connection restored — online');
       showToast(
-        '🌐 Network connected: Back online! Cloud tunnels (Cloudflare & Localtunnel) are ready.',
+        '🌐 Network connected: Back online! Cloud tunnels (Proxync Tunnel & Cloudflare) are ready.',
         'success'
       );
     };
@@ -1977,82 +1977,6 @@ export default function App() {
     finally { removeSpawningPort(process.port); }
   }
 
-  async function shareProcessLocaltunnel(process: ProcessCandidate, customSubdomain?: string) {
-    if (!activeWorkspace) return;
-    const existingActive = tunnels.find((t) => t.localPort === process.port && t.status === 'ACTIVE');
-    if (existingActive) {
-      showToast(`Tunnel is already active for port ${process.port} (${existingActive.publicUrl}). Stop the existing tunnel first.`, 'warning');
-      setActiveTunnel(existingActive);
-      setSelectedProcessId(process.id);
-      return;
-    }
-    if (spawningPorts.includes(process.port) || sharingPort === process.port) {
-      showToast(`A tunnel is currently launching for port ${process.port}. Please wait...`, 'info');
-      return;
-    }
-
-    const isLive = await verifyPortIsLive(process.port);
-    if (!isLive) {
-      showToast(`⚠️ Port :${process.port} is offline. Please start your local server on port ${process.port} before creating a localtunnel.`, 'warning');
-      void discoverProcesses(true, true);
-      return;
-    }
-
-    const isConnected = await checkRealInternetConnection();
-    if (!isConnected) {
-      showToast('⚠️ No internet connection detected. Localtunnel service requires an active internet connection. Please connect to the internet and try again.', 'error');
-      return;
-    }
-    if (!process.directory || process.directory === 'unknown') {
-      void refreshProcessDirectory(process);
-    }
-    if (isViteProcess(process)) {
-      showToast('⚠️ Sharing Vite dev servers over public tunnel is currently under development.', 'warning');
-      return;
-    }
-    addSpawningPort(process.port);
-    setProcesses((curr) => [process, ...curr.filter((p) => p.id !== process.id)]);
-    const starterScan = buildStarterRequests(process);
-    setStarterSuggestions(starterScan);
-    setSavedRequests((current) => mergeRequests(current, starterScan));
-    updateActiveWorkspace((ws) => ({ ...ws, profiles: upsertProfile(ws.profiles, process, starterScan.length), selectedProfileId: makeProfileId(process), languageHint: detectLanguageLabel(process) }));
-
-    const targetWorkspaceId = activeWorkspace.remoteWorkspaceId || activeWorkspace.id;
-    const token = getToken();
-
-    try {
-      const suggestedSub = customSubdomain || `${activeWorkspace.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${process.port}`;
-      localStorage.setItem('proxync_workspace', targetWorkspaceId);
-      const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
-      const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
-      const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
-      const [, proxyPort] = await Promise.all([
-        invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined),
-        invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port),
-      ]);
-      logTunnelSessionStart({
-        provider: 'Localtunnel',
-        localPort: process.port,
-        proxyPort,
-        processName: process.name,
-        subdomain: suggestedSub,
-        workspaceName: activeWorkspace.name,
-        workspaceId: targetWorkspaceId,
-      });
-      logApp('PROXY', 'INFO', `Bound ephemeral proxy to 127.0.0.1:${proxyPort} -> :${process.port}`);
-      showToast('Starting localtunnel service...', 'info');
-      const localtunnelUrl = await invoke<string>('open_localtunnel', { tunnelId: tunnel.id, localPort: proxyPort, subdomain: suggestedSub });
-      const localtunnelBoundTunnel: Tunnel = { ...tunnel, publicUrl: localtunnelUrl, subdomain: localtunnelUrl.replace('https://', '').replace('.localtunnel.me', '') };
-      setActiveTunnel(localtunnelBoundTunnel);
-      setTunnels((current) => [localtunnelBoundTunnel, ...current.filter((item) => item.id !== tunnel.id)]);
-      setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false);
-      // ponytail: scope clear to active workspace only — preserve other workspaces' traffic history
-      setRequests((current) => current.filter((r) => r.workspaceId && r.workspaceId !== activeWorkspaceIdRef.current));
-      showToast(`Localtunnel is active! URL: ${localtunnelUrl}`, 'success');
-      updateActiveWorkspace((ws) => ({ ...ws, profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: localtunnelUrl } : p) }));
-    } catch (error) { showToast(error instanceof Error ? error.message : String(error), 'error'); }
-    finally { removeSpawningPort(process.port); }
-  }
 
   async function shareProcess(process: ProcessCandidate, customDomain?: string) {
     if (!activeWorkspace) return;
@@ -2169,13 +2093,11 @@ export default function App() {
     touchWorkspaceActivity(activeWorkspace.id);
     const providerName = tunnel.publicUrl?.includes('cloudflare')
       ? 'Cloudflare Tunnel'
-      : tunnel.publicUrl?.includes('localtunnel')
-        ? 'Localtunnel'
-        : tunnel.publicUrl?.includes('inilax') || tunnel.subdomain?.startsWith('px-')
-          ? 'Proxync Native SSH'
-          : tunnel.customDomain
-            ? `Custom Domain (${tunnel.customDomain})`
-            : 'Local Proxy';
+      : tunnel.publicUrl?.includes('inilax') || tunnel.subdomain?.startsWith('px-')
+        ? 'Proxync Native SSH'
+        : tunnel.customDomain
+          ? `Custom Domain (${tunnel.customDomain})`
+          : 'Local Proxy';
 
     logTunnelSessionStop({
       provider: providerName,
@@ -2185,7 +2107,7 @@ export default function App() {
     logApp('TUNNEL', 'INFO', `Stopping tunnel ${tunnel.id} (Port :${tunnel.localPort})`);
     try {
       await invoke('close_tunnel', { tunnelId: tunnel.id, localPort: tunnel.localPort }).catch(() => undefined);
-      if (!tunnel.id.startsWith('lt-') && activeWorkspace.remoteWorkspaceId) {
+      if (activeWorkspace.remoteWorkspaceId) {
         await api.tunnels.close(activeWorkspace.remoteWorkspaceId, tunnel.id).catch(() => undefined);
       }
       setTunnels((current) => current.filter((item) => item.id !== tunnel.id));
@@ -2219,7 +2141,7 @@ export default function App() {
       await Promise.all(
         listToClose.map(async (tunnel) => {
           await invoke('close_tunnel', { tunnelId: tunnel.id, localPort: tunnel.localPort }).catch(() => undefined);
-          if (!tunnel.id.startsWith('lt-') && activeWorkspace?.remoteWorkspaceId) {
+          if (activeWorkspace?.remoteWorkspaceId) {
             await api.tunnels.close(activeWorkspace.remoteWorkspaceId, tunnel.id).catch(() => undefined);
           }
         })
@@ -3727,9 +3649,8 @@ export default function App() {
           process={sharingProcessCandidate}
           domains={domains.filter((d) => d.verified)}
           onClose={() => setSharingProcessCandidate(null)}
-          onConfirm={(selectedOption, ltSubdomain) => {
+          onConfirm={(selectedOption) => {
             if (selectedOption === 'proxync_native') { void shareProcessNative(sharingProcessCandidate); }
-            else if (selectedOption === 'localtunnel') { void shareProcessLocaltunnel(sharingProcessCandidate, ltSubdomain); }
             else if (selectedOption === 'cloudflare') { void shareProcessCloudflare(sharingProcessCandidate); }
             else { void shareProcess(sharingProcessCandidate, selectedOption === 'default' ? undefined : selectedOption); }
             setSharingProcessCandidate(null);

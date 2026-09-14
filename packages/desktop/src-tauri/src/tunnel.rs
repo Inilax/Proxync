@@ -17,7 +17,7 @@ use crate::proxy::stop_proxy;
 
 lazy_static! {
     static ref ACTIVE_TUNNELS: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>> = Arc::new(Mutex::new(HashMap::new()));
-    static ref LOCALTUNNEL_PROCESSES: Arc<Mutex<HashMap<String, tokio::process::Child>>> = Arc::new(Mutex::new(HashMap::new()));
+    static ref SPAWNED_TUNNEL_PROCESSES: Arc<Mutex<HashMap<String, tokio::process::Child>>> = Arc::new(Mutex::new(HashMap::new()));
     static ref HTTP_CLIENT: Client = Client::builder()
         .tcp_nodelay(true)
         .pool_idle_timeout(std::time::Duration::from_secs(90))
@@ -307,8 +307,8 @@ pub async fn close_tunnel(tunnel_id: String, local_port: Option<u16>) -> Result<
         found = true;
     }
 
-    let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
-    if let Some(mut child) = lt_procs.remove(&tunnel_id) {
+    let mut child_procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+    if let Some(mut child) = child_procs.remove(&tunnel_id) {
         kill_child_process_tree(&mut child).await;
         found = true;
     }
@@ -331,112 +331,14 @@ pub async fn close_all_tunnels() -> Result<(), String> {
         handle.abort();
     }
 
-    let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
-    for (_, mut child) in lt_procs.drain() {
+    let mut child_procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+    for (_, mut child) in child_procs.drain() {
         //helper function Used
         kill_child_process_tree(&mut child).await;
     }
 
     stop_proxy(None).await;
     Ok(())
-}
-
-#[tauri::command]
-pub async fn open_localtunnel(
-    app: tauri::AppHandle,
-    tunnel_id: String,
-    local_port: u16,
-    subdomain: Option<String>
-) -> Result<String, String> {
-    #[cfg(target_os = "windows")]
-    let mut cmd = {
-        let mut c = tokio::process::Command::new("cmd");
-        c.creation_flags(0x08000000);
-        c.args(&["/C", "npx"]);
-        c
-    };
-    #[cfg(not(target_os = "windows"))]
-    let mut cmd = tokio::process::Command::new("npx");
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        cmd.as_std_mut().process_group(0);
-    }
-
-    cmd.args(&["-y", "localtunnel@2.0.2", "--port", &local_port.to_string(), "--local-host", "127.0.0.1"]);
-    if let Some(sub) = subdomain {
-        let clean_sub: String = sub
-            .to_lowercase()
-            .chars()
-            .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
-            .collect();
-        let clean_sub = clean_sub.trim_matches('-').to_string();
-        if !clean_sub.is_empty() {
-            cmd.args(&["--subdomain", &clean_sub]);
-        }
-    }
-    cmd.stdout(std::process::Stdio::piped());
-    
-    let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn localtunnel: {}", e))?;
-    let stdout = child.stdout.take().ok_or("Failed to open localtunnel stdout".to_string())?;
-    
-    let (tx, rx) = tokio::sync::oneshot::channel();
-
-    tokio::spawn(async move {
-        let mut reader = tokio::io::BufReader::new(stdout).lines();
-        let mut tx_opt = Some(tx);
-        while let Ok(Some(line)) = reader.next_line().await {
-            if let Some(tx_sender) = tx_opt.take() {
-                if line.contains("your url is:") {
-                    let resolved = line.replace("your url is:", "").trim().to_string();
-                    let _ = tx_sender.send(Ok(resolved));
-                } else {
-                    tx_opt = Some(tx_sender);
-                }
-            }
-        }
-        if let Some(tx_sender) = tx_opt {
-            let _ = tx_sender.send(Err("localtunnel process exited without returning URL".to_string()));
-        }
-    });
-
-    let timeout_duration = std::time::Duration::from_secs(15);
-    let url = match tokio::time::timeout(timeout_duration, rx).await {
-        Ok(Ok(Ok(resolved_url))) => resolved_url,
-        Ok(Ok(Err(err))) => {
-            kill_child_process_tree(&mut child).await;
-            return Err(err);
-        }
-        _ => {
-            kill_child_process_tree(&mut child).await;
-            return Err("Timed out waiting for localtunnel URL".to_string());
-        }
-    };
-
-    let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
-    lt_procs.insert(tunnel_id.clone(), child);
-
-    let tunnel_id_clone = tunnel_id.clone();
-    let app_clone = app.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        let mut has_child = true;
-        while has_child {
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            let mut procs = LOCALTUNNEL_PROCESSES.lock().await;
-            if let Some(child_proc) = procs.get_mut(&tunnel_id_clone) {
-                if let Ok(Some(_)) = child_proc.try_wait() {
-                    procs.remove(&tunnel_id_clone);
-                    let _ = app_clone.emit("tunnel:auto-closed", serde_json::json!({ "tunnelId": tunnel_id_clone }));
-                    has_child = false;
-                }
-            } else {
-                has_child = false;
-            }
-        }
-    });
-
-    Ok(url)
 }
 
 #[tauri::command]
@@ -549,8 +451,8 @@ pub async fn open_cloudflare_tunnel(
         }
     };
 
-    let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
-    lt_procs.insert(tunnel_id.clone(), child);
+    let mut child_procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+    child_procs.insert(tunnel_id.clone(), child);
 
     let tunnel_id_clone = tunnel_id.clone();
     let app_clone = app.clone();
@@ -559,7 +461,7 @@ pub async fn open_cloudflare_tunnel(
         let mut has_child = true;
         while has_child {
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            let mut procs = LOCALTUNNEL_PROCESSES.lock().await;
+            let mut procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
             if let Some(child_proc) = procs.get_mut(&tunnel_id_clone) {
                 if let Ok(Some(_)) = child_proc.try_wait() {
                     procs.remove(&tunnel_id_clone);
@@ -757,8 +659,8 @@ pub async fn open_native_tunnel(
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
 
-    let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
-    lt_procs.insert(tunnel_id.clone(), child);
+    let mut child_procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+    child_procs.insert(tunnel_id.clone(), child);
     
     let tunnel_id_clone = tunnel_id.clone();
     let app_clone = app.clone();
@@ -769,7 +671,7 @@ pub async fn open_native_tunnel(
         let mut has_child = true;
         while has_child {
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            let mut procs = LOCALTUNNEL_PROCESSES.lock().await;
+            let mut procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
             if let Some(child_proc) = procs.get_mut(&tunnel_id_clone) {
                 if let Ok(Some(_)) = child_proc.try_wait() {
                     procs.remove(&tunnel_id_clone);

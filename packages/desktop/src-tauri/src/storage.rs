@@ -800,7 +800,7 @@ pub async fn get_system_info() -> Result<SystemInfo, String> {
 }
 
 #[cfg(test)]
-mod tests {
+mod logging_tests {
     use super::*;
 
     #[tokio::test]
