@@ -2,6 +2,21 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/auto-update] - 2026-09-14 (Auto-Updater IPC Permissions, Manifest Artifacts & Automated Relaunch Flow)
+- **Feature Summary**:
+  - **Tauri v2 Process Relaunch Capabilities (`default.json`)**: Added `process:allow-restart` and `process:allow-exit` to `capabilities/default.json`. Resolves fatal Tauri IPC security permission denial (`Operation not permitted (os error 1)`) when calling `relaunch()` from `@tauri-apps/plugin-process` following an update installation.
+  - **Tauri v2 Updater Artifact Generation (`tauri.conf.json`)**: Enabled `"createUpdaterArtifacts": true` under `"bundle"` in `tauri.conf.json`. Instructs the Tauri build engine to output Minisign signatures (`.sig`) and the update manifest metadata, resolving missing updater assets in production release builds.
+  - **Dual-Manifest Endpoint Resolution (`tauri.conf.json`)**: Updated `plugins.updater.endpoints` to query the standard Tauri v2 manifest `latest.json` first, retaining `updater.json` as a backward-compatible fallback to prevent HTTP 404 Not Found aborts against GitHub release URLs.
+  - **Automated Graceful Relaunch with Race Protection (`App.tsx`)**: Replaced the previous manual two-step toast interaction with an automated 2-second grace countdown (`"Update installed! Restarting Proxync in 2 seconds..."`) that invokes `relaunch()` automatically upon installation completion. Hardened with a `restarted` state lock and timer cancellation to prevent duplicate IPC restart calls if the user clicks "Restart Now" immediately.
+  - **Deduplicated Installation Pipeline (`App.tsx`)**: Extracted a unified `executeDownloadAndInstall` helper shared across both forced (Major/CVE) and optional (Patch) update paths, eliminating 50 lines of duplicate event-streaming and error-handling code.
+  - **Interactive "Check for Updates" Control (`SettingsView.tsx` & `App.tsx`)**: Added a dedicated "Check for updates" button to the Automatic Updates setting tile in `SettingsView`, featuring a spinning sync animation, active-check disablement, dynamic app version display (`v0.2.2`), and live user feedback (`🔍 Checking...`, `✅ Proxync is up to date`, or server error details).
+- **Modified Files**:
+  - `packages/desktop/src-tauri/capabilities/default.json`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `CHANGELOG.md`
+
 ## [fix/develop-symlink-recursion] - 2026-09-14 (Symlink Infinite Recursion & Stack Overflow Defense in scan_directory #159)
 - **Feature Summary**:
   - **Canonical Path Cycle Detection (#159)**: Solved infinite recursion and fatal `SIGSEGV`/stack overflow crashes caused by self-referential or circular symlinks (`link -> .`, `.venv/lib64 -> lib`, `pnpm` monorepos) during project route scanning. Traversal tracks resolved physical paths via a thread-safe `HashSet<PathBuf>` seeded with the canonicalized root directory.
