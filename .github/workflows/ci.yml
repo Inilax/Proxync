@@ -32,9 +32,13 @@ jobs:
           filters: |
             frontend:
               - 'packages/desktop/src/**'
+              - 'packages/desktop/public/**'
+              - 'packages/desktop/index.html'
+              - 'packages/desktop/vite.config.*'
               - 'packages/desktop/package.json'
-              - 'packages/desktop/package-lock.json'
-              - 'packages/desktop/tsconfig.json'
+              - 'packages/desktop/tsconfig*.json'
+              - 'package.json'
+              - 'package-lock.json'
             backend:
               - 'packages/desktop/src-tauri/**'
               - 'packages/desktop/src-tauri/Cargo.*'
