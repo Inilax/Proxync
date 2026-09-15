@@ -657,7 +657,11 @@ pub async fn open_native_tunnel(
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000);
     #[cfg(unix)]
-    inject_gui_toolchain_path(&mut cmd);
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.as_std_mut().process_group(0);
+        inject_gui_toolchain_path(&mut cmd);
+    }
 
     cmd.args(&[
         "-i", active_key_path.to_str().unwrap(),
@@ -723,3 +727,25 @@ pub async fn open_native_tunnel(
     
     Ok(format!("https://{}.proxync.dev", clean_subdomain))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn test_kill_child_process_tree_with_process_group() {
+        use std::os::unix::process::CommandExt;
+        let mut cmd = tokio::process::Command::new("sleep");
+        cmd.arg("60");
+        cmd.as_std_mut().process_group(0);
+        let mut child = cmd.spawn().expect("failed to spawn sleep");
+
+        kill_child_process_tree(&mut child).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        let status = child.try_wait().expect("try_wait failed");
+        assert!(status.is_some(), "process should be terminated by kill_child_process_tree");
+    }
+}
+
