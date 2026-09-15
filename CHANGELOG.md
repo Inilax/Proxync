@@ -2,6 +2,37 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/develop-subprocess-group-termination] - 2026-09-15 (Subprocess Group Termination on Linux & Zero-Orphan SSH Tunnels #182)
+- **Feature Summary**:
+  - **Subprocess Group Leadership on Unix (#182)**: Configured `cmd.as_std_mut().process_group(0)` in `open_native_tunnel` under `#[cfg(unix)]`. Spawns `ssh` as the leader of its own isolated process group (`PGID == PID`) via POSIX `setpgid(0, 0)`.
+  - **Zero-Orphan SSH Process Teardown**: Fixed a critical bug where `kill_child_process_tree` executing `kill -KILL -- -{pid}` failed with `ESRCH` ("No such process") because SSH previously inherited Proxync's parent group rather than leading its own. When tunnels close or the app terminates, the kernel now atomically delivers `SIGKILL` to the entire process group (SSH and any internal child/daemon workers), preventing orphaned processes from holding port 2222 connections open.
+  - **Provider Symmetry**: Aligns `open_native_tunnel` with `open_cloudflare_tunnel` for uniform child process lifecycle management across all tunnel providers.
+  - **Automated Regression Guard**: Added `test_kill_child_process_tree_with_process_group` unit test in `tunnel.rs` validating that `kill_child_process_tree` cleanly terminates processes spawned with `process_group(0)`.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `CHANGELOG.md`
+
+## [security/scorecard-dependabot] - 2026-09-14 (Supply Chain Security, OpenSSF Scorecard, CodeQL & Dependabot CI Workflows #169)
+- **Feature Summary**:
+  - **Automated Dependency Updates (`.github/dependabot.yml`)**: Configured Dependabot for npm, Cargo, and GitHub Actions package ecosystems with scheduled version checks and grouping.
+  - **Supply Chain Security & OpenSSF Scorecard (`.github/workflows/scorecard.yml`)**: Integrated OpenSSF Scorecard automated analysis assessing repository security posture, branch protection, dangerous workflows, and dependency pinning with badge added to `README.md`.
+  - **Static Application Security Testing via CodeQL (`.github/workflows/codeql.yml`)**: Implemented GitHub CodeQL advanced static analysis covering JavaScript/TypeScript and Rust with intelligent file change path filters.
+  - **Continuous Integration Pipeline (`.github/workflows/ci.yml`)**: Created multi-platform CI workflow testing frontend TypeScript/Vite compilation and backend Tauri builds.
+  - **Multi-Target Release Pipeline Hardening (`prepare-release.yml` & `release.yml`)**: Configured packaging targets (deb, appimage, nsis, dmg), updater json inclusion, and pre-release validation checks.
+  - **Vulnerability Disclosure Policy (`SECURITY.md`)**: Formally defined security reporting protocols, supported versions, and disclosure response timelines.
+  - **Target Bundle Packaging (`tauri.conf.json`)**: Configured target desktop bundle types (deb, appimage, nsis, dmg) and active bundle metadata.
+- **Modified Files**:
+  - `.github/dependabot.yml`
+  - `.github/workflows/ci.yml`
+  - `.github/workflows/codeql.yml`
+  - `.github/workflows/prepare-release.yml`
+  - `.github/workflows/release.yml`
+  - `.github/workflows/scorecard.yml`
+  - `README.md`
+  - `SECURITY.md`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `CHANGELOG.md`
+
 ## [fix/develop-gui-environment-path] - 2026-09-14 (Packaged App GUI Environment PATH Injection for Cloudflare & Subprocess Tunnels)
 - **Feature Summary**:
   - **Packaged App Desktop Environment PATH Resolution**: Fixed a critical failure where Cloudflare tunnels (`open_cloudflare_tunnel`) and Native SSH tunnels (`open_native_tunnel`) fail to spawn (`os error 2: No such file or directory`) when running inside packaged Linux and macOS desktop builds (`.deb`, `.rpm`, AppImage, `.dmg`, `.app`).
