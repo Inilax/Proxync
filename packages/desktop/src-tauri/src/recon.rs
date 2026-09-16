@@ -82,7 +82,13 @@ fn get_platform_scanner() -> &'static dyn PlatformScanner {
     &SCANNER
 }
 
-#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+#[cfg(target_os = "macos")]
+fn get_platform_scanner() -> &'static dyn PlatformScanner {
+    static SCANNER: MacOsScanner = MacOsScanner;
+    &SCANNER
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
 fn get_platform_scanner() -> &'static dyn PlatformScanner {
     static SCANNER: FallbackScanner = FallbackScanner;
     &SCANNER
@@ -430,13 +436,187 @@ impl PlatformScanner for WindowsScanner {
 }
 
 /* ══════════════════════════════════════════════
-   FALLBACK SCANNER (macOS / Unix)
+   MACOS SCANNER (lsof + ps batch engine)
    ══════════════════════════════════════════════ */
 
-#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+#[cfg(target_os = "macos")]
+struct MacOsScanner;
+
+#[cfg(target_os = "macos")]
+impl PlatformScanner for MacOsScanner {
+    fn scan_listening_ports(&self) -> (HashMap<u16, u32>, HashMap<u32, Vec<u16>>) {
+        let mut port_to_pid = HashMap::new();
+        let mut pid_to_ports = HashMap::new();
+
+        if let Ok(output) = std::process::Command::new("lsof")
+            .args(&["-iTCP", "-sTCP:LISTEN", "-P", "-n"])
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines().skip(1) {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 9 {
+                    if let Ok(pid) = parts[1].parse::<u32>() {
+                        let addr = parts[parts.len() - 2];
+                        if let Some(port_str) = addr.rsplit(':').next() {
+                            let clean = port_str.trim_matches(|c: char| !c.is_ascii_digit());
+                            if let Ok(port) = clean.parse::<u16>() {
+                                if is_dev_port(port) {
+                                    port_to_pid.entry(port).or_insert(pid);
+                                    let pids_list = pid_to_ports.entry(pid).or_insert_with(Vec::new);
+                                    if !pids_list.contains(&port) {
+                                        pids_list.push(port);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Ghost port prevention: filter out Proxync's own PID
+        let self_pid = std::process::id();
+        port_to_pid.retain(|_, &mut pid| pid != self_pid);
+        pid_to_ports.remove(&self_pid);
+
+        (port_to_pid, pid_to_ports)
+    }
+
+    fn scan_processes(&self) -> HashMap<u32, RawProcess> {
+        let (port_to_pid, _) = self.scan_listening_ports();
+        let mut pids: Vec<u32> = port_to_pid.values().copied().collect();
+        pids.sort_unstable();
+        pids.dedup();
+
+        if pids.is_empty() {
+            return HashMap::new();
+        }
+
+        let pid_csv = pids
+            .iter()
+            .map(|p| p.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+
+        let mut map = HashMap::new();
+        if let Ok(output) = std::process::Command::new("ps")
+            .args(&["-p", &pid_csv, "-o", "pid=,ppid=,comm=,command="])
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+
+                // Tokenize first 3 whitespace fields by index to preserve command arguments with spaces
+                let mut word_indices: Vec<(usize, &str)> = Vec::new();
+                let mut in_word = false;
+                let mut start_idx = 0;
+                for (i, c) in trimmed.char_indices() {
+                    if !c.is_whitespace() {
+                        if !in_word {
+                            in_word = true;
+                            start_idx = i;
+                        }
+                    } else if in_word {
+                        in_word = false;
+                        word_indices.push((start_idx, &trimmed[start_idx..i]));
+                        if word_indices.len() == 3 {
+                            break;
+                        }
+                    }
+                }
+                if in_word && word_indices.len() < 3 {
+                    word_indices.push((start_idx, &trimmed[start_idx..]));
+                }
+
+                if word_indices.len() < 3 {
+                    continue;
+                }
+
+                let pid: u32 = match word_indices[0].1.parse() {
+                    Ok(p) => p,
+                    Err(_) => continue,
+                };
+                let ppid: Option<u32> = word_indices[1].1.parse().ok();
+                let comm = word_indices[2].1.to_string();
+
+                let comm_end = word_indices[2].0 + word_indices[2].1.len();
+                let command = if comm_end < trimmed.len() {
+                    let cmd_part = trimmed[comm_end..].trim();
+                    if !cmd_part.is_empty() {
+                        Some(cmd_part.to_string())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                let cmd_exec_name = command.as_ref().and_then(|cmd| {
+                    cmd.split_whitespace().next().and_then(|first| {
+                        let p = std::path::Path::new(first);
+                        p.file_name().map(|f| f.to_string_lossy().to_string())
+                    })
+                });
+
+                let short_name = cmd_exec_name
+                    .filter(|s| !s.is_empty())
+                    .or_else(|| {
+                        std::path::Path::new(&comm)
+                            .file_name()
+                            .map(|f| f.to_string_lossy().to_string())
+                            .filter(|s| !s.is_empty())
+                    })
+                    .unwrap_or_else(|| comm.clone());
+
+                map.insert(
+                    pid,
+                    RawProcess {
+                        pid,
+                        parent_pid: ppid,
+                        name: short_name,
+                        exec_path: Some(comm),
+                        cmd_line: command,
+                    },
+                );
+            }
+        }
+
+        map
+    }
+
+    fn get_process_cwd(&self, pid: u32) -> Option<String> {
+        if let Ok(output) = std::process::Command::new("lsof")
+            .args(&["-a", "-p", &pid.to_string(), "-d", "cwd", "-Fn"])
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if line.starts_with('n') {
+                    let path_str = &line[1..];
+                    if !path_str.starts_with('(') && !path_str.is_empty() {
+                        return Some(path_str.to_string());
+                    }
+                }
+            }
+        }
+        None
+    }
+}
+
+/* ══════════════════════════════════════════════
+   FALLBACK SCANNER (Generic Unix)
+   ══════════════════════════════════════════════ */
+
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
 struct FallbackScanner;
 
 #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
 impl PlatformScanner for FallbackScanner {
     fn scan_listening_ports(&self) -> (HashMap<u16, u32>, HashMap<u32, Vec<u16>>) {
         let mut port_to_pid = HashMap::new();
@@ -485,10 +665,28 @@ impl PlatformScanner for FallbackScanner {
 
 #[tauri::command]
 pub async fn scan_ports() -> Result<Vec<u16>, String> {
-    let (port_to_pid, _) = get_platform_scanner().scan_listening_ports();
-    let mut ports: Vec<u16> = port_to_pid.into_keys().collect();
-    ports.sort_unstable();
-    Ok(ports)
+    tauri::async_runtime::spawn_blocking(|| {
+        let scanner = get_platform_scanner();
+        // Call scan_listening_ports once; scan_processes will use the same
+        // port snapshot internally — no duplicate lsof invocations at caller level.
+        let (port_to_pid, _) = scanner.scan_listening_ports();
+        let all_procs = scanner.scan_processes();
+        let mut ports: Vec<u16> = Vec::new();
+        for (port, pid) in port_to_pid {
+            let proc_opt = all_procs.get(&pid);
+            let name = proc_opt.map(|p| p.name.as_str()).unwrap_or("");
+            let cmd = proc_opt.and_then(|p| p.cmd_line.as_deref());
+            if !is_system_process_name(name) && !is_infra_process_name(name) {
+                if let ProcessType::Dev { .. } = classify_process(name, cmd) {
+                    ports.push(port);
+                }
+            }
+        }
+        ports.sort_unstable();
+        Ok(ports)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /* ══════════════════════════════════════════════
@@ -529,6 +727,7 @@ fn is_system_process_name(name: &str) -> bool {
         || lower.starts_with("code")
         || lower.starts_with("cursor")
         || lower.starts_with("antigravity")
+        || lower.starts_with("agy")
         || lower.starts_with("language_server")
         || lower.starts_with("copilot")
         || lower.starts_with("conhost")
@@ -537,6 +736,18 @@ fn is_system_process_name(name: &str) -> bool {
         || lower.starts_with("systemd")
         || lower.starts_with("avahi-daemon")
         || lower.starts_with("cupsd")
+        || lower.starts_with("controlce")
+        || lower.starts_with("controlcenter")
+        || lower.starts_with("rapportd")
+        || lower.starts_with("airplay")
+        || lower.starts_with("sharingd")
+        || lower.starts_with("identityservicesd")
+        || lower.starts_with("remoted")
+        || lower.starts_with("launchd")
+        || lower.starts_with("cloudpaird")
+        || lower.starts_with("universalcontrol")
+        || lower.starts_with("megasync")
+        || lower.starts_with("dropbox")
 }
 
 fn is_infra_process_name(name: &str) -> bool {
@@ -545,8 +756,13 @@ fn is_infra_process_name(name: &str) -> bool {
         || lower.starts_with("com.docker")
         || lower.starts_with("postgres")
         || lower.starts_with("mysql")
+        || lower.starts_with("mysqld")
+        || lower.starts_with("mariadb")
+        || lower.starts_with("mariadbd")
         || lower.starts_with("mongod")
+        || lower.starts_with("mongodb")
         || lower.starts_with("redis")
+        || lower.starts_with("ollama")
         || lower.starts_with("nginx")
         || lower.starts_with("apache")
         || lower.starts_with("httpd")
@@ -585,7 +801,7 @@ fn detect_framework(cmd_line: &str) -> Option<String> {
         Some("Python HTTP Server".to_string())
     } else if lower.contains("spring-boot") || lower.contains("springframework") {
         Some("Spring Boot App".to_string())
-    } else if lower.contains("express") || lower.contains("server.js") || lower.contains("app.js") || lower.contains("index.js") {
+    } else if lower.contains("express") || lower.contains("server.js") || lower.contains("app.js") || lower.contains("index.js") || lower.contains("server.ts") {
         Some("Node.js / Express".to_string())
     } else {
         None
@@ -598,6 +814,30 @@ fn classify_process(name: &str, cmd_line: Option<&str>) -> ProcessType {
     }
     if is_infra_process_name(name) {
         return ProcessType::Infra { name: name.to_string() };
+    }
+
+    // Secondary path-based check for macOS system bundles and apps
+    if let Some(cmd) = cmd_line {
+        let lower_cmd = cmd.to_lowercase();
+        if lower_cmd.starts_with("/system/library/")
+            || lower_cmd.starts_with("/usr/libexec/")
+            || lower_cmd.starts_with("/usr/sbin/")
+        {
+            return ProcessType::SystemOrUnknown;
+        }
+        if lower_cmd.contains("/applications/ollama.app/") {
+            return ProcessType::Infra {
+                name: "ollama".to_string(),
+            };
+        }
+        if lower_cmd.contains("/applications/megasync.app/") {
+            return ProcessType::SystemOrUnknown;
+        }
+        if lower_cmd.contains("/applications/postgres.app/") {
+            return ProcessType::Infra {
+                name: "postgres".to_string(),
+            };
+        }
     }
 
     let lower_name = name.to_lowercase();
@@ -1030,20 +1270,24 @@ fn resolve_directory_in_memory(
 
 #[tauri::command]
 pub async fn resolve_process_directory(port: u16, pid: Option<u32>) -> Result<String, String> {
-    let scanner = get_platform_scanner();
-    let (port_to_pid, _) = scanner.scan_listening_ports();
-    let target_pid = pid.or_else(|| port_to_pid.get(&port).copied());
+    tauri::async_runtime::spawn_blocking(move || {
+        let scanner = get_platform_scanner();
+        let (port_to_pid, _) = scanner.scan_listening_ports();
+        let target_pid = pid.or_else(|| port_to_pid.get(&port).copied());
 
-    if let Some(pid_val) = target_pid {
-        let all_procs = scanner.scan_processes();
-        if let Some(proc) = all_procs.get(&pid_val) {
-            let resolved = resolve_directory_in_memory(proc, &all_procs);
-            if resolved != "unknown" {
-                return Ok(resolved);
+        if let Some(pid_val) = target_pid {
+            let all_procs = scanner.scan_processes();
+            if let Some(proc) = all_procs.get(&pid_val) {
+                let resolved = resolve_directory_in_memory(proc, &all_procs);
+                if resolved != "unknown" {
+                    return Ok(resolved);
+                }
             }
         }
-    }
-    Err("Unable to resolve project directory for process".to_string())
+        Err("Unable to resolve project directory for process".to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /* ══════════════════════════════════════════════
@@ -1052,82 +1296,110 @@ pub async fn resolve_process_directory(port: u16, pid: Option<u32>) -> Result<St
 
 #[tauri::command]
 pub async fn scan_processes(bypass_cache: bool) -> Result<Vec<ProcessCandidate>, String> {
-    let scanner = get_platform_scanner();
-    let (port_to_pid, _) = scanner.scan_listening_ports();
+    let (port_to_pid, all_procs) = tauri::async_runtime::spawn_blocking(|| {
+        let scanner = get_platform_scanner();
+        (scanner.scan_listening_ports().0, scanner.scan_processes())
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
     if port_to_pid.is_empty() {
         return Ok(Vec::new());
     }
 
-    let all_procs = scanner.scan_processes();
-    let mut candidates = Vec::new();
-    let mut cache = RECON_PROCESS_CACHE.lock().await;
+    // ── Phase 1: Determine which ports need fresh resolution ──────────────────
+    // Lock is held only briefly to read/evict cache. It is released BEFORE any
+    // blocking I/O (lsof CWD lookups) so it can never be held for unbounded time.
+    let (to_process, mut cached_candidates) = {
+        let mut cache = RECON_PROCESS_CACHE.lock().await;
 
-    // Retain only currently active listening ports in cache
-    let active_ports: Vec<u16> = port_to_pid.keys().copied().collect();
-    cache.retain(|port, _| active_ports.contains(port));
+        // Retain only currently active listening ports in cache
+        let active_ports: Vec<u16> = port_to_pid.keys().copied().collect();
+        cache.retain(|port, _| active_ports.contains(port));
 
-    // Sort ports deterministically
-    let mut sorted_entries: Vec<(u16, u32)> = port_to_pid.into_iter().collect();
-    sorted_entries.sort_by_key(|&(port, _)| port);
+        // Sort ports deterministically
+        let mut sorted_entries: Vec<(u16, u32)> = port_to_pid.into_iter().collect();
+        sorted_entries.sort_by_key(|&(port, _)| port);
 
-    for (port, pid) in sorted_entries {
-        if !bypass_cache {
-            if let Some(cached) = cache.get(&port) {
-                candidates.push(cached.clone());
-                continue;
+        let mut to_process = Vec::new();
+        let mut cached = Vec::new();
+
+        for (port, pid) in sorted_entries {
+            if !bypass_cache {
+                if let Some(c) = cache.get(&port) {
+                    cached.push(c.clone());
+                    continue;
+                }
             }
+            to_process.push((port, pid));
         }
+        (to_process, cached)
+    };
+    // ── Cache lock is now RELEASED ─────────────────────────────────────────────
 
-        let proc_opt = all_procs.get(&pid);
-        let proc_name = proc_opt.map(|p| p.name.as_str()).unwrap_or("Development server");
-        let cmd_line = proc_opt.and_then(|p| p.cmd_line.as_deref());
+    // ── Phase 2: Resolve uncached ports in blocking thread (no lock held) ─────
+    let new_candidates = if to_process.is_empty() {
+        Vec::new()
+    } else {
+        tauri::async_runtime::spawn_blocking(move || {
+            let mut results = Vec::new();
+            for (port, pid) in to_process {
+                let proc_opt = all_procs.get(&pid);
+                let proc_name = proc_opt.map(|p| p.name.as_str()).unwrap_or("Development server");
+                let cmd_line = proc_opt.and_then(|p| p.cmd_line.as_deref());
 
-        // Classify process: filter out system processes and infrastructure noise
-        let (_runtime_label, framework_label) = match classify_process(proc_name, cmd_line) {
-            ProcessType::Dev { runtime, framework } => {
-                let fw = framework.unwrap_or_else(|| format!("{} App", runtime));
-                (runtime, fw)
+                let (_runtime_label, framework_label) = match classify_process(proc_name, cmd_line) {
+                    ProcessType::Dev { runtime, framework } => {
+                        let fw = framework.unwrap_or_else(|| format!("{} App", runtime));
+                        (runtime, fw)
+                    }
+                    ProcessType::Infra { .. } => continue,
+                    ProcessType::SystemOrUnknown => continue,
+                };
+
+                let resolved_dir = if let Some(proc) = proc_opt {
+                    resolve_directory_in_memory(proc, &all_procs)
+                } else {
+                    "unknown".to_string()
+                };
+
+                let exec_path = proc_opt.and_then(|p| p.exec_path.clone());
+
+                let candidate = ProcessCandidate {
+                    id: format!("port-{}", port),
+                    name: if proc_name.ends_with(".exe") {
+                        proc_name.trim_end_matches(".exe").to_string()
+                    } else {
+                        proc_name.to_string()
+                    },
+                    port,
+                    pid: Some(pid),
+                    command: Some(format!("localhost:{}", port)),
+                    directory: Some(resolved_dir),
+                    executable: exec_path.or_else(|| Some("unknown".to_string())),
+                    framework: Some(framework_label),
+                    access: "ready".to_string(),
+                    uptime: Some("live".to_string()),
+                };
+                results.push(candidate);
             }
-            ProcessType::Infra { .. } => {
-                // Background infra is skipped from dev service candidates
-                continue;
-            }
-            ProcessType::SystemOrUnknown => {
-                // System noise is skipped
-                continue;
-            }
-        };
+            results
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    };
 
-        let resolved_dir = if let Some(proc) = proc_opt {
-            resolve_directory_in_memory(proc, &all_procs)
-        } else {
-            "unknown".to_string()
-        };
-
-        let exec_path = proc_opt.and_then(|p| p.exec_path.clone());
-
-        let candidate = ProcessCandidate {
-            id: format!("port-{}", port),
-            name: if proc_name.ends_with(".exe") {
-                proc_name.trim_end_matches(".exe").to_string()
-            } else {
-                proc_name.to_string()
-            },
-            port,
-            pid: Some(pid),
-            command: Some(format!("localhost:{}", port)),
-            directory: Some(resolved_dir),
-            executable: exec_path.or_else(|| Some("unknown".to_string())),
-            framework: Some(framework_label),
-            access: "ready".to_string(),
-            uptime: Some("live".to_string()),
-        };
-
-        cache.insert(port, candidate.clone());
-        candidates.push(candidate);
+    // ── Phase 3: Re-acquire lock briefly only to insert new entries ───────────
+    if !new_candidates.is_empty() {
+        let mut cache = RECON_PROCESS_CACHE.lock().await;
+        for candidate in &new_candidates {
+            cache.insert(candidate.port, candidate.clone());
+        }
     }
 
-    Ok(candidates)
+    cached_candidates.extend(new_candidates);
+    cached_candidates.sort_by_key(|c| c.port);
+    Ok(cached_candidates)
 }
 
 #[tauri::command]
@@ -1320,5 +1592,36 @@ mod tests {
             !pid_to_ports.contains_key(&self_pid),
             "pid_to_ports must not contain the Proxync self-PID"
         );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_macos_scanner_filters_system_daemons() {
+        assert!(is_system_process_name("ControlCe"));
+        assert!(is_system_process_name("ControlCenter"));
+        assert!(is_system_process_name("rapportd"));
+        assert!(is_system_process_name("megasync"));
+        assert!(is_system_process_name("agy"));
+        assert!(is_infra_process_name("mysqld"));
+        assert!(is_infra_process_name("postgres"));
+        assert!(is_infra_process_name("mongod"));
+        assert!(is_infra_process_name("ollama"));
+
+        match classify_process("controlcenter", Some("/System/Library/CoreServices/ControlCenter.app/Contents/MacOS/ControlCenter")) {
+            ProcessType::SystemOrUnknown => {},
+            _ => panic!("Expected SystemOrUnknown for ControlCenter"),
+        }
+
+        match classify_process("ollama", Some("/Applications/Ollama.app/Contents/Resources/ollama serve")) {
+            ProcessType::Infra { .. } => {},
+            _ => panic!("Expected Infra for Ollama"),
+        }
+
+        match classify_process("node", Some("/usr/local/bin/node server.js")) {
+            ProcessType::Dev { framework, .. } => {
+                assert_eq!(framework, Some("Node.js / Express".to_string()));
+            },
+            _ => panic!("Expected Dev for Node.js server.js"),
+        }
     }
 }

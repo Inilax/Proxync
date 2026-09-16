@@ -2,6 +2,18 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/macos-port-scan-filtering] - 2026-09-16 (macOS Native Port Scanner & Ghost Port Daemon Filtering)
+- **Feature Summary**:
+  - **Native macOS Port Scanner (`MacOsScanner`)**: Implemented dedicated 3-stage platform scanner for macOS replacing the generic Unix `FallbackScanner` stub. Integrates `lsof -iTCP -sTCP:LISTEN -P -n` and full `ps` command inspection to bypass macOS 16-character process name truncation (e.g. `ControlCenter` -> `ControlCe`).
+  - **Ghost Port Daemon & Noise Filtering**: Hardened system and infrastructure process blacklists with macOS-specific system daemons (`ControlCenter`, `rapportd`, `airplay`, `sharingd`, `identityservicesd`, `launchd`, `remoted`, `cloudpaird`, `universalcontrol`, `megasync`, `dropbox`, `agy`) and system directory paths (`/System/Library/`, `/usr/libexec/`, `/usr/sbin/`). Filters out internal/system daemons from port scan results so only active user dev servers are presented.
+  - **CWD Resolution via Native lsof**: Implemented `get_process_cwd` for macOS using unprivileged `lsof -a -p <pid> -d cwd -Fn` to dynamically resolve working directories for detected services.
+  - **Non-Blocking Async Execution**: Refactored `scan_ports`, `scan_processes`, and `resolve_process_directory` Tauri commands with `tauri::async_runtime::spawn_blocking` and decoupled `RECON_PROCESS_CACHE` mutex locking to prevent blocking the async runtime during subprocess execution.
+  - **Automated Regression Guard**: Added `test_macos_scanner_filters_system_daemons` unit test validating daemon detection and process classification on macOS.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `package-lock.json`
+  - `CHANGELOG.md`
+
 ## [fix/develop-subprocess-group-termination] - 2026-09-15 (Subprocess Group Termination on Linux & Zero-Orphan SSH Tunnels #182)
 - **Feature Summary**:
   - **Subprocess Group Leadership on Unix (#182)**: Configured `cmd.as_std_mut().process_group(0)` in `open_native_tunnel` under `#[cfg(unix)]`. Spawns `ssh` as the leader of its own isolated process group (`PGID == PID`) via POSIX `setpgid(0, 0)`.
