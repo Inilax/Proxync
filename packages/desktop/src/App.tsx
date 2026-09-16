@@ -2865,6 +2865,8 @@ export default function App() {
      RENDER — Reference-Matching Shell
      ══════════════════════════════════════════════ */
 
+  // check for Mac platform
+  const isMac = typeof navigator !== 'undefined' && navigator.userAgent.includes('Mac');
   const viewLabel = NAV_CATEGORIES.flatMap((c) => c.items).find((n) => n.view === mainView)?.label
     ?? (mainView === 'process' ? 'Process' : mainView === 'postman' ? 'Playground' : mainView === 'observability' ? 'Observability' : 'Proxync');
 
@@ -2885,6 +2887,10 @@ export default function App() {
           ) {
             void getCurrentWindow().startDragging();
           }
+        }}
+        onDoubleClick={() => {
+          // Optional standard OS behavior: double-click titlebar to maximize/restore
+          void getCurrentWindow().toggleMaximize();
         }}
       >
         <div className="flex items-center gap-2 sm:gap-4 md:gap-6 min-w-0">
@@ -3122,57 +3128,60 @@ export default function App() {
             )}
           </div>
         </div>
-        <div className="window-controls flex items-center h-full shrink-0">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              handleMinimize();
-            }}
-            className="window-control window-control-hover text-on-surface-variant hover:text-on-surface cursor-pointer"
-            title="Minimize"
-            aria-label="Minimize"
-          >
-            <svg width="10" height="1" viewBox="0 0 10 1" fill="currentColor">
-              <rect width="10" height="1" />
-            </svg>
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              void handleToggleMaximize();
-            }}
-            className="window-control window-control-hover text-on-surface-variant hover:text-on-surface cursor-pointer"
-            title={isMaximized ? "Restore" : "Maximize"}
-            aria-label={isMaximized ? "Restore" : "Maximize"}
-          >
-            {isMaximized ? (
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M2.5 0.5H9.5V7.5" stroke="currentColor" strokeWidth="1" fill="none" />
-                <rect x="0.5" y="2.5" width="7" height="7" stroke="currentColor" strokeWidth="1" fill="none" />
+        {/* Render window controls on Windows & Linux ONLY */}
+        {!isMac && (
+          <div className="window-controls flex items-center h-full shrink-0">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                handleMinimize();
+              }}
+              className="window-control window-control-hover text-on-surface-variant hover:text-on-surface cursor-pointer"
+              title="Minimize"
+              aria-label="Minimize"
+            >
+              <svg width="10" height="1" viewBox="0 0 10 1" fill="currentColor">
+                <rect width="10" height="1" />
               </svg>
-            ) : (
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                void handleToggleMaximize();
+              }}
+              className="window-control window-control-hover text-on-surface-variant hover:text-on-surface cursor-pointer"
+              title={isMaximized ? "Restore" : "Maximize"}
+              aria-label={isMaximized ? "Restore" : "Maximize"}
+            >
+              {isMaximized ? (
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M2.5 0.5H9.5V7.5" stroke="currentColor" strokeWidth="1" fill="none" />
+                  <rect x="0.5" y="2.5" width="7" height="7" stroke="currentColor" strokeWidth="1" fill="none" />
+                </svg>
+              ) : (
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="0.5" y="0.5" width="9" height="9" stroke="currentColor" strokeWidth="1" />
+                </svg>
+              )}
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                handleClose();
+              }}
+              className="window-control close-hover text-on-surface-variant cursor-pointer"
+              title="Close"
+              aria-label="Close"
+            >
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="0.5" y="0.5" width="9" height="9" stroke="currentColor" strokeWidth="1" />
+                <path d="M0.5 0.5L9.5 9.5M9.5 0.5L0.5 9.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
               </svg>
-            )}
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              handleClose();
-            }}
-            className="window-control close-hover text-on-surface-variant cursor-pointer"
-            title="Close"
-            aria-label="Close"
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M0.5 0.5L9.5 9.5M9.5 0.5L0.5 9.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
+            </button>
+          </div>
+        )}
       </header>
 
       {/* ── Body: Sidebar + Content ── */}
