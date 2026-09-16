@@ -57,6 +57,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
         with:
+          toolchain: stable
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
@@ -83,7 +84,7 @@ jobs:
 
       - name: Sanity build (debug, fast)
         working-directory: ${{ env.PKG_DIR }}
-        run: npm run tauri build -- --debug
+        run: npm run tauri build -- --debug --no-bundle
 
   prepare-release:
     name: Bump Version & Open PR
