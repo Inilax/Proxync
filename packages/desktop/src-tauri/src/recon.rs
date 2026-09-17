@@ -484,6 +484,10 @@ impl PlatformScanner for MacOsScanner {
     }
 
     fn scan_processes(&self) -> HashMap<u32, RawProcess> {
+        // ponytail: scan_listening_ports() is called again here to build the PID list.
+        // This means callers that call both scan_listening_ports() + scan_processes()
+        // run lsof twice. A future refactor should accept &HashMap<u16,u32> as input
+        // (changing the PlatformScanner trait) to eliminate the duplicate invocation.
         let (port_to_pid, _) = self.scan_listening_ports();
         let mut pids: Vec<u32> = port_to_pid.values().copied().collect();
         pids.sort_unstable();
@@ -615,7 +619,6 @@ impl PlatformScanner for MacOsScanner {
 #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
 struct FallbackScanner;
 
-#[cfg(not(any(target_os = "windows", target_os = "linux")))]
 #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
 impl PlatformScanner for FallbackScanner {
     fn scan_listening_ports(&self) -> (HashMap<u16, u32>, HashMap<u32, Vec<u16>>) {
@@ -1594,19 +1597,28 @@ mod tests {
         );
     }
 
+    /// Validates cross-platform daemon classification rules.
+    /// All tested functions (classify_process, is_system_process_name, is_infra_process_name)
+    /// are pure string-matching functions with no OS API calls — safe to run on all platforms.
     #[test]
-    #[cfg(target_os = "macos")]
-    fn test_macos_scanner_filters_system_daemons() {
+    fn test_daemon_filtering_rules() {
+        // macOS system daemon names (string-based, platform-agnostic matching)
         assert!(is_system_process_name("ControlCe"));
         assert!(is_system_process_name("ControlCenter"));
         assert!(is_system_process_name("rapportd"));
         assert!(is_system_process_name("megasync"));
         assert!(is_system_process_name("agy"));
+        // Infrastructure process names
         assert!(is_infra_process_name("mysqld"));
         assert!(is_infra_process_name("postgres"));
         assert!(is_infra_process_name("mongod"));
         assert!(is_infra_process_name("ollama"));
+        // Negative: real dev processes must NOT be filtered
+        assert!(!is_system_process_name("node"));
+        assert!(!is_infra_process_name("node"));
+        assert!(!is_system_process_name("python3"));
 
+        // Path-based classification (pure string matching — no OS stat calls)
         match classify_process("controlcenter", Some("/System/Library/CoreServices/ControlCenter.app/Contents/MacOS/ControlCenter")) {
             ProcessType::SystemOrUnknown => {},
             _ => panic!("Expected SystemOrUnknown for ControlCenter"),

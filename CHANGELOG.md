@@ -8,7 +8,9 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Ghost Port Daemon & Noise Filtering**: Hardened system and infrastructure process blacklists with macOS-specific system daemons (`ControlCenter`, `rapportd`, `airplay`, `sharingd`, `identityservicesd`, `launchd`, `remoted`, `cloudpaird`, `universalcontrol`, `megasync`, `dropbox`, `agy`) and system directory paths (`/System/Library/`, `/usr/libexec/`, `/usr/sbin/`). Filters out internal/system daemons from port scan results so only active user dev servers are presented.
   - **CWD Resolution via Native lsof**: Implemented `get_process_cwd` for macOS using unprivileged `lsof -a -p <pid> -d cwd -Fn` to dynamically resolve working directories for detected services.
   - **Non-Blocking Async Execution**: Refactored `scan_ports`, `scan_processes`, and `resolve_process_directory` Tauri commands with `tauri::async_runtime::spawn_blocking` and decoupled `RECON_PROCESS_CACHE` mutex locking to prevent blocking the async runtime during subprocess execution.
-  - **Automated Regression Guard**: Added `test_macos_scanner_filters_system_daemons` unit test validating daemon detection and process classification on macOS.
+  - **Cross-Platform Daemon Classification Test**: Removed `#[cfg(target_os = "macos")]` gate from daemon filtering test; renamed to `test_daemon_filtering_rules` and added negative assertions so Windows and Linux CI now validate classification logic.
+  - **Dead `#[cfg]` Cleanup**: Removed redundant stacked `#[cfg]` attribute on `impl PlatformScanner for FallbackScanner` — now matches the single correct predicate on the struct.
+  - **Tech Debt Documented**: Added `// ponytail:` comment on `MacOsScanner::scan_processes` explaining the known double-`lsof` limitation and the future trait-level fix path.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/recon.rs`
   - `package-lock.json`
