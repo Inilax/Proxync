@@ -438,6 +438,32 @@ impl PlatformScanner for WindowsScanner {
 /* ══════════════════════════════════════════════
    MACOS SCANNER (lsof + ps batch engine)
    ══════════════════════════════════════════════ */
+#[cfg(target_os = "macos")]
+fn get_macos_executable_path(pid: u32) -> Option<String> {
+    let output = std::process::Command::new("lsof")
+        .args(&[
+            "-a",
+            "-p",
+            &pid.to_string(),
+            "-d",
+            "txt",
+            "-Fn",
+        ])
+        .output()
+        .ok()?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    for line in stdout.lines() {
+        if let Some(path) = line.strip_prefix('n') {
+            if !path.is_empty() && !path.starts_with('(') {
+                return Some(path.to_string());
+            }
+        }
+    }
+
+    None
+}
 
 #[cfg(target_os = "macos")]
 struct MacOsScanner;
@@ -560,22 +586,24 @@ impl PlatformScanner for MacOsScanner {
                     None
                 };
 
-                let cmd_exec_name = command.as_ref().and_then(|cmd| {
-                    cmd.split_whitespace().next().and_then(|first| {
-                        let p = std::path::Path::new(first);
-                        p.file_name().map(|f| f.to_string_lossy().to_string())
-                    })
-                });
-
-                let short_name = cmd_exec_name
-                    .filter(|s| !s.is_empty())
-                    .or_else(|| {
-                        std::path::Path::new(&comm)
-                            .file_name()
-                            .map(|f| f.to_string_lossy().to_string())
-                            .filter(|s| !s.is_empty())
-                    })
-                    .unwrap_or_else(|| comm.clone());
+                // use lsof to get name instead of parsing command
+                let exec_path = get_macos_executable_path(pid);
+                let short_name = exec_path
+                .as_ref()
+                .and_then(|path| {
+                    std::path::Path::new(path)
+                        .file_name()
+                        .map(|name| name.to_string_lossy().to_string())
+                        .filter(|name| !name.is_empty())
+                })
+                .filter(|name| !name.is_empty())
+                .or_else(|| {
+                    std::path::Path::new(&comm)
+                        .file_name()
+                        .map(|name| name.to_string_lossy().to_string())
+                        .filter(|name| !name.is_empty())
+                })
+                .unwrap_or_else(|| comm.clone());
 
                 map.insert(
                     pid,
