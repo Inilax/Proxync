@@ -13,6 +13,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
 - **Modified Files**:
   - `.github/workflows/prepare-release.yml`
   - `.github/workflows/release.yml`
+
 ## [fix/relay-dns-latency-hardening] - 2026-09-18 (CodeQL CWE-20 URL Sanitization & Tunnel Metadata Hardening)
 - **Feature Summary**:
   - **CodeQL CWE-20 Incomplete URL Substring Sanitization Fix**: Centralized tunnel metadata extraction into `getTunnelMetadata()` in `SharedComponents.tsx`. Replaced naive substring checks (`.includes('trycloudflare.com')`, `.includes('proxync')`) with strict hostname matching (`.endsWith('.trycloudflare.com')`, `.endsWith('.proxync.dev')`) to prevent domain spoofing attacks.
