@@ -25,12 +25,13 @@ const ALL_SECTION_IDS = [
   "traffic",
   "playground",
   "postman",
+  "workbench",
   "swagger",
   "how-it-works",
   "faq",
 ];
 
-const FEATURES_SUB_IDS = ["tunnels", "traffic", "playground", "postman", "swagger"];
+const FEATURES_SUB_IDS = ["tunnels", "traffic", "playground", "postman", "workbench", "swagger"];
 
 function getSectionId(href: string) {
   if (href.startsWith("/#")) return href.slice(2);
@@ -65,7 +66,7 @@ export function Navbar() {
       if (isClicking.current) return;
 
       if (window.scrollY < 120) {
-        setActiveSection(null);
+        setActiveSection("product");
         return;
       }
 

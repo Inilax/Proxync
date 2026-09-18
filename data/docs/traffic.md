@@ -1,28 +1,30 @@
 ---
 title: Traffic Inspector
-description: Live HTTP & WebSocket traffic log with unique UUID keys, immutable request ID tracking, headers HashMap, and raw body previews.
+description: Live HTTP & WebSocket traffic log with multi-tunnel segregation, deterministic port attribution, automated bot probe filtering, and raw body previews.
 ---
 
-Proxync v0.2.0 includes a comprehensive **Traffic Inspector Overhaul** designed for stability under high live traffic volume.
+Proxync v0.2.1 includes a hardened **Traffic Inspector & Attribution Pipeline** designed for high volume, multi-tunnel dev setups.
 
-## Key Features in v0.2.0
+## Key Features in v0.2.1
 
-- **Immutable Request ID Expansion** — Fixed dropdown auto-collapse under live traffic by tracking row expansion using immutable request IDs (`rawRequestId`).
-- **Unique React Keys** — Solved key collisions and scroll jumping by keying log rows with unique UUID identifiers.
-- **Rust Header & Body Preview** — Enhanced Rust TCP and WebSocket proxy to parse, store, and emit complete headers HashMaps and body previews.
-- **Accurate Status Code Badging** — Aligned status code updates and response duration timing across active requests.
+- **Multi-Tunnel Port & Server Attribution** — Attaches deterministic `port`, `tunnelId`, and `requestId` metadata to every intercepted log, completely preventing cross-port misattribution across concurrent dev servers.
+- **Automated Bot Probe & Noise Filtering** — Detects and filters out malicious automated internet vulnerability scans (`/.env`, `/.git`, `/.ssh`, `*.pem`, `*.key`, `*.bak`, `/wp-admin`) and SPA catch-all fallback requests.
+- **Theme-Matching Filter Pills** — Custom dropdown filter pills (`Workspace:`, `Server:`, `Method:`, `Status:`) with high-speed early exit filtering.
+- **Immutable Request ID Tracking** — Solves dropdown auto-collapse under live traffic by tracking expansion states via immutable request IDs.
+- **Headers & Body Previews** — Captures request and response headers HashMaps and formatted body payloads with 1-click Playground replay.
 
 ## Captured Data
 
 | Field | Description |
 | --- | --- |
-| `rawRequestId` | Immutable unique identifier for matching request/response pairs. |
+| `requestId` | Deterministic unique identifier for matching request/response pairs. |
+| `port` | Local server port where the request was forwarded (e.g. `5173`, `8000`, `4000`). |
+| `serverName` | Detected framework runtime name (e.g. `Vite dev server`, `FastAPI backend`). |
 | `method` | HTTP Method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `HEAD`). |
 | `path` | Full request URI path with query parameters. |
 | `status` | HTTP response status code (e.g. `200 OK`, `404 Not Found`, `500 Server Error`). |
 | `latency` | Response time calculation in milliseconds. |
-| `headers` | Parsed request and response headers HashMap. |
-| `bodyPreview` | Raw body snippet for inspecting request/response payloads. |
+| `targetBadge` | Dynamic target indicator (`Proxync Native`, `Cloudflare Edge`, `Public Tunnel`, `Local Loopback`). |
 
 ## Actions & Replay
 

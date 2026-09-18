@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { DEFAULT_RELEASE, GITHUB_REPO_URL, ReleaseInfo } from "@/lib/releases";
+import { DEFAULT_RELEASE, GITHUB_REPO_URL, ReleaseInfo } from "@/lib/release-constants";
 
 export async function GET() {
   const envVersion = process.env.NEXT_PUBLIC_APP_VERSION || process.env.LATEST_RELEASE_VERSION;
@@ -37,8 +37,29 @@ export async function GET() {
 
     if (res.ok) {
       const data = await res.json();
-      const rawTag = data.tag_name || DEFAULT_RELEASE.tagName;
-      const tagName = rawTag.includes("0.1.") ? DEFAULT_RELEASE.tagName : rawTag;
+      const rawTag = (data.tag_name || "").trim();
+      
+      const parseSemver = (v: string) => {
+        const parts = v.replace(/^v/, "").split(".").map(Number);
+        return {
+          major: parts[0] || 0,
+          minor: parts[1] || 0,
+          patch: parts[2] || 0,
+        };
+      };
+
+      const isNewerOrEqual = (a: string, b: string) => {
+        const sa = parseSemver(a);
+        const sb = parseSemver(b);
+        if (sa.major !== sb.major) return sa.major > sb.major;
+        if (sa.minor !== sb.minor) return sa.minor > sb.minor;
+        return sa.patch >= sb.patch;
+      };
+
+      // Only adopt GitHub tag if it's equal to or newer than our DEFAULT_RELEASE (v0.2.1)
+      const tagName = rawTag && isNewerOrEqual(rawTag, DEFAULT_RELEASE.tagName)
+        ? rawTag
+        : DEFAULT_RELEASE.tagName;
       const version = tagName.replace(/^v/, "");
 
       // Find direct .exe setup download link if attached in assets
@@ -50,11 +71,14 @@ export async function GET() {
         : undefined;
 
       const downloadUrl =
-        windowsAsset?.browser_download_url ||
-        `${GITHUB_REPO_URL}/releases/download/${tagName}/Proxync_${version}_x64-setup.exe`;
+        (tagName === rawTag && windowsAsset?.browser_download_url)
+          ? windowsAsset.browser_download_url
+          : `${GITHUB_REPO_URL}/releases/download/${tagName}/Proxync_${version}_x64-setup.exe`;
 
       const releaseUrl =
-        data.html_url || `${GITHUB_REPO_URL}/releases/tag/${tagName}`;
+        (tagName === rawTag && data.html_url)
+          ? data.html_url
+          : `${GITHUB_REPO_URL}/releases/tag/${tagName}`;
 
       const releaseInfo: ReleaseInfo = {
         tagName,

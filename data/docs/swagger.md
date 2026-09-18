@@ -1,25 +1,26 @@
 ---
 title: Swagger & OpenAPI Studio
-description: Automatic OpenAPI 3.0 spec generation engine and multi-framework codebase route scanner for Express, Fastify, Next.js, NestJS, FastAPI, Spring Boot, and Go.
+description: Automatic OpenAPI 3.0 spec generation engine, Dynamic Netstat discovery, bot probe filtering, dynamic path parameterization, and multi-framework codebase scanner.
 ---
 
-In Proxync v0.2.0, the **Swagger Studio** combines live traffic OpenAPI spec generation with an **Automatic Multi-Framework Codebase Scanner**.
+In Proxync v0.2.1, the **Swagger Studio** combines live traffic OpenAPI spec generation with an **Automatic Multi-Framework Codebase Scanner**, bot probe filtering, and incremental route deep-merging.
 
-## Key Features in v0.2.0
+## Key Features in v0.2.1
 
-- **Multi-Framework Codebase Scanner** — Automatically scans local codebase repositories (Express, Fastify, Next.js, NestJS, FastAPI, Spring Boot, Go) to infer endpoints and generate OpenAPI 3.0 definitions.
-- **Traffic-Driven JSON Schema Inferrer** — Infers JSON parameter and response schemas dynamically from live intercepted traffic.
-- **Automatic Multi-Framework Codebase Scanner** — Scans local project directories (Express, Fastify, Next.js App/Pages Router, NestJS, FastAPI, Spring Boot, Go Chi/Gin) and extracts routes into an OpenAPI 3.0 schema.
-- **Traffic-Driven Schema Inference** — Merges live captured HTTP request/response payloads from Traffic Inspector to automatically populate missing OpenAPI request body and response schemas.
+- **Dynamic Netstat Full-Port Recon** — Scans all listening ports on IPv4 and IPv6 (`recon.rs`), automatically identifying frameworks and associating public tunnels.
+- **Malicious Bot Probe & Scanner Filter** — Automatically ignores noisy vulnerability scans (`/.env`, `/.git`, `*.pem`, `/wp-admin`) and SPA HTML fallback catch-alls.
+- **Dynamic URL Path Parameterization** — Generalizes dynamic path segments (IDs e.g. `todo-1787085033407`, UUIDs, numerical IDs, Mongo ObjectIDs) into standard OpenAPI path parameters (e.g. `/api/todos/{id}`) with matching `in: path` parameter definitions.
+- **Incremental OpenAPI Spec Ingestion** — Deep-merges newly captured traffic with previously generated routes, preventing route loss when testing endpoints sequentially.
+- **Multi-Tunnel Server Picker** — Clear server dropdown rendering active public tunnels (`Port :4000 — px-subdomain (https://...)`) with clickable tunnel badges on endpoint cards.
 - **2-Way Collection Export/Import** — Export OpenAPI specs directly into Playground collections or import existing OpenAPI YAML/JSON specs.
-- **Interactive OpenAPI UI & Spec Generator** — Built-in visual API documentation viewer with instant YAML/JSON copy and download options.
 
 ## Codebase Scanner Supported Frameworks
 
 | Framework | Scan Strategy |
 | --- | --- |
-| Express / Fastify | Inspects route registration (`app.get`, `router.post`). |
 | Next.js | Scans `app/api/**/route.ts` and `pages/api/**/*.ts`. |
+| Vite / React | Discovers dev server and proxies traffic to backend origins. |
+| Express / Fastify | Inspects route registration (`app.get`, `router.post`). |
 | NestJS | Parses `@Controller()` and HTTP method decorators (`@Get`, `@Post`). |
 | FastAPI | Parses `@app.get()`, `@app.post()`, and Pydantic models. |
 | Spring Boot | Parses `@RestController`, `@GetMapping`, `@PostMapping`. |

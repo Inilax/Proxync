@@ -16,19 +16,19 @@ Proxync targets **Windows x64** (with cross-platform macOS/Linux support coming 
 
 ## Install the Packaged Build
 
-The official release is available as `Proxync_0.2.0_x64-setup.exe` via GitHub Releases:
+The official release is available as `Proxync_0.2.1_x64-setup.exe` via GitHub Releases:
 
 1. Download the installer from the [GitHub Releases](https://github.com/Inilax/Proxync/releases) page.
-2. Run the NSIS installer wizard.
+2. Run the NSIS installer wizard (equipped with High-DPI visual assets and embedded open-source license).
 3. Launch **Proxync** from your Start menu or Desktop shortcut.
 
-## Smart Version-Aware Auto-Updater
+## Smart Auto-Updater & Emergency CVE Radar
 
-Proxync v0.2.0 includes a built-in background update system powered by `tauri-plugin-updater` and `tauri-plugin-process`:
+Proxync v0.2.1 includes a hardened update system powered by `tauri-plugin-updater` and `tauri-plugin-process`:
 
-- **Silent Update Scheduler** — Checks for updates on application startup and every **2 hours** when automatic updates are enabled in **Settings** (or every **7 days** when disabled).
-- **Forced Version Dialogs** — When a **minor or major** version bump is released (e.g. `0.2.x → 0.3.0` or `0.x → 1.0.0`), a persistent forced update dialog prompts **Update Now**.
-- **Optional Patch Toasts** — Patch updates (e.g. `0.2.0 → 0.2.1`) present non-blocking toasts allowing you to **Update Now**, **Skip this version**, or choose **Later**.
+- **Emergency CVE Security Radar** — Executes an unconditional pre-flight scan on application startup. When a critical release tagged with `[SECURITY-CVE]` or `[TYPE: CVE-PATCH]` is detected, Proxync automatically initiates an urgent update flow with live progress tracking.
+- **Silent Update Scheduler** — Checks for standard updates on startup and every **2 hours** when automatic updates are enabled in **Settings** (or every **7 days** when disabled).
+- **Forced Major/Minor Dialogs** — When a major or minor version bump is released (e.g. `0.2.x → 0.3.0`), a persistent dialog ensures you remain on the latest secure branch.
 
 ## Build from Source
 

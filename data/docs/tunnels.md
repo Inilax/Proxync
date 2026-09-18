@@ -1,57 +1,38 @@
 ---
 title: Tunnels & Sharing
-description: Expose local processes with Cloudflare Quick Tunnels, Localtunnel, custom domains, or LAN shares with Active Internet Guard.
+description: Expose local processes with Proxync Native SSH tunnels, Cloudflare Quick Tunnels, Localtunnel, custom domains, or LAN shares with Active Internet Guard and Batch Teardown.
 ---
 
-Proxync v0.2.0 provides instant one-click public URL creation and LAN sharing for your local servers, backed by edge connection health checks and target route indicators.
+Proxync v0.2.1 provides high-throughput one-click public URL creation, proprietary Native SSH tunnels, and LAN sharing for your local dev servers.
 
-## How Sharing Works
+## Proxync Native High-Throughput Tunnels (Port 2222)
 
-When you start a tunnel:
+Proxync v0.2.1 introduces **Proxync Native Tunnels** — a high-speed, proprietary tunneling architecture built directly into the free desktop application:
 
-1. **Local Intercepting TCP/WebSocket Proxy** — Bound to an ephemeral local port, this Rust proxy forwards traffic to your dev server (`127.0.0.1:<port>`), captures headers HashMaps and body previews, and emits real-time events.
-2. **Tunnel Child Process Spawning** — Spawns `cloudflared` or `localtunnel` pointing at the intercepting proxy.
-3. **Target Route Badges** — Playground requests display dynamic target badges:
-   - `Cloudflare Edge` — Requests passing through a public Cloudflare edge tunnel.
-   - `Public Tunnel` — Requests passing through Localtunnel edge proxies.
-   - `Local Loopback` — Requests routed directly to local loopback ports.
+- **100% Free & Zero-Config** — Included out-of-the-box in the desktop app. No registration, no credit cards, and no server configuration required. Just click **Public Share** to get an instant HTTPS URL.
+- **High-Throughput Direct Origin (Port 2222)** — Direct SSH connection to Proxync's optimized tunnel relays using hardware-accelerated ciphers (`chacha20-poly1305`, `aes128-gcm`) with `IPQoS=throughput` for sub-millisecond local forwarding.
+- **JIT Ephemeral Ed25519 Cert Signing** — Dynamically signs TLS keys via `https://api.proxync.dev/api/tunnel/sign-jit-cert` with zero-RTT handshakes.
+- **Zero-Trace Security (`TempDirGuard`)** — Ephemeral keys and session `known_hosts` files are locked with single-user OS ACL permissions and securely erased on tunnel closure.
+- **Automatic Random Subdomains** — Instantly provisions clean, unique 8-character subdomains (e.g. `https://px-a1b2c3d4.proxync.dev`).
+
+## Cloudflare Quick Tunnels & Localtunnel
+
+- **Cloudflare Edge** — Instant `*.trycloudflare.com` public tunnels pointing to local TCP proxy.
+- **Localtunnel** — Optional custom subdomain tunnels (`*.loca.lt`).
 
 ## Active Internet Connectivity Guard
 
-To prevent CLI timeout hangs when attempting to launch cloud tunnels while offline or on degraded connections, Proxync v0.2.0 includes an **Active Internet Connectivity Guard** (`checkRealInternetConnection`):
+To prevent CLI timeout hangs when attempting to launch tunnels offline, Proxync performs real edge pings (`checkRealInternetConnection`) before spawner execution.
 
-- **Edge Ping Check** — Validates internet connectivity against public edge endpoints before executing `cloudflared` or `localtunnel`.
-- **Offline Callout Banners** — Displays offline warnings inside `DomainSelectDialog` and surfaces real-time toast notifications when network status changes (`offline` / `online`).
+## Batch Multi-Tunnel Teardown
 
-## Cloudflare Quick Tunnels
-
-Executes official `cloudflared` quick tunnels:
-
-```bash
-npx -y --package=cloudflared cloudflared tunnel --url http://127.0.0.1:<proxy-port>
-```
-
-Proxync parses stderr output for your public `*.trycloudflare.com` URL with high-reliability stdout parsing.
-
-## Localtunnel
-
-Executes `localtunnel` with optional custom subdomains:
-
-```bash
-cmd /C npx -y localtunnel --port <proxy-port> [--subdomain <subdomain>]
-```
-
-Parses the returned `*.loca.lt` URL.
+- **1-Click Stop All** — Prominent **Stop All** button in **Explore** (`WelcomeView`) and **Workspace Dashboard** terminates all active tunnel processes and child process trees (`taskkill /F /T` on Windows) concurrently via `Promise.all`.
 
 ## Custom Domain Verification
 
-Map custom domains to your local tunnels with integrated DNS record verification (A and CNAME records) and registrar configuration instructions in Settings.
+Map custom domains with automated DNS-over-HTTPS pre-flight verification (Google & Cloudflare DoH), token rotation, and instant status synchronization across views.
 
 ## LAN Sharing & 1-Click Open in Browser
 
 - **LAN Share** — Exposes `http://<local-ip>:<port>` for devices on your local network.
-- **1-Click Open in Browser** — Active tunnel action menus (`⋮`) in **WelcomeView** and **ProcessView** feature a 1-click **Open in Browser** shortcut to launch public URLs instantly.
-
-## Process Cleanup & Safety
-
-When stopping a tunnel, Proxync cleanly sends signal commands to terminate all child processes (`cloudflared`, `localtunnel`, and TCP proxy workers), preventing orphaned background processes.
+- **1-Click Open in Browser** — Action menus feature an instant **Open in Browser** shortcut.

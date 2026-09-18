@@ -5,12 +5,12 @@ import { PROCESSES, TUNNEL_URL } from "./types";
 
 export function ProcessView() {
   return (
-    <div className="p-5 space-y-4 fade-in select-none">
+    <div className="p-4 space-y-3.5 fade-in select-none h-full overflow-y-auto">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-outline-variant/30 pb-3 gap-2">
         <div>
           <h1 className="text-lg font-bold text-on-surface">Tunnels &amp; Process Recon</h1>
           <p className="text-xs text-on-surface-variant font-mono mt-0.5">
-            Netstat &amp; WMI process scanner · Ephemeral local TCP proxy forwarding
+            Dynamic Netstat IPv4/IPv6 full-port discovery · Proxync Native SSH (Port 2222) &amp; Cloudflare
           </p>
         </div>
         <button

@@ -10,9 +10,6 @@ function slugToFile(slug: string): string {
   if (slug === "index") {
     return path.join(process.cwd(), "data", "docs", "index.md");
   }
-  if (slug === "changelog") {
-    return path.join(process.cwd(), "data", "changelog.md");
-  }
   return path.join(process.cwd(), "data", "docs", `${slug}.md`);
 }
 
@@ -77,7 +74,7 @@ async function loadChangelog(): Promise<string> {
   try {
     return await fetchText(CHANGELOG_RAW_URL);
   } catch {
-    return readFileSync(slugToFile("changelog"), "utf8");
+    return "# Changelog\n\nAll notable changes to the Proxync workspace studio project are documented here.\n\n*Unable to load live changelog from GitHub.*";
   }
 }
 

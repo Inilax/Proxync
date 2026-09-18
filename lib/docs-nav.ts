@@ -18,6 +18,7 @@ export const DOCS_NAV: DocsNavGroup[] = [
       { title: "Tunnels & Sharing", href: "/docs/tunnels" },
       { title: "Traffic Inspector", href: "/docs/traffic" },
       { title: "Playground", href: "/docs/postman" },
+      { title: "Request Workbench", href: "/docs/workbench" },
       { title: "Observability Hub", href: "/docs/observability" },
       { title: "Swagger & OpenAPI", href: "/docs/swagger" },
       { title: "Settings & Domains", href: "/docs/settings" },
