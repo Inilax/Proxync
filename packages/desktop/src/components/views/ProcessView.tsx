@@ -1,6 +1,6 @@
 import { openUrl } from '@tauri-apps/plugin-opener';
 import type { WorkspaceConfig, ProcessCandidate, ProcessProfile, Tunnel, SavedRequest } from './SharedComponents';
-import { InfoTile, formatDate } from './SharedComponents';
+import { InfoTile, formatDate, getTunnelMetadata } from './SharedComponents';
 
 function handleOpenUrl(url: string) {
   openUrl(url).catch(() => window.open(url, '_blank'));
@@ -8,19 +8,11 @@ function handleOpenUrl(url: string) {
 
 export function getTunnelProviderLabel(tunnel: Tunnel | null): string {
   if (!tunnel?.publicUrl) return 'Proxync Tunnel';
-  const lower = tunnel.publicUrl.toLowerCase();
-  if (lower.includes('trycloudflare.com') || lower.includes('cloudflare')) {
-    return 'Cloudflare Tunnel';
+  const { providerLabel, hostname } = getTunnelMetadata(tunnel);
+  if (providerLabel === 'Custom Domain') {
+    return hostname ? `Custom Domain (${hostname})` : 'Custom Domain';
   }
-  if (lower.includes('proxync') || tunnel.subdomain?.startsWith('px-')) {
-    return 'Proxync Tunnel';
-  }
-  try {
-    const urlObj = new URL(tunnel.publicUrl.startsWith('http') ? tunnel.publicUrl : `https://${tunnel.publicUrl}`);
-    return urlObj.hostname ? `Custom Domain (${urlObj.hostname})` : 'Proxync Tunnel';
-  } catch {
-    return 'Proxync Tunnel';
-  }
+  return `${providerLabel} Tunnel`;
 }
 
 export function ProcessView({

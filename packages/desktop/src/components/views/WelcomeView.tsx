@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import type { Tunnel, RequestLog } from './SharedComponents';
-import { SignalBars } from './SharedComponents';
+import { SignalBars, getTunnelMetadata } from './SharedComponents';
 import { showToast } from '../../lib/toast';
 
 export function WelcomeView({
@@ -255,11 +255,7 @@ export function WelcomeView({
                     <div className="flex justify-between items-start gap-2">
                       <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
                         {(() => {
-                          const isCloudflare = tunnel.provider === 'cloudflare' || tunnel.publicUrl.includes('trycloudflare.com');
-                          const isNative = tunnel.provider === 'native' || tunnel.subdomain?.startsWith('px-') || tunnel.publicUrl.includes('proxync');
-                          const providerLabel = isCloudflare ? 'Cloudflare' : isNative ? 'Proxync Native' : (tunnel.customDomain || tunnel.subdomain ? 'Custom Domain' : 'Local Relay');
-                          const iconName = isCloudflare ? 'cloud_queue' : isNative ? 'bolt' : 'link';
-                          const iconColor = isCloudflare ? 'text-secondary' : isNative ? 'text-amber-400' : 'text-primary';
+                          const { providerLabel, iconName, iconColor, hostname } = getTunnelMetadata(tunnel);
                           return (
                             <>
                               <div className="w-8 h-8 rounded-lg bg-surface-container-high border border-outline-variant/30 flex items-center justify-center shrink-0">
@@ -269,8 +265,8 @@ export function WelcomeView({
                               </div>
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-1.5 group/url">
-                                  <h4 className="font-body-lg text-body-lg text-on-surface truncate max-w-[140px] xs:max-w-[200px] sm:max-w-[320px] md:max-w-[440px] lg:max-w-[560px]" title={new URL(tunnel.publicUrl).hostname}>
-                                    {new URL(tunnel.publicUrl).hostname}
+                                  <h4 className="font-body-lg text-body-lg text-on-surface truncate max-w-[140px] xs:max-w-[200px] sm:max-w-[320px] md:max-w-[440px] lg:max-w-[560px]" title={hostname || tunnel.publicUrl}>
+                                    {hostname || tunnel.publicUrl}
                                   </h4>
                                   <button
                                     onClick={(e) => {

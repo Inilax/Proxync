@@ -2,6 +2,17 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/relay-dns-latency-hardening] - 2026-09-18 (CodeQL CWE-20 URL Sanitization & Tunnel Metadata Hardening)
+- **Feature Summary**:
+  - **CodeQL CWE-20 Incomplete URL Substring Sanitization Fix**: Centralized tunnel metadata extraction into `getTunnelMetadata()` in `SharedComponents.tsx`. Replaced naive substring checks (`.includes('trycloudflare.com')`, `.includes('proxync')`) with strict hostname matching (`.endsWith('.trycloudflare.com')`, `.endsWith('.proxync.dev')`) to prevent domain spoofing attacks.
+  - **URL Parsing Safety & Crash Prevention**: Wrapped URL parsing in safe try/catch blocks with automatic `https://` protocol prefixing across `WelcomeView`, `WorkspaceDashboardView`, and `ProcessView`, completely eliminating unhandled `new URL()` runtime exceptions on malformed or protocol-less URLs.
+- **Modified Files**:
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `CHANGELOG.md`
+
 ## [fix/relay-dns-latency-hardening] - 2026-09-18 (Relay DNS Resolution, SSRF Hardening & Tunnel Latency Optimization)
 - **Feature Summary**:
   - **Dynamic Relay DNS Resolution**: Migrated hardcoded Azure IP `104.208.83.199` to `relay.proxync.dev` and `DEFAULT_PROXYNC_SSH_HOST` across backend (`recon.rs`, `tunnel.rs`) and frontend, allowing seamless zero-downtime server migrations without requiring client app updates.
