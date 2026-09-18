@@ -1407,15 +1407,84 @@ pub async fn scan_processes(bypass_cache: bool) -> Result<Vec<ProcessCandidate>,
 
 #[tauri::command]
 pub async fn probe_port(port: u16) -> Result<bool, String> {
-    let addr_v4: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
+    let addr_v4 = std::net::SocketAddr::from(([127, 0, 0, 1], port));
     if tokio::time::timeout(std::time::Duration::from_millis(300), tokio::net::TcpStream::connect(&addr_v4)).await.is_ok_and(|r| r.is_ok()) {
         return Ok(true);
     }
-    let addr_v6: std::net::SocketAddr = format!("[::1]:{}", port).parse().unwrap();
+    let addr_v6 = std::net::SocketAddr::from(([0, 0, 0, 0, 0, 0, 0, 1], port));
     if tokio::time::timeout(std::time::Duration::from_millis(300), tokio::net::TcpStream::connect(&addr_v6)).await.is_ok_and(|r| r.is_ok()) {
         return Ok(true);
     }
     Ok(false)
+}
+
+// ponytail: Default fallback relay domain when PROXYNC_SSH_HOST is unset.
+// Direct A record pointing to relay edge on port 2222.
+pub const DEFAULT_PROXYNC_SSH_HOST: &str = "relay.proxync.dev";
+pub const DEFAULT_PROXYNC_SSH_PORT: u16 = 2222;
+
+/// Validates whether a target host is permitted for TCP latency probing.
+/// Restricts targets to loopback (local dev/tests), the configured Proxync relay,
+/// or recognized Proxync tunnel aliases to prevent arbitrary internal SSRF port scans.
+pub fn is_permitted_probe_host(host: &str) -> bool {
+    let trimmed = host.trim().trim_matches('[').trim_matches(']');
+    trimmed.is_empty()
+        || trimmed == "proxync_native"
+        || trimmed == "127.0.0.1"
+        || trimmed == "localhost"
+        || trimmed == "::1"
+        || trimmed == DEFAULT_PROXYNC_SSH_HOST
+        || std::env::var("PROXYNC_SSH_HOST").map(|h| h == trimmed).unwrap_or(false)
+}
+
+/// Resolves the effective target host and port for latency probing.
+/// Honors the PROXYNC_SSH_HOST environment variable override for native tunnels,
+/// defaulting to DEFAULT_PROXYNC_SSH_HOST and DEFAULT_PROXYNC_SSH_PORT.
+pub fn resolve_probe_target(host: &str, port: u16) -> (String, u16) {
+    resolve_probe_target_internal(host, port, std::env::var("PROXYNC_SSH_HOST").ok().as_deref())
+}
+
+/// Internal resolution helper with injected env value for deterministic, race-free testing.
+pub fn resolve_probe_target_internal(host: &str, port: u16, env_ssh_host: Option<&str>) -> (String, u16) {
+    if host.is_empty() || host == "proxync_native" {
+        let target_host = env_ssh_host
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .unwrap_or(DEFAULT_PROXYNC_SSH_HOST)
+            .to_string();
+        let target_port = if port == 0 { DEFAULT_PROXYNC_SSH_PORT } else { port };
+        (target_host, target_port)
+    } else {
+        (host.to_string(), port)
+    }
+}
+
+/// Measures TCP connect latency (ms) to a permitted host:port.
+/// Used by the Expose Tunnel dialog to probe remote tunnel endpoints
+/// directly over TCP, bypassing HTTP/CDN overhead that inflates readings.
+/// Returns Err("timeout") after 2 s so the caller can show "Offline".
+#[tauri::command]
+pub async fn probe_tcp_latency(host: String, port: u16) -> Result<u64, String> {
+    if !is_permitted_probe_host(&host) {
+        return Err("prohibited_host: TCP probing is restricted to loopback and Proxync relay endpoints".to_string());
+    }
+
+    let (target_host, target_port) = resolve_probe_target(&host, port);
+
+    let addr = if target_host.contains(':') && !target_host.starts_with('[') {
+        format!("[{}]:{}", target_host, target_port)
+    } else {
+        format!("{}:{}", target_host, target_port)
+    };
+    let start = std::time::Instant::now();
+    tokio::time::timeout(
+        std::time::Duration::from_millis(2000),
+        tokio::net::TcpStream::connect(addr.as_str()),
+    )
+    .await
+    .map_err(|_| "timeout".to_string())?
+    .map_err(|e| e.to_string())?;
+    Ok(start.elapsed().as_millis() as u64)
 }
 
 #[cfg(test)]
@@ -1635,5 +1704,74 @@ mod tests {
             },
             _ => panic!("Expected Dev for Node.js server.js"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_probe_tcp_latency_local() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let res = probe_tcp_latency("127.0.0.1".to_string(), port).await;
+        assert!(res.is_ok(), "Expected probe_tcp_latency to succeed on live listener");
+        let offline_res = probe_tcp_latency("127.0.0.1".to_string(), 65534).await;
+        assert!(offline_res.is_err(), "Expected probe_tcp_latency to fail on offline port");
+    }
+
+    #[tokio::test]
+    async fn test_probe_tcp_latency_ipv6_and_probe_port() {
+        if let Ok(listener) = tokio::net::TcpListener::bind("[::1]:0").await {
+            let port = listener.local_addr().unwrap().port();
+            // Test 1: probe_tcp_latency with raw unbracketed "::1"
+            let res = probe_tcp_latency("::1".to_string(), port).await;
+            assert!(res.is_ok(), "Expected probe_tcp_latency to succeed on unbracketed IPv6 host ::1");
+
+            // Test 2: probe_port detects live IPv6 listener without panicking
+            let port_res = probe_port(port).await;
+            assert_eq!(port_res, Ok(true), "Expected probe_port to detect live IPv6 listener");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_probe_tcp_latency_rejects_unauthorized_host() {
+        let res = probe_tcp_latency("192.168.1.1".to_string(), 80).await;
+        assert!(res.is_err(), "Expected probe_tcp_latency to reject unauthorized host 192.168.1.1");
+        assert!(res.unwrap_err().contains("prohibited_host"));
+    }
+
+    #[tokio::test]
+    async fn test_probe_tcp_latency_permitted_hosts() {
+        assert!(is_permitted_probe_host("relay.proxync.dev"));
+        assert!(is_permitted_probe_host("proxync_native"));
+        assert!(is_permitted_probe_host("127.0.0.1"));
+        assert!(is_permitted_probe_host("localhost"));
+        assert!(is_permitted_probe_host("::1"));
+
+        // Unauthorized internal / SSRF scan targets are blocked
+        assert!(!is_permitted_probe_host("192.168.1.1"));
+        assert!(!is_permitted_probe_host("10.0.0.1"));
+        assert!(!is_permitted_probe_host("172.16.0.1"));
+        assert!(!is_permitted_probe_host("169.254.169.254"));
+    }
+
+    #[test]
+    fn test_resolve_probe_target_internal() {
+        // 1. Default alias resolution when PROXYNC_SSH_HOST is unset
+        let (host, port) = resolve_probe_target_internal("proxync_native", 0, None);
+        assert_eq!(host, DEFAULT_PROXYNC_SSH_HOST);
+        assert_eq!(port, DEFAULT_PROXYNC_SSH_PORT);
+
+        // 2. Override alias resolution when PROXYNC_SSH_HOST is provided (zero process env mutation)
+        let (override_host, override_port) = resolve_probe_target_internal("proxync_native", 0, Some("127.0.0.1"));
+        assert_eq!(override_host, "127.0.0.1");
+        assert_eq!(override_port, DEFAULT_PROXYNC_SSH_PORT);
+
+        // 3. Empty string alias resolves to default
+        let (empty_host, empty_port) = resolve_probe_target_internal("", 0, None);
+        assert_eq!(empty_host, DEFAULT_PROXYNC_SSH_HOST);
+        assert_eq!(empty_port, DEFAULT_PROXYNC_SSH_PORT);
+
+        // 4. Custom host passthrough
+        let (custom_host, custom_port) = resolve_probe_target_internal("127.0.0.1", 8080, None);
+        assert_eq!(custom_host, "127.0.0.1");
+        assert_eq!(custom_port, 8080);
     }
 }
