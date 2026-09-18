@@ -1,112 +1,119 @@
-import { Quote, Star } from "lucide-react";
-import { Container, SectionHeader } from "@/components/ui";
+"use client";
+
+import { Star } from "lucide-react";
+import { Container } from "@/components/ui";
 import { Reveal } from "@/components/reveal";
 
 type Testimonial = {
   quote: string;
   name: string;
   role: string;
+  company: string;
   initials: string;
+  accent: string;
 };
 
 const testimonials: Testimonial[] = [
   {
-    quote: "I replaced ngrok, Postman, and Wireshark in a single afternoon. My laptop fan finally stopped screaming.",
+    quote: "I replaced ngrok, Postman, and Wireshark in a single afternoon. My laptop fan finally stopped screaming and our API tests are 10x faster.",
     name: "Sarah Chen",
-    role: "Staff Engineer · Northwind",
+    role: "Staff Infrastructure Engineer",
+    company: "Northwind Cloud",
     initials: "SC",
+    accent: "bg-primary/20 text-primary",
   },
   {
-    quote: "The auto-generated OpenAPI spec alone is worth the download. Docs now write themselves while I code.",
+    quote: "The auto-generated OpenAPI spec alone is worth the download. Documentation now writes itself while I build routes in FastAPI.",
     name: "Marcus Okafor",
-    role: "Backend Lead · Helios",
+    role: "Backend Architecture Lead",
+    company: "Helios Systems",
     initials: "MO",
+    accent: "bg-secondary/20 text-secondary",
   },
   {
-    quote: "Finally, a tunneling tool that doesn't ship my traffic to a third-party server. Security team approved it day one.",
+    quote: "Finally, a tunneling tool that doesn't route my customer data through a third-party server. Our SOC2 security auditor approved it immediately.",
     name: "Priya Sharma",
-    role: "Security Engineer · Latice",
+    role: "Principal Security Engineer",
+    company: "Latice Security",
     initials: "PS",
+    accent: "bg-tertiary/20 text-tertiary",
   },
   {
-    quote: "We replay production traffic against staging every release now. It caught three regressions last sprint.",
+    quote: "We replay production webhook traffic against local dev without manual cURL scripts. It caught three catastrophic regressions last sprint before deployment.",
     name: "Tomás Rivera",
-    role: "Platform Eng · Fluxir",
+    role: "VP of Engineering",
+    company: "Fluxir Fintech",
     initials: "TR",
+    accent: "bg-violet-500/20 text-violet-400",
   },
 ];
 
 function Stars() {
   return (
-    <div className="flex gap-1" aria-label="5 out of 5 stars">
+    <div className="flex gap-0.5" aria-label="5 out of 5 stars">
       {Array.from({ length: 5 }).map((_, i) => (
-        <Star key={i} className="h-4 w-4 fill-primary text-primary" aria-hidden="true" />
+        <Star key={i} className="h-3.5 w-3.5 fill-primary/60 text-primary/60" aria-hidden="true" />
       ))}
     </div>
   );
 }
 
 export function Testimonials() {
-  const cards = testimonials.slice(0, 3);
-  const featured = testimonials[3];
-
   return (
-    <section className="bg-surface-container-low/30 py-24">
-      <Container>
-        <SectionHeader
-          eyebrow="Loved by engineers"
-          title="Built for the way teams actually ship."
-          description="From indie devs to platform teams — Proxync fits into existing workflows."
-        />
+    <section className="relative bg-[#060709] py-28">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent"
+      />
 
-        <div className="mt-16 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {cards.map((t, i) => (
-            <Reveal key={t.name} delay={i * 0.1} className="h-full">
-              <div className="glass relative flex h-full flex-col gap-4 rounded-xl p-6">
-                <Quote
-                  className="absolute right-4 top-4 h-8 w-8 text-primary/15 sm:right-5 sm:top-5 sm:h-10 sm:w-10 md:h-12 md:w-12"
-                  aria-hidden="true"
-                />
+      <Container className="relative z-10">
+        {/* Header */}
+        <div className="mb-20 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-lg">
+            <p className="mb-4 font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-primary/70">
+              Developer Love
+            </p>
+            <h2 className="font-display text-4xl font-black tracking-[-0.02em] text-white sm:text-5xl">
+              Built for teams
+              <br />
+              <span className="text-white/30">that actually ship.</span>
+            </h2>
+          </div>
+          <p className="max-w-xs text-[14px] leading-relaxed text-white/30 lg:text-right">
+            From high-growth startups to enterprise platform teams — Proxync is the local API engine.
+          </p>
+        </div>
+
+        {/* 2-column masonry grid — no card borders */}
+        <div className="grid grid-cols-1 gap-12 lg:grid-cols-2">
+          {testimonials.map((t, i) => (
+            <Reveal key={t.name} delay={i * 0.08}>
+              <div className="group relative flex flex-col gap-6">
+                {/* Pull-quote accent line */}
+                <div className="h-px w-10 bg-white/10 transition-all duration-500 group-hover:w-16 group-hover:bg-primary/40" />
+
                 <Stars />
-                <p className="relative pr-8 text-[15px] leading-relaxed text-on-surface-variant">
-                  {t.quote}
-                </p>
-                <div className="mt-auto flex items-center gap-3 border-t border-outline-variant/20 pt-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full border border-primary/20 bg-primary/10 font-mono text-sm font-bold text-primary">
+
+                <blockquote className="text-lg font-medium leading-relaxed text-white/70 italic">
+                  &ldquo;{t.quote}&rdquo;
+                </blockquote>
+
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-mono text-sm font-bold ${t.accent}`}
+                  >
                     {t.initials}
                   </div>
                   <div>
-                    <div className="text-sm font-medium text-on-surface">{t.name}</div>
-                    <div className="mt-0.5 font-mono text-xs text-on-surface-muted">{t.role}</div>
+                    <div className="text-sm font-semibold text-white/80">{t.name}</div>
+                    <div className="font-mono text-[11px] text-white/30">
+                      {t.role} · {t.company}
+                    </div>
                   </div>
                 </div>
               </div>
             </Reveal>
           ))}
-
-          <Reveal delay={0.4} className="md:col-span-2 lg:col-span-3">
-            <div className="glass relative flex flex-col gap-8 rounded-xl p-6 md:flex-row md:items-center md:justify-between md:p-8">
-              <Quote
-                className="absolute right-4 top-4 h-8 w-8 text-primary/15 sm:right-6 sm:top-6 sm:h-10 sm:w-10 md:h-12 md:w-12"
-                aria-hidden="true"
-              />
-              <div className="relative flex max-w-2xl flex-col gap-4">
-                <Stars />
-                <p className="text-lg leading-relaxed text-on-surface-variant">{featured.quote}</p>
-              </div>
-              <div className="flex shrink-0 items-center gap-3 md:flex-col md:items-start md:gap-3 md:border-l md:border-outline-variant/20 md:pl-8">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full border border-primary/20 bg-primary/10 font-mono text-base font-bold text-primary">
-                  {featured.initials}
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-on-surface">{featured.name}</div>
-                  <div className="mt-0.5 font-mono text-xs text-on-surface-muted">
-                    {featured.role}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </Reveal>
         </div>
       </Container>
     </section>

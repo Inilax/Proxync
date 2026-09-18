@@ -1,22 +1,16 @@
 "use client";
 
-import { Cloud, Download, Star, Zap } from "lucide-react";
+import { Cloud, Download, Terminal, ChevronRight, Shield, Zap } from "lucide-react";
+import Link from "next/link";
+import { motion } from "motion/react";
 import { Button, Container } from "@/components/ui";
-import { GITHUB_URL } from "@/lib/links";
-import { useLatestRelease } from "@/lib/releases";
+import { usePlatformDownload } from "@/lib/releases";
 import { AppMockup } from "./app-mockup";
 import { useCloudflareLatency } from "./latency";
 
-const STATS = [
-  { value: "12MB", label: "Binary Size" },
-  { value: "—", label: "Edge Ping" },
-  { value: "100%", label: "Local Storage" },
-  { value: "4 Modes", label: "Tunnel Providers" },
-];
-
 export function Hero() {
-  const release = useLatestRelease();
-  const latency = useCloudflareLatency();
+  const download = usePlatformDownload();
+  const latency  = useCloudflareLatency();
   const latencyValue =
     latency.status === "ok"
       ? `${latency.ms}ms`
@@ -25,104 +19,204 @@ export function Hero() {
         : "…";
 
   return (
-    <section id="product" className="relative overflow-hidden pb-32 pt-40 scroll-mt-24">
+    <section
+      id="product"
+      className="relative min-h-screen overflow-hidden pt-24 pb-0 scroll-mt-16"
+    >
+      {/* Diagonal grid background */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-grid mask-fade-b"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -top-32 right-[-10%] h-[480px] w-[480px] rounded-full bg-primary/15 blur-3xl"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute bottom-[-12%] left-[-8%] h-[420px] w-[420px] rounded-full bg-tertiary/8 blur-3xl"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute left-1/2 top-1/2 h-[520px] w-[520px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-secondary/8 blur-3xl"
+        className="pointer-events-none absolute inset-0 bg-grid mask-fade-b opacity-100"
       />
 
-      <Container className="relative">
-        <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
-          <div className="animate-fade-up">
-            <span className="inline-flex items-center gap-2 rounded-full border border-outline-variant/40 bg-surface-container-low px-3.5 py-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-primary shadow-sm">
-              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse-dot" />
-              v0.2.1-stable &middot; Native Tunneling &amp; Developer Studio
-            </span>
+      {/* Faint top glow — barely there */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[320px]"
+        style={{
+          background: "radial-gradient(ellipse 60% 40% at 50% -10%, rgba(6,182,212,0.07) 0%, transparent 70%)",
+        }}
+      />
+
+      <Container className="relative z-10">
+        {/* ── Split layout: text left / mockup right ── */}
+        <div className="grid grid-cols-1 items-start gap-16 lg:grid-cols-[1fr_1.1fr] lg:gap-20">
+
+          {/* LEFT — Editorial headline + CTAs */}
+          <div className="flex flex-col items-start justify-center pt-8 lg:pt-16 xl:pt-24">
+
+            {/* Eyebrow pill */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
+            >
+              <Link
+                href="/docs/changelog"
+                className="group mb-8 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/[0.06] px-3.5 py-1.5 font-mono text-[11px] font-semibold tracking-wider text-primary transition-all hover:border-primary/40 hover:bg-primary/10"
+              >
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
+                </span>
+                DEVELOP PREVIEW
+                <span className="text-white/30">·</span>
+                <span className="text-white/40">Schema Drift Engine</span>
+                <ChevronRight className="h-3 w-3 text-primary/40 transition-transform group-hover:translate-x-0.5" />
+              </Link>
+            </motion.div>
+
+            {/* Headline */}
+            <motion.h1
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.08 }}
+              className="font-display text-[52px] font-black leading-[1.04] tracking-[-0.03em] text-white sm:text-[64px] lg:text-[56px] xl:text-[68px]"
+            >
+              The{" "}
+              <span className="text-gradient">Local-First</span>
+              <br />
+              API Studio.
+            </motion.h1>
+
+            {/* Subline */}
+            <motion.p
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.16 }}
+              className="mt-6 max-w-md text-[15px] leading-relaxed text-white/45"
+            >
+              Instant edge tunnels, real-time schema drift detection, live traffic
+              interception, and a Postman-grade API playground — in one native desktop
+              studio. Engineered with Rust for zero cloud lock-in.
+            </motion.p>
+
+            {/* CTA row */}
+            <motion.div
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.24 }}
+              className="mt-10 flex flex-col sm:flex-row items-start gap-3"
+            >
+              <Button
+                href={download.url}
+                variant="primary"
+                size="lg"
+                className="group relative overflow-hidden rounded-full font-bold px-7 py-3 text-sm shadow-[0_0_0_1px_rgba(6,182,212,0.3)] hover:shadow-[0_0_28px_rgba(6,182,212,0.28)] transition-all"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <div className="absolute inset-0 flex justify-center [transform:skew(-12deg)_translateX(-100%)] group-hover:duration-700 group-hover:[transform:skew(-12deg)_translateX(100%)]">
+                  <div className="relative h-full w-8 bg-white/20" />
+                </div>
+                <Download className="h-4 w-4" />
+                <span>{download.label}</span>
+              </Button>
+
+              <Link
+                href="/docs"
+                className="inline-flex items-center gap-2 rounded-full border border-white/[0.07] bg-white/[0.02] px-6 py-3 text-sm font-medium text-white/50 backdrop-blur-sm transition-all hover:border-white/[0.12] hover:bg-white/[0.05] hover:text-white/80"
+              >
+                <Terminal className="h-3.5 w-3.5 text-primary/60" />
+                Explore Docs
+              </Link>
+            </motion.div>
+
+            {/* OS / trust strip */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.5, delay: 0.34 }}
+              className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-1.5 font-mono text-[11px] text-white/25"
+            >
+              <span className="flex items-center gap-1.5 text-white/35">
+                <Shield className="h-3 w-3 text-emerald-500" />
+                Stable
+              </span>
+              <span>Windows (x64)</span>
+              <span>macOS (.dmg)</span>
+              <span>Linux (.deb · AppImage)</span>
+            </motion.div>
+
+            {/* Inline stat chips */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.42 }}
+              className="mt-10 flex flex-wrap items-center gap-2"
+            >
+              {[
+                { value: "12MB", label: "Native Binary" },
+                { value: latencyValue, label: "Edge Ping", live: true },
+                { value: "100%", label: "Local Storage" },
+                { value: "0 KB", label: "Cloud Telemetry" },
+              ].map((s) => (
+                <div
+                  key={s.label}
+                  className="flex items-center gap-2 rounded-full border border-white/[0.06] bg-white/[0.02] px-4 py-2"
+                >
+                  <span className="font-mono text-sm font-bold text-white">{s.value}</span>
+                  {s.live && (
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    </span>
+                  )}
+                  <span className="text-xs text-white/35">{s.label}</span>
+                </div>
+              ))}
+            </motion.div>
           </div>
 
-          <h1 className="mt-6 text-balance text-4xl font-semibold leading-[1.05] tracking-[-0.03em] text-on-surface sm:text-5xl xl:text-6xl animate-fade-up [animation-delay:80ms]">
-            The <span className="text-gradient">Local-First</span> Developer
-            Studio for API Integration.
-          </h1>
+          {/* RIGHT — App Mockup (preserved exactly) */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.2 }}
+            className="relative w-full lg:pt-8"
+          >
+            {/* Ambient glow under mockup */}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -inset-x-8 top-1/4 h-1/2 rounded-full bg-primary/6 blur-[80px]"
+            />
 
-          <p className="mt-6 max-w-xl text-balance text-lg leading-relaxed text-on-surface-variant animate-fade-up [animation-delay:160ms]">
-            Instant public tunnels, live traffic interception, OpenAPI generation, and request workbench in one private, native desktop app. Built with Rust for zero cloud lock-in.
-          </p>
+            {/* Floating badges */}
+            <div className="glass absolute -top-4 right-4 z-30 hidden animate-float items-center gap-2 rounded-full border border-white/[0.07] bg-[#08090c]/90 px-4 py-2 font-mono text-[11px] text-white/50 shadow-hairline backdrop-blur-xl md:flex lg:-right-4">
+              <Cloud className="h-3.5 w-3.5 text-primary/60" />
+              <span>
+                <strong className="text-primary/80">px-*.proxync.dev</strong>
+                {" "}— Native Edge Tunnel
+              </span>
+            </div>
 
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-4 animate-fade-up [animation-delay:240ms]">
-            <Button
-              href={release.downloadUrl}
-              variant="primary"
-              size="lg"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Download className="h-4 w-4" />
-              Download for Windows
-            </Button>
-            <Button
-              href={GITHUB_URL}
-              variant="secondary"
-              size="lg"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Star className="h-4 w-4" />
-              Star on GitHub
-            </Button>
-          </div>
+            <div className="glass absolute -bottom-4 left-4 z-30 hidden animate-float items-center gap-2 rounded-full border border-white/[0.07] bg-[#08090c]/90 px-4 py-2 font-mono text-[11px] text-white/50 shadow-hairline backdrop-blur-xl md:flex lg:-left-4 [animation-delay:2.8s]">
+              <Zap className="h-3.5 w-3.5 text-secondary/60" />
+              <span>
+                <strong className="text-secondary/80">● Real-Time Inspector</strong>
+                {" "}— 1-Click IDE Jump
+              </span>
+            </div>
 
-          <p className="mt-4 font-mono text-xs text-on-surface-muted animate-fade-up [animation-delay:320ms]">
-            Version {release.tagName}&nbsp;&middot;&nbsp;Windows x64 setup &middot; Linux &amp; macOS coming soon
-          </p>
-
-          <div className="mt-10 grid w-full max-w-lg grid-cols-2 gap-y-4 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-outline-variant/20 border-t border-outline-variant/20 pt-6 animate-fade-up [animation-delay:400ms]">
-            {STATS.map((stat) => (
-              <div key={stat.label} className="flex flex-col gap-1.5 px-3 first:pl-0">
-                <span className="text-2xl font-semibold text-on-surface">
-                  {stat.label === "Edge Ping" ? latencyValue : stat.value}
-                </span>
-                <span className="font-mono text-[10px] uppercase tracking-widest text-outline">
-                  {stat.label === "Edge Ping" && latency.status !== "pinging"
-                    ? `${stat.label} (live)`
-                    : stat.label}
-                </span>
+            {/* Minimal angled chrome frame */}
+            <div className="relative rounded-2xl p-px bg-gradient-to-b from-white/10 via-white/[0.04] to-white/0 shadow-[0_32px_80px_-24px_rgba(0,0,0,0.9)]">
+              <div className="relative rounded-[15px] overflow-hidden bg-surface-container-lowest">
+                <AppMockup />
               </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="relative mt-16 w-full animate-fade-up scroll-mt-24 [animation-delay:480ms]">
-          {/* Floating Glass Badges */}
-          <div className="glass absolute -top-5 right-4 z-20 hidden animate-float items-center gap-2 rounded-full border border-primary/30 bg-surface-container-low/90 px-3.5 py-2 font-mono text-[11px] text-on-surface-variant shadow-xl backdrop-blur-md md:flex lg:-right-8">
-            <Cloud className="h-3.5 w-3.5 text-primary" />
-            <span>
-              <strong className="font-bold text-primary">px-*.proxync.dev</strong> — Native Edge &amp; Resilient Standby
-            </span>
-          </div>
-
-          <div className="glass absolute -bottom-4 left-4 z-20 hidden animate-float items-center gap-2 rounded-full border border-secondary/30 bg-surface-container-low/90 px-3.5 py-2 font-mono text-[11px] text-on-surface-variant shadow-xl backdrop-blur-md md:flex lg:-left-4 lg:-bottom-4 [animation-delay:2.5s]">
-            <Zap className="h-3.5 w-3.5 text-secondary" />
-            <span>
-              <strong className="font-bold text-secondary">● Real-Time Traffic Inspector</strong> — Dual-Stream Logs &amp; 1-Click IDE Jump
-            </span>
-          </div>
-
-          <AppMockup />
+            </div>
+          </motion.div>
         </div>
       </Container>
+
+      {/* Bottom fade into next section */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-surface to-transparent"
+      />
     </section>
   );
 }

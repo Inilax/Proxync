@@ -16,9 +16,6 @@ export function Sidebar({
       <div className="space-y-3">
         {/* Brand Header */}
         <div className="flex items-center gap-2.5 pb-2.5 pt-0.5 border-b border-outline-variant/20 justify-center lg:justify-start px-0.5 lg:px-1">
-          <div className="h-7 w-7 lg:h-8 lg:w-8 shrink-0 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center text-primary font-bold text-xs">
-            PX
-          </div>
           <div className="hidden lg:block">
             <span className="block text-xs font-bold text-on-surface leading-tight">Proxync Engine</span>
             <span className="block font-mono text-[9px] text-outline leading-tight">

@@ -1,96 +1,104 @@
 "use client";
 
-import { Download, Star } from "lucide-react";
-import { Button, Container, Eyebrow } from "@/components/ui";
-import { GITHUB_URL } from "@/lib/links";
-import { useLatestRelease } from "@/lib/releases";
+import { Download, Terminal, CheckCircle2 } from "lucide-react";
+import Link from "next/link";
+import { Button, Container } from "@/components/ui";
+import { usePlatformDownload, useLatestRelease } from "@/lib/releases";
 import { useCloudflareLatency } from "./latency";
 
 export function Cta() {
-  const release = useLatestRelease();
-  const latency = useCloudflareLatency();
+  const download = usePlatformDownload();
+  const release  = useLatestRelease();
+  const latency  = useCloudflareLatency();
   const latencyLabel =
     latency.status === "ok"
-      ? `${latency.ms}ms live`
+      ? `${latency.ms}ms Edge`
       : latency.status === "offline"
-        ? "offline"
-        : "measuring…";
-  const stats = ["12MB", latencyLabel, "100% local"];
+        ? "Offline"
+        : "Measuring…";
+
+  const badges = [
+    "12MB Native Binary",
+    latencyLabel,
+    "100% Local Storage",
+    "Zero Cloud Required",
+  ];
 
   return (
-    <section className="relative overflow-hidden py-28">
-      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-        <div className="absolute left-1/2 top-1/4 h-[420px] w-[720px] -translate-x-1/2 rounded-full bg-primary/15 blur-3xl" />
-        <div className="absolute -right-32 bottom-0 h-72 w-72 rounded-full bg-secondary/10 blur-3xl" />
-        <div className="absolute -left-32 bottom-0 h-72 w-72 rounded-full bg-tertiary/5 blur-3xl" />
-      </div>
+    <section className="relative overflow-hidden py-32">
+      {/* Single diagonal accent line at top */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent"
+      />
 
-      <Container className="relative">
-        <div className="relative overflow-hidden rounded-2xl border border-outline-variant/30 bg-surface-container/60 p-10 shadow-panel backdrop-blur-xl md:p-16">
-          <div
-            className="pointer-events-none absolute inset-0 bg-grid mask-fade-b"
-            aria-hidden="true"
-          />
-          <div
-            className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent"
-            aria-hidden="true"
-          />
+      {/* Very faint ambient */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background: "radial-gradient(ellipse 50% 30% at 50% 100%, rgba(6,182,212,0.04) 0%, transparent 70%)",
+        }}
+      />
 
-          <div className="relative mx-auto max-w-3xl text-center">
-            <Eyebrow tone="primary">Ready when you are</Eyebrow>
-
-            <h2 className="mt-6 text-4xl font-semibold leading-tight tracking-tight text-on-surface sm:text-5xl md:text-6xl">
+      <Container className="relative z-10">
+        <div className="grid grid-cols-1 gap-16 lg:grid-cols-[1fr_auto] lg:items-center lg:gap-24">
+          {/* Left — Headline */}
+          <div>
+            <p className="mb-5 font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-primary/60">
+              Developer-First · Ready in Seconds
+            </p>
+            <h2 className="font-display text-5xl font-black leading-[1.03] tracking-[-0.03em] text-white sm:text-6xl lg:text-[64px]">
               Stop context-switching.
               <br />
-              <span className="text-gradient">Start syncing.</span>
+              <span className="text-white/25">Start shipping faster.</span>
             </h2>
-
-            <p className="mx-auto mt-6 max-w-xl text-lg text-on-surface-variant">
-              Join thousands of developers who reclaimed their local environment
-              with Proxync. Download the engine today.
+            <p className="mt-6 max-w-md text-[15px] leading-relaxed text-white/35">
+              Join high-velocity engineers who reclaimed their local dev workflow. Download the engine today and test your webhooks instantly.
             </p>
 
-            <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-              <Button
-                variant="primary"
-                size="lg"
-                href={release.downloadUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <Download className="h-4 w-4" />
-                Get Started for Free
-              </Button>
-              <Button
-                variant="secondary"
-                size="lg"
-                href={GITHUB_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <Star className="h-4 w-4" />
-                Star on GitHub
-              </Button>
-            </div>
-
-            <p className="mt-6 font-mono text-xs text-on-surface-muted">
-              Version {release.tagName} (Windows x64 setup) &middot; Linux &amp; macOS coming soon
-            </p>
-
-            <div className="mt-10 flex flex-wrap items-center justify-center gap-2">
-              {stats.map((stat, i) => (
-                <span key={stat} className="inline-flex items-center gap-2">
-                  {i > 0 ? (
-                    <span className="text-on-surface-muted/60" aria-hidden="true">
-                      ·
-                    </span>
-                  ) : null}
-                  <span className="inline-flex items-center rounded-full border border-outline-variant/40 bg-surface-container px-3 py-1 font-mono text-[11px] text-on-surface-muted">
-                    {stat}
-                  </span>
-                </span>
+            {/* Trust badges */}
+            <div className="mt-8 flex flex-wrap gap-2">
+              {badges.map((badge) => (
+                <div
+                  key={badge}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/[0.06] bg-white/[0.02] px-3.5 py-1.5 font-mono text-[11px] text-white/35"
+                >
+                  <CheckCircle2 size={12} className="text-tertiary/70" />
+                  {badge}
+                </div>
               ))}
             </div>
+          </div>
+
+          {/* Right — CTA stack */}
+          <div className="flex flex-col items-start gap-4 lg:items-end">
+            <Button
+              variant="primary"
+              size="lg"
+              href={download.url}
+              className="group relative overflow-hidden rounded-full font-bold px-8 py-4 text-sm shadow-[0_0_0_1px_rgba(6,182,212,0.3)] hover:shadow-[0_0_40px_rgba(6,182,212,0.3)] transition-all"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <div className="absolute inset-0 flex justify-center [transform:skew(-12deg)_translateX(-100%)] group-hover:duration-700 group-hover:[transform:skew(-12deg)_translateX(100%)]">
+                <div className="relative h-full w-10 bg-white/25" />
+              </div>
+              <Download className="h-4 w-4" />
+              <span>{download.label}</span>
+            </Button>
+
+            <Link
+              href="/docs"
+              className="inline-flex items-center gap-2 rounded-full border border-white/[0.06] bg-white/[0.02] px-6 py-3.5 text-sm font-medium text-white/40 transition-all hover:border-white/[0.1] hover:text-white/65"
+            >
+              <Terminal className="h-3.5 w-3.5 text-primary/50" />
+              Explore Technical Docs
+            </Link>
+
+            <p className="font-mono text-[11px] text-white/20 lg:text-right">
+              {release.tagName} · Windows · macOS · Linux
+            </p>
           </div>
         </div>
       </Container>

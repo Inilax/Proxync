@@ -1,111 +1,103 @@
 import { Container } from "@/components/ui";
 
+// Tech stack icons — inlined SVGs, monochrome
 const BRANDS = [
   {
     name: "Cloudflare",
     svg: (
-      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+      <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
         <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM19 18H6c-2.21 0-4-1.79-4-4 0-2.05 1.53-3.76 3.56-3.97l1.07-.11.5-.95C8.08 7.14 9.94 6 12 6c2.62 0 4.88 1.86 5.39 4.43l.3 1.5 1.53.11c1.56.1 2.78 1.41 2.78 2.96 0 1.65-1.35 3-3 3z" />
-      </svg>
-    ),
-  },
-  {
-    name: "Rust",
-    svg: (
-      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
-      </svg>
-    ),
-  },
-  {
-    name: "Docker",
-    svg: (
-      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M13 3h-2v3h2V3zm-4 4H7v3h2V7zm8 0h-2v3h2V7zm-4 0h-2v3h2V7zM5 11H3v3h2v-3zm16 0h-2v3h2v-3zm-4 0h-2v3h2v-3zm-4 0h-2v3h2v-3zm-4 0H7v3h2v-3zm12.5 4H2.5c-.3 0-.5.2-.5.5v.5c0 3.6 2.9 6.5 6.5 6.5h7c3.6 0 6.5-2.9 6.5-6.5v-.5c0-.3-.2-.5-.5-.5z" />
-      </svg>
-    ),
-  },
-  {
-    name: "Vite",
-    svg: (
-      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 2L2 22h20L12 2zm0 3.8l6.7 13.2H5.3L12 5.8z" />
-      </svg>
-    ),
-  },
-  {
-    name: "Playground",
-    svg: (
-      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm3.8 6.8l-3.2 6.4-1.6-3.2-3.2 1.6 6.4-6.4 1.6 1.6z" />
-      </svg>
-    ),
-  },
-  {
-    name: "FastAPI",
-    svg: (
-      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 2L3 13h7v9l9-11h-7V2z" />
-      </svg>
-    ),
-  },
-  {
-    name: "Supabase",
-    svg: (
-      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M13.35 2.1a1.2 1.2 0 0 0-1.8 1.25l1.02 6.15H4.2a1.2 1.2 0 0 0-1.01 1.84l8.46 10.56a1.2 1.2 0 0 0 1.8-1.25l-1.02-6.15h8.37a1.2 1.2 0 0 0 1.01-1.84L13.35 2.1z" />
       </svg>
     ),
   },
   {
     name: "Next.js",
     svg: (
-      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 2A10 10 0 1 0 22 12 10 10 0 0 0 12 2zm4.5 13.5l-5.3-7.5H9.5v7.5H8v-9h2.2l5.3 7.5h.2v-7.5h1.5v9h-0.7z" />
+      <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+        <path d="M12 2A10 10 0 1 0 22 12 10 10 0 0 0 12 2zm4.5 13.5l-5.3-7.5H9.5v7.5H8v-9h2.2l5.3 7.5h.2v-7.5h1.5v9h-.7z" />
+      </svg>
+    ),
+  },
+  {
+    name: "Vite",
+    svg: (
+      <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+        <path d="M12 2L2 22h20L12 2zm0 3.8l6.7 13.2H5.3L12 5.8z" />
+      </svg>
+    ),
+  },
+  {
+    name: "FastAPI",
+    svg: (
+      <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+        <path d="M12 2L3 13h7v9l9-11h-7V2z" />
+      </svg>
+    ),
+  },
+  {
+    name: "Docker",
+    svg: (
+      <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+        <path d="M13 3h-2v3h2V3zm-4 4H7v3h2V7zm8 0h-2v3h2V7zm-4 0h-2v3h2V7zM5 11H3v3h2v-3zm16 0h-2v3h2v-3zm-4 0h-2v3h2v-3zm-4 0h-2v3h2v-3zm-4 0H7v3h2v-3zm12.5 4H2.5c-.3 0-.5.2-.5.5v.5c0 3.6 2.9 6.5 6.5 6.5h7c3.6 0 6.5-2.9 6.5-6.5v-.5c0-.3-.2-.5-.5-.5z" />
       </svg>
     ),
   },
   {
     name: "GitHub",
     svg: (
-      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+      <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
         <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+      </svg>
+    ),
+  },
+  {
+    name: "VS Code",
+    svg: (
+      <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+        <path d="M23.15 2.587L18.21.21a1.494 1.494 0 0 0-1.705.29l-9.46 8.63-4.12-3.128a.999.999 0 0 0-1.276.057L.327 7.261A1 1 0 0 0 .326 8.74L3.899 12 .326 15.26a1 1 0 0 0 .001 1.479L1.65 17.94a.999.999 0 0 0 1.276.057l4.12-3.128 9.46 8.63a1.492 1.492 0 0 0 1.704.29l4.942-2.377A1.5 1.5 0 0 0 24 20.06V3.939a1.5 1.5 0 0 0-.85-1.352zm-5.146 14.861L10.826 12l7.178-5.448v10.896z" />
+      </svg>
+    ),
+  },
+  {
+    name: "Rust",
+    svg: (
+      <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+        <path d="M23.834 11.703l-1.667-1.03a10.155 10.155 0 0 0-.106-1.024l1.437-1.295a.349.349 0 0 0-.068-.555l-1.815-.914a10.082 10.082 0 0 0-.32-.983l1.17-1.53a.35.35 0 0 0-.19-.547l-1.975-.544a9.98 9.98 0 0 0-.519-.898l.883-1.73a.35.35 0 0 0-.296-.512l-2.029-.15a10.178 10.178 0 0 0-.698-.784l.577-1.887a.35.35 0 0 0-.39-.448l-2.002.247a10.17 10.17 0 0 0-.857-.647l.255-1.997a.35.35 0 0 0-.47-.368l-1.893.633a10.059 10.059 0 0 0-.979-.495L12 .334a.35.35 0 0 0-.532 0l-1.357 1.507a10.033 10.033 0 0 0-.978.495L7.235.703a.35.35 0 0 0-.471.368l.256 1.997a10.094 10.094 0 0 0-.857.647L4.163 3.468a.35.35 0 0 0-.39.448l.577 1.887a10.063 10.063 0 0 0-.7.784l-2.028.15a.35.35 0 0 0-.297.512l.883 1.73a9.94 9.94 0 0 0-.518.898L.716 10.42a.35.35 0 0 0-.19.547l1.171 1.53a10.161 10.161 0 0 0-.32.983L.563 14.394a.35.35 0 0 0-.068.555l1.437 1.295a10.15 10.15 0 0 0-.107 1.024l-1.667 1.03a.35.35 0 0 0 .057.603l1.733.799q.195.52.428 1.019l-1.09 1.692a.35.35 0 0 0 .192.528l1.896.481q.33.45.69.874l-.49 1.941a.35.35 0 0 0 .317.433l1.944.124q.43.389.887.74l.135 1.941a.35.35 0 0 0 .425.315l1.911-.37q.478.277.979.516l.46 1.891a.35.35 0 0 0 .52.214l1.751-.755q.517.175 1.052.307l.79 1.77a.35.35 0 0 0 .595.051l1.464-1.156q.542.066 1.094.082l1.104 1.557a.35.35 0 0 0 .603-.088l1.099-1.798q.536-.082 1.058-.213l1.534 1.323a.35.35 0 0 0 .577-.142l.69-1.927q.49-.24.96-.52l1.81.616a.35.35 0 0 0 .44-.258l.276-1.948q.44-.362.85-.76l1.882.274a.35.35 0 0 0 .385-.38l-.145-1.943q.37-.408.702-.847l1.893-.238a.35.35 0 0 0 .27-.49l-.646-1.858q.264-.497.485-1.014l1.838-.562a.35.35 0 0 0 .147-.576z" />
+      </svg>
+    ),
+  },
+  {
+    name: "Supabase",
+    svg: (
+      <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+        <path d="M13.35 2.1a1.2 1.2 0 0 0-1.8 1.25l1.02 6.15H4.2a1.2 1.2 0 0 0-1.01 1.84l8.46 10.56a1.2 1.2 0 0 0 1.8-1.25l-1.02-6.15h8.37a1.2 1.2 0 0 0 1.01-1.84L13.35 2.1z" />
       </svg>
     ),
   },
 ];
 
 export function LogoCloud() {
-  const doubleBrands = [...BRANDS, ...BRANDS];
-
   return (
-    <section className="relative overflow-hidden border-y border-outline-variant/15 bg-surface-container-lowest/40 py-12">
-      <Container>
-        <p className="text-center font-mono text-[11px] font-semibold uppercase tracking-[0.22em] text-on-surface-muted/70">
-          Trusted by engineering teams building with
-        </p>
-      </Container>
+    <section className="relative border-t border-white/[0.05] py-16">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
 
-      <div className="relative mt-7 flex w-full overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_12%,black_88%,transparent)]">
-        <div className="flex shrink-0 animate-marquee items-center gap-12 sm:gap-16 pr-12 sm:pr-16">
-          {doubleBrands.map((brand, idx) => (
+      <div className="mx-auto max-w-7xl px-6">
+        {/* Label */}
+        <p className="mb-10 text-center font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-white/20">
+          Works seamlessly with your stack
+        </p>
+
+        {/* Static grid — no marquee */}
+        <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-6 sm:gap-x-12">
+          {BRANDS.map((brand) => (
             <div
-              key={`${brand.name}-${idx}`}
-              className="flex items-center gap-2.5 font-mono text-sm font-semibold tracking-wide text-on-surface-muted/80 transition-all duration-300 hover:text-primary hover:scale-105"
+              key={brand.name}
+              className="group flex items-center gap-2 text-white/20 transition-all duration-300 hover:text-white/55"
             >
-              <div className="text-primary/70">{brand.svg}</div>
-              <span>{brand.name}</span>
-            </div>
-          ))}
-        </div>
-        <div className="flex shrink-0 animate-marquee items-center gap-12 sm:gap-16 pr-12 sm:pr-16" aria-hidden="true">
-          {doubleBrands.map((brand, idx) => (
-            <div
-              key={`${brand.name}-dup-${idx}`}
-              className="flex items-center gap-2.5 font-mono text-sm font-semibold tracking-wide text-on-surface-muted/80 transition-all duration-300 hover:text-primary hover:scale-105"
-            >
-              <div className="text-primary/70">{brand.svg}</div>
-              <span>{brand.name}</span>
+              {brand.svg}
+              <span className="font-mono text-xs font-medium tracking-wide">
+                {brand.name}
+              </span>
             </div>
           ))}
         </div>

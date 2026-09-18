@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Cloud, Radio, Settings, Terminal } from "lucide-react";
+import { Cloud, Settings, Terminal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLatestRelease } from "@/lib/releases";
 
@@ -14,14 +14,20 @@ import { SettingsView } from "./mockup/settings-view";
 import { Sidebar } from "./mockup/sidebar";
 import { SwaggerView } from "./mockup/swagger-view";
 import { TrafficView } from "./mockup/traffic-view";
-import { ThemeId, ViewId } from "./mockup/types";
+import { NAV_CATEGORIES, ThemeId, ViewId } from "./mockup/types";
 import { WelcomeView } from "./mockup/welcome-view";
 import { WorkbenchView } from "./mockup/workbench-view";
+import { LogoMark } from "./logo";
+
+// Flat lookup: viewId → display label
+const VIEW_LABEL: Record<string, string> = Object.fromEntries(
+  NAV_CATEGORIES.flatMap((cat) => cat.items.map((item) => [item.view, item.label]))
+);
 
 export function AppMockup() {
   const release = useLatestRelease();
   const [active, setActive] = useState<ViewId>("welcome");
-  const [theme, setTheme] = useState<ThemeId>("slate");
+  const [theme, setTheme] = useState<ThemeId>("dark");
   const [showConsole, setShowConsole] = useState<boolean>(true);
 
   return (
@@ -45,9 +51,13 @@ export function AppMockup() {
               <span className="h-3 w-3 rounded-full bg-[#28c840]" />
             </div>
 
-            <div className="font-mono text-xs font-bold text-on-surface-variant hidden sm:flex items-center gap-2">
-              <Radio className="h-3.5 w-3.5 text-primary" />
-              <span>Proxync Studio</span>
+            <div className="hidden sm:flex items-center gap-2">
+              <LogoMark className="h-5 w-5" />
+              <span className="font-semibold text-xs text-on-surface tracking-tight">Proxync</span>
+              <span className="text-outline-variant/60 text-xs select-none">|</span>
+              <span className="font-mono text-xs font-medium text-on-surface-variant">
+                {VIEW_LABEL[active] ?? "Studio"}
+              </span>
             </div>
           </div>
 

@@ -8,7 +8,6 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui";
 import { LogoMark } from "@/components/logo";
 import { DOCS_NAV } from "@/lib/docs-nav";
-import { GITHUB_URL } from "@/lib/links";
 import { useLatestRelease } from "@/lib/releases";
 
 function isActive(pathname: string, href: string): boolean {
@@ -93,15 +92,6 @@ function DocsHeader({
             <ArrowLeft className="h-3.5 w-3.5" />
             Home
           </Link>
-          <a
-            href={GITHUB_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hidden items-center gap-1.5 text-sm text-on-surface-muted transition-colors hover:text-on-surface sm:inline-flex"
-          >
-            GitHub
-            <ArrowUpRight className="h-3.5 w-3.5" />
-          </a>
           <Button href={release.downloadUrl} variant="primary" size="sm" target="_blank" rel="noopener noreferrer">
             <Download className="h-3.5 w-3.5" />
             Download

@@ -66,11 +66,11 @@ export function WelcomeView({
 
           <div className="rounded-xl border border-outline-variant/30 bg-surface-container p-3">
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[10px] uppercase tracking-wider text-outline font-bold">Localtunnel Public</span>
-              <SignalBars latency={115} />
+              <span className="font-mono text-[10px] uppercase tracking-wider text-outline font-bold">Local Loopback Edge</span>
+              <SignalBars latency={1} />
             </div>
-            <div className="mt-1 font-mono text-sm font-bold text-tertiary">115 ms</div>
-            <div className="font-mono text-[9.5px] text-outline">Standby</div>
+            <div className="mt-1 font-mono text-sm font-bold text-tertiary">&lt;1 ms</div>
+            <div className="font-mono text-[9.5px] text-tertiary">*.localtest.me</div>
           </div>
         </div>
 
@@ -127,7 +127,7 @@ export function WelcomeView({
             <div className="flex items-center gap-2 font-bold text-xs text-primary mb-1">
               <Share2 className="h-3.5 w-3.5" /> Share Local Port
             </div>
-            <p className="text-[11px] text-on-surface-variant leading-relaxed">Expose localhost:5173 over Cloudflare or Localtunnel in 1 click.</p>
+            <p className="text-[11px] text-on-surface-variant leading-relaxed">Expose localhost:5173 over Cloudflare or Native SSH in 1 click.</p>
           </button>
 
           <button

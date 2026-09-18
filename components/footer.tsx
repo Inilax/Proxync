@@ -1,117 +1,84 @@
+import Link from "next/link";
 import { Zap } from "lucide-react";
 import { Container } from "@/components/ui";
 import { LogoMark } from "@/components/logo";
-import { GITHUB_URL, INILAX_URL } from "@/lib/links";
+import { INILAX_URL } from "@/lib/links";
 
-type FooterLink = { label: string; href: string; external?: boolean };
-type FooterColumn = { title: string; links: FooterLink[] };
-
-const linkColumns: FooterColumn[] = [
-  {
-    title: "Product",
-    links: [
-      { label: "Features", href: "/#features" },
-      { label: "Tunnels", href: "/#tunnels" },
-      { label: "Traffic", href: "/#traffic" },
-      { label: "Playground", href: "/#playground" },
-      { label: "Swagger", href: "/#swagger" },
-      { label: "Docs", href: "/docs" },
-    ],
-  },
-  {
-    title: "Resources",
-    links: [
-      { label: "Documentation", href: "/docs" },
-      { label: "Changelog", href: "/docs/changelog" },
-      { label: "GitHub", href: GITHUB_URL, external: true },
-      { label: "Roadmap", href: "/docs/roadmap" },
-    ],
-  },
-  {
-    title: "Company",
-    links: [
-      { label: "Inilax", href: INILAX_URL, external: true },
-      { label: "About", href: "/docs" },
-      // { label: "Blog", href: "#" },
-      { label: "Privacy Policy", href: "/privacy" },
-      { label: "Terms of Service", href: "/terms" },
-    ],
-  },
+const FOOTER_LINKS = [
+  { label: "Features", href: "/#features" },
+  { label: "Comparison", href: "/#comparison" },
+  { label: "How it works", href: "/#how-it-works" },
+  { label: "FAQ", href: "/#faq" },
+  { label: "Docs", href: "/docs" },
+  { label: "Changelog", href: "/docs/changelog" },
+  { label: "Privacy", href: "/privacy" },
+  { label: "Terms", href: "/terms" },
 ];
-
-
-function Logo() {
-  return (
-    <a href="/" className="inline-flex items-center gap-2.5">
-      <span className="grid h-8 w-8 place-items-center">
-        <LogoMark className="h-8 w-8" />
-      </span>
-      <span className="text-lg font-semibold tracking-tight text-on-surface">
-        Proxync
-      </span>
-    </a>
-  );
-}
 
 export function Footer() {
   return (
-    <footer className="border-t border-outline-variant/20 bg-surface-container-lowest">
-      <Container className="grid gap-10 py-16 lg:grid-cols-12">
-        <div className="lg:col-span-4">
-          <Logo />
-          <p className="mt-4 max-w-xs text-sm text-on-surface-variant">
-            The developer tunneling workspace studio — tunnels, traffic,
-            requests, and Swagger docs in one local-first desktop app.
-          </p>
-          <span className="mt-6 inline-flex items-center gap-2 rounded-full border border-outline-variant/40 bg-surface-container px-3 py-1 font-mono text-[11px] text-tertiary">
-            <span className="h-1.5 w-1.5 rounded-full bg-tertiary animate-pulse-dot" />
-            All systems local
-          </span>
+    <footer className="relative border-t border-white/[0.06] bg-[#060709] py-12">
+      <Container className="space-y-8">
+        {/* Row 1: Wordmark & Tagline + Horizontal Nav */}
+        <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap items-center gap-3">
+            <Link href="/" className="group flex items-center gap-2.5">
+              <LogoMark className="h-5 w-5" />
+              <span className="text-sm font-semibold tracking-tight text-white group-hover:text-primary transition-colors">
+                Proxync
+              </span>
+            </Link>
+            <span className="text-white/20">/</span>
+            <span className="text-xs text-white/40">
+              The Local-First Developer Workspace Studio
+            </span>
+          </div>
+
+          <nav className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            {FOOTER_LINKS.map((link) => (
+              <Link
+                key={link.label}
+                href={link.href}
+                className="text-xs text-white/40 transition-colors hover:text-white/80"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
         </div>
 
-        {linkColumns.map((col) => (
-          <div key={col.title} className="lg:col-span-2">
-            <h3 className="mb-4 font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-on-surface-muted">
-              {col.title}
-            </h3>
-            <ul>
-              {col.links.map((link) => (
-                <li key={link.label}>
-                  <a
-                    href={link.href}
-                    target={link.external ? "_blank" : undefined}
-                    rel={link.external ? "noopener noreferrer" : undefined}
-                    className="block py-1.5 text-sm text-on-surface-variant transition-colors hover:text-primary"
-                  >
-                    {link.label}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </Container>
+        {/* Hairline Divider */}
+        <div className="h-px w-full bg-white/[0.04]" />
 
-      <div className="border-t border-outline-variant/20">
-        <Container className="flex flex-col items-center justify-between gap-4 py-6 md:flex-row">
-          <p className="font-mono text-xs text-outline">
-            &copy; 2026 Proxync. Built with ❤️ by{" "}
-            <a
-              href={INILAX_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-semibold text-on-surface hover:text-primary transition-colors underline decoration-outline-variant/40 underline-offset-4 hover:decoration-primary"
-            >
-              Inilax
-            </a>
-            .
-          </p>
-          <span className="inline-flex items-center gap-2 rounded-full bg-surface-container-high px-4 py-1.5 font-mono text-[11px] text-on-surface">
-            <Zap className="h-3.5 w-3.5 text-tertiary" />
-            Built with Rust &amp; Tauri
-          </span>
-        </Container>
-      </div>
+        {/* Row 2: Copyright & Inilax link + Platform badge */}
+        <div className="flex flex-col gap-4 text-xs text-white/30 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-3">
+            <span>&copy; {new Date().getFullYear()} Proxync.</span>
+            <span>
+              Crafted by{" "}
+              <a
+                href={INILAX_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-white/50 underline decoration-white/20 underline-offset-4 transition-colors hover:text-primary hover:decoration-primary"
+              >
+                Inilax
+              </a>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.06] bg-white/[0.02] px-3 py-1 font-mono text-[11px] text-white/50">
+              <Zap className="h-3 w-3 text-primary" />
+              Rust &amp; Tauri Engine
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-1 font-mono text-[11px] text-emerald-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              100% Local
+            </span>
+          </div>
+        </div>
+      </Container>
     </footer>
   );
 }

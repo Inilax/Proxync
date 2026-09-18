@@ -1,9 +1,9 @@
 import { Navbar } from "@/components/navbar";
 import { Hero } from "@/components/hero";
-import { LogoCloud } from "@/components/logo-cloud";
 import { Stats } from "@/components/stats";
-import { FeaturesBento } from "@/components/features-bento";
-import { FeatureTabs } from "@/components/feature-tabs";
+import { LogoCloud } from "@/components/logo-cloud";
+import { Comparison } from "@/components/comparison";
+import { Features } from "@/components/features";
 import { HowItWorks } from "@/components/how-it-works";
 import { Testimonials } from "@/components/testimonials";
 import { Faq } from "@/components/faq";
@@ -16,10 +16,10 @@ export default function Home() {
       <Navbar />
       <main>
         <Hero />
-        <LogoCloud />
         <Stats />
-        <FeaturesBento />
-        <FeatureTabs />
+        <LogoCloud />
+        <Comparison />
+        <Features />
         <HowItWorks />
         <Testimonials />
         <Faq />
