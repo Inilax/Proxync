@@ -3,9 +3,9 @@ name: Release
 # Fires whenever a release PR (opened by prepare-release.yml) is merged into main.
 # Stage 1: Reads package version, tags the commit, creates permanent snapshot branch,
 #          and extracts changelog release notes.
-# Stage 2: Compiles and signs release artifacts across Windows, Linux, and macOS
+# Stage 2: Compiles and signs release artifacts across Windows and Linux
 #          in parallel using tauri-action, attaching installers and signatures to
-#          the draft GitHub Release.
+#          the draft GitHub Release (macOS DMG attached manually by maintainer).
 
 on:
   push:
@@ -175,8 +175,6 @@ jobs:
             args: ''
           - platform: 'ubuntu-22.04'
             args: ''
-          - platform: 'macos-latest'
-            args: '--target universal-apple-darwin'
     runs-on: ${{ matrix.platform }}
     permissions:
       contents: write
@@ -200,7 +198,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          toolchain: stable
 
       - name: Rust cache
         uses: swatinem/rust-cache@f0deed1e0edfc6a9be95417288c0e1099b1eeec3 # v2.7.7
@@ -217,13 +215,6 @@ jobs:
           # Tauri updater signing — generated via `npx tauri signer generate`:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Apple code signing & notarization credentials:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           projectPath: ${{ env.PKG_DIR }}
           tagName: ${{ needs.prepare-tag.outputs.tag }}

@@ -2,6 +2,19 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/ci-release-workflow-hardening] - 2026-09-19 (CI Release Workflow — Windows & Linux Hardening)
+- **Feature Summary**:
+  - **Rust Toolchain Fix**: Added explicit `toolchain: stable` to `dtolnay/rust-toolchain` in both `prepare-release.yml` and `release.yml`, eliminating the runner setup failure caused by missing required parameter.
+  - **macOS Removed from CI Matrix**: Removed `macos-latest` from `test-matrix` and `build-tauri` jobs. macOS `.dmg` built and signed locally by maintainer, manually attached to GitHub Draft Release before publishing.
+  - **Apple Secrets Cleaned Up**: Removed unused `APPLE_*` env vars from `release.yml` to eliminate missing-secret CI warnings.
+  - **Fast Sanity Build**: Added `--no-bundle` to `prepare-release.yml` sanity step — cuts pre-flight CI from ~12min to ~3min.
+  - **Root Package Version Sync**: Added `npm version` call for root `package.json` to keep monorepo root in sync with `packages/desktop` on version bump.
+  - **Updated Comments & PR Template**: Header comments and PR template body updated to accurately reflect Windows + Linux automated CI with manual macOS DMG workflow.
+- **Modified Files**:
+  - `.github/workflows/prepare-release.yml`
+  - `.github/workflows/release.yml`
+  - `CHANGELOG.md`
+
 ## [fix/macos-port-scan-filtering] - 2026-09-16 (macOS Native Port Scanner & Ghost Port Daemon Filtering)
 - **Feature Summary**:
   - **Native macOS Port Scanner (`MacOsScanner`)**: Implemented dedicated 3-stage platform scanner for macOS replacing the generic Unix `FallbackScanner` stub. Integrates `lsof -iTCP -sTCP:LISTEN -P -n` and full `ps` command inspection to bypass macOS 16-character process name truncation (e.g. `ControlCenter` -> `ControlCe`).
