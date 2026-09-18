@@ -2,6 +2,28 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/relay-dns-latency-hardening] - 2026-09-18 (Relay DNS Resolution, SSRF Hardening & Tunnel Latency Optimization)
+- **Feature Summary**:
+  - **Dynamic Relay DNS Resolution**: Migrated hardcoded Azure IP `104.208.83.199` to `relay.proxync.dev` and `DEFAULT_PROXYNC_SSH_HOST` across backend (`recon.rs`, `tunnel.rs`) and frontend, allowing seamless zero-downtime server migrations without requiring client app updates.
+  - **SSRF & TCP Latency Probing Whitelist**: Hardened `probe_tcp_latency` with `is_permitted_probe_host`, restricting TCP socket probes strictly to loopback (`127.0.0.1`, `localhost`, `::1`) and Proxync relay endpoints (`relay.proxync.dev`, `api.proxync.dev`, `proxync_native`). Blocks malicious or arbitrary intranet probing and SSRF port scans against private IP ranges (`192.168.x.x`, `10.x.x.x`, `169.254.169.254`).
+  - **Comprehensive Latency Probing & Host Resolution Unit Tests**: Added unit test coverage in `recon.rs` (`test_probe_tcp_latency_local`, `test_probe_tcp_latency_ipv6_and_probe_port`, `test_probe_tcp_latency_rejects_unauthorized_host`, `test_probe_tcp_latency_permitted_hosts`, `test_resolve_probe_target_internal`) ensuring zero environment variable mutation and correct bracket handling for IPv6.
+  - **Tunnel Handshake Stabilization Loop**: Refactored `open_native_tunnel` wait loop to a reliable 1500ms timeout with high-frequency 50ms early-crash polling, completely eliminating vestigial inner break logic while ensuring reverse-proxy routing is fully established before user clicks.
+  - **Custom Domain Verification Resilience**: Upgraded DNS-over-HTTPS token verification to use Google DoH with Cloudflare DoH fallback, added apex domain query fallback when `_proxync.domain` query returns empty, and replaced silent error swallowing with structured `STORAGE` logging.
+  - **Dashboard Provider Badges & UI Consistency**: Enhanced tunnel cards in `WorkspaceDashboardView` to accurately distinguish between Cloudflare, Proxync Native, and Custom Domain tunnels with respective icons and badges; bound Vite development host default to `127.0.0.1`.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `packages/desktop/src/lib/api.ts`
+  - `packages/desktop/src/lib/types.ts`
+  - `packages/desktop/vite.config.ts`
+  - `CHANGELOG.md`
+
 ## [fix/macos-port-scan-filtering] - 2026-09-16 (macOS Native Port Scanner & Ghost Port Daemon Filtering)
 - **Feature Summary**:
   - **Native macOS Port Scanner (`MacOsScanner`)**: Implemented dedicated 3-stage platform scanner for macOS replacing the generic Unix `FallbackScanner` stub. Integrates `lsof -iTCP -sTCP:LISTEN -P -n` and full `ps` command inspection to bypass macOS 16-character process name truncation (e.g. `ControlCenter` -> `ControlCe`).

@@ -153,9 +153,9 @@ export function ProcessView({
             <span className="badge muted">{workspace?.languageHint ?? 'Unknown language'}</span>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center justify-end gap-2 w-full sm:w-auto sm:ml-auto shrink-0">
           {isTunnelOpen && tunnel ? (
-            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center justify-end gap-2 w-full sm:w-auto">
               {onInspectTraffic && (
                 <button
                   className="btn-secondary flex-1 sm:flex-initial justify-center"
@@ -174,7 +174,7 @@ export function ProcessView({
               </button>
             </div>
           ) : sharingPort === processLike.port ? (
-            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center justify-end gap-2 w-full sm:w-auto">
               {onInspectTraffic && (
                 <button
                   className="btn-secondary flex-1 sm:flex-initial justify-center"
@@ -193,7 +193,7 @@ export function ProcessView({
               </button>
             </div>
           ) : process ? (
-            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center justify-end gap-2 w-full sm:w-auto">
               <button
                 className="btn-secondary flex-1 sm:flex-initial justify-center"
                 onClick={() => onShareLocal(process)}

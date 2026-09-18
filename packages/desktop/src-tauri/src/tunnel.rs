@@ -573,13 +573,13 @@ pub async fn open_native_tunnel(
 
     let known_hosts_path = temp_dir.join("known_hosts");
     let ssh_host = std::env::var("PROXYNC_SSH_HOST")
-        .unwrap_or_else(|_| "104.208.83.199".to_string());
+        .unwrap_or_else(|_| crate::recon::DEFAULT_PROXYNC_SSH_HOST.to_string());
     let strict_host_checking = "yes";
 
     // Pre-seed known_hosts with official Proxync SSH host key to enforce StrictHostKeyChecking=yes
     let pinned_host_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDyV3ZNPsHhwJaW6akzFMg/KAE7F1K4WamVtMaeP/vi9 root@Proxync-tunnel";
     let seed_entry = format!(
-        "[{}]:2222 {}\n[104.208.83.199]:2222 {}\n[api.proxync.dev]:2222 {}\n",
+        "[{}]:2222 {}\n[relay.proxync.dev]:2222 {}\n[api.proxync.dev]:2222 {}\n",
         ssh_host, pinned_host_key, pinned_host_key, pinned_host_key
     );
     let _ = std::fs::write(&known_hosts_path, seed_entry);
@@ -623,8 +623,8 @@ pub async fn open_native_tunnel(
             return Err("Failed to register ephemeral public key with Proxync tunnel server. Please check your internet connection.".to_string());
         }
         
-        // Give sish 500ms to absorb the new pubkey from disk into its in-memory key store.
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        // Give sish 150ms to absorb the new pubkey into its key store
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
     }
     let active_key_path = key_path;
 
@@ -688,16 +688,14 @@ pub async fn open_native_tunnel(
     
     let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn ssh: {}", e))?;
     
-    // Await SSH handshake & remote forwarding bind confirmation (~1.5s) so the URL never 404s on first click
+    // Await SSH handshake & remote forwarding bind confirmation (~1500ms).
+    // Fails fast if OpenSSH exits with an error; ensures remote routing is fully active before returning.
     let start_wait = std::time::Instant::now();
-    while start_wait.elapsed() < std::time::Duration::from_millis(2000) {
+    while start_wait.elapsed() < std::time::Duration::from_millis(1500) {
         if let Ok(Some(status)) = child.try_wait() {
             return Err(format!("SSH tunnel process exited prematurely with status: {}", status));
         }
-        if start_wait.elapsed() >= std::time::Duration::from_millis(1600) {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
 
     let mut child_procs = SPAWNED_TUNNEL_PROCESSES.lock().await;

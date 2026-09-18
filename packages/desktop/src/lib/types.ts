@@ -37,6 +37,7 @@ export interface Tunnel {
   subdomain?: string;
   customDomain?: string;
   createdAt?: string;
+  provider?: string;
 }
 
 export interface RequestLog {
@@ -154,7 +155,7 @@ export interface AppLogEntry {
   seq: number;
   timestamp: string;
   level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG';
-  source: 'SYSTEM' | 'RECON' | 'TUNNEL' | 'PROXY' | 'HTTP' | 'SCANNER' | 'UPDATER';
+  source: 'SYSTEM' | 'RECON' | 'TUNNEL' | 'PROXY' | 'HTTP' | 'SCANNER' | 'UPDATER' | 'STORAGE';
   message: string;
   details?: string;
 }

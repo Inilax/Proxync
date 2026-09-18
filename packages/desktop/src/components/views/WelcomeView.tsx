@@ -247,39 +247,50 @@ export function WelcomeView({
               </div>
             ) : (
               <div className="space-y-4">
-                {activeTunnels.map((tunnel, idx) => (
+                {activeTunnels.map((tunnel) => (
                   <div
                     key={tunnel.id}
                     className="p-4 sm:p-5 bg-surface-container border border-outline-variant rounded-xl flex flex-col gap-4 hover:border-primary/50 transition-colors"
                   >
                     <div className="flex justify-between items-start gap-2">
                       <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
-                        <div className="w-10 h-10 rounded-lg bg-surface-container-high border border-outline-variant flex items-center justify-center shrink-0">
-                          <span className={`material-symbols-outlined ${idx % 2 === 0 ? 'text-primary' : 'text-secondary'}`}>
-                            {idx % 2 === 0 ? 'link' : 'cloud_queue'}
-                          </span>
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 group/url">
-                            <h4 className="font-body-lg text-body-lg text-on-surface truncate max-w-[140px] xs:max-w-[200px] sm:max-w-[320px] md:max-w-[440px] lg:max-w-[560px]" title={new URL(tunnel.publicUrl).hostname}>
-                              {new URL(tunnel.publicUrl).hostname}
-                            </h4>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigator.clipboard.writeText(tunnel.publicUrl);
-                                showToast('Public URL copied!', 'success');
-                              }}
-                              className="p-1 rounded text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer flex items-center justify-center opacity-70 sm:opacity-0 group-hover/url:opacity-100 focus:opacity-100 shrink-0"
-                              title="Copy URL"
-                            >
-                              <span className="material-symbols-outlined text-[14px]">content_copy</span>
-                            </button>
-                          </div>
-                          <p className="font-code-sm text-code-sm text-on-surface-variant truncate">
-                            {idx % 2 === 0 ? 'Relay Subdomain' : 'Cloudflare'} • Port {tunnel.localPort}
-                          </p>
-                        </div>
+                        {(() => {
+                          const isCloudflare = tunnel.provider === 'cloudflare' || tunnel.publicUrl.includes('trycloudflare.com');
+                          const isNative = tunnel.provider === 'native' || tunnel.subdomain?.startsWith('px-') || tunnel.publicUrl.includes('proxync');
+                          const providerLabel = isCloudflare ? 'Cloudflare' : isNative ? 'Proxync Native' : (tunnel.customDomain || tunnel.subdomain ? 'Custom Domain' : 'Local Relay');
+                          const iconName = isCloudflare ? 'cloud_queue' : isNative ? 'bolt' : 'link';
+                          const iconColor = isCloudflare ? 'text-secondary' : isNative ? 'text-amber-400' : 'text-primary';
+                          return (
+                            <>
+                              <div className="w-8 h-8 rounded-lg bg-surface-container-high border border-outline-variant/30 flex items-center justify-center shrink-0">
+                                <span className={`material-symbols-outlined ${iconColor}`}>
+                                  {iconName}
+                                </span>
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 group/url">
+                                  <h4 className="font-body-lg text-body-lg text-on-surface truncate max-w-[140px] xs:max-w-[200px] sm:max-w-[320px] md:max-w-[440px] lg:max-w-[560px]" title={new URL(tunnel.publicUrl).hostname}>
+                                    {new URL(tunnel.publicUrl).hostname}
+                                  </h4>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      navigator.clipboard.writeText(tunnel.publicUrl);
+                                      showToast('Public URL copied!', 'success');
+                                    }}
+                                    className="p-1 rounded text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer flex items-center justify-center opacity-70 sm:opacity-0 group-hover/url:opacity-100 focus:opacity-100 shrink-0"
+                                    title="Copy URL"
+                                  >
+                                    <span className="material-symbols-outlined text-[14px]">content_copy</span>
+                                  </button>
+                                </div>
+                                <p className="font-code-sm text-code-sm text-on-surface-variant truncate">
+                                  {providerLabel} • Port {tunnel.localPort}
+                                </p>
+                              </div>
+                            </>
+                          );
+                        })()}
                       </div>
 
                       <div className="relative shrink-0">
