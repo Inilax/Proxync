@@ -15,6 +15,15 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - `.github/dependabot.yml`
   - `CHANGELOG.md`
 
+### 🍎 macOS Installation Note
+> Proxync is open-source and currently distributed without Apple notarization. macOS Gatekeeper may show **"Proxync is damaged and cannot be opened"** on first launch. This is a standard security warning for apps downloaded from the web that are not signed with an Apple Developer ID — the app itself is safe.
+>
+> **One-time fix — run this in Terminal after dragging Proxync to your Applications folder:**
+> ```bash
+> xattr -cr /Applications/Proxync.app
+> ```
+> After running this command once, Proxync will open normally and auto-update silently in the background for all future releases.
+
 ## [fix/readme-cross-platform-roadmap-refresh] - 2026-09-19 (README Modernization, Cross-Platform Alignment & Unified Roadmap)
 - **Feature Summary**:
   - **Cross-Platform Status Alignment**: Updated `README.md` to reflect full desktop support across Windows, Linux, and macOS with active platform badges and native bundle targets (`.msi`/`.exe`, `.deb`/`.AppImage`, `.dmg`/`.app`).
