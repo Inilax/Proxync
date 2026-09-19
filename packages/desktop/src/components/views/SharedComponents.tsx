@@ -15,6 +15,39 @@ export function stripMethodPrefix(name: string): string {
   return name.replace(METHOD_PREFIX_REGEX, '').trim();
 }
 
+export function getTunnelMetadata(tunnel?: import('../../lib/types').Tunnel | null) {
+  let hostname = '';
+  try {
+    const raw = tunnel?.publicUrl || '';
+    const urlStr = raw.startsWith('http://') || raw.startsWith('https://')
+      ? raw
+      : `https://${raw}`;
+    hostname = new URL(urlStr).hostname.toLowerCase();
+  } catch {
+    hostname = '';
+  }
+
+  const isCloudflare = tunnel?.provider === 'cloudflare' ||
+    hostname === 'trycloudflare.com' ||
+    hostname.endsWith('.trycloudflare.com');
+
+  const isNative = tunnel?.provider === 'native' ||
+    Boolean(tunnel?.subdomain?.startsWith('px-')) ||
+    hostname === 'proxync.dev' ||
+    hostname.endsWith('.proxync.dev');
+
+  const providerLabel = isCloudflare
+    ? 'Cloudflare'
+    : isNative
+      ? 'Proxync Native'
+      : (tunnel?.customDomain || tunnel?.subdomain ? 'Custom Domain' : 'Local Relay');
+
+  const iconName = isCloudflare ? 'cloud_queue' : isNative ? 'bolt' : 'link';
+  const iconColor = isCloudflare ? 'text-secondary' : isNative ? 'text-amber-400' : 'text-primary';
+
+  return { hostname, isCloudflare, isNative, providerLabel, iconName, iconColor };
+}
+
 /* ────────────────── Shared Types ────────────────── */
 
 export type {

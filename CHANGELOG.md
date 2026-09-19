@@ -2,6 +2,51 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/ci-release-workflow-hardening] - 2026-09-19 (CI Release Workflow — Windows & Linux Hardening)
+- **Feature Summary**:
+  - **Rust Toolchain Fix**: Added explicit `toolchain: stable` to `dtolnay/rust-toolchain` in both `prepare-release.yml` and `release.yml`, eliminating the runner setup failure caused by missing required parameter.
+  - **macOS Removed from CI Matrix**: Removed `macos-latest` from `test-matrix` and `build-tauri` jobs. macOS `.dmg` built and signed locally by maintainer, manually attached to GitHub Draft Release before publishing.
+  - **Apple Secrets Cleaned Up**: Removed unused `APPLE_*` env vars from `release.yml` to eliminate missing-secret CI warnings.
+  - **Fast Sanity Build**: Added `--no-bundle` to `prepare-release.yml` sanity step — cuts pre-flight CI from ~12min to ~3min.
+  - **Root Package Version Sync**: Added `npm version` call for root `package.json` to keep monorepo root in sync with `packages/desktop` on version bump.
+  - **Updated Comments & PR Template**: Header comments and PR template body updated to accurately reflect Windows + Linux automated CI with manual macOS DMG workflow.
+- **Modified Files**:
+  - `.github/workflows/prepare-release.yml`
+  - `.github/workflows/release.yml`
+
+## [fix/relay-dns-latency-hardening] - 2026-09-18 (CodeQL CWE-20 URL Sanitization & Tunnel Metadata Hardening)
+- **Feature Summary**:
+  - **CodeQL CWE-20 Incomplete URL Substring Sanitization Fix**: Centralized tunnel metadata extraction into `getTunnelMetadata()` in `SharedComponents.tsx`. Replaced naive substring checks (`.includes('trycloudflare.com')`, `.includes('proxync')`) with strict hostname matching (`.endsWith('.trycloudflare.com')`, `.endsWith('.proxync.dev')`) to prevent domain spoofing attacks.
+  - **URL Parsing Safety & Crash Prevention**: Wrapped URL parsing in safe try/catch blocks with automatic `https://` protocol prefixing across `WelcomeView`, `WorkspaceDashboardView`, and `ProcessView`, completely eliminating unhandled `new URL()` runtime exceptions on malformed or protocol-less URLs.
+- **Modified Files**:
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `CHANGELOG.md`
+
+## [fix/relay-dns-latency-hardening] - 2026-09-18 (Relay DNS Resolution, SSRF Hardening & Tunnel Latency Optimization)
+- **Feature Summary**:
+  - **Dynamic Relay DNS Resolution**: Migrated hardcoded Azure IP `104.208.83.199` to `relay.proxync.dev` and `DEFAULT_PROXYNC_SSH_HOST` across backend (`recon.rs`, `tunnel.rs`) and frontend, allowing seamless zero-downtime server migrations without requiring client app updates.
+  - **SSRF & TCP Latency Probing Whitelist**: Hardened `probe_tcp_latency` with `is_permitted_probe_host`, restricting TCP socket probes strictly to loopback (`127.0.0.1`, `localhost`, `::1`) and Proxync relay endpoints (`relay.proxync.dev`, `api.proxync.dev`, `proxync_native`). Blocks malicious or arbitrary intranet probing and SSRF port scans against private IP ranges (`192.168.x.x`, `10.x.x.x`, `169.254.169.254`).
+  - **Comprehensive Latency Probing & Host Resolution Unit Tests**: Added unit test coverage in `recon.rs` (`test_probe_tcp_latency_local`, `test_probe_tcp_latency_ipv6_and_probe_port`, `test_probe_tcp_latency_rejects_unauthorized_host`, `test_probe_tcp_latency_permitted_hosts`, `test_resolve_probe_target_internal`) ensuring zero environment variable mutation and correct bracket handling for IPv6.
+  - **Tunnel Handshake Stabilization Loop**: Refactored `open_native_tunnel` wait loop to a reliable 1500ms timeout with high-frequency 50ms early-crash polling, completely eliminating vestigial inner break logic while ensuring reverse-proxy routing is fully established before user clicks.
+  - **Custom Domain Verification Resilience**: Upgraded DNS-over-HTTPS token verification to use Google DoH with Cloudflare DoH fallback, added apex domain query fallback when `_proxync.domain` query returns empty, and replaced silent error swallowing with structured `STORAGE` logging.
+  - **Dashboard Provider Badges & UI Consistency**: Enhanced tunnel cards in `WorkspaceDashboardView` to accurately distinguish between Cloudflare, Proxync Native, and Custom Domain tunnels with respective icons and badges; bound Vite development host default to `127.0.0.1`.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `packages/desktop/src/lib/api.ts`
+  - `packages/desktop/src/lib/types.ts`
+  - `packages/desktop/vite.config.ts`
+  - `CHANGELOG.md`
+
 ## [fix/macos-port-scan-filtering] - 2026-09-16 (macOS Native Port Scanner & Ghost Port Daemon Filtering)
 - **Feature Summary**:
   - **Native macOS Port Scanner (`MacOsScanner`)**: Implemented dedicated 3-stage platform scanner for macOS replacing the generic Unix `FallbackScanner` stub. Integrates `lsof -iTCP -sTCP:LISTEN -P -n` and full `ps` command inspection to bypass macOS 16-character process name truncation (e.g. `ControlCenter` -> `ControlCe`).
