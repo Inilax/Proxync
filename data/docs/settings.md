@@ -1,31 +1,62 @@
 ---
 title: Settings & Domains
-description: Pro Debugger & Dual-Stream Support Logging, Emergency CVE Radar, telemetry options, custom domain verification, and Enterprise preview cards.
+description: Manage logging diagnostics, automatic log rotation, auto-updates, telemetry modes, and custom domain verification.
 ---
 
-The **Settings** view in Proxync v0.2.1 provides complete control over logging diagnostics, emergency security updates, app performance, and domain verification.
+The **Settings** screen gives you complete, transparent control over how Proxync runs on your computer—from privacy and logging preferences to domain verification and updates.
 
-## Key Preference Panels in v0.2.1
+---
 
-### 1. Pro Debugger & Dual-Stream Logging Engine
-- **Application Diagnostics (`app.log`)** — Enabled by default. Logs engine lifecycle, recon scans, proxy binds, tunnel spawn/closures, and crashes.
-- **Traffic Stream (`traffic.log`)** — Disabled by default. Captures full HTTP request/response payloads, headers, and JSONL latencies on demand.
-- **AI Agent Directives** — Structured session headers and deterministic `reason`, `target`, and `hint` attributes for automated troubleshooting.
-- **1-Click Support Bundle Exporter** — Packages workspace configurations, active tunnels, discovered processes, and sanitized logs into `proxync-support-bundle.json`.
-- **Automatic PII Redaction** — Automatically redacts `Authorization`, `Bearer`, `Cookie`, `ApiKey`, and `Secret` tokens across logs.
-- **Log Management** — 1-click **Open Logs Folder** and instant log purging in Danger Zone.
+## Key Settings Panels
 
-### 2. Smart Auto-Updater & Emergency CVE Radar
-- **Emergency CVE Radar** — Pre-flight security scan on startup ensuring zero false-positive detection of urgent security releases.
-- **Automatic Updates Toggle** — Silent background update checking every 2 hours (or 7 days when disabled).
+### 1. Pro Debugger & Disk Logging
+Proxync writes diagnostic information directly to local files on your machine using lightweight, native Rust logging:
 
-### 3. Telemetry Options (Enhanced vs Basic)
-- **Enhanced Telemetry (Default)** — Computes full $P50, P90, P99$ latency percentiles, route leaderboards, and total bandwidth metrics in the Observability Hub.
-- **Basic Telemetry (Low CPU)** — Bypasses non-fatal percentile array sorting to minimize CPU and RAM overhead on resource-constrained systems.
+- **Application Diagnostics (`app.log`)**  
+  *Enabled by default.* Logs application lifecycle events, dev server scans, and tunnel connections. Automatically rotates to `app.log.old` when it reaches **5MB** to prevent filling up your hard drive.
+- **Traffic Stream (`traffic.log`)**  
+  *Disabled by default.* When turned on, records full HTTP request and response payloads on disk. Automatically rotates to `traffic.log.old` at **10MB**.
+- **Automatic Privacy & Credential Redaction**  
+  Sensitive authentication headers (`Authorization`, `Bearer`, `Cookie`, `ApiKey`, and `Secret`) are automatically masked with asterisks before writing to disk, ensuring your secrets are never exposed in log files.
+- **1-Click Support Bundle Exporter**  
+  If you ever run into an issue and need assistance from the community, click **Export Support Bundle**. Proxync packages your sanitized logs and diagnostic info into a clean `proxync-support-bundle.json` file on your desktop.
+- **Open Logs Folder**  
+  Opens your operating system's file manager (File Explorer on Windows, Finder on macOS) directly to Proxync's log directory with one click.
 
-### 4. Custom Domains Verification
-- Add custom domains and verify DNS TXT/A/CNAME records with automated DNS-over-HTTPS pre-flight lookups (Google/Cloudflare DoH).
+---
 
-### 5. Enterprise API Keys & Cloud Sync Preview
-- Enterprise API Key Management preview card.
-- Proxync Enterprise & Cloud Sync preview card with RBAC and Policy guardrails badges.
+### 2. Smart Auto-Updater & Security Alerts
+Proxync keeps itself secure with a privacy-respecting update system:
+
+- **Automatic Background Checks:** Checks for updates upon launch and every **2 hours** (or every 7 days if disabled).
+- **Emergency Security Radar:** If a critical zero-day vulnerability patch is released, Proxync immediately notifies you with an urgent update modal and live download progress.
+- **Gentle Restart Countdown:** Gives you a clear 2-second countdown before restarting into an update so you never lose unsaved drafts.
+
+---
+
+### 3. Performance & Telemetry Modes
+Customize how much CPU Proxync uses to compute performance metrics:
+
+- **Enhanced Telemetry (Default):** Computes full $P50, P90, P99$ latency percentiles and route leaderboards in the Observability Hub. Recommended for standard development setups.
+- **Basic Telemetry (Low-CPU Mode):** Bypasses statistical array sorting to minimize CPU and battery usage on older laptops, recording only critical server errors.
+
+---
+
+### 4. Custom Domains & DNS Verification
+Want to point your own custom domain (e.g. `api.mybrand.com`) to your local dev server?
+
+- Add your custom domain in the Domains panel.
+- Proxync automatically queries **DNS-over-HTTPS (DoH)** via Google and Cloudflare to verify that your DNS CNAME or TXT records are configured correctly before enabling traffic routing.
+
+---
+
+### 5. Enterprise & Cloud Sync (Preview)
+For development teams seeking shared team workspaces, persistent team tunnel endpoints, role-based access control (RBAC), and centralized audit logging, preview cards and early-access waitlists are available within this panel.
+
+---
+
+## What to Read Next
+
+- **[Configuration Reference](/docs/configuration)** — Inspect the local `data.json` configuration file schema.
+- **[Observability Hub](/docs/observability)** — See how telemetry settings affect your dashboard metrics.
+- **[FAQ](/docs/faq)** — Read answers to frequently asked questions.

@@ -1,121 +1,110 @@
-"use client";
-
 import { Star } from "lucide-react";
-import { Container } from "@/components/ui";
-import { Reveal } from "@/components/reveal";
-
-type Testimonial = {
-  quote: string;
-  name: string;
-  role: string;
-  company: string;
-  initials: string;
-  accent: string;
-};
-
-const testimonials: Testimonial[] = [
-  {
-    quote: "I replaced ngrok, Postman, and Wireshark in a single afternoon. My laptop fan finally stopped screaming and our API tests are 10x faster.",
-    name: "Sarah Chen",
-    role: "Staff Infrastructure Engineer",
-    company: "Northwind Cloud",
-    initials: "SC",
-    accent: "bg-primary/20 text-primary",
-  },
-  {
-    quote: "The auto-generated OpenAPI spec alone is worth the download. Documentation now writes itself while I build routes in FastAPI.",
-    name: "Marcus Okafor",
-    role: "Backend Architecture Lead",
-    company: "Helios Systems",
-    initials: "MO",
-    accent: "bg-secondary/20 text-secondary",
-  },
-  {
-    quote: "Finally, a tunneling tool that doesn't route my customer data through a third-party server. Our SOC2 security auditor approved it immediately.",
-    name: "Priya Sharma",
-    role: "Principal Security Engineer",
-    company: "Latice Security",
-    initials: "PS",
-    accent: "bg-tertiary/20 text-tertiary",
-  },
-  {
-    quote: "We replay production webhook traffic against local dev without manual cURL scripts. It caught three catastrophic regressions last sprint before deployment.",
-    name: "Tomás Rivera",
-    role: "VP of Engineering",
-    company: "Fluxir Fintech",
-    initials: "TR",
-    accent: "bg-violet-500/20 text-violet-400",
-  },
-];
-
-function Stars() {
-  return (
-    <div className="flex gap-0.5" aria-label="5 out of 5 stars">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <Star key={i} className="h-3.5 w-3.5 fill-primary/60 text-primary/60" aria-hidden="true" />
-      ))}
-    </div>
-  );
-}
 
 export function Testimonials() {
+  const testimonials = [
+    {
+      quote:
+        "As a freelance developer, I used to waste 20 minutes deploying WIP code to a remote staging server just so my client or QA could test a 5-minute UI fix on their phone. With Proxync, I just click Share, send them the link on Slack, and they test live while it's still running on my laptop.",
+      name: "Liam Vance",
+      role: "Freelance Full-Stack Developer",
+      company: "Independent Contractor",
+      initials: "LV",
+      accent: "bg-primary/10 text-primary border-primary/20",
+    },
+    {
+      quote:
+        "Standby Mode is the killer feature every solo dev needs. When you're vibe coding in Cursor and your dev server restarts on every file save, traditional tunnels die and break your Stripe and Clerk webhooks. Proxync quietly holds the connection alive. Haven't had a 502 error in weeks.",
+      name: "Maya Lin",
+      role: "Indie SaaS Founder",
+      company: "Formcraft Labs",
+      initials: "ML",
+      accent: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+    },
+    {
+      quote:
+        "Our QA team can test PRs against our local backend in real time without waiting for heavy Docker builds or cloud staging pipelines. If a test fails, I see the raw webhook payload immediately in the Traffic Inspector and jump straight to the exact line in VS Code.",
+      name: "David Thorne",
+      role: "Lead Engineer",
+      company: "Apex Digital Studio",
+      initials: "DT",
+      accent: "bg-purple-500/10 text-purple-400 border-purple-500/20",
+    },
+    {
+      quote:
+        "Having an API testing studio built directly into the desktop app that bypasses browser CORS issues is huge. Best part is zero cloud tracking—our agency signs strict client NDAs, and with Proxync all test auth tokens and customer payloads stay 100% on my machine.",
+      name: "Alex Rivera",
+      role: "Senior Backend Consultant",
+      company: "Rivera Tech Solutions",
+      initials: "AR",
+      accent: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+    },
+  ];
+
   return (
-    <section className="relative bg-[#060709] py-28">
+    <section className="relative w-full max-w-5xl mx-auto px-4 py-20 sm:py-24 select-none">
+      {/* Ambient Atmospheric Glow Orbs */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent"
+        className="pointer-events-none absolute top-10 left-1/4 w-96 h-96 rounded-full bg-cyan-500/[0.04] blur-[130px] -z-10"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute bottom-10 right-1/4 w-96 h-96 rounded-full bg-purple-500/[0.04] blur-[130px] -z-10"
       />
 
-      <Container className="relative z-10">
-        {/* Header */}
-        <div className="mb-20 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-lg">
-            <p className="mb-4 font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-primary/70">
-              Developer Love
-            </p>
-            <h2 className="font-display text-4xl font-black tracking-[-0.02em] text-white sm:text-5xl">
-              Built for teams
-              <br />
-              <span className="text-white/30">that actually ship.</span>
-            </h2>
-          </div>
-          <p className="max-w-xs text-[14px] leading-relaxed text-white/30 lg:text-right">
-            From high-growth startups to enterprise platform teams — Proxync is the local API engine.
-          </p>
+      {/* Header */}
+      <div className="flex flex-col items-start mb-12 sm:mb-14">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#0E1015] border border-[#1F232E] text-[11px] font-mono text-primary mb-3 shadow-sm">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary" />
+          </span>
+          <span className="uppercase tracking-widest text-[10.5px]">Developer Stories</span>
         </div>
+        <h2 className="font-sans text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-white max-w-xl">
+          Loved by builders who ship fast.
+        </h2>
+        <p className="mt-3 text-[#8E93A4] text-base max-w-xl leading-relaxed">
+          From freelance full-stack engineers and agency dev teams to solo indie SaaS founders.
+        </p>
+      </div>
 
-        {/* 2-column masonry grid — no card borders */}
-        <div className="grid grid-cols-1 gap-12 lg:grid-cols-2">
-          {testimonials.map((t, i) => (
-            <Reveal key={t.name} delay={i * 0.08}>
-              <div className="group relative flex flex-col gap-6">
-                {/* Pull-quote accent line */}
-                <div className="h-px w-10 bg-white/10 transition-all duration-500 group-hover:w-16 group-hover:bg-primary/40" />
+      {/* Testimonials Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6">
+        {testimonials.map((t) => (
+          <div
+            key={t.name}
+            className="group relative rounded-3xl bg-[#0A0D14]/85 border border-white/[0.08] hover:border-white/[0.18] p-6 sm:p-7 flex flex-col justify-between backdrop-blur-xl shadow-2xl transition-all duration-300 hover:shadow-[0_0_35px_rgba(6,182,212,0.08)] overflow-hidden"
+          >
+            <div>
+              {/* Star Rating */}
+              <div className="flex items-center gap-1 mb-4" aria-label="5 out of 5 stars">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Star key={i} className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                ))}
+              </div>
 
-                <Stars />
+              <blockquote className="text-[#F1F2F6] text-[13.5px] sm:text-sm leading-relaxed mb-6 font-normal">
+                &ldquo;{t.quote}&rdquo;
+              </blockquote>
+            </div>
 
-                <blockquote className="text-lg font-medium leading-relaxed text-white/70 italic">
-                  &ldquo;{t.quote}&rdquo;
-                </blockquote>
-
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-mono text-sm font-bold ${t.accent}`}
-                  >
-                    {t.initials}
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold text-white/80">{t.name}</div>
-                    <div className="font-mono text-[11px] text-white/30">
-                      {t.role} · {t.company}
-                    </div>
-                  </div>
+            <div className="flex items-center gap-3 pt-4 border-t border-white/[0.06]">
+              <div
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border font-mono text-xs font-bold ${t.accent}`}
+              >
+                {t.initials}
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-white truncate">{t.name}</div>
+                <div className="font-mono text-[11px] text-[#8E93A4] truncate">
+                  {t.role} · {t.company}
                 </div>
               </div>
-            </Reveal>
-          ))}
-        </div>
-      </Container>
+            </div>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }

@@ -136,7 +136,7 @@ export function TrafficView() {
             <div className="bg-surface-container p-2.5 rounded-lg space-y-1 text-[11px]">
               <div><span className="text-outline">content-type:</span> <span className="text-on-surface">application/json</span></div>
               <div><span className="text-outline">authorization:</span> <span className="text-on-surface">Bearer ••••••••</span></div>
-              <div><span className="text-outline">user-agent:</span> <span className="text-on-surface">Proxync-Desktop/0.2.1</span></div>
+              <div><span className="text-outline">user-agent:</span> <span className="text-on-surface">Proxync-Desktop/0.2.2</span></div>
             </div>
           </div>
 

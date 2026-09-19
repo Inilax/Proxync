@@ -1,38 +1,82 @@
 ---
 title: Tunnels & Sharing
-description: Expose local processes with Proxync Native SSH tunnels, Cloudflare Quick Tunnels, Localtunnel, custom domains, or LAN shares with Active Internet Guard and Batch Teardown.
+description: Securely share local web servers with high-speed Proxync Native SSH tunnels, Cloudflare Quick Tunnels, custom domains, or local network sharing.
 ---
 
-Proxync v0.2.1 provides high-throughput one-click public URL creation, proprietary Native SSH tunnels, and LAN sharing for your local dev servers.
+Sharing your local web app should be effortless. Whether you need to test a mobile layout on your smartphone, share a live preview with a client, or receive real webhooks from Stripe, Proxync makes sharing your local server as simple as clicking a button.
 
-## Proxync Native High-Throughput Tunnels (Port 2222)
+> **What is a tunnel?**  
+> When you run an app on your computer, it usually listens on `localhost:3000`, which only you can see. A tunnel gives your local app a secure, temporary public HTTPS web address (like `https://px-a1b2c3d4.proxync.dev`) so external services and remote devices can access it over the internet.
 
-Proxync v0.2.1 introduces **Proxync Native Tunnels** — a high-speed, proprietary tunneling architecture built directly into the free desktop application:
+---
 
-- **100% Free & Zero-Config** — Included out-of-the-box in the desktop app. No registration, no credit cards, and no server configuration required. Just click **Public Share** to get an instant HTTPS URL.
-- **High-Throughput Direct Origin (Port 2222)** — Direct SSH connection to Proxync's optimized tunnel relays using hardware-accelerated ciphers (`chacha20-poly1305`, `aes128-gcm`) with `IPQoS=throughput` for sub-millisecond local forwarding.
-- **JIT Ephemeral Ed25519 Cert Signing** — Dynamically signs TLS keys via `https://api.proxync.dev/api/tunnel/sign-jit-cert` with zero-RTT handshakes.
-- **Zero-Trace Security (`TempDirGuard`)** — Ephemeral keys and session `known_hosts` files are locked with single-user OS ACL permissions and securely erased on tunnel closure.
-- **Automatic Random Subdomains** — Instantly provisions clean, unique 8-character subdomains (e.g. `https://px-a1b2c3d4.proxync.dev`).
+## 4 Ways to Share Your App
 
-## Cloudflare Quick Tunnels & Localtunnel
+Proxync provides four flexible sharing methods depending on what you're working on:
 
-- **Cloudflare Edge** — Instant `*.trycloudflare.com` public tunnels pointing to local TCP proxy.
-- **Localtunnel** — Optional custom subdomain tunnels (`*.loca.lt`).
+### 1. Proxync Native Relay (Recommended)
+Our built-in, low-latency tunneling engine powered by direct origin SSH relays:
+- **Instant Setup:** Click **Share** and get a clean, secure HTTPS link (e.g. `https://px-a1b2c3d4.proxync.dev`) in less than a second.
+- **Fast Throughput:** Routes directly through our optimized origin relay (`relay.proxync.dev:2222`) with ephemeral cryptographic keys.
+- **Free & Unlimited:** No accounts, no token limits, and no restrictive paywalls.
 
-## Active Internet Connectivity Guard
+### 2. Cloudflare Quick Tunnels
+Connects your local server to Cloudflare's global edge network:
+- Produces a public `*.trycloudflare.com` URL.
+- Useful if you are working behind strict corporate firewalls that block standard SSH outbound ports.
+- Completely free with zero configuration required.
 
-To prevent CLI timeout hangs when attempting to launch tunnels offline, Proxync performs real edge pings (`checkRealInternetConnection`) before spawner execution.
+### 3. Custom Domains
+Want to use your own branded domain (like `api.myproject.com`) instead of a random subdomain?
+- Proxync includes built-in **DNS-over-HTTPS (DoH)** pre-flight verification using Google and Cloudflare DNS.
+- It tests your DNS TXT and CNAME records before enabling traffic to guarantee smooth routing.
 
-## Batch Multi-Tunnel Teardown
+### 4. Local LAN Sharing
+Want to test your app on your mobile phone or another computer connected to your home or office Wi-Fi?
+- Proxync generates a clean local IP address (e.g., `http://192.168.1.42:3000`).
+- Traffic stays 100% inside your local Wi-Fi router, with zero data passing through the public internet.
 
-- **1-Click Stop All** — Prominent **Stop All** button in **Explore** (`WelcomeView`) and **Workspace Dashboard** terminates all active tunnel processes and child process trees (`taskkill /F /T` on Windows) concurrently via `Promise.all`.
+---
 
-## Custom Domain Verification
+## Key Features That Make Proxync Different
 
-Map custom domains with automated DNS-over-HTTPS pre-flight verification (Google & Cloudflare DoH), token rotation, and instant status synchronization across views.
+### Resilient Standby Mode (No More Broken Webhook Links)
+When you are coding with AI assistants (like Cursor or Claude) or running tools with hot module reloading, your backend server restarts constantly.
 
-## LAN Sharing & 1-Click Open in Browser
+With traditional tunneling tools, every restart crashes the tunnel, destroys your public URL, and forces you to copy-paste a brand-new webhook link into Stripe or Twilio.
 
-- **LAN Share** — Exposes `http://<local-ip>:<port>` for devices on your local network.
-- **1-Click Open in Browser** — Action menus feature an instant **Open in Browser** shortcut.
+**How Proxync fixes this:**  
+Proxync detects when your local server restarts. Instead of terminating the public tunnel, it puts your URL into **Standby Mode**. External requests are patiently held for a few seconds, and traffic resumes flowing smoothly the millisecond your dev server finishes recompiling.
+
+### Clean Background Teardown (Zero Leftover Zombie Processes)
+Have you ever closed a tunneling tool, only to find that port `3000` or `2222` is still mysteriously locked by a background process?
+
+Proxync spawns every tunnel as the leader of an isolated process group. When you stop a tunnel or quit Proxync, the operating system kernel cleanly and completely terminates every child process. No ghost processes, no locked ports, and no battery drain.
+
+### 1-Click "Stop All" Button
+Running multiple backend microservices or test servers simultaneously? When you finish your coding session, click the prominent **Stop All** button in the dashboard to cleanly terminate all active tunnels in one shot.
+
+### Active Internet Connectivity Guard
+If your Wi-Fi briefly drops or you're working offline on an airplane, Proxync verifies active internet connectivity before launching tunnels. This prevents annoying CLI timeout freezes and gives you a clear, friendly status message.
+
+---
+
+## Under the Hood (Technical Details)
+
+For engineers interested in security and networking specifications:
+
+| Feature | Technical Implementation |
+| :--- | :--- |
+| **Origin Relay** | Dynamic DNS resolution to `relay.proxync.dev` on Direct Origin Port `2222`. |
+| **Key Exchange** | Ephemeral Ed25519 TLS keys signed just-in-time via API; wiped immediately on session exit (`TempDirGuard`). |
+| **Process Isolation** | POSIX `setpgid(0, 0)` process grouping on Unix; process tree termination on Windows. |
+| **Intranet SSRF Shield** | Strict loopback whitelisting (`is_permitted_probe_host`) prevents tunnels from probing private subnets (`192.168.x.x`, `10.x.x.x`, `169.254.169.254`). |
+| **Handshake Polling** | 1500ms stabilization loop with 50ms early-crash detection to verify socket readiness before browser launch. |
+
+---
+
+## What to Read Next
+
+- **[Traffic Inspector](/docs/traffic)** — Watch incoming requests and inspect payloads in real time.
+- **[Request Workbench](/docs/workbench)** — Replay webhooks and diff responses against live code changes.
+- **[Settings & Domains](/docs/settings)** — Configure custom domain records and manage logging options.

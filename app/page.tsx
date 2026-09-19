@@ -18,8 +18,8 @@ export default function Home() {
         <Hero />
         <Stats />
         <LogoCloud />
-        <Comparison />
         <Features />
+        <Comparison />
         <HowItWorks />
         <Testimonials />
         <Faq />

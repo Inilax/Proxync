@@ -98,7 +98,7 @@ export function AppMockup() {
             </div>
 
             <span className="font-mono text-xs font-bold text-primary px-2.5 py-0.5 bg-primary/10 rounded border border-primary/30 hidden sm:inline">
-              v0.2.1-stable
+              v0.2.2-stable
             </span>
           </div>
         </div>

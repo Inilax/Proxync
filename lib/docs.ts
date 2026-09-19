@@ -71,6 +71,16 @@ function fetchText(url: string, timeoutMs = 8000): Promise<string> {
 }
 
 async function loadChangelog(): Promise<string> {
+  const localFile = path.join(process.cwd(), "data", "changelog.md");
+  try {
+    const localContent = readFileSync(localFile, "utf8");
+    if (localContent) {
+      return localContent;
+    }
+  } catch {
+    // If local file not found, proceed to remote fetch
+  }
+
   try {
     return await fetchText(CHANGELOG_RAW_URL);
   } catch {

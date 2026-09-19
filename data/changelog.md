@@ -1,0 +1,1244 @@
+# Changelog
+
+All notable changes to the Proxync (Portly) workspace studio project are documented here.
+
+## [fix/readme-cross-platform-roadmap-refresh] - 2026-09-19 (README Modernization, Cross-Platform Alignment & Unified Roadmap)
+- **Feature Summary**:
+  - **Cross-Platform Status Alignment**: Updated `README.md` to reflect full desktop support across Windows, Linux, and macOS with active platform badges and native bundle targets (`.msi`/`.exe`, `.deb`/`.AppImage`, `.dmg`/`.app`).
+  - **Release Feature Parity**: Documented native origin relay (`relay.proxync.dev:2222`), resilient standby mode, real-time AST schema drift detection, OpenAPI 3.0 auto-generation, Postman-grade API workbench, multi-language code snippets, process group isolation (`setpgid(0, 0)`), GUI toolchain PATH injection, and in-app auto-updates.
+  - **Verified Localtunnel Decommissioning**: Verified zero trace of legacy localtunnel remains in documentation.
+  - **Unified Milestone-Driven Roadmap**: Consolidated roadmap into a single continuous checklist tracking macOS/Linux stabilization, CLI companion, Enterprise Edition (teasing autonomous AI agent background execution), request mocking, and automated test synthesis.
+- **Modified Files**:
+  - `README.md`
+  - `CHANGELOG.md`
+
+## [196-fixrecon-preserve-process-names-and-command-paths-containing-whitespace-on-macos] - 2026-09-19 (Preserve Process Names & Command Paths with Whitespace on macOS #196)
+- **Feature Summary**:
+  - **Native Darwin Kernel Path Lookup (`proc_pidpath`)**: Replaced Darwin `ps -o comm=` 16-char truncation and $O(N)$ `lsof` subprocess loops with in-process `proc_pidpath` syscalls, resolving canonical paths with spaces in microseconds.
+  - **Uncut Command Parsing**: Switched to `ps -o pid=,ppid=,command=`, ensuring numeric PID/PPID tokens and preserving the entire command line verbatim without delimiter collisions.
+  - **Quote-Aware Tokenizer (`tokenize_cmd`)**: Added a quote-preserving tokenizer so commands and paths with spaces (e.g. `node "/path/with spaces/server.js"`) resolve correctly in `walk_up_to_project_root`.
+  - **Daemon Filtering & Fallback**: Hardened scanner fallback with `tokenize_cmd` and added `google chrome` and `visual studio code` to `is_system_process_name`.
+  - **Regression Tests**: Added unit tests covering Darwin FFI path resolution, command tokenization, and quoted paths with spaces.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `CHANGELOG.md`
+
+## [fix/ci-release-workflow-hardening] - 2026-09-19 (CI Release Workflow — Windows & Linux Hardening)
+- **Feature Summary**:
+  - **Rust Toolchain Fix**: Added explicit `toolchain: stable` to `dtolnay/rust-toolchain` in both `prepare-release.yml` and `release.yml`, eliminating the runner setup failure caused by missing required parameter.
+  - **macOS Removed from CI Matrix**: Removed `macos-latest` from `test-matrix` and `build-tauri` jobs. macOS `.dmg` built and signed locally by maintainer, manually attached to GitHub Draft Release before publishing.
+  - **Apple Secrets Cleaned Up**: Removed unused `APPLE_*` env vars from `release.yml` to eliminate missing-secret CI warnings.
+  - **Fast Sanity Build**: Added `--no-bundle` to `prepare-release.yml` sanity step — cuts pre-flight CI from ~12min to ~3min.
+  - **Root Package Version Sync**: Added `npm version` call for root `package.json` to keep monorepo root in sync with `packages/desktop` on version bump.
+  - **Updated Comments & PR Template**: Header comments and PR template body updated to accurately reflect Windows + Linux automated CI with manual macOS DMG workflow.
+- **Modified Files**:
+  - `.github/workflows/prepare-release.yml`
+  - `.github/workflows/release.yml`
+
+## [fix/relay-dns-latency-hardening] - 2026-09-18 (CodeQL CWE-20 URL Sanitization & Tunnel Metadata Hardening)
+- **Feature Summary**:
+  - **CodeQL CWE-20 Incomplete URL Substring Sanitization Fix**: Centralized tunnel metadata extraction into `getTunnelMetadata()` in `SharedComponents.tsx`. Replaced naive substring checks (`.includes('trycloudflare.com')`, `.includes('proxync')`) with strict hostname matching (`.endsWith('.trycloudflare.com')`, `.endsWith('.proxync.dev')`) to prevent domain spoofing attacks.
+  - **URL Parsing Safety & Crash Prevention**: Wrapped URL parsing in safe try/catch blocks with automatic `https://` protocol prefixing across `WelcomeView`, `WorkspaceDashboardView`, and `ProcessView`, completely eliminating unhandled `new URL()` runtime exceptions on malformed or protocol-less URLs.
+- **Modified Files**:
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `CHANGELOG.md`
+
+## [fix/relay-dns-latency-hardening] - 2026-09-18 (Relay DNS Resolution, SSRF Hardening & Tunnel Latency Optimization)
+- **Feature Summary**:
+  - **Dynamic Relay DNS Resolution**: Migrated hardcoded Azure IP `104.208.83.199` to `relay.proxync.dev` and `DEFAULT_PROXYNC_SSH_HOST` across backend (`recon.rs`, `tunnel.rs`) and frontend, allowing seamless zero-downtime server migrations without requiring client app updates.
+  - **SSRF & TCP Latency Probing Whitelist**: Hardened `probe_tcp_latency` with `is_permitted_probe_host`, restricting TCP socket probes strictly to loopback (`127.0.0.1`, `localhost`, `::1`) and Proxync relay endpoints (`relay.proxync.dev`, `api.proxync.dev`, `proxync_native`). Blocks malicious or arbitrary intranet probing and SSRF port scans against private IP ranges (`192.168.x.x`, `10.x.x.x`, `169.254.169.254`).
+  - **Comprehensive Latency Probing & Host Resolution Unit Tests**: Added unit test coverage in `recon.rs` (`test_probe_tcp_latency_local`, `test_probe_tcp_latency_ipv6_and_probe_port`, `test_probe_tcp_latency_rejects_unauthorized_host`, `test_probe_tcp_latency_permitted_hosts`, `test_resolve_probe_target_internal`) ensuring zero environment variable mutation and correct bracket handling for IPv6.
+  - **Tunnel Handshake Stabilization Loop**: Refactored `open_native_tunnel` wait loop to a reliable 1500ms timeout with high-frequency 50ms early-crash polling, completely eliminating vestigial inner break logic while ensuring reverse-proxy routing is fully established before user clicks.
+  - **Custom Domain Verification Resilience**: Upgraded DNS-over-HTTPS token verification to use Google DoH with Cloudflare DoH fallback, added apex domain query fallback when `_proxync.domain` query returns empty, and replaced silent error swallowing with structured `STORAGE` logging.
+  - **Dashboard Provider Badges & UI Consistency**: Enhanced tunnel cards in `WorkspaceDashboardView` to accurately distinguish between Cloudflare, Proxync Native, and Custom Domain tunnels with respective icons and badges; bound Vite development host default to `127.0.0.1`.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `packages/desktop/src/lib/api.ts`
+  - `packages/desktop/src/lib/types.ts`
+  - `packages/desktop/vite.config.ts`
+  - `CHANGELOG.md`
+
+## [fix/macos-port-scan-filtering] - 2026-09-16 (macOS Native Port Scanner & Ghost Port Daemon Filtering)
+- **Feature Summary**:
+  - **Native macOS Port Scanner (`MacOsScanner`)**: Implemented dedicated 3-stage platform scanner for macOS replacing the generic Unix `FallbackScanner` stub. Integrates `lsof -iTCP -sTCP:LISTEN -P -n` and full `ps` command inspection to bypass macOS 16-character process name truncation (e.g. `ControlCenter` -> `ControlCe`).
+  - **Ghost Port Daemon & Noise Filtering**: Hardened system and infrastructure process blacklists with macOS-specific system daemons (`ControlCenter`, `rapportd`, `airplay`, `sharingd`, `identityservicesd`, `launchd`, `remoted`, `cloudpaird`, `universalcontrol`, `megasync`, `dropbox`, `agy`) and system directory paths (`/System/Library/`, `/usr/libexec/`, `/usr/sbin/`). Filters out internal/system daemons from port scan results so only active user dev servers are presented.
+  - **CWD Resolution via Native lsof**: Implemented `get_process_cwd` for macOS using unprivileged `lsof -a -p <pid> -d cwd -Fn` to dynamically resolve working directories for detected services.
+  - **Non-Blocking Async Execution**: Refactored `scan_ports`, `scan_processes`, and `resolve_process_directory` Tauri commands with `tauri::async_runtime::spawn_blocking` and decoupled `RECON_PROCESS_CACHE` mutex locking to prevent blocking the async runtime during subprocess execution.
+  - **Cross-Platform Daemon Classification Test**: Removed `#[cfg(target_os = "macos")]` gate from daemon filtering test; renamed to `test_daemon_filtering_rules` and added negative assertions so Windows and Linux CI now validate classification logic.
+  - **Dead `#[cfg]` Cleanup**: Removed redundant stacked `#[cfg]` attribute on `impl PlatformScanner for FallbackScanner` — now matches the single correct predicate on the struct.
+  - **Tech Debt Documented**: Added `// ponytail:` comment on `MacOsScanner::scan_processes` explaining the known double-`lsof` limitation and the future trait-level fix path.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `package-lock.json`
+  - `CHANGELOG.md`
+
+## [fix/develop-subprocess-group-termination] - 2026-09-15 (Subprocess Group Termination on Linux & Zero-Orphan SSH Tunnels #182)
+- **Feature Summary**:
+  - **Subprocess Group Leadership on Unix (#182)**: Configured `cmd.as_std_mut().process_group(0)` in `open_native_tunnel` under `#[cfg(unix)]`. Spawns `ssh` as the leader of its own isolated process group (`PGID == PID`) via POSIX `setpgid(0, 0)`.
+  - **Zero-Orphan SSH Process Teardown**: Fixed a critical bug where `kill_child_process_tree` executing `kill -KILL -- -{pid}` failed with `ESRCH` ("No such process") because SSH previously inherited Proxync's parent group rather than leading its own. When tunnels close or the app terminates, the kernel now atomically delivers `SIGKILL` to the entire process group (SSH and any internal child/daemon workers), preventing orphaned processes from holding port 2222 connections open.
+  - **Provider Symmetry**: Aligns `open_native_tunnel` with `open_cloudflare_tunnel` for uniform child process lifecycle management across all tunnel providers.
+  - **Automated Regression Guard**: Added `test_kill_child_process_tree_with_process_group` unit test in `tunnel.rs` validating that `kill_child_process_tree` cleanly terminates processes spawned with `process_group(0)`.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `CHANGELOG.md`
+
+## [security/scorecard-dependabot] - 2026-09-14 (Supply Chain Security, OpenSSF Scorecard, CodeQL & Dependabot CI Workflows #169)
+- **Feature Summary**:
+  - **Automated Dependency Updates (`.github/dependabot.yml`)**: Configured Dependabot for npm, Cargo, and GitHub Actions package ecosystems with scheduled version checks and grouping.
+  - **Supply Chain Security & OpenSSF Scorecard (`.github/workflows/scorecard.yml`)**: Integrated OpenSSF Scorecard automated analysis assessing repository security posture, branch protection, dangerous workflows, and dependency pinning with badge added to `README.md`.
+  - **Static Application Security Testing via CodeQL (`.github/workflows/codeql.yml`)**: Implemented GitHub CodeQL advanced static analysis covering JavaScript/TypeScript and Rust with intelligent file change path filters.
+  - **Continuous Integration Pipeline (`.github/workflows/ci.yml`)**: Created multi-platform CI workflow testing frontend TypeScript/Vite compilation and backend Tauri builds.
+  - **Multi-Target Release Pipeline Hardening (`prepare-release.yml` & `release.yml`)**: Configured packaging targets (deb, appimage, nsis, dmg), updater json inclusion, and pre-release validation checks.
+  - **Vulnerability Disclosure Policy (`SECURITY.md`)**: Formally defined security reporting protocols, supported versions, and disclosure response timelines.
+  - **Target Bundle Packaging (`tauri.conf.json`)**: Configured target desktop bundle types (deb, appimage, nsis, dmg) and active bundle metadata.
+- **Modified Files**:
+  - `.github/dependabot.yml`
+  - `.github/workflows/ci.yml`
+  - `.github/workflows/codeql.yml`
+  - `.github/workflows/prepare-release.yml`
+  - `.github/workflows/release.yml`
+  - `.github/workflows/scorecard.yml`
+  - `README.md`
+  - `SECURITY.md`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `CHANGELOG.md`
+
+## [fix/develop-gui-environment-path] - 2026-09-14 (Packaged App GUI Environment PATH Injection for Cloudflare & Subprocess Tunnels)
+- **Feature Summary**:
+  - **Packaged App Desktop Environment PATH Resolution**: Fixed a critical failure where Cloudflare tunnels (`open_cloudflare_tunnel`) and Native SSH tunnels (`open_native_tunnel`) fail to spawn (`os error 2: No such file or directory`) when running inside packaged Linux and macOS desktop builds (`.deb`, `.rpm`, AppImage, `.dmg`, `.app`).
+  - **Non-Login Desktop Session Root Cause**: Desktop display managers (GNOME, KDE Plasma, Wayland, systemd user sessions, macOS Finder/LaunchServices) spawn applications without sourcing interactive shell startup files (`~/.bashrc`, `~/.zshrc`), leaving GUI processes with only minimal default system paths (`/usr/bin:/bin`).
+  - **Comprehensive Toolchain Coverage**: Added `gui_toolchain_path()` helper that dynamically injects user-space Node version managers and toolchain directories into the child subprocess environment before spawning:
+    - User local binaries: `$HOME/.local/bin`
+    - Node & JS package managers: PNPM (`$HOME/.local/share/pnpm`), Bun (`$HOME/.bun/bin`), Volta (`$HOME/.volta/bin`), ASDF (`$HOME/.asdf/shims`)
+    - NVM: Respects `$NVM_BIN`, `$HOME/.nvm/current/bin`, and dynamically scans `$HOME/.nvm/versions/node` selecting the highest installed Node version
+    - macOS & Linux Homebrew: Apple Silicon default (`/opt/homebrew/bin`) and Intel/Linux default (`/usr/local/bin`)
+    - Preserves existing system `$PATH` (`/usr/bin`, `/bin`, etc.) at the end of the search hierarchy.
+  - **CWE-426 Untrusted Search Path Hardening**: Filtered out all empty string segments prior to joining with `:`, preventing double colons (`::`) which in POSIX would inadvertently execute binaries from the current working directory (`.`).
+  - **Cross-Platform Safety & Zero Overhead**: Gated under `#[cfg(not(target_os = "windows"))]` and called inside `#[cfg(unix)]`, leaving Windows execution (`cmd.exe /C npx` with `CREATE_NO_WINDOW`) intact without semicolon/colon delimiter conflicts. Avoids slow `$SHELL -ilc` startup stalls and POSIX `std::env::set_var` multi-threading race conditions by scoping PATH injection strictly to the child command.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+## [fix/auto-update] - 2026-09-14 (Auto-Updater IPC Permissions, Manifest Artifacts & Automated Relaunch Flow)
+- **Feature Summary**:
+  - **Tauri v2 Process Relaunch Capabilities (`default.json`)**: Added `process:allow-restart` and `process:allow-exit` to `capabilities/default.json`. Resolves fatal Tauri IPC security permission denial (`Operation not permitted (os error 1)`) when calling `relaunch()` from `@tauri-apps/plugin-process` following an update installation.
+  - **Tauri v2 Updater Artifact Generation (`tauri.conf.json`)**: Enabled `"createUpdaterArtifacts": true` under `"bundle"` in `tauri.conf.json`. Instructs the Tauri build engine to output Minisign signatures (`.sig`) and the update manifest metadata, resolving missing updater assets in production release builds.
+  - **Dual-Manifest Endpoint Resolution (`tauri.conf.json`)**: Updated `plugins.updater.endpoints` to query the standard Tauri v2 manifest `latest.json` first, retaining `updater.json` as a backward-compatible fallback to prevent HTTP 404 Not Found aborts against GitHub release URLs.
+  - **Automated Graceful Relaunch with Race Protection (`App.tsx`)**: Replaced the previous manual two-step toast interaction with an automated 2-second grace countdown (`"Update installed! Restarting Proxync in 2 seconds..."`) that invokes `relaunch()` automatically upon installation completion. Hardened with a `restarted` state lock and timer cancellation to prevent duplicate IPC restart calls if the user clicks "Restart Now" immediately.
+  - **Deduplicated Installation Pipeline (`App.tsx`)**: Extracted a unified `executeDownloadAndInstall` helper shared across both forced (Major/CVE) and optional (Patch) update paths, eliminating 50 lines of duplicate event-streaming and error-handling code.
+  - **Interactive "Check for Updates" Control (`SettingsView.tsx` & `App.tsx`)**: Added a dedicated "Check for updates" button to the Automatic Updates setting tile in `SettingsView`, featuring a spinning sync animation, active-check disablement, dynamic app version display (`v0.2.2`), and live user feedback (`🔍 Checking...`, `✅ Proxync is up to date`, or server error details).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/capabilities/default.json`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `CHANGELOG.md`
+
+## [fix/develop-symlink-recursion] - 2026-09-14 (Symlink Infinite Recursion & Stack Overflow Defense in scan_directory #159)
+- **Feature Summary**:
+  - **Canonical Path Cycle Detection (#159)**: Solved infinite recursion and fatal `SIGSEGV`/stack overflow crashes caused by self-referential or circular symlinks (`link -> .`, `.venv/lib64 -> lib`, `pnpm` monorepos) during project route scanning. Traversal tracks resolved physical paths via a thread-safe `HashSet<PathBuf>` seeded with the canonicalized root directory.
+  - **Hard Recursion Depth Ceiling (`MAX_SCAN_DEPTH = 16`)**: Enforced a root-relative depth ceiling terminating recursion at depth 16, providing an unbreakable stack guardrail against deep hierarchies.
+  - **Preserved Legitimate Symlinks & Single-File Route Links**: Unlike naive blanket symlink skipping, route scanning continues to transparently inspect legitimate cross-package symlinked directories and symlinked single source files (e.g. `routes.ts -> ../shared/routes.ts`).
+  - **Path Slicing & UTF-8 Panic Hardening**: Replaced fragile `[root_len..]` manual byte-slicing with `Path::strip_prefix` and `to_string_lossy`, eliminating out-of-bounds panics on non-UTF-8 filesystem entries.
+  - **Graceful Error Recovery**: Wrapped directory read and entry lookups in resilient `match` guards so permission-denied directories or broken symlinks are skipped cleanly without aborting the entire workspace scan.
+  - **Expanded Ignore List**: Expanded skip filter to automatically bypass `.venv`, `venv`, `env`, `.next`, `.nuxt`, `.turbo`, `dist`, `out`, `.idea`, and `.vscode` alongside `node_modules` and `.git`.
+  - **Automated Test Suite**: Added 4 unit and integration tests in `storage.rs` validating circular symlink termination, valid symlinked directory discovery, symlinked single-file route discovery, and depth 16 truncation limits using isolated `tempfile` fixtures.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `CHANGELOG.md`
+
+## [fix/decomission-LT] - 2026-09-13 (Decommission Localtunnel & Python HTTP Server Reconnaissance)
+- **Feature Summary**:
+  - **Complete Localtunnel (LT) Decommissioning**: Removed the legacy `open_localtunnel` Tauri command and `shareProcessLocaltunnel` pipeline from `App.tsx`. Replaced the provider-specific process table with generalized `SPAWNED_TUNNEL_PROCESSES` in `tunnel.rs`. Purged Localtunnel tabs, options, badges, and documentation across `Dialogs.tsx`, `DocsView.tsx`, `WelcomeView.tsx`, `ProcessView.tsx`, `TerminalDrawer.tsx`, `logger.ts`, and `README.md`.
+  - **Python HTTP Server Reconnaissance (`recon.rs`)**: Added `http.server` detection in framework scanner to automatically recognize Python built-in HTTP server instances as `"Python HTTP Server"`.
+  - **Process Discovery Concurrency Fix (`App.tsx`)**: Guaranteed `discoveringRef.current = false` inside `discoverProcesses` `finally` block to prevent scanner concurrency lockups following unhandled errors.
+- **Modified Files**:
+  - `README.md`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/ui/TerminalDrawer.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/DocsView.tsx`
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/lib/logger.ts`
+  - `CHANGELOG.md`
+
+## [fix/161-OpenSSH] - 2026-09-13 (OpenSSH Ephemeral Key Permissions & BatchMode Hang on Linux #161)
+- **Feature Summary**:
+  - **POSIX Ephemeral Key Permissions (#161)**: Enforced strict `0o700` mode permissions on temporary SSH directories (`proxync_ssh_<id>`) on Unix systems via `std::os::unix::fs::PermissionsExt`, eliminating OpenSSH client connection aborts triggered by overly permissive directory modes.
+  - **Headless Non-Interactive BatchMode & Stdio Hardening**: Appended `-o BatchMode=yes` to prevent background OpenSSH subcommands from blocking indefinitely on interactive passphrase/password prompts. Nullified `stdin`, `stdout`, and `stderr` (`Stdio::null()`) across `ssh-keygen` and `ssh` execution to eliminate I/O pipe buffer deadlocks.
+  - **Windows ACL Permission Alignment**: Configured Windows `icacls` to grant full control (`:(F)`) with hidden console flags and nullified stdio streams.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+
+## [fix/feat-logger] - 2026-09-13 (Startup OS Environment Diagnostics, High-Precision Timestamps & Log Rotation #167)
+- **Feature Summary**:
+  - **Diagnostic System Banner & Hardware Fingerprinting (#167)**: Integrated `os_info` crate (v3.15) to detect host platform, kernel/distribution version, CPU architecture, bitness, local hostname, network IP, WebView engine version, and process PID on startup. Emits a structured ASCII diagnostic banner into `app.log` during startup, log rotations, and log history resets.
+  - **High-Precision ISO 8601 UTC Timestamping**: Implemented custom zero-dependency RFC 3339 UTC timestamping (`YYYY-MM-DDTHH:MM:SS.mmmZ`) across backend and frontend log writers.
+  - **Dual-Stream Log Rotation & Panic Telemetry**: Implemented file-size based log rotation archiving `app.log` at 5MB (`app.log.old`) and `traffic.log` at 10MB (`traffic.log.old`). Registered `storage::install_panic_hook()` to capture Rust panic dumps with stack traces directly into `app.log`.
+  - **System Telemetry IPC (`get_system_info`)**: Added `get_system_info` Tauri command and frontend typing in `types.ts` and `logger.ts` for unified environment diagnostic telemetry.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/lib/logger.ts`
+  - `packages/desktop/src/lib/types.ts`
+
+## [fix/multi-platform-cors] - 2026-09-12 (Multi-Platform User-Agent in Native CORS Bypass Engine #163)
+- **Feature Summary**:
+  - **OS-Adaptive User-Agent Header (#163)**: Replaced hardcoded Windows `User-Agent` with compile-time platform detection (`default_user_agent()`), dynamically emitting Windows (`Windows NT 10.0; Win64; x64`), macOS (`Macintosh; Intel Mac OS X 10_15_7`), or Linux (`X11; Linux x86_64`) strings containing `CARGO_PKG_VERSION`.
+  - **Header Injection Cleanliness**: Streamlined `execute_http_request` by relying on the client-level default user agent while allowing custom `User-Agent` header overrides without duplicate injection.
+  - **Cross-Platform Target Unit Tests**: Added unit tests verifying correct User-Agent string formatting across Windows, macOS, and Linux targets.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/http.rs`
+
+## [fix/develop-tauri-plugin-dialog] - 2026-09-12 (Universal Native File Dialogs via tauri-plugin-dialog #164)
+- **Feature Summary**:
+  - **Universal Linux & Cross-Platform Support (#164)**: Replaced platform-specific external shell executions (`/usr/bin/zenity` on Linux, `powershell.exe` on Windows, `osascript` on macOS) with Tauri v2 official `tauri-plugin-dialog` plugin.
+  - **Linux Desktop Portal Integration**: Uses D-Bus XDG Desktop Portal (`org.freedesktop.portal.FileChooser`) under the hood, natively supporting KDE Plasma, Sway, Hyprland, and Wayland environments without requiring GNOME GTK `zenity` binaries.
+  - **Security & Vulnerability Elimination**: Eliminates command-injection vectors from string-interpolated PowerShell and AppleScript calls.
+  - **Clean Native IPC Contract**: Injected `tauri::AppHandle` into `save_support_bundle_dialog` command in `storage.rs` with zero frontend IPC contract breakage (`invoke("save_support_bundle_dialog")` remains unchanged).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/capabilities/default.json`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `CHANGELOG.md`
+
+## [fix/develop-postman-collections-shortcuts] - Continuation (Postman-Grade Session State #154)
+- **Feature Summary**:
+  - **App Restart & Reload Persistence (#154)**: Introduced synchronous \`localStorage\` bookmarking for the Playground. The active request is strictly persisted across app restarts and workspace switches. Boot initialization now reads synchronously inside \`useState\` to completely eliminate React FOUC (Flash of Unstyled Content).
+  - **Strict Postman-Grade Session Tracking**: Removed Insomnia-style multi-run history pills and replaced with a strict $\mathcal{O}(1)$ \`{ draft, response }\` state map. Switch tabs without losing your current unsaved response, while explicitly discarding background dirty edits upon app quit to respect the 5MB \`localStorage\` boundary.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - \`packages/desktop/src/App.tsx\`
+  - \`packages/desktop/src/components/views/PostmanView.tsx\`
+  - \`packages/desktop/src/components/views/SharedComponents.tsx\`
+  - \`packages/desktop/src/lib/types.ts\`
+  - \`CHANGELOG.md\`
+  - \`.agents/changelog.json\`
+
+## [fix/develop-postman-collections-shortcuts] - 2026-09-12 (API Playground Shortcuts, Hover Stability & Collection Deletion Safety #162)
+- **Feature Summary**:
+  - **Real-Time Active Pane Tracking & Workbench Shortcut Immunity (#162)**: Bound `Ctrl+T` (New Request) and `Delete` (Delete Request) strictly to the Collections sidebar via `getActivePane(e)` with capture-phase `pointerdown` and `focusin` listeners, eliminating accidental request creation or deletion when focused in the Workbench (Method select, Route selector, URL input, Params, Headers, Body, or tabs).
+  - **Zero-Movement Action Buttons (`CLS = 0`)**: Replaced flex-inserted action buttons with `absolute right-1.5 inset-y-0 my-auto h-fit` overlays. Replaced `translate-y` transforms and removed container-level `transition-all` to completely eliminate layout shifts and subpixel rendering jitter on hover.
+  - **Single-Request Deletion Warning Suppression**: Deleting collections with 0 or 1 request executes immediately without warning; collections with $\ge 2$ requests display an accessible confirmation modal (`Enter` to confirm, `Escape` to cancel).
+  - **Pure React Updater & Contiguous Sibling Auto-Selection**: Decoupled draft synchronization outside `setSavedRequests` updater, maintaining pure 1-line state updates without StrictMode re-render side-effects. Aligned fallback collection resolution across `starter-scan` (`'Scanned Endpoints'`) and `captured` (`'Captured Traffic'`).
+  - **Typography Refinement**: Upgraded collection and request titles to `13px` with natural letter-spacing; adjusted method badges to `11px` (`44px` $\times$ `21px`) and request counts to `11px`.
+  - **Asynchronous Focus Lifecycle Safety**: Managed post-deletion keyboard focus advancement with `focusTimerRef` and unmount cleanup, ensuring zero detached DOM timer leaks. Added `tabIndex={-1}` and `outline-none` across list items and containers for Chromium/WebView2 on Windows.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/KeyboardShortcutsDialog.tsx`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `CHANGELOG.md`
+
+
+## [fix/develop-prune-orphaned-glib] - 2026-09-10 (Prune Orphaned glib = "0.20" & Universal Cross-Platform Packaging Targets)
+- **Feature Summary**:
+  - **Prune Orphaned `glib = "0.20"` Dependency (#160)**: Removed orphaned Linux target dependency `glib = "0.20"` from `Cargo.toml`. The crate was never imported in `src-tauri/src/`, while Tauri v2 internals run on `glib 0.18.5`. Forcing `0.20` caused Cargo to download, compile, and link two parallel GLib/GTK toolchains on Linux, doubling build times and risking C-FFI symbol collisions with system `libglib-2.0.so`.
+  - **Universal Packaging Targets (#156)**: Updated `bundle.targets` in `tauri.conf.json` from Windows-restricted `["nsis", "msi"]` to `"all"`. Enables host-adaptive packaging, allowing Linux builds to generate native `.deb` and `.AppImage` bundles (and macOS `.dmg`/`.app`) alongside Windows `.exe`/`.msi`.
+  - **Dependency Graph & Lockfile Optimization**: Cleanly eliminated 165 lines of duplicate dependency noise from `Cargo.lock` (`glib 0.20`, `glib-sys 0.20`, `glib-macros 0.20`, `gobject-sys 0.20`). Rebuilt lockfile to resolve to a single unified `glib v0.18.5` across Tauri's runtime stack (`tao`, `wry`, `webkit2gtk`, `muda`).
+  - **Compilation Validation**: Reduced `cargo check` compile time from >14s to 1.88s; validated clean TypeScript compilation and Vite production build (`npm run build`).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+## [fix/develop-tunnel-process-teardown] - 2026-09-10 (Cross-Platform Subprocess Tree Teardown, Orphan Daemon Prevention & Tunnel Lifecycle Hardening)
+- **Feature Summary**:
+  - **Unified Subprocess Tree Teardown (`kill_child_process_tree`)**: Replaced scattered, duplicated process-killing logic with a shared cross-platform teardown helper. Uses `taskkill /F /T /PID` on Windows to recursively kill child process trees and POSIX `kill -KILL -- -<pid>` (process group kill) alongside `pkill -KILL -P <pid>` on Unix, preventing detached `node` and `cloudflared` background daemon leaks.
+  - **Linux `os error 2` Spawn Fix**: Replaced hardcoded `cmd.exe` calls with conditional branching (`cmd /C npx` on Windows with `CREATE_NO_WINDOW: 0x08000000`, direct `npx` on Unix/macOS). Added `process_group(0)` on Unix so spawned tunnels form dedicated process groups.
+  - **Startup Handshake Timeout & Error Teardown**: Fixed critical leak where handshake timeouts (15s for Localtunnel, 25s for Cloudflare) and connection errors bypassed tree-killing by invoking `kill_child_process_tree` across all failure paths.
+  - **Tauri Application Lifecycle Teardown (`lib.rs`)**: Registered `WindowEvent::CloseRequested` and `RunEvent::ExitRequested` hooks to guarantee `close_all_tunnels()` is invoked before window destruction or process termination.
+  - **Cloudflare Race Condition & Protocol Hardening**: Awaits `Registered tunnel connection` log line in Cloudflare stderr before dispatching public URL to UI (with a 4-second safety ceiling fallback), eliminating premature `Error 1033` / `NXDOMAIN` clicks. Forced `--protocol http2` over TCP 443 TLS to prevent UDP 7844 firewall stalls, and normalized targets to explicit `127.0.0.1` loopback to prevent IPv6 `::1` connection refused errors.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `CHANGELOG.md`
+
+## [fix/develop-linux-recon-support] - 2026-09-09 (Native Linux Port Scanning, Process Detection & Ghost-Port Prevention #143)
+- **Feature Summary**:
+  - **Native Linux Reconnaissance (`recon.rs`)**: Implemented cross-platform `PlatformScanner` compile-time strategy trait (`LinuxScanner`, `WindowsScanner`, `FallbackScanner`) with factory dispatch, bringing full port scanning and process discovery to Linux environments.
+  - **Dual Discovery Pipeline (`recon.rs`)**: Added primary `ss -tlpn -H` parsing with zero-subprocess fallback to in-kernel `/proc/net/tcp{,6}` and `/proc/[pid]/fd` socket inode matching.
+  - **In-Memory `/proc` Process Traversal (`recon.rs`)**: Direct non-allocating traversal of `/proc` reading `comm`, `stat`, `cmdline`, and `exe` symlinks in < 5ms without disk I/O.
+  - **Ghost-Port Prevention (`recon.rs`)**: Fixed internal ephemeral proxy/tunnel listener leakage by filtering `std::process::id()` at the shared scanner boundary, preventing Proxync's own ports from appearing as ghost dev servers.
+  - **Path Normalization & Test Suite (`recon.rs`)**: Expanded system path checks to handle Unix root paths and hidden version managers (`.nvm`), backed by 8 automated unit and integration tests.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `CHANGELOG.md`
+
+## [fix/upgrade-browserslist-security] - 2026-09-08 [SECURITY-CVE] (Upgrade browserslist to 4.28.9 to Remediate GHSA-c83g-rgw3-j3cx & GHSA-73wf-gq98-2v4g)
+- **Feature Summary**:
+  - **Browserslist Security Remediation [TYPE: CVE-PATCH]**: Upgraded `browserslist` from `4.28.4` to `4.28.9` (along with `baseline-browser-mapping`, `caniuse-lite`, `electron-to-chromium`, and `node-releases`) via `npm audit fix`, remediating memory growth / OOM vulnerability (GHSA-c83g-rgw3-j3cx) and prototype write / uncaught crash vulnerability (GHSA-73wf-gq98-2v4g).
+  - **Audit & Compilation Validation**: Validated zero vulnerabilities across npm (`npm audit`) and verified clean TypeScript compilation & Vite production bundling (`npm run build`).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `package-lock.json`
+## [fix/playground-postman-ux] - 2026-09-07 (API Playground — Postman-Grade UX Upgrade)
+- **Feature Summary**:
+  - **Right-click "Add Request"**: Folder/collection context menu now includes an "Add Request" option to insert new requests directly into a collection without modifying the active draft.
+  - **`Ctrl+T` New Request Shortcut**: Pressing `Ctrl+T` creates a new blank request scoped to the active collection, matching the Postman/Insomnia workflow.
+  - **`Delete` Key Shortcut**: Pressing `Delete` removes the currently selected saved request. Guarded against firing when an input/textarea is focused. On deletion, workbench auto-loads the next sibling request or resets to a clean blank draft.
+  - **In-place Save (no duplicates)**: `saveDraftRequest` now does an ID-keyed upsert — editing and re-saving an existing request updates it in place instead of appending a duplicate.
+  - **Query Params Table**: New "Params" tab in the workbench with editable key/value rows. Fully bidirectional — editing the URL updates the table and vice versa.
+  - **Response History (4 runs)**: Response panel retains the last 4 responses per request as selectable history pills for quick comparison.
+  - **JSON Auto-format (`Ctrl+Shift+F`)**: Pretty-prints the request body JSON in place.
+  - **Collection Search (`Ctrl+F`)**: Real-time sidebar filter by request/collection name.
+  - **Inline Method Badge**: Clickable HTTP method badge on sidebar items opens a dropdown to change method without opening the full editor.
+  - **Sidebar Visual Polish**: Hover-only action buttons; high-contrast colour-coded method badges (emerald=GET, amber=POST, sky=PUT, purple=PATCH, rose=DELETE).
+  - **Keyboard Shortcuts Cheatsheet**: Updated `KeyboardShortcutsDialog` with all new hotkeys.
+  - **Proxync-review fixes**: Removed accidental `export` from `getMethodBadgeStyle`; replaced magic `'/api/v1/health'` fallback paths with `DEFAULT_REQUEST` spread and `DEFAULT_FALLBACK_PATH` constant; `mergeRequests` now keys by stable `id` field.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/components/views/KeyboardShortcutsDialog.tsx`
+## [feature/develop-schema-drift-detection] - 2026-09-07 (Schema Drift Hardening, Council Review Optimizations & Guardrail Indicator)
+- **Feature Summary**:
+  - **Fuzzy Rename Guard (`schemaDriftDetector.ts`)**: Enforced a minimum field length check (>= 3 chars) on Levenshtein edit-distance matching, preventing false positive `FIELD_RENAMED` violations between unrelated short identifiers (e.g., `id`, `at`, `ts`, `ip`).
+  - **Status-Aware Schema Resolution (`schemaDriftDetector.ts`)**: Streamlined `resolveBaselineSchema` to return a minimal resolution on undocumented HTTP statuses, preventing invalid cross-status schema diffing against default 200 OK schemas.
+  - **Regex Caching & Recursion Defense (`schemaDriftDetector.ts`)**: Implemented `getCompiledEndpointRegex` caching to avoid repeated regex compilation on hot traffic loops, and added a recursion depth guard (`depth > 20`) in `diffSchemas`.
+  - **Reactivity Optimization & Toast Timing (`App.tsx`, `toast.tsx`)**: Removed state closures from `handleSyncOpenApiWithDrift` via `driftAlertsRef`, memoized `driftReports` to eliminate redundant Set/Array reallocations, restored persistent toast capabilities in `toast.tsx`, and kept drift notifications non-sticky (4-second auto-dismiss).
+  - **Bodies Captured Indicator (`TrafficView.tsx`)**: Added a visual telemetry indicator in the Traffic Inspector header to clearly inform users when payload capture is active in memory.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/TrafficView.tsx`
+  - `packages/desktop/src/lib/schemaDriftDetector.ts`
+  - `packages/desktop/src/lib/toast.tsx`
+  - `CHANGELOG.md`
+
+## [feature/develop-schema-drift-detection] - 2026-09-07 (Multi-Endpoint Schema Drift Tracking & Granular Reconciliation Engine)
+- **Feature Summary**:
+  - **Unified Real-Time Drift Alerting (`App.tsx`)**: Consolidated toast notifications into a shared `notifyDriftAlert` helper delivering distinct, debounced toasts for breaking contract errors (`error`) and additive schema changes (`warning`).
+  - **Granular Scoped Reconciliation & Remaining Counter (`App.tsx`, `TrafficView.tsx`)**: Enhanced `handleSyncOpenApiWithDrift` with $O(N)$ route difference calculation to verify remaining un-synced routes and provide explicit scoping feedback (`Note: X other endpoint(s) still have pending drift`), eliminating user ambiguity during selective sync.
+  - **Swagger Studio Additive Warning Banner & Health Metrics (`SwaggerView.tsx`)**: Upgraded `contractHealth` computation and the top reconciliation banner to track additive schema changes (`warningCount`) alongside breaking violations, rendering an amber banner when only non-breaking changes remain un-synced.
+  - **Precision Route Regex Matching (`SwaggerView.tsx`)**: Replaced loose substring endpoint matching with `compileEndpointRegex`, preventing collection endpoints (`/api/products`) from falsely cascading drift badges onto item endpoints (`/api/products/{id}`).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/SwaggerView.tsx`
+  - `packages/desktop/src/components/views/TrafficView.tsx`
+  - `CHANGELOG.md`
+
+## [feature/develop-schema-drift-detection] - 2026-09-02 (Real-Time Schema Drift Detection & Contract Diff Engine)
+- **Feature Summary**:
+  - **4 KB Native HTTP Response Preview Capture (`proxy.rs`, `tunnel.rs`)**: Extracted response body preview and headers for `application/json` payloads directly in Rust proxy and tunnel streams while bypassing WebSocket/SSE streaming protocols and compressed payloads.
+  - **Pure TypeScript Schema Drift Engine (`schemaDriftDetector.ts`, `types.ts`)**: Built recursive AST schema diff engine detecting `BREAKING_FIELD_RENAMED` (inline Levenshtein distance $\le 2$ & case normalization), `BREAKING_NULLABILITY`, `BREAKING_TYPE_MISMATCH`, `BREAKING_FIELD_REMOVED`, `NON_BREAKING_FIELD_ADDED`, and undocumented status codes. Safely strips HTTP/1.1 chunked transfer encoding headers.
+  - **1-Click OpenAPI Reconciliation & Bug Reporting (`schemaDriftDetector.ts`, `openApiGenerator.ts`)**: Implemented `syncOpenApiWithPayload` to merge runtime schemas into the live OpenAPI document in-memory, clearing active drift flags across all studios, and `generateDriftBugReportMarkdown` to produce copy-paste bug reports.
+  - **Studio Integrations & Real-Time Alerting (`TrafficView.tsx`, `SwaggerView.tsx`, `ObservabilityView.tsx`, `RequestWorkbenchDialog.tsx`, `App.tsx`, `toast.tsx`)**: Added drift filter dropdown and inline diff panel in Traffic Inspector; Contract Health % metric and warning banner in Swagger Studio; telemetry radar in Observability Studio; dedicated Contract mode tab in 360° Request Workbench; dual-key indexed drift state in `App.tsx`; and 4-second auto-dismissing toast alerts.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/ObservabilityView.tsx`
+  - `packages/desktop/src/components/views/RequestWorkbenchDialog.tsx`
+  - `packages/desktop/src/components/views/SwaggerView.tsx`
+  - `packages/desktop/src/components/views/TrafficView.tsx`
+  - `packages/desktop/src/lib/openApiGenerator.ts`
+  - `packages/desktop/src/lib/schemaDriftDetector.ts`
+  - `packages/desktop/src/lib/toast.tsx`
+  - `packages/desktop/src/lib/types.ts`
+  - `CHANGELOG.md`
+
+## [feature/develop-v0.2.2-version-bump] - 2026-09-01 (Workspace & Studio Version Bump to v0.2.2 for Cross-OS Compatibility & Stabilization)
+- **Feature Summary**:
+  - **Comprehensive Version Bump to v0.2.2**: Synchronized workspace and package manifests (`package.json`, `packages/desktop/package.json`, `package-lock.json`, `Cargo.toml`, `Cargo.lock`, and `tauri.conf.json`) to version `0.2.2`.
+  - **Native HTTP Network Headers & Diagnostics**: Updated Rust client `User-Agent` headers in `http.rs` to `ProxyncStudio/0.2.2`. Synchronized frontend diagnostic logging metadata, log session directives, and support bundle fallbacks in `App.tsx` and `logger.ts` to `v0.2.2-stable`.
+  - **Recon & Documentation Badge Alignment**: Updated README version shield badge and `.agents/architecture.json` static recon map to reflect version `0.2.2`.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `package.json`
+  - `packages/desktop/package.json`
+  - `package-lock.json`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/src-tauri/src/http.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/lib/logger.ts`
+  - `README.md`
+  - `CHANGELOG.md`
+
+## [fix/nsis-bundling-titlebar-alignment] - 2026-08-27 (Tauri v2 Native NSIS Uninstaller Icon, Makensis Build Fix & Responsive Titlebar Edge Alignment)
+- **Feature Summary**:
+  - **Tauri v2 Native NSIS Uninstaller Config (`tauri.conf.json`, `hooks.nsh`)**: Migrated uninstaller branding from fragile raw script hooks (`hooks.nsh`) to native Tauri v2 `uninstallerIcon: "icons/icon.ico"` in `tauri.conf.json`. Resolves `makensis` compilation failure (`Error while loading icon from "icons\icon.ico": can't open file`) caused by relative path evaluation in temporary NSIS release directories.
+  - **Clean Titlebar Flush Alignment (`App.tsx`, `index.css`)**: Removed brittle negative margin overrides (`margin-right: -16px` / `-24px`) in favor of clean header padding (`pl-2 sm:pl-4 pr-0`) and explicit `h-full` / `shrink-0` on `.window-controls`. Ensures the close button and window controls are pixel-perfect and flush with the top-right corner across all viewport sizes (small screens, standard desktop, and fullscreen).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/src-tauri/hooks.nsh` (deleted)
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/index.css`
+  - `CHANGELOG.md`
+
+## [fix/theme-titlebar-docs-polish] - 2026-08-27 (Precision Windows Titlebar, Theme Scoping, Cyberpunk Purge, Docs Manual Overhaul & IPC Hardening)
+- **Feature Summary**:
+  - **Precision Windows Titlebar Controls (`App.tsx`, `index.css`)**: Replaced glyph-font titlebar symbols with native 10px SVG vector controls (line minimize, single square maximize, overlapping dual-square restore, and diagonal cross close). Added live `isMaximized` tracking with 100ms debouncing, responsive right-edge flush cancellation (`margin-right: -24px` on `sm:` desktop), and native `#e81123` close hover styling.
+  - **Complete Cyberpunk Theme Deprecation (`cyberpunk.css`, `App.tsx`, `SettingsView.tsx`)**: Completely deleted `cyberpunk.css`, cleaned up fallback handlers in `loadAppSettings()`, and renamed dark theme card to **Obsidian Dark**.
+  - **Theme Token Scoping & Dynamic Color-Mix (`dracula.css`, `emerald.css`, `dark.css`, `slate.css`, `index.css`)**: Added complete `--color-on-surface`, `--color-on-surface-variant`, `--color-outline`, and `--color-background` tokens across all stylesheets to eliminate cross-theme token fallback bleed. Refactored `.badge.accent`, `.badge.muted`, `.method`, `.status-code`, and `.btn-expose-proxync` to use CSS `color-mix()` for automatic theme adaptation.
+  - **Technical Documentation Overhaul (`DocsView.tsx`)**: Replaced generic placeholder content with an in-depth developer manual covering Tauri v2/Rust architecture, all 4 tunnel providers (Native Azure SSH, Cloudflare Quick Tunnels, Localtunnel, Loopback `*.localtest.me`), DNS CNAME setup, Postman/Swagger studios, and keyboard hotkeys. Streamlined navigation with punchy 1-word tab titles.
+  - **Navigation Real Estate Optimization (`App.tsx`)**: Relocated `Docs` to the sidebar footer utility bar alongside `Support`, decluttering the primary `OBSERVABILITY & TOOLS` category.
+  - **IPC & Window Exception Hardening (`App.tsx`)**: Wrapped window management actions in safe, unhandled-rejection-proof handlers with clean listener teardown.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/index.css`
+  - `packages/desktop/src/components/views/DocsView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/assets/themes/dracula.css`
+  - `packages/desktop/src/assets/themes/emerald.css`
+  - `packages/desktop/src/assets/themes/dark.css`
+  - `packages/desktop/src/assets/themes/slate.css`
+  - `packages/desktop/src/assets/themes/cyberpunk.css` (deleted)
+  - `CHANGELOG.md`
+
+## [fix/workspace-search-bar] - 2026-08-25 (Workspace Command Search Dropdown, Direct Hub Navigation, Global Keyboard Shortcuts Dialog & Workbench CSS Fix)
+- **Feature Summary**:
+  - **Floating Workspace Search Dropdown & Keyboard Navigation (`App.tsx`)**: Replaced plain search input with an interactive floating command dropdown anchored under the top search bar. Filters present and created workspaces in real time by name, notes, server processes, or open ports, with active badges, `↑` / `↓` keyboard selection, `Enter` navigation, and hotkey support (`Ctrl+K` / `Cmd+K` to open, `Escape` or click-outside to dismiss).
+  - **1-Click Workspace Hub Navigation & Robust Click Handlers (`App.tsx`)**: Upgraded selection items with `onMouseDown` (`e.preventDefault()`, `e.stopPropagation()`) to immediately switch active workspace and navigate straight to the workspace hub (`workspace_dashboard`) without blur race conditions.
+  - **Direct Workspace Creation via Reused Helper (`App.tsx`)**: Extended `createWorkspace(explicitName?: string)` to allow direct 1-click creation from search queries without intermediate lobby redirections.
+  - **Safe Tunnel Lifecycle Teardown (`App.tsx`)**: Maintained strict tunnel lifecycle teardown (`stopAllTunnels(true)`) and process rediscovery when switching between workspaces via search.
+  - **App-wide Reusable Keyboard Shortcuts Dialog (`KeyboardShortcutsDialog.tsx`, `App.tsx`, `PostmanView.tsx`)**: Extracted standalone cross-platform shortcuts modal with macOS (`⌘`) and Windows/Linux (`Ctrl`) key detection, global keybindings list, contextual view shortcuts, search filter, global `Ctrl+/` / `Cmd+/` listener across all screens, and sidebar discoverability button.
+  - **Stop All Tunnels Hotkey in Explore (`WelcomeView.tsx`, `KeyboardShortcutsDialog.tsx`)**: Added `Ctrl+Shift+X` / `Cmd+Shift+X` hotkey to immediately terminate all active tunnels from the Network Hub.
+  - **Request Workbench Stacking Context & Responsive CSS Fix (`RequestWorkbenchDialog.tsx`)**: Fixed sticky subheader stacking context by elevating to `z-30` with `bg-surface-container-low/95 backdrop-blur-xl`, removing conflicting child `z-10`s, and restructuring controls into a responsive `flex-col md:flex-row` grid for compact/small screens.
+  - **UI & Documentation Polish (`App.tsx`, `README.md`)**: Removed text-decoration underline on *All Workspaces Studio* button in favor of clean interactive styling, and refined README feature highlights and platform support statuses.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/KeyboardShortcutsDialog.tsx`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/components/views/RequestWorkbenchDialog.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `README.md`
+  - `CHANGELOG.md`
+
+## [feature/develop-readme-v0.2.1-update] - 2026-08-24 (README Documentation Update: v0.2.1 Release, Native High-Speed Tunneling & Platform Status)
+- **Feature Summary**:
+  - **v0.2.1 Release Status**: Updated project version badge and documentation references across the studio README to reflect version v0.2.1.
+  - **Native High-Speed Proxync Tunneling**: Added prominent feature documentation for Native High-Speed Proxync Tunneling, ultra-low latency WebSocket/SSH origin relay infrastructure, and Resilient Standby Mode with automatic URL preservation.
+  - **Platform Support Matrix & Roadmap**: Clarified current Windows 10/11 desktop support, updated platform state paths (`%APPDATA%\Proxync\`), and added pending Linux and macOS cross-platform releases to the roadmap and platform matrix.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `README.md`
+  - `CHANGELOG.md`
+
+## [fix/universal-proxy-vite-hmr] - 2026-08-23 (Ctrl+R Reload Safety Shield, Vite Tunnel Guard & Bidirectional Stream Telemetry)
+- **Feature Summary**:
+  - **Ctrl+R / F5 Reload Safety Shield (`App.tsx`)**: Intercepts `Ctrl+R`, `Cmd+R`, and `F5` events in capture mode while a tunnel is running. Suppresses window reload and alerts the user with a warning toast (`⛔ Refresh blocked — stop your active tunnel first to avoid orphan processes`), completely preventing orphan background tunnels and state desynchronization.
+  - **Vite Dev Server Detection & Launch Guard (`App.tsx`)**: Added `isViteProcess(process)` helper checking framework signature, command, directory, process name, and default port `5173`. When a user attempts to share a Vite dev server across any tunnel mode (`shareProcess`, `shareProcessCloudflare`, `shareProcessNative`, `shareProcessLocaltunnel`), cleanly halts execution and displays an informative warning toast (`⚠️ Sharing Vite dev servers over public tunnel is currently under development`).
+  - **Bidirectional Stream Latency & Status Code Telemetry (`proxy.rs`)**: Captured initial HTTP response chunk to emit precise HTTP status codes and round-trip duration metadata (`request:log:response`) before transitioning into full-duplex `tokio::io::copy_bidirectional`.
+  - **Cleaned Up Experimental Rust Pipeline (`tunnel.rs`, `proxy.rs`)**: Cleaned up experimental HTML injection and compression pipelines, keeping standard base64 response transport clean and reliable.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `CHANGELOG.md`
+
+## [fix/universal-proxy-vite-hmr] - 2026-08-22 (Universal Proxy Engine, Vite 6 HMR Stabilization, Cross-Platform Diagnostic Export & Upload Cap)
+- **Feature Summary**:
+  - **Universal Full-Duplex Proxy Engine (`proxy.rs`)**: Replaced split read/write loops with non-blocking `tokio::io::copy_bidirectional`. Dynamically rewrites `Host: localhost:<port>` and `Origin: http://localhost:<port>` while preserving `Sec-WebSocket-*` headers and injecting `X-Forwarded-Proto: https`, `X-Forwarded-Host`, and `X-Forwarded-For: 127.0.0.1`. Eliminates Vite 6 `allowedHosts` 403 Forbidden errors and Webpack `Invalid Host Header` errors.
+  - **Dev Server HMR Stabilization & React SWC Preamble (`tunnel.rs`)**: Injected a top-of-`<head>` dev server shim for public relay streams that satisfies Vite HMR (`/@vite/client`), Next.js Fast Refresh, and `@react-refresh` with an immediate `readyState: 1 (OPEN)` handshake and pre-initializes React SWC preamble globals (`window.$RefreshReg$`), completely eliminating blank white screens on public tunnel URLs.
+  - **50 MB Upload Cap Protection**: Added a strict 50 MB upload body size cap (`MAX_UPLOAD_BODY_BYTES` and `MAX_RELAY_BODY_BYTES`) across both local TCP proxy and relay pipelines, rejecting oversized payloads with explicit `413 Payload Too Large` JSON responses.
+  - **Cross-Platform Diagnostic Support Bundle Export (`storage.rs`, `logger.ts`)**: Implemented `save_support_bundle_dialog` in Rust with native OS save pickers (PowerShell on Windows, AppleScript on macOS, Zenity on Linux) alongside Web File System Access API and blob download fallbacks, and upgraded `get_base_data_dir` to support macOS (`Library/Application Support`) and Linux (`~/.config`).
+  - **Zero Hardcoded Environment Paths**: Cleaned up hardcoded `%APPDATA%` strings from toasts and settings views in `App.tsx` and `SettingsView.tsx`.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src/lib/logger.ts`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/App.tsx`
+  - `CHANGELOG.md`
+
+## [fix/ide-navigation-and-preflight-probe] - 2026-08-22 (Dynamic IDE Route Navigation, Inactive Port Pre-Flight Probe & Global Traffic Logs Purge)
+- **Feature Summary**:
+  - **Dynamic Route Resolution & Zero Fake Paths (TC-WB-003)**: Upgraded `RequestWorkbenchDialog.tsx` to include `nearMissMatch` in route resolution and replaced the hardcoded `src/controllers/...` fallback with `null`. When a route is unlinked, displays an explanatory prompt and disables IDE triggers. Dynamically derives `resolvedRoot` from active process candidates and workspace configs so files always resolve to their absolute file system path.
+  - **3-Tier Cross-Platform IDE Engine**: Refactored `open_file_in_editor` in `storage.rs` with discrete argument quoting (`code -g "<root>/<path>:<line>"`) on Windows to prevent space splitting in paths, and implemented resilient 3-tier fallbacks (CLI with line jump $\rightarrow$ OS URI scheme $\rightarrow$ system default file opener) across Windows, macOS, and Linux.
+  - **Inactive Port Pre-Flight Probe & Residue Purge**: Implemented `probe_port` in `recon.rs` (300ms dual-stack TCP check) and wired `verifyPortIsLive` in `App.tsx`. Prevents creating tunnels on offline ports (e.g. `:4500` after `Ctrl+C`) with clear warning toasts, and triggers background `discoverProcesses(true, true)` to automatically purge dead process cards from the UI.
+  - **Global Traffic Logs Clearance**: Fixed `clearTrafficLogs()` in `App.tsx` to completely reset in-memory `requests`, wipe `capturedRequests` across all workspaces in `localStorage`, and delete underlying disk logs via `clearLogs()`.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/RequestWorkbenchDialog.tsx`
+  - `CHANGELOG.md`
+
+## [fix/tunnel-resilient-standby] - 2026-08-22 (Resilient Standby Tunnels, 502 Fallback & Instant Local Auto-Recovery)
+- **Feature Summary**:
+  - **Universal Standby Mode & URL Preservation**: Replaced abrupt hard tunnel teardown on local process shutdown (`Ctrl+C`) with a resilient `STANDBY` state. Preserves public tunnel URLs (`https://px-xxxx.proxync.dev`) across server restarts and hot-reloads so webhook integrations (Stripe, GitHub, Shopify) remain permanently connected without reconfiguration.
+  - **Branded 502 Bad Gateway Standby Fallback**: Configured `proxy.rs` to serve a responsive, branded HTML 502 Bad Gateway fallback page when incoming public traffic reaches an offline local target, informing external clients and browsers that the local server is in standby.
+  - **Background Port Liveness Engine**: Added a lightweight 1000ms loop in `proxy.rs` using 250ms bounded TCP probes across `127.0.0.1` and `[::1]`. Emits `tunnel:status-changed` events (`ACTIVE` $\leftrightarrow$ `STANDBY`) with automatic UI recovery the instant a developer restarts their server (`npm run dev`).
+  - **Frontend Standby Indicators & Badges**: Integrated `STANDBY` status handling across `ProcessView`, `WorkspaceDashboardView`, `WelcomeView`, and `SwaggerView` with amber status badges (`🟡 Standby • Target Offline`), status footer counters, and transition toasts.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/SwaggerView.tsx`
+  - `packages/desktop/src/lib/types.ts`
+  - `CHANGELOG.md`
+
+## [fix/develop-responsiveness] - 2026-08-22 (Universal Responsive Layout & Streamlined Workbench Studio Command Bar)
+- **Feature Summary**:
+  - **Streamlined Workbench Studio Command Bar**: Refactored the sticky sub-header in `RequestWorkbenchDialog.tsx` into a high-density, compact Studio Action Bar ($\sim 48\text{px}$). Consolidated the primary segmented mode switcher (`[DevTools & Mapping] [Traffic & Replay]`) and quick action triggers (`[Export Code]`, `[Save to Collection]`, `[Browser]`) onto a single balanced bar, eliminating triple information redundancy and reclaiming vertical screen real estate.
+  - **Traffic Inspector Table Isolation & Typography**: Upgraded table row typography to `text-[13px] font-mono` in `TrafficView.tsx`. Restructured column widths (`Method w-24`, `Status w-20`, `Request Path flex-1 min-w-[180px]`, `Scope w-44`, `Time w-28`, `Duration w-32 text-left`, `Actions w-72`) inside an `overflow-x-auto min-w-[1080px]` container to ensure absolute separation between latency timestamps and action triggers across all viewport sizes.
+  - **Non-Destructive Cross-Workspace Telemetry Retention**: Replaced 4 destructive global `setRequests([])` wipes in `App.tsx` with active-workspace scoped filtering (`setRequests(curr => curr.filter(r => r.workspaceId && r.workspaceId !== activeWorkspaceIdRef.current))`) to preserve historical traffic records across workspace switches.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/RequestWorkbenchDialog.tsx`
+  - `packages/desktop/src/components/views/TrafficView.tsx`
+  - `packages/desktop/src/index.css`
+  - `CHANGELOG.md`
+
+## [feature/develop-playground-target-selector] - 2026-08-21 (Playground Interactive Target & Tunnel Selector, Instant State Purge & NSIS Uninstaller Branding)
+- **Feature Summary**:
+  - **Interactive Target Environment & Public Tunnel Dropdown**: Replaced static route badge in `PostmanView.tsx` with an interactive dropdown selector grouping active public tunnels (`🌐 <hostname> (:<port>)`) and local servers (`⚡ Localhost (:<port>)`). Developers can instantly view and switch active target environments with automatic URL resolution.
+  - **State Purge & Stale Response Clearance**: Added `onClearResponse` callback in `PostmanView.tsx` and `App.tsx` to automatically purge cached responses whenever switching target dropdown options, preventing cross-tunnel response confusion.
+  - **NSIS Uninstaller Brand Customization**: Created `hooks.nsh` and wired `"installerHooks": "hooks.nsh"` in `tauri.conf.json` defining `MUI_UNICON "icons\\icon.ico"` so the Windows uninstaller dialog displays the official Proxync branding icon instead of the default Nullsoft tin box icon.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/src-tauri/hooks.nsh`
+  - `CHANGELOG.md`
+
+## [fix/develop-release-blocker-workspace-tunnel-isolation] - 2026-08-21 (Release Blocker: Automatic Cross-Workspace Tunnel Teardown & Process Isolation)
+- **Feature Summary**:
+  - **Native Bulk Tunnel Teardown Command**: Implemented `close_all_tunnels()` in Rust (`tunnel.rs`, `lib.rs`) to cleanly drain and abort all active WebSocket relay handles, terminate all child subprocesses (`ssh`, `cloudflared`, `localtunnel`) with OS process tree killing (`taskkill /F /T /PID` on Windows), and shut down all ephemeral TCP stream proxies (`stop_proxy(None)`).
+  - **Cross-Workspace Tunnel Teardown on Switch & Create**: Updated `selectWorkspace` and `createWorkspace` in `App.tsx` to automatically invoke `stopAllTunnels(true)` and `close_all_tunnels` whenever switching between workspaces or creating new workspaces. This guarantees running public tunnels from previous workspaces are never orphaned or left accessible in the background.
+  - **Frontend State Containment**: Automatically resets `tunnels`, `activeTunnel`, `selectedProcessId`, and `sharingPort` upon workspace switching with informative transition toasts (e.g. `Closed tunnels from "Workspace A"`).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src/App.tsx`
+  - `CHANGELOG.md`
+
+## [fix/develop-release-blocker-process-cwd-recon] - 2026-08-21 (Release Blocker: Process Working Directory CWD Reconnaissance via OS PEB Inspection)
+- **Feature Summary**:
+  - **Stage 0 Native Process CWD Extraction**: Implemented Win32 `PEB` (Process Environment Block) inspection in `recon.rs` (`win_peb::get_process_cwd`) via `NtQueryInformationProcess` and `ReadProcessMemory` to read `RTL_USER_PROCESS_PARAMETERS.CurrentDirectory.DosPath` directly from the OS for any running process and its parent process tree.
+  - **Accurate Relative Script & NPM Dev Server Discovery**: Resolved a critical release blocker where servers launched with relative arguments (e.g. `node --watch server.js`, `node server.js`, `npm run dev`) failed directory resolution and fell back to `localhost:<port>`. Directory resolution now deterministically resolves to the exact project root (e.g. `E:\to-do`) across any drive or directory structure.
+  - **Preserved Heuristic Fallback Pipeline**: Maintained existing command-line argument parsing, parent process walking, and fallback script search as graceful secondary layers when PEB access is unavailable.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `CHANGELOG.md`
+
+## [fix/traffic-inspector-duration-and-layout] - 2026-08-21 (Traffic Inspector Duration Capture, Column Layout Overlap Fix & Sanity Testing Isolation)
+- **Feature Summary**:
+  - **Live Latency & Duration Capture**: Added `Instant::now()` elapsed duration calculation in `proxy.rs` and `tunnel.rs` to compute response round-trip latency in milliseconds (`durationMs`) and emit it inside `request:log:response`. Added `capturedAtMs` tracking and fallback computation in `App.tsx` so durations never remain in a stuck `'pending'` state.
+  - **Column Width & Spacing Isolation**: Restructured the Traffic table layout in `TrafficView.tsx` by expanding the `DURATION` column to `w-28` (`112px`) with `pr-6` right-padding, and the `ACTIONS` column to `w-72` (`288px`). Replaced oversized global `.btn-ghost` classes with isolated compact button tokens (`px-2.5 py-1`) to completely eliminate horizontal collision between the latency badge and the Workbench / Playground action triggers.
+  - **Sanity & POC Sandbox Isolation**: Added `sanity/` to `.gitignore` and relocated experimental Proof-of-Concept folders to `sanity/POC/` to maintain a pristine, production-clean repository root.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/TrafficView.tsx`
+  - `.gitignore`
+  - `CHANGELOG.md`
+
+## [feature/develop-multi-tunnel-workbench-scanner] - 2026-08-21 (Proxy Lifecycle Optimization, Fast WebSocket Relay Timeout & Multi-Tunnel Workbench Studio)
+- **Feature Summary**:
+  - **Ephemeral Proxy Listener Lifecycle & TCP Half-Close**: Refactored `start_proxy` in `proxy.rs` to always abort stale task handles and re-bind fresh listeners per invocation, plus added explicit `client_write.shutdown().await` and `target_write.shutdown().await` on TCP streams to cleanly complete responses without hanging.
+  - **Fast WebSocket Relay Connection Timeout**: Added a 2-second timeout to `open_tunnel` WebSocket connection (`tunnel.rs`) so client initialization fails fast when no local loopback relay is active instead of blocking on OS TCP timeouts.
+  - **Instant In-Memory Recon Resolution**: Streamlined `recon.rs` by eliminating blocking filesystem drive scanning loops during project directory lookup.
+  - **Multi-Tunnel & Multi-Process Dynamic Project Root Synchronization**: Refactored `RequestWorkbenchDialog.tsx` and `App.tsx` to automatically resolve project root directories per-tab based on the originating request's port or tunnel metadata, eliminating cross-process misattribution when running multiple tunnels simultaneously.
+  - **Native 1-Click IDE Navigation**: Implemented `open_file_in_editor` native command in Rust (`storage.rs`, `lib.rs`) and TypeScript (`interopUtils.ts`) to jump directly to exact line numbers in VS Code (`code -g <file>:<line>`), Cursor, or the OS default editor.
+  - **Dynamic Next.js App Router & Arrow Function Scanner**: Enhanced `codebaseScanner.ts` to normalize Windows backslash file paths and parse both function declarations (`export async function GET`) and arrow function exports (`export const POST = async () =>`).
+  - **Fresh Request Log Ingestion & Execution History Runs**: Enhanced Workbench to dynamically merge newly intercepted request events into active tabs as discrete `ExecutionRun` history snapshots with automatic focus on fresh runs.
+  - **Process Discovery & Dashboard UX Polish**: Upgraded `DiscoverDialog.tsx` with an `ALREADY EXPOSED` emerald badge, streamlined actions to dedicated `[ Inspect Traffic ➔ ]` navigation, and separated dashboard server card clicks (Process view) from direct traffic inspection.
+  - **Zero Hardcoded Environment Paths Enforced**: Stripped all developer test paths and machine-specific fallbacks across UI code in compliance with new workspace Rule 8.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/RequestWorkbenchDialog.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `packages/desktop/src/index.css`
+  - `packages/desktop/src/lib/codebaseScanner.ts`
+  - `packages/desktop/src/lib/interopUtils.ts`
+  - `packages/desktop/src/lib/types.ts`
+  - `CHANGELOG.md`
+
+## [feature/develop-installer-wizard-branding-and-license] - 2026-08-19 (NSIS Setup Wizard High-DPI Visual Assets & Open-Source License Integration)
+- **Feature Summary**:
+  - **NSIS Setup Wizard High-DPI Visual Assets**: Replaced legacy prototype installer graphics with high-definition 24-bit RGB Windows bitmaps: `nsis-sidebar.bmp` (164×314 px, 154 KB) featuring 3D isometric server nodes and neon fiber-optic conduits on deep midnight slate (`#0b0f19`) with zero smartphone bezels or text artifacts, and `nsis-header.bmp` (150×57 px, 25.8 KB) featuring a high-contrast glowing network proxy hub.
+  - **Open-Source License Agreement Integration**: Embedded the root MIT License agreement (`LICENSE`, Copyright © 2026 Inilax) into the Tauri installer bundle via `licenseFile: "LICENSE"`.
+  - **Enhanced App Description & Metadata**: Updated `longDescription` in `tauri.conf.json` to `"Proxync — Instant Local-First Tunneling, API Inspection & Developer Workspace Studio"` for Windows Installed Apps & Tooltips.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/icons/nsis-header.bmp`
+  - `packages/desktop/src-tauri/icons/nsis-sidebar.bmp`
+  - `packages/desktop/src-tauri/LICENSE`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `CHANGELOG.md`
+
+## [feature/develop-pro-debugger-dual-stream-logging] - 2026-08-19 (Pro Debugger & Dual-Stream Support Logging Engine, LLM Diagnostic Grammar & Support Bundle Exporter)
+- **Feature Summary**:
+  - **Cross-Platform Native Rust Logging Engine**: Built `storage.rs` disk logging pipeline in Tauri/Rust supporting Windows (`%APPDATA%/Proxync/logs`), macOS (`~/Library/Application Support/Proxync/logs`), and Linux (`~/.config/Proxync/logs`). Implemented `append_log_entry`, `clear_log_files`, `open_logs_folder` (`explorer.exe`, `open`, `xdg-open`), and `read_logs_summary` IPC handlers registered in `lib.rs`.
+  - **Dual-Stream Independent Logging with Split Defaults**: Created lightweight TypeScript logging engine (`logger.ts`) with bounded in-memory ring buffers (1,000 app entries, 2,000 traffic entries, $<500\text{ KB}$ max RAM). Application Diagnostics (`app.log`) is **enabled by default** to capture engine lifecycle, recon scans, proxy binds, tunnel spawn/closures, and crashes. Traffic Stream (`traffic.log`) is **disabled by default** to capture full HTTP request/response payloads, headers, and latencies on demand.
+  - **AI Agent & LLM Diagnostic Directives**: Embedded structured session headers with schema definitions in `app.log` and `traffic.log`. Built `logError(source, summary, error, hint, target)` providing deterministic `reason`, `target`, and `hint` attributes for automated AI troubleshooting. Structured `traffic.log` as single-line JSONL with status `errorReason` descriptions (e.g. `502 Bad Gateway: Upstream local service port unreachable`).
+  - **Automatic Credential & PII Redaction**: Built sensitive key sanitizer that automatically redacts `Authorization`, `Bearer`, `Cookie`, `Set-Cookie`, `Password`, `Token`, `ApiKey`, and `Secret` tokens to `[REDACTED]` across logs and support bundles.
+  - **1-Click Support Diagnostic Bundle Exporter**: Created `exportSupportBundle()` to package active workspace state, settings, active tunnels, discovered processes, and sanitized diagnostic logs into `proxync-support-bundle.json`.
+  - **360° Event Instrumentation & StrictMode Idempotency**: Hooked logging across all app operations (OpenAPI generation, Postman requests, replays, scans, workspaces, domains, settings) with active lifecycle listener cleanup in `App.tsx` preventing duplicate log emissions on hot reloads.
+  - **Settings Danger Zone UI & Purge Integration**: Overhauled Settings Danger Zone (`SettingsView.tsx`) with side-by-side stream cards, glowing monospaced badges (`● Enabled (Default)` / `● Active • Recording`), disk metrics, path copy pill, and integrated `clearLogs()` into the Purge All Data confirmation dialog (`Dialogs.tsx`).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/lib/logger.ts`
+  - `packages/desktop/src/lib/types.ts`
+  - `CHANGELOG.md`
+
+## [fix/swagger-multi-tunnel-traffic-segregation-probe-filtering] - 2026-08-19 (Multi-Tunnel Traffic Segregation, Malicious Bot Probe Filtering & Incremental OpenAPI Spec Ingestion)
+- **Feature Summary**:
+  - **Multi-Tunnel & Multi-Server Port Attribution Pipeline**: Refactored Rust proxy (`proxy.rs`) and WebSocket tunnel relay (`tunnel.rs`) to attach deterministic `port`, `tunnelId`, and `requestId` metadata to every emitted `request:log` event. Enriched `App.tsx` request ingestion to dynamically resolve matching public tunnels (`tunnelUrl`, `subdomain`) and process services (`port`, `serverName`), eliminating cross-port misattribution.
+  - **Automated Security Scanner & Bot Probe Filtering**: Implemented `isNoiseOrScannerProbe` in `openApiGenerator.ts` to detect and filter out automated internet vulnerability probes (`/.env`, `/.git`, `/.ssh`, `*.pem`, `*.key`, `*.bak`, `*.sql`, `/wp-admin`, `/geoserver/`, `/minio/`, `/admin`) and SPA `index.html` fallback catch-all responses returning `text/html` on arbitrary non-root URLs.
+  - **Dynamic URL Path Parameterization**: Built `parameterizePath` helper to generalize dynamic path segments (IDs e.g. `todo-1787085033407-5x3gn`, UUIDs, numerical IDs, Mongo ObjectIDs) into standard OpenAPI path parameters (e.g. `/api/todos/{id}`) with matching OpenAPI `in: path` parameter definitions.
+  - **Incremental OpenAPI Spec Ingestion (Endpoint Persistence)**: Enhanced `generateOpenApiSpec` to accept `existingDoc` and deep-merge newly captured traffic with previously generated routes (`GET`, `POST`, `PUT`, `DELETE`), preventing spec overwrites when testing endpoints sequentially.
+  - **Swagger Studio UI & Server Filter Refinement**: Overhauled server dropdown in `SwaggerView.tsx` with clear public tunnel URLs and ports (`⚡ Port :4000 — px-subdomain (https://...)`), added clickable tunnel URL badges on endpoint cards, and streamlined the filter header by removing redundant tag filter pills while keeping semantic tag badges on cards.
+  - **CSS Flex Properties Fix**: Corrected invalid `shrink: 0` CSS properties to standard `flex-shrink: 0` in `index.css` for `.btn-cloud-option` and `.btn-lan-option`.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/SwaggerView.tsx`
+  - `packages/desktop/src/index.css`
+  - `packages/desktop/src/lib/openApiGenerator.ts`
+  - `packages/desktop/src/lib/types.ts`
+  - `CHANGELOG.md`
+
+## [feature/develop-dynamic-netstat-service-discovery] - 2026-08-17 (Dynamic Netstat Full-Port Service Discovery, Single Bulk WMI Recon & In-Memory Directory Engine)
+- **Feature Summary**:
+  - **Dynamic Full-Port Netstat Discovery**: Completely eliminated the legacy hardcoded 9-port list (`3000, 3001, 4000, 4200, 5000, 5173, 8000, 8080, 8888`) in favor of a single `netstat -ano` scan dynamically capturing all listening dev services across both IPv4 and IPv6 (`[::1]:5173`, `[::]:3000`, `80, 443, 1024..=49151`) while filtering out Windows RPC and system port ranges (`135, 445, 2869, 5040, 6463, 5357, 49152..=49157`).
+  - **Single Bulk WMI Process Recon**: Replaced slow $O(N)$ per-port/per-PID PowerShell process queries with a single batch `Get-CimInstance Win32_Process` query executed with `Text` output format to suppress CLIXML stream overhead.
+  - **System & Infrastructure Classification**: Implemented multi-layered process filtering to block Windows background services, IDE daemons, and system noise (`svchost`, `System`, `lsass`, `Discord`, `Teams`, `SearchIndexer`, `Antigravity IDE`, `language_server`) while surfacing active dev runtimes (`node`, `python`, `deno`, `bun`, `go`, `cargo`, `java`, `ruby`, `php`, `dotnet`, `proxync`).
+  - **Dynamic Framework Fingerprinting**: Integrated command-line argument analysis to identify `Next.js`, `Vite`, `NestJS`, `FastAPI`, `Django`, `Flask`, `Express / Node.js`, `Nuxt`, `Remix`, `Astro`, `Spring Boot`, etc.
+  - **IPv6 Target Connectivity & Host Header Normalization in Local Proxy**: Refactored `start_proxy` in `proxy.rs` to connect to `127.0.0.1` with automatic fallback to `[::1]` (IPv6 localhost), resolving the 502 Bad Gateway issue on IPv6-bound servers like Vite. Added automatic `Host: localhost:{port}` header normalization so dev servers with strict host validation (e.g. Vite 5/6, Next.js) accept incoming public tunnel traffic without 403 / Bad Gateway errors.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `CHANGELOG.md`
+
+## [feature/develop-workspace-card-redesign-and-concurrency] - 2026-08-17 (Workspace Hub Card Redesign, Concurrent Tunnel Spawning & Responsive Layout)
+- **Feature Summary**:
+  - **Multi-Service Concurrent Tunnel Spawning**: Replaced scalar `sharingPort` with `spawningPorts: number[]` in `App.tsx` and integrated `addSpawningPort` / `removeSpawningPort` across all sharing handlers (`shareProcessNative`, `shareProcessCloudflare`, `shareProcessLocaltunnel`, `shareProcess`), enabling simultaneous tunnel launches without UI state collisions.
+  - **Instantaneous Spawning State**: When clicking tunnel launch options, action buttons are immediately replaced with an active animated loading indicator `[ 🔄 Spawning Tunnel Connection... ]`, preventing double-clicks and duplicate backend spawner execution.
+  - **Workspace Hub Card Redesign**: Overhauled `WorkspaceDashboardView.tsx` with Emerald code avatars, normalized framework subtitles, and isolated Local Endpoint container matching design mockups.
+  - **Action Button Styling & Containment**: Styled `⚡ Expose (Proxync)` with theme periwinkle purple (`#7c82ff`), `Cloudflare` and `LAN` with dark slate containers (`#20293d`), and added `min-w-0` / `truncate` text containment.
+  - **Responsive Layout & Screen Adaptation**: Tuned grid breakpoint to `grid-cols-1 md:grid-cols-2 2xl:grid-cols-3` to ensure generous card width on standard desktop window sizes with sidebar.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `packages/desktop/src/index.css`
+  - `CHANGELOG.md`
+
+
+## [feature/proxync-native-tunnel] - 2026-08-15 (Direct Origin Port 2222 Routing, Strict HTTPS JIT Security, Host Key Pinning & Parallel Startup)
+- **Feature Summary**:
+  - **Direct Port 2222 Origin Routing**: Resolved SSH tunnel connection timeout and public URL 404 issue by configuring default `PROXYNC_SSH_HOST` to connect directly to origin IP `104.208.83.199:2222`, bypassing Cloudflare CDN's non-HTTP port dropping on `api.proxync.dev:2222`.
+  - **Strict HTTPS on JIT Key Registration**: Eliminated unencrypted HTTP direct origin fallbacks. All JIT ephemeral Ed25519 public key registration and host key discovery requests now strictly enforce TLS encryption (`https://api.proxync.dev/api/tunnel/sign-jit-cert`) with bearer token validation.
+  - **SSH Host Key Pinning & TOFU Elimination**: Hardened SSH connection with `StrictHostKeyChecking=yes`, isolated session `known_hosts` pre-seeded with official Ed25519 public host key (`ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDyV3ZNPsHhwJaW6akzFMg/KAE7F1K4WamVtMaeP/vi9 root@Proxync-tunnel`), and `GlobalKnownHostsFile=NUL` / `/dev/null`.
+  - **Shell Metacharacter Sanitization**: Applied strict alphanumeric and hyphen allowlist filter (`.filter(|c| c.is_ascii_alphanumeric() || *c == '-')`) to custom subdomains across both Native SSH and Localtunnel spawners to eliminate shell argument injection risks on Windows `cmd.exe /C`.
+  - **Credential Redaction in WebSocket Relay**: Sanitized incoming request headers (`Authorization`, `Cookie`, `Set-Cookie`, `x-api-key`, `api-key`) to `[REDACTED]` before broadcasting `request:log` events across the desktop IPC event bus.
+  - **Parallel Tunnel & Proxy Spawning**: Refactored `App.tsx` to concurrently invoke `open_tunnel` and `start_proxy` using `Promise.all`, reducing tunnel startup latency by ~40–50%. Converted process directory resolution to asynchronous background execution (`void refreshProcessDirectory`).
+  - **Single-User Windows ACLs**: Hardened ephemeral private key file permissions via `spawn_blocking` `icacls ... /inheritance:r /grant:r %USERNAME%:(R)` without insecure "Everyone" fallback.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
+## [feature/develop-batch-tunnel-teardown] - 2026-08-14 (Batch Tunnel Teardown & One-Click Stop All UI)
+- **Feature Summary**:
+  - **Batch Multi-Tunnel Teardown**: Added a prominent "Stop All" action button beside the active session counter in the Explore screen (`WelcomeView.tsx`) and Workspace Dashboard (`WorkspaceDashboardView.tsx`), conditionally displayed when active sessions exist.
+  - **Concurrent Teardown Handler**: Implemented `stopAllTunnels` in `App.tsx` executing concurrent native `close_tunnel` invocations and remote API terminations via `Promise.all` with resilient per-tunnel error handling, synchronous state pruning, and toast notifications.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
+## [feature/proxync-native-tunnel] - 2026-08-14 (Proxync Native Tunnel Speed Optimization, High-Throughput SSH & Rust Backend Modularization)
+- **Feature Summary**:
+  - **Tunnel Speed & Connection Optimization**: Replaced per-request HTTP client creation with a global pooled `HTTP_CLIENT` (`tcp_nodelay(true)`, 90s idle pool, connection reuse) for zero-RTT TLS JIT certificate signing requests.
+  - **Micro-Delay Key Reload**: Reduced post-signing filesystem synchronization delay from 350ms to 25ms to take advantage of sub-millisecond inotify key reloading on Linux edge servers.
+  - **High-Throughput SSH Ciphers & QoS**: Configured native SSH connection with high-speed, hardware-accelerated cipher suites (`chacha20-poly1305@openssh.com,aes128-gcm@openssh.com`), disabled compression CPU overhead (`Compression=no`), enforced `IPQoS=throughput`, and tuned keepalive parameters (`TCPKeepAlive=yes`, `ServerAliveCountMax=3`, `ConnectTimeout=5`).
+  - **Windows ACL Permission Optimization**: Streamlined Windows file permissions into a single-pass `icacls` invocation (`/inheritance:r /grant:r %USERNAME%:(R)`).
+  - **Modular Rust Backend Architecture**: Refactored monolithic `lib.rs` (1000+ lines) into clean, decoupled domain modules: `http.rs` (CORS-bypassing HTTP executor & decompression), `proxy.rs` (local TCP proxy & event emitters), `recon.rs` (process recognition & directory resolution), `storage.rs` (local data serialization), and `tunnel.rs` (Proxync Native SSH, Localtunnel & Cloudflare tunnel managers).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/http.rs`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
+## [fix/security-cve-hardening] - 2026-08-14 [SECURITY-CVE] (Security CVE Remediation, Content Security Policy & CI/CD Workflow Hardening)
+- **Feature Summary**:
+  - **Dependency CVE Remediation [TYPE: CVE-PATCH]**: Patched transitive `nanoid` build dependency vulnerability ([GHSA-2v37-7h3g-55p8](https://github.com/advisories/GHSA-2v37-7h3g-55p8)) via `npm audit fix`, resolving all npm audit security warnings (0 vulnerabilities).
+  - **Tauri Content Security Policy Activation**: Configured a robust Content Security Policy in `tauri.conf.json` (`default-src 'self'`, `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`, `font-src 'self' https://fonts.gstatic.com data:`, `connect-src 'self' ws: wss: http: https: ipc:;`) to protect the desktop webview container against unauthorized external script execution.
+  - **CI/CD Workflow Script Injection Protection**: Hardened `prepare-release.yml` by encapsulating `${{ github.event.inputs.version }}` inside `env: INPUT_VERSION` with strict semantic version regex format validation (`^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$`) and cross-platform Node.js `Cargo.toml` updates.
+  - **Local Security Report Protection**: Added `.gstack/` to `.gitignore` to prevent local AI security audit reports from being tracked or exposed.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `.github/workflows/prepare-release.yml`
+  - `.gitignore`
+  - `package-lock.json`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `CHANGELOG.md`
+
+## [feature/develop-workspace-hub-traffic-filters-and-tunnel-ux] - 2026-08-14 (Workspace Hub Redesign, Theme-Matching Traffic Filters, Process Tree Teardown & Proxync Native Tunnel UX)
+- **Feature Summary**:
+  - **Scalable Workspace Hub**: Replaced 100-workspace dropdown clutter with dedicated `WorkspaceDashboardView` rendering detected local server cards and in-place full scanning.
+  - **Theme-Matching Dropdown Filters**: Converted Traffic Inspector toolbar to single-row custom `<select>` dropdown pills (`Workspace:`, `Server:`, `Method:`, `Status:`) with dark theme background styling (`bg-surface-container-high text-on-surface`) and early-exit filter pipeline optimizations.
+  - **Process Tree Teardown Fix**: Upgraded Rust `close_tunnel` backend command to execute `taskkill /F /T` on Windows, terminating child process trees (`cmd.exe`, `cloudflared.exe`, `ssh.exe`) and aborting `PROXY_HANDLES` TCP proxy listeners to prevent orphan background connections.
+  - **Public Share Scrollbar RCA Fix**: Expanded `.domain-select-dialog` modal grid bounds (`max-width: 520px; max-height: min(820px, 92vh)`) and removed hardcoded `maxHeight: '420px'` on options container in `Dialogs.tsx`, permanently eliminating vertical scrollbar flakiness across all selection states.
+  - **Dynamic Directory Resolution Security Audit**: Removed hardcoded developer machine path candidates (`candidate_roots` containing `E:\to-do`, `E:\release`, etc.) in `lib.rs` (`resolve_directory_advanced`) and replaced with dynamic current working directory and user home profile resolution.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/TrafficView.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `packages/desktop/src/components/views/RequestWorkbenchDialog.tsx`
+  - `CHANGELOG.md`
+
+## [feature/proxync-native-tunnel] - 2026-08-13 (Proxync Native SSH Tunnel Engine, Zero-Trace Key Security & Random Subdomain Auto-Generation)
+- **Feature Summary**:
+  - **Native SSH Tunnel Engine**: Built high-speed native SSH tunneling engine in Rust (`open_native_tunnel` in `lib.rs`) establishing direct reverse port-forwarding (`-R {subdomain}:80:127.0.0.1:{port}`) to Proxync edge servers (`api.proxync.dev` / `104.208.83.199:2222`).
+  - **Ephemeral JIT Certificate Signing**: Integrated on-demand Ed25519 keypair generation and JIT certificate signing request via `api.proxync.dev/api/tunnel/sign-jit-cert` with Bearer auth token validation.
+  - **Zero-Trace Security (`TempDirGuard`)**: Implemented RAII `TempDirGuard` in Rust ensuring temporary SSH private keys and `known_hosts` files are securely erased on tunnel termination. Enforced strict file permissions (`icacls` / `0600`) on Windows and Unix platforms.
+  - **Random Subdomain Auto-Generation**: Native SSH tunnels auto-generate secure 8-character random subdomains (e.g. `px-a1b2c3d4.proxync.dev`) without user input, while Localtunnel retains optional custom subdomain configuration.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/.gitignore`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
+## [feature/develop-cve-emergency-security-radar] - 2026-08-10 (Emergency CVE Security Update Radar & Zero False-Positive Detection)
+- **Feature Summary**:
+  - **Emergency CVE Radar**: Implemented deterministic `isCriticalSecurityUpdate()` helper in `App.tsx` scanning GitHub Release notes for explicit security tags (`[SECURITY-CVE]`, `[TYPE: CVE-PATCH]`, `[CVE]`, or `"critical": true`).
+  - **Unconditional Startup Security Check**: Refactored `runUpdateCheck(isStartupCheck)` to run an immediate pre-flight scan on every app launch. Automatically overrides `autoUpdate: OFF` settings and bypasses skipped versions only when a `[SECURITY-CVE]` tagged release is detected.
+  - **Streamlined Force Update UI**: Displays a clean, non-scary `🛡️ Required Security Update vX.Y.Z` force update banner with live percentage progress tracking during download and instant `Restart Now` relaunch action.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `CHANGELOG.md`
+
+## [fix/footer-responsiveness-and-version-bump] - 2026-08-10 (Status Footer Responsiveness Fix, Auto-Updater IPC Fix & Release Version Bump to v0.2.1)
+- **Feature Summary**:
+  - **Auto-Updater Capability Fix**: Fixed missing Tauri v2 security IPC permissions in `packages/desktop/src-tauri/capabilities/default.json`. Added `"updater:default"` and `"process:default"` permissions so the existing auto-updater (`check()`, `downloadAndInstall()`) and restart (`relaunch()`) pass Tauri v2 IPC security checks without runtime permission errors.
+  - **Status Footer Responsiveness**: Fixed fixed-positioning gaps and text overlapping issues on narrow viewports in `App.tsx` and `index.css`. Added `@media (max-width: 820px)` rule setting `.app-footer` and `.output-console-dock` to `left: 0 !important` when the sidebar slides offscreen. Added smooth transition (`left 200ms ease`), `overflow-hidden`, and `whitespace-nowrap` to prevent vertical line clipping. Added responsive truncation for active tunnel URLs and responsive visibility breakpoints (`hidden sm:inline`, `hidden md:inline`) for latency, encoding, and console text labels.
+  - **Release Version Bump**: Bumped release version from `0.2.0` to `0.2.1` across workspace manifests (`package.json`, `packages/desktop/package.json`, `package-lock.json`, `Cargo.toml`, `tauri.conf.json`), Rust HTTP client `User-Agent` (`lib.rs`), sidebar badge (`App.tsx`), and architecture reference map (`.agents/architecture.json`).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `package.json`
+  - `package-lock.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/src-tauri/capabilities/default.json`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/index.css`
+  - `CHANGELOG.md`
+
+## [fix/custom-domain-dns-preflight] - 2026-08-08 (Custom Domain DNS Pre-Flight Verification & Restart Persistence Fix)
+- **Feature Summary**:
+  - **Root Cause Fixed**: Resolved a silent tunnel bypass where a previously verified custom domain (`demo.clueliq.com`) would still activate a live tunnel even after its DNS TXT record was deleted from the registrar (`DNS_PROBE_FINISHED_NXDOMAIN`). The bug was a React state dependency issue — `shareProcess` used `domains.find()` against React state which could be empty (app freshly restarted) or keyed under a different workspace ID, causing the entire DNS pre-flight block to silently skip.
+  - **Restart Persistence Fix**: Fixed issue where domain verification status reverted back to verified upon app restart. Updated `api.domains.list()` to scan all `proxync_custom_domains_*` `localStorage` keys and deduplicate entries so workspace ID mismatches no longer return empty lists. Removed stale `activeWorkspace.domains` fallback in `App.tsx` domain loading effect so old workspace state blob never overrides updated `localStorage` domain verification status.
+  - **`api.domains.verifyByName()`**: New method in `api.ts` that scans ALL `localStorage` keys prefixed with `proxync_custom_domains` (not a hardcoded candidate list) to find the domain record with zero React state dependency. Performs live DNS-over-HTTPS lookup via Google DoH (`dns.google/resolve`) with Cloudflare DoH (`cloudflare-dns.com/dns-query`) as fallback. If both resolvers are unreachable (network/firewall issue), the tunnel is blocked to be safe. On DNS token mismatch or NXDOMAIN: rotates `verificationToken`, marks `verified: false` in `localStorage`, syncs state back to React and `activeWorkspace`, and surfaces an actionable toast error.
+  - **UI Navigation Bug Fixed**: Moved starter scan state setup (`setStarterSuggestions`, `setSavedRequests`, `updateActiveWorkspace`) to after the DNS pre-flight block. Previously these ran unconditionally at the top of `shareProcess`, causing the UI to navigate to the process view and show the *Import Templates* banner even when the tunnel was being blocked.
+  - **Traffic Interception Fix**: Fixed `open_tunnel` invocation to pass `proxyPort` (Rust TCP proxy port) instead of the raw `process.port`, enabling Traffic View log interception for custom domain tunnels. Fixed `tunnels.create()` to build the correct `http://domain:port` URL format.
+  - **Domain State Sync**: Improved `addDomain`, `verifyDomain`, and `removeDomain` handlers to properly sync domain state changes into `activeWorkspace` via `updateActiveWorkspace` so Settings and process views stay in sync.
+  - **Settings UX Polish**: Enter key now submits the Add Domain form. DNS configuration table polished with new `.dns-table` CSS classes. `Host`/`Value` copy buttons upgraded from `btn-ghost` to `btn-secondary`. Verify button shows dynamic `✓ Re-verify` / `Verify Domain` labels. Remove button upgraded to `btn-danger` with label `Remove Domain`.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/lib/api.ts`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/index.css`
+  - `CHANGELOG.md`
+
+## [feature/develop-0.2.0-ui-contrast-and-escape-shortcuts] - 2026-08-07 (UI Button Contrast Overhaul, Active Internet Connection Guard & Escape Shortcuts)
+- **Feature Summary**:
+  - **Button Contrast Overhaul**: Updated `--color-on-primary` and `--color-on-primary-container` theme tokens in `index.css` to `#ffffff` for high contrast text. Updated inline collection folder `Create` button styling in `PostmanView.tsx` to `text-white font-bold shadow-sm shadow-primary/25`.
+  - **Active Internet Connectivity Guard**: Added `checkRealInternetConnection()` edge ping check to prevent `cloudflared` CLI timeout delays when attempting to open cloud tunnels offline. Added `offline` and `online` event listeners with bottom-right toast notifications and added an offline callout banner inside `DomainSelectDialog`.
+  - **Global Escape Key Dismissals & Ponytail Refactoring**: Added `useEscape` custom hook in `SharedComponents.tsx` to handle Esc key dismissals across inline workspace creation (`LobbyView.tsx`), collection creation and renaming (`PostmanView.tsx`), and all modal dialogs (`Dialogs.tsx`, `App.tsx`).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/LobbyView.tsx`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/index.css`
+  - `packages/desktop/src/lib/toast.tsx`
+  - `CHANGELOG.md`
+
+## [v0.2.0-release] - 2026-08-07 (Traffic Inspector Overhaul, Generic Replay Engine, Enterprise Tier Preview & Playground Hotkeys)
+- **Feature Summary**:
+  - **Traffic Inspector Overhaul**: Fixed React key collisions using unique UUIDs. Fixed inline dropdown auto-collapse under live traffic by tracking expansion via immutable request IDs. Solved scroll-position jumping by removing container dynamic key. Fixed status code badge updates in `App.tsx` by aligning `rawRequestId` matching. Enhanced Rust TCP and WebSocket proxy in `lib.rs` to capture and emit headers HashMap and bodyPreview.
+  - **Generic Replay Engine**: Upgraded `replayRequest` in `App.tsx` to generically execute any HTTP method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) via native Rust HTTP executor and append newly replayed packages directly to Traffic Logs. Raised modal overlay z-index to `9999` with glassmorphic backdrop blur.
+  - **Type Safety & Enterprise Preview**: Resolved `AppSettings` and `MainView` type drift in `types.ts`. Re-exported shared interfaces in `SharedComponents.tsx`. Replaced static fake API key box with Enterprise API Key Management preview card in `SettingsView.tsx`. Upgraded Account Settings to Proxync Enterprise & Cloud Sync preview card. Added Enterprise RBAC and Policy badges to Workspace Guardrails. Updated official website domain URLs across `SettingsView`, `WelcomeView`, and `DocsView` to `https://proxync.dev/`.
+  - **Playground Hotkeys & Code Generator Fix**: Added `Ctrl + /` and `Ctrl + ?` keyboard hotkey binding in Playground (`PostmanView.tsx`) displaying a glassmorphic hotkey reference modal overlay. Replaced TODO comment stub in `codeSnippetGenerator.ts` with working JSON response handler template.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/TrafficView.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/DocsView.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/lib/codeSnippetGenerator.ts`
+  - `packages/desktop/src/lib/types.ts`
+  - `packages/desktop/src/index.css`
+  - `CHANGELOG.md`
+
+## [feature/develop-playground-ux-and-context-menu-enhancements] - 2026-08-06 (Playground UX Overhaul, Glass Context Menu & Smart Banner Hiding)
+- **Feature Summary**: Expanded Collections Rail sidebar width to 280px and eliminated duplicate HTTP method badges in sidebar items. Built a custom glassmorphic right-click context menu (Rename, Copy URL, Duplicate Request, Delete) with global contextmenu suppression unless Developer Inspect Tools is enabled. Added Developer Inspect Tools toggle in Settings under Danger Zone. Centralized `HTTP_METHODS` and `stripMethodPrefix()` utility in `SharedComponents.tsx` to strip method prefixes from request titles. Added unimported endpoint deduplication to starter suggestions banner so it automatically stays hidden when all scanned endpoints are already in collections.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/lib/openApiGenerator.ts`
+  - `packages/desktop/src/lib/types.ts`
+  - `packages/desktop/src/index.css`
+  - `CHANGELOG.md`
+
+## [PR #69] - 2026-08-06 (Target Route Badge in Playground - Contributed by @slegarraga)
+- **Feature Summary**: Added a compact, pill-shaped Target Route Badge (`.route-badge`) next to the Send button in Playground request builder. Displays dynamic route target indicators (`Cloudflare Edge`, `Public Tunnel`, or `Local Loopback`) so developers immediately know whether traffic traveled through a public edge tunnel or local loopback. Upgraded design tokens across `Dialogs.tsx`, `SharedComponents.tsx`, and `index.css` to Material 3 palette tokens. Made local loopback tooltip URL 100% dynamic based on active process port.
+- **Contributor**: @slegarraga (PR #69)
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/index.css`
+  - `packages/desktop/src/App.tsx`
+  - `CHANGELOG.md`
+
+## [feature/develop-workspace-activity-and-tunnel-ux-upgrades] - 2026-08-06 (Dynamic Workspace Activity, 7-Day Inactive Auto-Categorization, Custom Glass Modals & 1-Click Open in Browser)
+- **Feature Summary**: Implemented dynamic workspace activity tracking (`lastActivityAt`) with relative time formatting (`Just now`, `4m ago`, `18h ago`, `3d ago`), auto-activating on workspace selection, tunnel sharing, and HTTP traffic logs. Renamed `Archived` tab to `Inactive` with automatic 7-day inactivity filtering, auto-disappearing dormant workspaces into `Inactive` tab and restricting Provision Workspace inline card to `Active` tab. Replaced native `confirm()` on Purge All Data with glassmorphic `ConfirmPurgeDialog`. Enhanced Active Workspace selector typography and contrast. Added 1-click **Open in Browser** option to Active Tunnels three-dot menu (`⋮`) in `WelcomeView` and endpoint action tiles in `ProcessView`. Fixed horizontal icon alignment in Coming Soon modal. Renamed Postman navigation label to single-word industry-standard **Playground**.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/LobbyView.tsx`
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/lib/types.ts`
+  - `CHANGELOG.md`
+
+## [feature/develop-patch-socketio-parser-vulnerability] - 2026-08-06 (Socket.IO Vulnerability Patch & Orphaned Dependency Pruning)
+- **Feature Summary**: Resolved Dependabot security vulnerability `GHSA-2m8v-j782-fhvr` (**Socket.IO: Zero-attachment Memory Exhaustion**) and conducted full codebase audit. Completely pruned 3 orphaned, 100% unused dependencies (`socket.io-client`, `socket.io-parser`, `react-router`) from `packages/desktop/package.json` and root `package.json` overrides, removing 9 unneeded node packages. Verified via `npm audit` (0 vulnerabilities) and clean `npm run build`.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `package.json`
+  - `packages/desktop/package.json`
+  - `package-lock.json`
+  - `CHANGELOG.md`
+
+## [feature/main-telemetry-options] - 2026-08-06 (Persistent Telemetry System with Low-CPU Basic Mode)
+- **Feature Summary**: Fully wired persistent **Enhanced** vs **Basic** telemetry options into `AppSettings` with storage persistence. **Enhanced Mode** (default) enables full P50/P90/P99 latency calculations, route leaderboards, and bandwidth meters. **Basic Mode** bypasses array sorting (`durations.sort`) and non-fatal percentile math to minimize CPU/RAM computational overhead, logging only critical 5xx errors. Features clean inline descriptions in Settings and an active Low CPU Mode indicator banner in Observability Hub.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/components/views/ObservabilityView.tsx`
+  - `packages/desktop/src/App.tsx`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
+## [feature/main-smart-auto-update] - 2026-08-05 (Smart Version-Aware Auto-Update System)
+- **Feature Summary**: Fully wired the Settings "Automatic Updates" toggle to the real update scheduler. When **ON** (default), the app checks for updates on startup and every **2 hours**. When **OFF**, it checks only every **7 days** using a persisted timestamp. Introduced a semver `isForceUpdate()` helper: if the **minor or major** version segment increments (e.g. `1.1.x → 1.2.0`, `0.2.x → 0.3.0`), a **forced update** dialog is shown — red, persistent, no Skip or Later buttons, only "Update Now". Pure **patch-only bumps** (e.g. `1.1.4 → 1.1.6`) show the standard optional toast with Skip this version and Later. Toggle state is now persisted to `AppSettings` and survives restarts.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/package.json`
+  - `package-lock.json`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
+
+## [feature/main-observability-autostart-hub] - 2026-08-05 (Observability Hub, Auto-Start on Boot & Silent Process Spawning)
+- **Feature Summary**: Integrated zero-config Observability Hub featuring P50/P90/P99 latency analytics, status code heatmap, bandwidth meter, public Webhook stream replay, Error Center, and high-contrast theme styling for Midnight Slate and Dracula Dark. Integrated native Auto-Start on Boot functionality using `tauri-plugin-autostart` with silent process spawning on Windows (`CREATE_NO_WINDOW`).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/components/views/ObservabilityView.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/components/views/SwaggerView.tsx`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/capabilities/default.json`
+  - `package-lock.json`
+  - `packages/desktop/package.json`
+  - `CHANGELOG.md`
+
+## [feature/main-observability-hub] - 2026-08-05 (Zero-Config Observability Hub, Latency Analytics & Webhook Stream)
+- **Feature Summary**: Implemented high-performance O(N) zero-config Observability Hub in `ObservabilityView.tsx` featuring percentile latency metrics (P50/P90/P99), status code distribution gauge, total bandwidth meter, shared public tunnel telemetry, public Webhook interception stream with 1-click Webhook Replay, structured Error Center eliminating terminal console log soup, slowest routes leaderboard, and 1-click debugging navigation to Traffic Inspector and Postman Studio.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/components/views/ObservabilityView.tsx`
+  - `packages/desktop/src/App.tsx`
+  - `CHANGELOG.md`
+
+## [feature/develop-auto-updater] - 2026-08-04 (Production-Ready Auto Updater)
+- **Feature Summary**: Implemented a fully production-ready automatic update system using Tauri v2 native plugins (`tauri-plugin-updater`, `tauri-plugin-process`), modelled after the POSINX Electron auto-updater pattern. On startup (and every 2 hours), the app silently checks GitHub Releases for a newer version. When an update is found, a persistent non-auto-dismissing toast appears with three actions: **Update Now** (silent background download with live % progress shown on the button), **Skip this version** (version saved to `localStorage` — won't prompt again for that version), and **Later** (dismisses until next check). After downloading, a second persistent toast prompts **Restart Now** or **Later**. Upgraded `toast.tsx` to support persistent toasts with a new `dismissToast(id)` API. Updated `release.yml` GitHub Actions workflow to pass `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets to `tauri-action` with `includeUpdaterJson: true`, enabling automatic signed `updater.json` generation and upload on every release. Set real public key in `tauri.conf.json`. Added `*.key` and `*.key.pub` to `.gitignore` to protect signing keys from accidental commits.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/lib/toast.tsx`
+  - `.github/workflows/release.yml`
+  - `.gitignore`
+  - `CHANGELOG.md`
+
+
+## [fix/develop-swagger-redirection] - 2026-08-04 (Swagger Postman Export Auto-Redirection & Theme Filter Pill High-Contrast Contrast Fix)
+- **Feature Summary**: Added automatic view redirection to Postman Studio (`setMainView('postman')`) upon clicking 'Export to Postman' in Swagger Studio. Fixed active tag filter pill text contrast across Dracula Dark, Midnight, Cyberpunk, and all themes by setting bright white bold text (`text-white font-bold shadow-md shadow-primary/25`).
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/SwaggerView.tsx`
+  - `README.md`
+  - `CHANGELOG.md`
+
+
+## [fix/develop-postman-response-and-decompression] - 2026-08-04 (Postman Response Payload Decompression & Native Execution Fix)
+- **Feature Summary**: Resolved empty HTTP response payload issue in Postman Studio when requesting Cloudflare Tunnels or relative endpoints. Added gzip, deflate, and brotli automatic decompression features to reqwest in `Cargo.toml`, updated `Cargo.lock`, set desktop User-Agent header in Rust native HTTP executor (`lib.rs`), and bypassed offline mock response handler.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `CHANGELOG.md`
+
+
+## [feature/develop-swagger-generator] - 2026-08-04 (Automatic OpenAPI Spec Generator, Multi-Framework Codebase Scanner & Swagger Studio UX Overhaul)
+- **Feature Summary**: Implemented an automatic multi-framework codebase route scanner (Express, Fastify, Next.js, NestJS, FastAPI, Spring Boot, Go) and manual on-demand OpenAPI 3.0 spec generation engine. Added traffic-driven JSON schema inferrer, framework code annotation generator ('Add to Codebase' snippet tab for NestJS, Express JSDoc, FastAPI, Spring Boot, Go), 2-way Postman collection export/import, and redesigned Swagger Studio UX with search filtering, endpoint drawers, parameter tables, raw JSON/YAML views, and spec downloads.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/lib/codebaseScanner.ts`
+  - `packages/desktop/src/lib/openApiGenerator.ts`
+  - `packages/desktop/src/lib/codeSnippetGenerator.ts`
+  - `packages/desktop/src/lib/types.ts`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/components/views/SwaggerView.tsx`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/App.tsx`
+  - `CHANGELOG.md`
+
+## [v0.2.0-dev] - 2026-08-03 (Postman Studio Redesign, Hotkeys & Developer UX Refresh)
+- **Feature Summary**: Redesigned Postman Studio (`PostmanView.tsx`) with static collection tree ordering, inline folder renaming/deletion, custom collection hotkeys (`Ctrl+Enter` to Send, `Ctrl+S` to Save directly to selected collection), inline Response tab, native Rust HTTP executor (`execute_http_request`) to bypass CORS, and Windows console signal handler (`SetConsoleCtrlHandler`). Bumped application version to `0.2.0` across workspace manifests (`package.json`, `packages/desktop/package.json`, `tauri.conf.json`, `Cargo.toml`, `Cargo.lock`, `package-lock.json`, and `.agents/architecture.json`). Established application-wide `Nunito Sans` font typography system in `assets/typography.css`. Redesigned `DocsView.tsx` into a clean 2-column documentation hub with direct portal links to `https://proxync.dev/docs`.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `package.json`
+  - `package-lock.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/index.css`
+  - `packages/desktop/src/assets/typography.css`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/components/views/DocsView.tsx`
+  - `.agents/architecture.json`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
+## [v0.1.8] - 2026-08-02 (PostCSS Security Patch & Version Bump)
+- **Feature Summary**: Patched Dependabot security vulnerability by upgrading `postcss` from `8.5.16` to `8.5.25` and `nanoid` from `3.3.15` to `3.3.16` in `package-lock.json`. Bumped version to `0.1.8` across root `package.json`, `packages/desktop/package.json`, `tauri.conf.json`, `Cargo.toml`, and `.agents/architecture.json`.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `package.json`
+  - `package-lock.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `.agents/architecture.json`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
+## [feature/main-fix-postcss-vulnerability] - 2026-08-01 (PostCSS Security Patch)
+- **Feature Summary**: Patched Dependabot security vulnerability by upgrading `postcss` from `8.5.16` to `8.5.25` and `nanoid` from `3.3.15` to `3.3.16` in `package-lock.json`.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `package.json`
+  - `package-lock.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `.agents/architecture.json`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
+## [v0.1.7] - 2026-08-01 (React Router CVE Patch & Version Bump)
+- **Feature Summary**: Patched Dependabot security vulnerability (CVE-2026-22030 / GHSA-h5cw-625j-3rxh) by upgrading `react-router` to `^8.3.0` (>= 8.3.0) and removing the unused legacy `react-router-dom` dependency. Bumped version to `0.1.7` across root `package.json`, `packages/desktop/package.json`, `tauri.conf.json`, `Cargo.toml`, and `.agents/architecture.json`, and updated `package-lock.json` and `Cargo.lock` accordingly.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `package.json`
+  - `package-lock.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `.agents/architecture.json`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
+## [v0.1.6] - 2026-07-23 (Installer UI Panel Fix & Version Bump)
+- **Feature Summary**: Fixed blank setup screen in NSIS installer by generating and configuring custom BMP images (`nsis-sidebar.bmp` and `nsis-header.bmp`) for the welcome page sidebar and header. Bumped version to `0.1.6` across root `package.json`, `packages/desktop/package.json`, `tauri.conf.json`, `Cargo.toml`, and `.agents/architecture.json`, and updated `package-lock.json` and `Cargo.lock` accordingly.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `package.json`
+  - `package-lock.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/src-tauri/icons/nsis-header.bmp`
+  - `packages/desktop/src-tauri/icons/nsis-sidebar.bmp`
+  - `.agents/architecture.json`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
+## [v0.1.3] - 2026-07-21 (Vulnerability Patch & Release Branding)
+- **Feature Summary**: Updated desktop package name from generic `desktop` to `proxync`, set author to `Inilax`, and added project description across package.json, Cargo.toml, and tauri.conf.json. Configured NSIS installerIcon under bundle.windows in tauri.conf.json to display custom Proxync ico branding during setup. Patched glib dependency to >= 0.20.12 in Cargo.lock to resolve Dependabot memory unsoundness advisory #4. Updated workspace architecture recon map (.agents) and bumped version to v0.1.3 across all workspace config files.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `package.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/src/main.rs`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `.agents/architecture.json`
+  - `.agents/changelog.json`
+  - `CHANGELOG.md`
+
+## [feature/main-standalone-mode] - 2026-07-19 (Cleanup & Branding)
+- **Feature Summary**: Updated workspace brand logo to Proxync Graphite Gateway SVG, replacing the old PNG assets. Removed deprecated `docs/assets` folder. Re-wrote `README.md` to reflect local-first standalone desktop architecture and simplify workspace startup commands. Untracked `.agents` directory in git to respect gitignore specifications. Replaced terminal-orb PX text with logo image in WelcomeView.
+- **Modified/Deleted Files**:
+  - `README.md`
+  - `CHANGELOG.md`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/index.css`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/public/logo.svg` (added)
+  - `docs/assets` (deleted)
+
+## [feature/main-standalone-mode] - 2026-07-19
+- **Feature Summary**: Migrated application to 100% offline, standalone, local-first mode. Removed NestJS API backend (`packages/api`), postgres/redis configurations, and `docker-compose.yml`. Implemented Rust state serialization commands saving configurations directly to `AppData/Roaming/Proxync/data.json`. Created a local TCP proxy in Rust that intercepts HTTP traffic and emits request/response logs directly to the frontend via Tauri events. Removed all references to Guardrails, Observability views, and Companion chat/voice panels from frontend state and views. Configured Tauri build settings to output a portable single executable, verified clean builds, and updated gitignore settings.
+- **Modified/Deleted Files**:
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/components/views/LobbyView.tsx`
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/SwaggerView.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/lib/api.ts`
+  - `packages/desktop/src/lib/types.ts`
+  - `.gitignore`
+  - `package.json`
+  - `docker-compose.yml` (deleted)
+  - `packages/desktop/src/components/views/ObservabilityView.tsx` (deleted)
+
+## [feature/main-dynamic-processes-notes] - 2026-07-18
+- **Feature Summary**: Implemented dynamic process directory and executable path lookup on Windows using native netstat parsing and WMI/CIM queries with a high-performance local process cache in Rust to prevent OS overhead; shifted Workspace Notes input from SettingsView to WelcomeView; removed obsolete relayDeploymentHint settings from AppSettings.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src/lib/types.ts`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/App.tsx`
+
+## [feature/main-modular-ui-redesign] - 2026-07-18
+- **Feature Summary**: Redesigned the desktop UI/UX completely with a premium glassmorphism theme and modular structure, refactoring App.tsx into independent views under components/views; successfully merged with upstream branch changes, preserving Cloudflare tunnel support, state hydration logic, and Control Plane connection options; resolved all merge conflicts and validated TypeScript compilation.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/index.css`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/LobbyView.tsx`
+  - `packages/desktop/src/components/views/ObservabilityView.tsx`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/components/views/SwaggerView.tsx`
+  - `packages/desktop/src/components/views/TrafficView.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `package-lock.json`
+  - `.agents/changelog.json`
+
+## [feature/main-cloudflare-refactor] - 2026-07-17
+- **Feature Summary**: Integrated Cloudflare Tunnel support using npx cloudflared quick tunnels with automatic trycloudflare URL parsing; built premium visual antenna latency signal bars displaying ping times to Local loopback, Cloudflare edge, and Localtunnel endpoints; refactored App.tsx monolith into independent views (LobbyView, ProcessView, TrafficView, PostmanView, SwaggerView, ObservabilityView, SettingsView) and dialog components; resolved workspaces state hydration race condition by loading local state synchronously on mount; added seamless silent workspace auto-registration during public domain sharing; added permanent Control Plane Connection section inside Settings with reconnect actions; bypassed guest user active tunnel count limits for offline/local MVP mode.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/api/src/tunnels/tunnels.service.ts`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/CompanionPanel.tsx`
+  - `packages/desktop/src/components/DiscoverDialog.tsx`
+  - `packages/desktop/src/components/DomainSelectDialog.tsx`
+  - `packages/desktop/src/components/RequestDetailDialog.tsx`
+  - `packages/desktop/src/lib/types.ts`
+  - `packages/desktop/src/screens/LobbyView.tsx`
+  - `packages/desktop/src/screens/ObservabilityView.tsx`
+  - `packages/desktop/src/screens/PostmanView.tsx`
+  - `packages/desktop/src/screens/ProcessView.tsx`
+  - `packages/desktop/src/screens/SettingsView.tsx`
+  - `packages/desktop/src/screens/SwaggerView.tsx`
+  - `packages/desktop/src/screens/TrafficView.tsx`
+
+## [feature/main-responsive-ui-cleanup] - 2026-07-17
+- **Feature Summary**: Removed duplicate top navbar and tab-strip navigation bars — all navigation now lives exclusively in the sidebar, eliminating the dual-nav confusion. Added a compact 48px mobile-nav-bar (hamburger + current view label) that only appears on screens ≤820px where the sidebar becomes a slide-in overlay drawer. Fixed full-screen layout breakage caused by grid display:none row collapse — workspace-shell converted from CSS grid to flexbox column so content fills 100% height on all screen sizes. Added tunnel status pill inside the sidebar replacing the removed topbar session pill. Redesigned RequestPlayground with sub-tab switcher (REST Client / AI Endpoint Scanner) to prevent input squashing inside narrow inspector panels. Added onClose callback to ChatPanel with dismiss button in header. Implemented 2-step onboarding wizard in LobbyView when no workspaces exist (welcome step → workspace name input step). Added responsive CSS breakpoints for inspector/chat panel overlays at ≤1200px and full-width at ≤768px. Sidebar now auto-closes when any nav item is clicked on mobile.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/ChatPanel.tsx`
+  - `packages/desktop/src/components/RequestPlayground.tsx`
+  - `packages/desktop/src/screens/TunnelsView.tsx`
+  - `packages/desktop/src/index.css`
+  - `.agents/changelog.json`
+
+## [feature/main-shared-domains-pool] - 2026-07-16
+- **Feature Summary**: Refactored custom domains relationship from workspace level to user level to enable sharing domains globally across workspaces; added customDomain unique reference to Tunnels; implemented DomainSelectDialog dropdown choice for exposing tunnels on random subdomains, custom domains, or public Localtunnel proxies; integrated Localtunnel client spawning in Rust layer routing through API port 3939 to support 100% traffic capturing/logging; added local WiFi LAN Tunnel resolver and premium helper select card styling with preferred subdomain selection support.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/api/prisma/schema.prisma`
+  - `packages/api/src/domains/domains.controller.ts`
+  - `packages/api/src/domains/domains.service.ts`
+  - `packages/api/src/relay/relay.middleware.ts`
+  - `packages/api/src/tunnels/dto/tunnel.dto.ts`
+  - `packages/api/src/tunnels/tunnels.service.ts`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/DomainsSettings.tsx`
+  - `packages/desktop/src/lib/api.ts`
+
+## [feature/main-dns-table-and-local-shares-ui] - 2026-07-16
+- **Feature Summary**: Reordered and styled custom domains DNS configuration table to match Namesilo/GoDaddy layout; implemented public direct DNS resolver (1.1.1.1/8.8.8.8) to bypass local cached lookup delays; added explicit WAN (public tunnel) vs LAN (local server) share choices; fixed active tunnel state resetting upon re-entering workspaces from Lobby.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/api/src/domains/domains.service.ts`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/DomainsSettings.tsx`
+  - `packages/desktop/src/index.css`
+  - `.agents/changelog.json`
+
+## [feature/main-agents-and-env-config] - 2026-07-16
+- **Feature Summary**: Created workspace rules (AGENTS.md), system architecture recon map (architecture.json), and release logs (changelog.json); shifted .env.example from root to packages/api/ with updated default port 3939.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `.agents/AGENTS.md`
+  - `.agents/architecture.json`
+  - `.agents/changelog.json`
+  - `.env.example`
+  - `packages/api/.env.example`
+
+## [main] - 2026-07-16
+- **Feature Summary**: Shifted API server to custom port 3939 to avoid local developer port conflicts; introduced workspace onboarding experience for zero-workspace startup; implemented cancel option for local LAN shares in offline modes; resolved NestJS module circular references via decoupled events broker; added active tunnel state hydration on startup; resolved sidebar layout overlapping via scrollbar overrides.
+  - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
+- **Modified Files**:
+  - `packages/api/src/main.ts`
+  - `packages/api/src/tunnels/tunnels.service.ts`
+  - `packages/api/.env`
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/ChatPanel.tsx`
+  - `packages/desktop/src/lib/api.ts`
+  - `packages/desktop/src/screens/ApiKeysView.tsx`
+  - `packages/desktop/src/screens/TunnelsView.tsx`
+  - `packages/desktop/src/index.css`

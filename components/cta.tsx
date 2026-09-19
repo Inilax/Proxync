@@ -1,107 +1,122 @@
 "use client";
 
-import { Download, Terminal, CheckCircle2 } from "lucide-react";
-import Link from "next/link";
-import { Button, Container } from "@/components/ui";
-import { usePlatformDownload, useLatestRelease } from "@/lib/releases";
-import { useCloudflareLatency } from "./latency";
+import { Download, Terminal, Laptop, ShieldCheck } from "lucide-react";
+import { usePlatformDownload, useLatestRelease, getDownloadsForVersion } from "@/lib/releases";
 
 export function Cta() {
   const download = usePlatformDownload();
-  const release  = useLatestRelease();
-  const latency  = useCloudflareLatency();
-  const latencyLabel =
-    latency.status === "ok"
-      ? `${latency.ms}ms Edge`
-      : latency.status === "offline"
-        ? "Offline"
-        : "Measuring…";
-
-  const badges = [
-    "12MB Native Binary",
-    latencyLabel,
-    "100% Local Storage",
-    "Zero Cloud Required",
-  ];
+  const release = useLatestRelease();
+  const downloads = getDownloadsForVersion(release.version);
 
   return (
-    <section className="relative overflow-hidden py-32">
-      {/* Single diagonal accent line at top */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent"
-      />
+    <section id="download" className="w-full max-w-5xl mx-auto px-4 py-16 mb-8 scroll-mt-20">
+      <div className="rounded-3xl bg-gradient-to-b from-[#11141D] to-[#0A0C10] border border-[#1F232E] p-8 md:p-12 relative overflow-hidden hairline-glow shadow-2xl">
+        {/* Subtle Ambient Backlight */}
+        <div
+          aria-hidden="true"
+          className="absolute -right-20 -bottom-20 w-80 h-80 rounded-full bg-primary/[0.08] blur-3xl pointer-events-none"
+        />
 
-      {/* Very faint ambient */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background: "radial-gradient(ellipse 50% 30% at 50% 100%, rgba(6,182,212,0.04) 0%, transparent 70%)",
-        }}
-      />
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-8 relative z-10">
+          <div className="max-w-xl">
+            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-white/[0.04] border border-white/10 text-[11px] font-mono text-[#8E93A4] mb-4">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+              <span>Version {release.tagName} Stable</span>
+            </div>
 
-      <Container className="relative z-10">
-        <div className="grid grid-cols-1 gap-16 lg:grid-cols-[1fr_auto] lg:items-center lg:gap-24">
-          {/* Left — Headline */}
-          <div>
-            <p className="mb-5 font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-primary/60">
-              Developer-First · Ready in Seconds
-            </p>
-            <h2 className="font-display text-5xl font-black leading-[1.03] tracking-[-0.03em] text-white sm:text-6xl lg:text-[64px]">
-              Stop context-switching.
-              <br />
-              <span className="text-white/25">Start shipping faster.</span>
+            <h2 className="font-sans text-3xl md:text-4xl font-bold tracking-tight text-white mb-3">
+              Upgrade your local tunneling workflow.
             </h2>
-            <p className="mt-6 max-w-md text-[15px] leading-relaxed text-white/35">
-              Join high-velocity engineers who reclaimed their local dev workflow. Download the engine today and test your webhooks instantly.
+
+            <p className="text-[#8E93A4] text-sm leading-relaxed mb-5">
+              Free, local-first, and open source under Apache 2.0. Install the native desktop studio with Resilient Standby Mode and 1-Click IDE jumping.
             </p>
 
-            {/* Trust badges */}
-            <div className="mt-8 flex flex-wrap gap-2">
-              {badges.map((badge) => (
-                <div
-                  key={badge}
-                  className="inline-flex items-center gap-2 rounded-full border border-white/[0.06] bg-white/[0.02] px-3.5 py-1.5 font-mono text-[11px] text-white/35"
-                >
-                  <CheckCircle2 size={12} className="text-tertiary/70" />
-                  {badge}
-                </div>
-              ))}
+            <div className="flex flex-wrap items-center gap-y-2 gap-x-3 text-[12px] font-mono text-[#54596B]">
+              <span className="flex items-center gap-1.5 text-[#8E93A4]">
+                <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+                SHA-256 Verified
+              </span>
+              <span>•</span>
+              <span>Windows Authenticode Signed</span>
+              <span>•</span>
+              <span>Zero Cloud Telemetry</span>
             </div>
           </div>
 
-          {/* Right — CTA stack */}
-          <div className="flex flex-col items-start gap-4 lg:items-end">
-            <Button
-              variant="primary"
-              size="lg"
-              href={download.url}
-              className="group relative overflow-hidden rounded-full font-bold px-8 py-4 text-sm shadow-[0_0_0_1px_rgba(6,182,212,0.3)] hover:shadow-[0_0_40px_rgba(6,182,212,0.3)] transition-all"
+          {/* Platform Download Options (Dynamically highlight user's OS) */}
+          <div className="flex flex-col sm:flex-row flex-wrap gap-2.5 w-full lg:w-auto">
+            {/* Windows */}
+            <a
+              href={downloads.windows.url}
               target="_blank"
               rel="noopener noreferrer"
+              className={`px-5 py-3.5 rounded-xl bg-[#0E1015] border ${
+                download.platform === "windows"
+                  ? "border-primary/50 shadow-lg shadow-primary/5"
+                  : "border-[#1F232E] hover:border-primary/40"
+              } text-white flex items-center gap-3.5 transition-all hover:bg-[#14171E] group min-w-[190px]`}
             >
-              <div className="absolute inset-0 flex justify-center [transform:skew(-12deg)_translateX(-100%)] group-hover:duration-700 group-hover:[transform:skew(-12deg)_translateX(100%)]">
-                <div className="relative h-full w-10 bg-white/25" />
+              <Download className={`h-5 w-5 ${download.platform === "windows" ? "text-primary" : "text-[#8E93A4]"} group-hover:scale-110 transition-transform`} />
+              <div className="flex flex-col text-left">
+                <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <span>Windows</span>
+                  <span className="px-1.5 py-0.2 rounded bg-primary/20 text-primary text-[9px] font-mono">
+                    {download.platform === "windows" ? "Detected (Latest)" : "Latest"}
+                  </span>
+                </span>
+                <span className="text-[10px] font-mono text-[#8E93A4]">x64 Setup (.exe)</span>
               </div>
-              <Download className="h-4 w-4" />
-              <span>{download.label}</span>
-            </Button>
+            </a>
 
-            <Link
-              href="/docs"
-              className="inline-flex items-center gap-2 rounded-full border border-white/[0.06] bg-white/[0.02] px-6 py-3.5 text-sm font-medium text-white/40 transition-all hover:border-white/[0.1] hover:text-white/65"
+            {/* macOS */}
+            <a
+              href={downloads.macos.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`px-5 py-3.5 rounded-xl bg-[#0E1015] border ${
+                download.platform === "macos"
+                  ? "border-primary/50 shadow-lg shadow-primary/5"
+                  : "border-[#1F232E] hover:border-[#2A2F3D]"
+              } text-white flex items-center gap-3.5 transition-all hover:bg-[#14171E] group min-w-[180px]`}
             >
-              <Terminal className="h-3.5 w-3.5 text-primary/50" />
-              Explore Technical Docs
-            </Link>
+              <Laptop className={`h-5 w-5 ${download.platform === "macos" ? "text-primary" : "text-[#8E93A4]"} group-hover:scale-110 transition-transform`} />
+              <div className="flex flex-col text-left">
+                <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <span>macOS</span>
+                  <span className="px-1.5 py-0.2 rounded bg-primary/20 text-primary text-[9px] font-mono">
+                    {download.platform === "macos" ? "Detected (Latest)" : "v0.2.2"}
+                  </span>
+                </span>
+                <span className="text-[10px] font-mono text-[#8E93A4]">{downloads.macos.statusNote}</span>
+              </div>
+            </a>
 
-            <p className="font-mono text-[11px] text-white/20 lg:text-right">
-              {release.tagName} · Windows · macOS · Linux
-            </p>
+            {/* Linux */}
+            <a
+              href={downloads.linux.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`px-5 py-3.5 rounded-xl bg-[#0E1015] border ${
+                download.platform === "linux"
+                  ? "border-primary/50 shadow-lg shadow-primary/5"
+                  : "border-[#1F232E] hover:border-[#2A2F3D]"
+              } text-white flex items-center gap-3.5 transition-all hover:bg-[#14171E] group min-w-[180px]`}
+            >
+              <Terminal className={`h-5 w-5 ${download.platform === "linux" ? "text-primary" : "text-[#8E93A4]"} group-hover:scale-110 transition-transform`} />
+              <div className="flex flex-col text-left">
+                <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <span>Linux</span>
+                  <span className="px-1.5 py-0.2 rounded bg-primary/20 text-primary text-[9px] font-mono">
+                    {download.platform === "linux" ? "Detected (Latest)" : "v0.2.2"}
+                  </span>
+                </span>
+                <span className="text-[10px] font-mono text-[#8E93A4]">{downloads.linux.statusNote}</span>
+              </div>
+            </a>
           </div>
         </div>
-      </Container>
+      </div>
     </section>
   );
 }

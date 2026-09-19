@@ -179,7 +179,7 @@ export function SettingsView({
             </div>
           </div>
           <span className="rounded border border-primary/40 bg-primary/20 px-3 py-1 font-mono text-xs font-bold text-primary">
-            v0.2.1 Enterprise Preview
+            v0.2.2 Enterprise Preview
           </span>
         </div>
       </div>

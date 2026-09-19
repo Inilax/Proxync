@@ -4,7 +4,6 @@ import { cn } from "@/lib/utils";
 export function LogoMark({ className }: { className?: string }) {
   const grad = useId();
   const core = useId();
-  const halo = useId();
 
   return (
     <svg viewBox="0 0 240 240" aria-hidden="true" className={cn("h-8 w-8", className)}>
@@ -18,12 +17,7 @@ export function LogoMark({ className }: { className?: string }) {
           <stop offset="45%" stopColor="#cbd5e1" />
           <stop offset="100%" stopColor="#64748b" />
         </radialGradient>
-        <radialGradient id={halo} cx="50%" cy="50%" r="60%">
-          <stop offset="0%" stopColor="#cbd5e1" stopOpacity="0.3" />
-          <stop offset="100%" stopColor="#cbd5e1" stopOpacity="0" />
-        </radialGradient>
       </defs>
-      <circle cx="120" cy="120" r="112" fill={`url(#${halo})`} />
       <path
         d="M120,25 L202.3,72.5 L202.3,167.5 L120,215 L37.7,167.5 L37.7,72.5 Z"
         fill="#0a141c"

@@ -1,31 +1,52 @@
 ---
 title: Swagger & OpenAPI Studio
-description: Automatic OpenAPI 3.0 spec generation engine, Dynamic Netstat discovery, bot probe filtering, dynamic path parameterization, and multi-framework codebase scanner.
+description: Auto-generate interactive OpenAPI 3.0 documentation from your codebase or live traffic without writing manual YAML.
 ---
 
-In Proxync v0.2.1, the **Swagger Studio** combines live traffic OpenAPI spec generation with an **Automatic Multi-Framework Codebase Scanner**, bot probe filtering, and incremental route deep-merging.
+Writing and maintaining API documentation by hand is notoriously tedious. You often have to maintain hundreds of lines of complex YAML files or configure heavy decorator libraries.
 
-## Key Features in v0.2.1
+The **Swagger & OpenAPI Studio** in Proxync creates interactive, beautiful API documentation for you automatically—either by scanning your project files or by learning from live requests passing through your tunnels.
 
-- **Dynamic Netstat Full-Port Recon** — Scans all listening ports on IPv4 and IPv6 (`recon.rs`), automatically identifying frameworks and associating public tunnels.
-- **Malicious Bot Probe & Scanner Filter** — Automatically ignores noisy vulnerability scans (`/.env`, `/.git`, `*.pem`, `/wp-admin`) and SPA HTML fallback catch-alls.
-- **Dynamic URL Path Parameterization** — Generalizes dynamic path segments (IDs e.g. `todo-1787085033407`, UUIDs, numerical IDs, Mongo ObjectIDs) into standard OpenAPI path parameters (e.g. `/api/todos/{id}`) with matching `in: path` parameter definitions.
-- **Incremental OpenAPI Spec Ingestion** — Deep-merges newly captured traffic with previously generated routes, preventing route loss when testing endpoints sequentially.
-- **Multi-Tunnel Server Picker** — Clear server dropdown rendering active public tunnels (`Port :4000 — px-subdomain (https://...)`) with clickable tunnel badges on endpoint cards.
-- **2-Way Collection Export/Import** — Export OpenAPI specs directly into Playground collections or import existing OpenAPI YAML/JSON specs.
+---
 
-## Codebase Scanner Supported Frameworks
+## Why Developers Love Swagger Studio
 
-| Framework | Scan Strategy |
-| --- | --- |
-| Next.js | Scans `app/api/**/route.ts` and `pages/api/**/*.ts`. |
-| Vite / React | Discovers dev server and proxies traffic to backend origins. |
-| Express / Fastify | Inspects route registration (`app.get`, `router.post`). |
-| NestJS | Parses `@Controller()` and HTTP method decorators (`@Get`, `@Post`). |
-| FastAPI | Parses `@app.get()`, `@app.post()`, and Pydantic models. |
-| Spring Boot | Parses `@RestController`, `@GetMapping`, `@PostMapping`. |
-| Go (Gin/Chi) | Scans router definitions and handler signatures. |
+- **Zero Manual YAML:** Proxync generates clean OpenAPI 3.0 specifications automatically.
+- **Smart Path Parameterization:** If you make a request to `/api/todos/todo-987654` or `/api/users/42`, Proxync is smart enough to recognize dynamic IDs and automatically parameterize the route as `/api/todos/{id}` with proper path parameters.
+- **Bot Probe Filtering:** Malicious automated scans looking for `/.env`, `/.git`, or `/wp-admin` are automatically filtered out, ensuring your documentation only reflects your actual application routes.
+- **Multi-Server Dropdown:** If you are running multiple servers or public tunnels, switch between them effortlessly with an intuitive server dropdown.
+- **1-Click Export to Playground:** Convert your generated OpenAPI spec into a saved collection in **Playground** with one click so you can test them anytime.
 
-## 2-Way Playground Collection Sync
+---
 
-Clicking **Export to Playground** inside Swagger Studio automatically converts all endpoints into collection items and redirects seamlessly into **Playground**.
+## Supported Frameworks for Codebase Scanning
+
+Proxync includes an automatic route scanner that inspects your source code to detect API routes:
+
+| Framework / Stack | How Proxync Discovers Routes |
+| :--- | :--- |
+| **Next.js** | Scans `app/api/**/route.ts` and `pages/api/**/*.ts`. |
+| **FastAPI** | Parses route decorators (`@app.get`, `@app.post`) and Pydantic models. |
+| **Express & Fastify** | Inspects route registrations (`app.get(...)`, `router.post(...)`). |
+| **NestJS** | Scans `@Controller()` and HTTP method decorators (`@Get()`, `@Post()`). |
+| **Spring Boot** | Parses `@RestController`, `@GetMapping`, and `@PostMapping` annotations. |
+| **Go (Gin & Chi)** | Identifies router definitions and handler endpoints. |
+| **Python HTTP Server** | Detects built-in `python -m http.server` endpoints. |
+
+---
+
+## Two Ways Your Docs Get Built
+
+### 1. By Code Scanning
+Click **Scan Project Folder**. Proxync parses your local source code, extracts route methods, and builds an OpenAPI spec in seconds.
+
+### 2. From Live Traffic (Incremental Deep-Merging)
+As you click around your app or test features through a tunnel, Proxync observes the requests. It incrementally merges newly captured endpoints into your documentation, preserving previously discovered routes without overwriting them.
+
+---
+
+## What to Read Next
+
+- **[API Playground](/docs/postman)** — Export your Swagger docs directly into a Playground collection.
+- **[Traffic Inspector](/docs/traffic)** — Watch the live requests that power automatic Swagger documentation.
+- **[Workspaces](/docs/workspaces)** — Keep separate Swagger specs organized per project.

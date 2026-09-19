@@ -22,12 +22,12 @@ export function WelcomeView({
                   <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary"></span>
                 </span>
                 <span className="font-mono text-[11px] font-bold text-primary uppercase tracking-widest">
-                  Service: Active · Internet Guard Connected
+                  Service: Active · Dynamic Relay DNS (relay.proxync.dev) · SSRF Guarded
                 </span>
               </div>
               <h2 className="text-lg font-bold text-on-surface">Network Hub</h2>
               <p className="text-on-surface-variant text-xs mt-0.5 max-w-md">
-                Proxync is currently monitoring 1 active tunnel across us-east-1 relay nodes.
+                Proxync v0.2.2 is monitoring 1 active tunnel · Dynamic DNS resolution, 50ms handshake polling &amp; zero-orphan PGID process teardown.
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
@@ -52,7 +52,7 @@ export function WelcomeView({
               <SignalBars latency={28} />
             </div>
             <div className="mt-1 font-mono text-sm font-bold text-primary">28 ms</div>
-            <div className="font-mono text-[9.5px] text-tertiary">Optimal Ping</div>
+            <div className="font-mono text-[9.5px] text-tertiary">relay.proxync.dev (Dynamic)</div>
           </div>
 
           <div className="rounded-xl border border-outline-variant/30 bg-surface-container p-3">
@@ -61,7 +61,7 @@ export function WelcomeView({
               <SignalBars latency={42} />
             </div>
             <div className="mt-1 font-mono text-sm font-bold text-secondary">42 ms</div>
-            <div className="font-mono text-[9.5px] text-secondary">Active Edge</div>
+            <div className="font-mono text-[9.5px] text-secondary">Active Edge · CWE-20 Sanitized</div>
           </div>
 
           <div className="rounded-xl border border-outline-variant/30 bg-surface-container p-3">
@@ -70,7 +70,7 @@ export function WelcomeView({
               <SignalBars latency={1} />
             </div>
             <div className="mt-1 font-mono text-sm font-bold text-tertiary">&lt;1 ms</div>
-            <div className="font-mono text-[9.5px] text-tertiary">*.localtest.me</div>
+            <div className="font-mono text-[9.5px] text-tertiary">127.0.0.1 (SSRF Whitelisted)</div>
           </div>
         </div>
 
@@ -99,11 +99,13 @@ export function WelcomeView({
               <div className="min-w-0">
                 <div className="text-xs font-bold text-on-surface">Vite dev server (:5173)</div>
                 <div className="font-mono text-[11px] text-secondary truncate">https://px-a1b2c3d4.proxync.dev</div>
+                <div className="font-mono text-[9px] text-[#54596B] mt-0.5">Handshake: 4ms · 50ms Crash Poll · PGID Isolated (Zero Orphans)</div>
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 font-mono text-[9.5px] font-bold text-primary">
-                Proxync Native SSH
+              <span className="rounded-full border border-primary/40 bg-primary/10 px-2.5 py-0.5 font-mono text-[9.5px] font-bold text-primary flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                Proxync Mesh Relay
               </span>
               <a
                 href={TUNNEL_URL}
@@ -118,16 +120,16 @@ export function WelcomeView({
           </div>
         </div>
 
-        {/* Quick Action Tiles */}
+        {/* Quick Action Tiles — v0.2.2 Hardened Workflows */}
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
           <button
             onClick={() => onNavigate("process")}
             className="text-left rounded-xl border border-outline-variant/30 bg-surface-container p-2.5 hover:border-primary/40 transition-all cursor-pointer"
           >
             <div className="flex items-center gap-2 font-bold text-xs text-primary mb-1">
-              <Share2 className="h-3.5 w-3.5" /> Share Local Port
+              <Share2 className="h-3.5 w-3.5" /> Kernel Port Recon
             </div>
-            <p className="text-[11px] text-on-surface-variant leading-relaxed">Expose localhost:5173 over Cloudflare or Native SSH in 1 click.</p>
+            <p className="text-[11px] text-on-surface-variant leading-relaxed">Darwin proc_pidpath FFI &amp; ghost daemon noise filtering (ignoring system daemons).</p>
           </button>
 
           <button
@@ -135,9 +137,9 @@ export function WelcomeView({
             className="text-left rounded-xl border border-outline-variant/30 bg-surface-container p-2.5 hover:border-primary/40 transition-all cursor-pointer"
           >
             <div className="flex items-center gap-2 font-bold text-xs text-secondary mb-1">
-              <Radio className="h-3.5 w-3.5" /> Add Custom Domain
+              <Radio className="h-3.5 w-3.5" /> Custom Domain DoH
             </div>
-            <p className="text-[11px] text-on-surface-variant leading-relaxed">Verify custom DNS records (A / TXT) for custom domain routing.</p>
+            <p className="text-[11px] text-on-surface-variant leading-relaxed">DNS-over-HTTPS token verification with Google DoH &amp; Cloudflare fallback.</p>
           </button>
 
           <button
@@ -145,9 +147,9 @@ export function WelcomeView({
             className="text-left rounded-xl border border-outline-variant/30 bg-surface-container p-2.5 hover:border-primary/40 transition-all cursor-pointer"
           >
             <div className="flex items-center gap-2 font-bold text-xs text-tertiary mb-1">
-              <Shield className="h-3.5 w-3.5" /> Configure Guardrails
+              <Shield className="h-3.5 w-3.5" /> SSRF Intranet Shield
             </div>
-            <p className="text-[11px] text-on-surface-variant leading-relaxed">Set PII redaction and payload capture rules for workspace safety.</p>
+            <p className="text-[11px] text-on-surface-variant leading-relaxed">Strict TCP probe whitelist blocks 192.168.x &amp; 10.x intranet scanning attacks.</p>
           </button>
         </div>
       </div>

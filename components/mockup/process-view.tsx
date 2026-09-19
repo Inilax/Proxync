@@ -8,9 +8,14 @@ export function ProcessView() {
     <div className="p-4 space-y-3.5 fade-in select-none h-full overflow-y-auto">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-outline-variant/30 pb-3 gap-2">
         <div>
-          <h1 className="text-lg font-bold text-on-surface">Tunnels &amp; Process Recon</h1>
+          <h1 className="text-lg font-bold text-on-surface flex items-center gap-2">
+            <span>Tunnels &amp; Process Recon</span>
+            <span className="px-2 py-0.5 rounded bg-primary/10 border border-primary/30 text-primary font-mono text-[10px] font-bold">
+              Kernel FFI + Ghost Noise Filter
+            </span>
+          </h1>
           <p className="text-xs text-on-surface-variant font-mono mt-0.5">
-            Dynamic Netstat IPv4/IPv6 full-port discovery · Proxync Native SSH (Port 2222) &amp; Cloudflare
+            Dynamic Netstat &amp; proc_pidpath FFI · Ghost Daemon Filter Active (Ignored 8 system daemons) · Zero-Orphan PGID
           </p>
         </div>
         <button

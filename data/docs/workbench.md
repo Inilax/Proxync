@@ -1,15 +1,13 @@
 ---
 title: Request Workbench
-description: High-performance multi-tab HTTP execution engine with live visual diffing, 1-click IDE jumping, and multi-language code export.
+description: Multi-tab HTTP execution studio with live visual response diffing, 1-click IDE jumping, and multi-language code export.
 ---
 
-## Overview
+When you edit backend code, how do you verify you didn't accidentally break an API response or change a JSON field?
 
-The **Request Workbench** in Proxync v0.2.1 is an advanced HTTP draft and replay studio designed for rapid API iteration, regression testing, and root-cause debugging.
+The **Request Workbench** is built for this exact workflow. Instead of copying and pasting payloads between terminal `curl` commands, browser tabs, and external API clients, the Workbench lets you stage requests, tweak headers, replay them instantly, and view **side-by-side visual diffs** showing exactly what changed.
 
-Instead of copying request payloads back and forth between terminal curl commands, Postman collections, and browser DevTools, the Request Workbench lets you capture live traffic, modify headers and body payloads in multi-tab drafts, execute instant replays, and view **side-by-side visual diffs** against the original response.
-
-```
+```text
 Captured Traffic  ──▶  Workbench Draft  ──▶  Send & Replay  ──▶  Visual Diff (Live vs Captured)
                                                       │
                                                       └──▶  1-Click IDE Jump (VS Code / Cursor)
@@ -17,58 +15,59 @@ Captured Traffic  ──▶  Workbench Draft  ──▶  Send & Replay  ──�
 
 ---
 
-## Key Features
+## Why Developers Use the Request Workbench
 
-### 1. Multi-Tab Draft Staging
-- **Concurrent Tabs**: Stage and edit multiple requests simultaneously without losing state.
-- **Header & Body Editor**: Full support for custom headers, URL query parameters, and formatted JSON body payloads.
-- **Cache Bypass Toggle**: Injects `Cache-Control: no-cache, no-store` to ensure live responses bypass intermediate memory or HTTP caches.
-
-### 2. Live Replay & Performance Benchmarking
-- **Sub-Millisecond Execution**: Direct loopback routing via Proxync's native Rust client.
-- **Latency & Status Tracking**: Accurate millisecond-duration telemetry (`18ms`, `34ms`) and HTTP status badge indicators (`200 OK`, `201 Created`, `500 Internal Error`).
-- **Replay History**: Track run numbers and compare output changes across successive executions.
-
-### 3. Visual Response Diffing
-Compare live replay outputs against the original captured payload in two distinct view modes:
-- **Side-by-Side Mode**: Dual-column layout showing the original captured response alongside the fresh live replay response.
-- **Unified Mode**: Compact diff view highlighting added, modified, and deleted JSON fields.
+1. **Catch Accidental Schema Breaks**  
+   After modifying your code in Cursor or VS Code, replay a captured request. The visual diff highlights added, modified, or missing JSON fields in green and red.
+2. **Stage Multiple Requests in Parallel**  
+   Use clean browser-like tabs to keep multiple API calls open at once without losing your progress.
+3. **No CORS Restrictions**  
+   Requests are executed through Proxync's native Rust HTTP engine, so your calls are never blocked by browser CORS security policies.
+4. **Instant Token & Auth Sync**  
+   Grab the `Authorization: Bearer ...` token or session cookie from real captured traffic and apply it to your draft in a single click.
 
 ---
 
-## 1-Click IDE Jumping
+## Core Features
 
-Proxync v0.2.1 bridges runtime traffic inspection with your local code editor. Through a native Tauri IPC command (`open_file_in_editor`), Proxync resolves the source file path and 1-indexed line number where the target endpoint is defined and opens it instantly.
+### 1. Visual Response Diffing
+Compare live replay results against original captured traffic in two intuitive view modes:
+- **Side-by-Side Mode:** Two columns showing the original response on the left and the new live response on the right.
+- **Unified Diff Mode:** A compact Git-style diff highlighting changes directly within the JSON tree.
 
-### Supported Editors
-- **VS Code**: Launches via `vscode://file/<path>:<line>` or local `code` CLI.
-- **Cursor**: Launches via `cursor://file/<path>:<line>` or local `cursor` CLI.
+### 2. Multi-Tab Draft Staging
+- Open as many request drafts as you need.
+- Edit URL query parameters, custom headers, and JSON body payloads with syntax highlighting.
+- Toggle **Cache Bypass** to inject `Cache-Control: no-cache` headers, ensuring you test your actual backend logic rather than cached responses.
 
-```bash
-# Example Jump Target
-src/routes/users.ts:42
-```
+### 3. 1-Click IDE Deep Linking
+Want to see the backend code that generates a specific response? Click **Open in Editor**:
+- Proxync automatically matches the route to your project files and opens the file in **VS Code** (`code`) or **Cursor** (`cursor`) at the exact controller line.
+- If your system restricts direct URI protocol handlers, Proxync smoothly copies the formatted file path and line number to your clipboard as a fallback.
 
-> [!TIP]
-> If direct URI protocol launching is restricted by your OS, Proxync automatically copies the formatted file and line target to your system clipboard as an instant fallback.
+### 4. Polyglot Code Snippet Generator
+Once you have tested an endpoint and confirmed it works, export it into production-ready code in one click:
 
----
-
-## Multi-Language Code Snippet Generator
-
-Export any captured or staged request into ready-to-run terminal and programming language code snippets in a single click:
-
-| Language / Tool | Target Library |
+| Language / Tool | Generated Snippet Format |
 | :--- | :--- |
-| **cURL** | POSIX terminal command |
-| **JavaScript / TypeScript** | Native `fetch` API with `async/await` |
-| **Python** | `requests` library |
-| **Go** | `net/http` standard library |
-| **Rust** | `reqwest` with `tokio` async runtime |
+| **cURL** | Terminal command ready to run in Bash or PowerShell |
+| **JavaScript / TypeScript** | Modern `fetch` with `async/await` |
+| **Python** | Clean `requests` library snippet |
+| **Go** | Standard `net/http` request |
+| **Rust** | Async `reqwest` + `tokio` snippet |
 
 ---
 
-## Auth Synchronization & Token Injection
+## How to Use the Workbench in 3 Steps
 
-- **Sync Auth**: Instantly extracts authorization headers (`Authorization: Bearer ...`), API keys, and session cookies from captured production traffic and applies them to your active draft tab.
-- **Bearer Token Helper**: Dedicated input field for quick JWT or Bearer token application without manually formatting header strings.
+1. **Capture:** In the **Traffic Inspector**, click **Send to Workbench** on any request you want to test.
+2. **Tweak & Edit:** Modify JSON values or parameters in the editor to test new scenarios.
+3. **Replay & Diff:** Press `Ctrl + Enter` (or `Cmd + Enter`). Review the response and inspect the visual diff to confirm your code changes work as expected.
+
+---
+
+## What to Read Next
+
+- **[API Playground](/docs/postman)** — Organize requests into permanent folders and collections.
+- **[Swagger & OpenAPI Studio](/docs/swagger)** — Auto-generate interactive documentation from your routes.
+- **[Observability Hub](/docs/observability)** — Monitor response times and find slow routes.

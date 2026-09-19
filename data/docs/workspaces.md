@@ -1,26 +1,48 @@
 ---
 title: Workspaces
-description: Isolated project contexts featuring dynamic activity tracking, 7-day inactivity filtering, batch tunnel teardown, and custom glass dialogs.
+description: Keep projects, dev servers, API collections, and traffic histories organized in isolated, clutter-free workspaces.
 ---
 
-In Proxync v0.2.1, workspaces serve as isolated project contexts with dynamic netstat reconnaissance, multi-tunnel segregation, and batch lifecycle management.
+If you build multiple web apps—such as a side project at night, an AI prototype on weekends, and your main work project—you don't want their tunnels, API requests, and traffic logs tangled together.
+
+In Proxync, a **Workspace** is an isolated home for a single project. Switching workspaces instantly switches your context, keeping your development clean and organized.
+
+---
 
 ## What a Workspace Holds
 
-- **Discovered Processes (`ProcessProfile[]`)** — Identified dev servers with PID, port, command, working directory, and framework detection.
-- **Playground Collections (`SavedRequest[]`)** — Saved REST API requests organized into tree folders.
-- **Traffic Log History (`RequestLog[]`)** — Recorded HTTP/WebSocket traffic with deterministic port, tunnelId, and server attribution.
-- **Domain Records (`DomainRecord[]`)** — Verified custom domain configurations.
-- **Workspace Activity (`lastActivityAt`)** — Timestamps updated automatically on workspace selection, tunnel launch, or incoming traffic.
+Everything related to your project stays neatly contained inside its workspace:
 
-## Dynamic Activity Tracking & 7-Day Inactivity Filtering
+| Item | Description |
+| :--- | :--- |
+| **Discovered Servers** | Running processes (PIDs, ports, frameworks) detected for this project. |
+| **Playground Collections** | Saved REST API requests organized into custom folders and tabs. |
+| **Traffic History** | Captured HTTP and WebSocket logs filtered specifically for this workspace. |
+| **Custom Domains** | Configured domain records and DNS verification status. |
+| **Notes & Settings** | Personal developer notes and project-level preferences. |
 
-- **Relative Activity Indicators** — Workspace cards display relative timestamps (`Just now`, `4m ago`, `18h ago`, `3d ago`).
-- **Inactive Auto-Categorization** — Workspaces dormant for over 7 days automatically transition into the **Inactive** tab to keep your active workspace rail clean.
-- **Active Workspace Restraints** — Workspace provisioning cards are focused exclusively on the **Active** tab.
+---
 
-## Batch Multi-Tunnel Teardown & Safety
+## Smart Activity Tracking & Clutter-Free Rails
 
-- **1-Click Stop All** — Stop all running tunnels associated with the workspace concurrently with graceful child process cleanup.
-- **Confirm Purge Dialog** — Customized glassmorphic confirmation modals protect against accidental workspace deletion.
-- **Global Escape Key Handler (`useEscape`)** — Pressing `Esc` dismisses modal overlays and inline creation forms seamlessly.
+Proxync helps you focus on what you are actively building:
+
+- **Relative Activity Timestamps:** Every workspace card shows when you last interacted with it (e.g. `Just now`, `10m ago`, `2d ago`).
+- **7-Day Inactivity Filtering:** Workspaces you haven't touched in over a week automatically move to the **Inactive** tab. Your data is 100% safe and never deleted—it simply keeps your main workspace rail tidy.
+- **Fast Search & Switching:** Jump between projects with a single click from the sidebar or workspace switcher.
+
+---
+
+## Workspace Safety & Batch Controls
+
+- **Batch "Stop All" Tunnels:** Switching projects or stepping away from your desk? Click the **Stop All** button to cleanly shut down all running tunnels for that workspace at once.
+- **Confirmation Modals:** Accidental clicks won't erase your work. Deleting a workspace requires explicit confirmation in a clean dialog.
+- **Keyboard Friendly:** Press `Esc` anytime to instantly dismiss modal overlays, dialogs, or dropdowns.
+
+---
+
+## What to Read Next
+
+- **[Tunnels & Sharing](/docs/tunnels)** — Start public tunnels inside your active workspace.
+- **[API Playground](/docs/postman)** — Organize project endpoints into structured collections.
+- **[Configuration](/docs/configuration)** — Learn where workspace data is saved on your hard drive.
