@@ -18,11 +18,10 @@
   --color-surface-container:          #0e1015;
   --color-surface-container-high:     #14171e;
   --color-surface-container-highest:  #1c202b;
-  --color-surface-variant:            #161922;
-  --color-on-surface:                 #f1f2f6;
-  --color-on-surface-variant:         #8e93a4;
-  --color-on-surface-muted:           #54596b;
-  --color-outline:                    #1f232e;
+  --color-on-surface:                 #ffffff;
+  --color-on-surface-variant:         #e2e8f0;
+  --color-on-surface-muted:           #cbd5e1;
+  --color-outline:                    #cbd5e1;
   --color-outline-variant:            #2a2f3d;
 
   /* Primary — Electric Blue (Steel Sky Cyan: #38bdf8) */
@@ -80,10 +79,15 @@
   --color-surface-container-high: #222a3d;
   --color-surface-container-highest: #2d3449;
   --color-surface-container-lowest: #060e20;
-  --color-primary: #c0c1ff;
+  --color-primary: #8aebff;
   --color-primary-container: #8083ff;
   --color-secondary: #89ceff;
   --color-tertiary: #ffb783;
+  --color-on-surface: #ffffff;
+  --color-on-surface-variant: #f8fafc;
+  --color-on-surface-muted: #e2e8f0;
+  --color-outline: #e2e8f0;
+  --color-outline-variant: #2a344a;
 }
 
 .theme-dracula {
@@ -99,6 +103,11 @@
   --color-primary-container: #44475a;
   --color-secondary: #8be9fd;
   --color-tertiary: #bd93f9;
+  --color-on-surface: #ffffff;
+  --color-on-surface-variant: #f8f8f2;
+  --color-on-surface-muted: #f8fafc;
+  --color-outline: #f8f8f2;
+  --color-outline-variant: #44475a;
 }
 
 .theme-dark,
@@ -115,10 +124,11 @@
   --color-primary-container: #0284c7;
   --color-secondary: #38bdf8;
   --color-tertiary: #34d399;
-  --color-on-surface: #f0f6fc;
-  --color-on-surface-variant: #94a3b8;
-  --color-outline: #64748b;
-  --color-outline-variant: #334155;
+  --color-on-surface: #ffffff;
+  --color-on-surface-variant: #f1f5f9;
+  --color-on-surface-muted: #e2e8f0;
+  --color-outline: #e2e8f0;
+  --color-outline-variant: #28303f;
 }
 
 .theme-emerald {
@@ -134,6 +144,11 @@
   --color-primary-container: #047857;
   --color-secondary: #34d399;
   --color-tertiary: #22d3ee;
+  --color-on-surface: #ffffff;
+  --color-on-surface-variant: #f8fafc;
+  --color-on-surface-muted: #e2e8f0;
+  --color-outline: #e2e8f0;
+  --color-outline-variant: #1a3830;
 }
 
 /* ── Keyframes ── */

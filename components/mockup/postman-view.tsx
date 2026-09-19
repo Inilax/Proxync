@@ -109,7 +109,7 @@ export function PostmanView() {
   const folders = Array.from(new Set(requests.map((r) => r.collection)));
 
   return (
-    <div className="flex h-full w-full p-3.5 gap-3 fade-in select-none items-stretch font-mono overflow-hidden">
+    <div className="flex h-full w-full p-2 sm:p-3.5 gap-2 sm:gap-3 fade-in select-none items-stretch font-mono overflow-hidden">
       {/* ── 1. Left Collections Rail ── */}
       <aside className="hidden w-56 shrink-0 flex-col rounded-xl border border-outline-variant/30 bg-surface-container p-3 sm:flex justify-between">
         <div className="space-y-2.5">
@@ -220,99 +220,105 @@ export function PostmanView() {
       </aside>
 
       {/* ── 2. Main Request & Response Workspace ── */}
-      <div className="min-w-0 flex-1 flex flex-col justify-between rounded-xl border border-outline-variant/30 bg-surface-container p-3 space-y-2.5 overflow-hidden">
+      <div className="min-w-0 flex-1 flex flex-col justify-between rounded-xl border border-outline-variant/30 bg-surface-container p-2 sm:p-3 space-y-2 sm:space-y-2.5 overflow-hidden">
         {/* Top Control Bar: Route Badge, Method, URL, Send, Save */}
-        <div className="space-y-2">
+        <div className="space-y-1.5 sm:space-y-2 shrink-0">
           {/* Target Route Switcher */}
-          <div className="flex items-center justify-between text-[10px] text-outline border-b border-outline-variant/20 pb-1.5">
-            <div className="flex items-center gap-1.5">
-              <span>Target Route:</span>
+          <div className="flex flex-wrap items-center justify-between text-[10px] text-white/70 border-b border-outline-variant/20 pb-1 gap-1">
+            <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto max-w-full">
+              <span className="text-[9px] uppercase font-bold text-white/60 shrink-0">Route:</span>
               <button
                 onClick={() => setTargetRoute("native")}
                 className={cn(
-                  "px-2 py-0.5 rounded font-bold transition-all cursor-pointer",
+                  "px-2 py-0.5 rounded font-bold transition-all cursor-pointer whitespace-nowrap text-[9.5px] sm:text-[10px]",
                   targetRoute === "native"
                     ? "bg-primary/20 text-primary border border-primary/30"
-                    : "hover:text-on-surface"
+                    : "text-white/70 hover:text-white"
                 )}
               >
-                ● Proxync Native (:2222)
+                ● Native (:2222)
               </button>
               <button
                 onClick={() => setTargetRoute("cloudflare")}
                 className={cn(
-                  "px-2 py-0.5 rounded font-bold transition-all cursor-pointer",
+                  "px-2 py-0.5 rounded font-bold transition-all cursor-pointer whitespace-nowrap text-[9.5px] sm:text-[10px]",
                   targetRoute === "cloudflare"
                     ? "bg-secondary/20 text-secondary border border-secondary/30"
-                    : "hover:text-on-surface"
+                    : "text-white/70 hover:text-white"
                 )}
               >
-                Cloudflare Edge
+                Cloudflare
               </button>
               <button
                 onClick={() => setTargetRoute("loopback")}
                 className={cn(
-                  "px-2 py-0.5 rounded font-bold transition-all cursor-pointer",
+                  "px-2 py-0.5 rounded font-bold transition-all cursor-pointer whitespace-nowrap text-[9.5px] sm:text-[10px]",
                   targetRoute === "loopback"
                     ? "bg-tertiary/20 text-tertiary border border-tertiary/30"
-                    : "hover:text-on-surface"
+                    : "text-white/70 hover:text-white"
                 )}
               >
-                Local Loopback
+                Loopback
               </button>
             </div>
-            <span className="text-secondary font-bold hidden md:inline">● Replay Engine Ready</span>
+            <span className="text-secondary font-bold hidden md:inline text-[9.5px]">● Replay Ready</span>
           </div>
 
-          {/* URL & Send Bar */}
-          <div className="flex items-center gap-2">
-            <span className={cn("px-2.5 py-1.5 rounded-lg font-bold text-xs border shrink-0", METHOD_BADGE[activeReq.method])}>
+          {/* URL & Send Bar — min-w-0 ensures Send button is NEVER pushed off-screen */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <span className={cn("px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg font-bold text-[10.5px] sm:text-xs border shrink-0", METHOD_BADGE[activeReq.method])}>
               {activeReq.method}
             </span>
 
-            <div className="flex flex-1 items-center bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-2.5 py-1.5 text-xs">
-              <span className="text-outline">http://localhost:{activeReq.port}</span>
-              <span className="text-on-surface font-semibold pl-1">{activeReq.path}</span>
+            <div className="flex flex-1 min-w-0 items-center bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-2 sm:px-2.5 py-1 sm:py-1.5 text-[11px] sm:text-xs overflow-hidden">
+              <span className="text-white/50 truncate shrink-0">http://localhost:{activeReq.port}</span>
+              <span className="text-white font-semibold truncate pl-1">{activeReq.path}</span>
             </div>
 
             <button
               onClick={handleSend}
               disabled={isSending}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-primary font-bold text-xs text-on-primary shadow-sm hover:opacity-90 transition-all cursor-pointer shrink-0"
+              className="flex items-center gap-1 px-3 sm:px-4 py-1 sm:py-1.5 rounded-lg bg-primary font-bold text-xs text-on-primary shadow-sm hover:opacity-90 transition-all cursor-pointer shrink-0 whitespace-nowrap"
             >
-              <Send className={cn("h-3.5 w-3.5", isSending ? "animate-spin" : "")} />
-              <span>{isSending ? "Sending..." : "Send"}</span>
+              <Send className={cn("h-3 w-3 sm:h-3.5 sm:w-3.5", isSending ? "animate-spin" : "")} />
+              <span>{isSending ? "..." : "Send"}</span>
             </button>
           </div>
         </div>
 
         {/* Sub-Tabs: Body | Headers | Auth | Response */}
-        <div className="flex flex-col flex-1 min-h-0 space-y-2">
-          <div className="flex items-center justify-between border-b border-outline-variant/20 pb-1">
-            <div className="flex items-center gap-1 text-[11px]">
+        <div className="flex flex-col flex-1 min-h-0 space-y-1.5">
+          <div className="flex items-center justify-between border-b border-outline-variant/20 pb-1 shrink-0">
+            <div className="flex items-center gap-0.5 sm:gap-1 text-[10px] sm:text-[11px] overflow-x-auto">
               {(["body", "headers", "auth", "response"] as const).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setRequestTab(tab)}
                   className={cn(
-                    "px-3 py-1 rounded-t-lg font-bold uppercase transition-all cursor-pointer",
+                    "px-2 sm:px-3 py-1 rounded-t-lg font-bold uppercase transition-all cursor-pointer whitespace-nowrap",
                     requestTab === tab
                       ? "border-b-2 border-primary text-primary bg-surface-container-high"
-                      : "text-outline hover:text-on-surface"
+                      : "text-white/60 hover:text-white"
                   )}
                 >
-                  {tab === "headers" ? "Headers (2)" : tab === "auth" ? "Auth (Bearer)" : tab}
+                  {tab === "headers" ? (
+                    <><span>Headers</span><span className="hidden sm:inline"> (2)</span></>
+                  ) : tab === "auth" ? (
+                    <><span>Auth</span><span className="hidden sm:inline"> (Bearer)</span></>
+                  ) : (
+                    tab
+                  )}
                 </button>
               ))}
             </div>
 
             {requestTab === "response" && (
-              <div className="flex items-center gap-3 text-[10px]">
-                <span className="flex items-center gap-1 text-secondary font-bold">
+              <div className="flex items-center gap-2 sm:gap-3 text-[9.5px] sm:text-[10px] shrink-0">
+                <span className="flex items-center gap-1 text-emerald-400 font-bold">
                   <Check className="h-3 w-3" /> 200 OK
                 </span>
-                <span className="text-outline">14 ms</span>
-                <span className="text-outline">1.2 KB</span>
+                <span className="text-white/60 hidden sm:inline">14 ms</span>
+                <span className="text-white/60 hidden sm:inline">1.2 KB</span>
               </div>
             )}
           </div>
@@ -425,10 +431,10 @@ export function PostmanView() {
                   </pre>
                 ) : (
                   <div className="space-y-1 text-[10px]">
-                    <div><span className="text-outline">content-type:</span> <span className="text-on-surface">application/json; charset=utf-8</span></div>
-                    <div><span className="text-outline">x-powered-by:</span> <span className="text-on-surface">Proxync-Rust-Core</span></div>
-                    <div><span className="text-outline">x-response-time:</span> <span className="text-secondary">14ms</span></div>
-                    <div><span className="text-outline">connection:</span> <span className="text-on-surface">keep-alive</span></div>
+                    <div><span className="text-white/60">content-type:</span> <span className="text-white">application/json; charset=utf-8</span></div>
+                    <div><span className="text-white/60">x-powered-by:</span> <span className="text-white">Proxync-Rust-Core</span></div>
+                    <div><span className="text-white/60">x-response-time:</span> <span className="text-emerald-400 font-bold">14ms</span></div>
+                    <div><span className="text-white/60">connection:</span> <span className="text-white">keep-alive</span></div>
                   </div>
                 )}
               </div>
@@ -437,13 +443,14 @@ export function PostmanView() {
         </div>
 
         {/* Bottom Quick Help Bar */}
-        <div className="flex items-center justify-between border-t border-outline-variant/20 pt-2 text-[10px] text-outline">
-          <div className="flex items-center gap-2">
-            <span>Send: <strong className="text-on-surface">Ctrl+Enter</strong></span>
+        <div className="flex flex-wrap items-center justify-between border-t border-outline-variant/20 pt-1.5 text-[9.5px] sm:text-[10px] text-white/70 gap-1 shrink-0">
+          <div className="hidden sm:flex items-center gap-2">
+            <span>Send: <strong className="text-white">Ctrl+Enter</strong></span>
             <span>&middot;</span>
-            <span>Save: <strong className="text-on-surface">Ctrl+S</strong></span>
+            <span>Save: <strong className="text-white">Ctrl+S</strong></span>
           </div>
-          <span className="text-primary font-semibold">100% Local JSON Storage</span>
+          <span className="sm:hidden text-white/60 font-mono">100% Local Engine</span>
+          <span className="text-primary font-semibold truncate">100% Local JSON Storage</span>
         </div>
       </div>
     </div>

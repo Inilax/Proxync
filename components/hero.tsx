@@ -77,7 +77,7 @@ export function Hero() {
         }}
       />
 
-      <div className="w-full max-w-5xl mx-auto px-4 text-center flex flex-col items-center">
+      <div className="w-full max-w-4xl mx-auto px-4 text-center flex flex-col items-center">
         {/* YC / Craft Style Eyebrow Badge */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -311,41 +311,38 @@ export function Hero() {
             <span>Edge Ping: {latencyValue}</span>
           </div>
         </motion.div>
-
-        {/* The Crown Jewel: Interactive Desktop Studio Simulator */}
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, delay: 0.38 }}
-          className="w-full relative max-w-full"
-        >
-          {/* Ambient Studio Backlight */}
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 -top-8 h-3/4 rounded-full bg-primary/[0.04] blur-3xl -z-10"
-          />
-
-          {/* Floating Badges */}
-          <div className="glass absolute -top-4 right-6 z-30 hidden animate-float items-center gap-2 rounded-full border border-white/[0.08] bg-[#08090C]/90 px-4 py-2 font-mono text-[11px] text-[#8E93A4] shadow-hairline backdrop-blur-xl md:flex">
-            <Cloud className="h-3.5 w-3.5 text-primary" />
-            <span>
-              <strong className="text-primary">px-*.proxync.dev</strong> — Native Edge Tunnel
-            </span>
-          </div>
-
-          <div className="glass absolute -bottom-4 left-6 z-30 hidden animate-float items-center gap-2 rounded-full border border-white/[0.08] bg-[#08090C]/90 px-4 py-2 font-mono text-[11px] text-[#8E93A4] shadow-hairline backdrop-blur-xl md:flex [animation-delay:2.5s]">
-            <Zap className="h-3.5 w-3.5 text-secondary" />
-            <span>
-              <strong className="text-secondary">● Real-Time Inspector</strong> — 1-Click IDE Jump
-            </span>
-          </div>
-
-          {/* App Mockup Frame */}
-          <div className="relative rounded-2xl border border-[#1F232E] shadow-[0_24px_80px_-20px_rgba(0,0,0,0.95)] overflow-hidden text-left hairline-glow">
-            <AppMockup />
-          </div>
-        </motion.div>
       </div>
+
+      {/* The Crown Jewel: Interactive Desktop Studio Simulator */}
+      <motion.div
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.7, delay: 0.38 }}
+        className="w-full max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 relative mt-12 sm:mt-16"
+      >
+        {/* Ambient Studio Backlight */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 -top-8 h-3/4 rounded-full bg-primary/[0.04] blur-3xl -z-10"
+        />
+
+        {/* Floating Badges */}
+        <div className="glass absolute -top-9 sm:-top-11 right-6 lg:-right-4 z-30 hidden animate-float items-center gap-2 rounded-full border border-primary/30 bg-[#08090C]/90 px-4 py-2 font-mono text-[11px] text-[#8E93A4] shadow-hairline backdrop-blur-xl md:flex">
+          <Cloud className="h-3.5 w-3.5 text-primary" />
+          <span>
+            <strong className="text-primary">px-*.proxync.dev</strong> &mdash; Native Edge Tunnel
+          </span>
+        </div>
+
+        <div className="glass absolute -bottom-9 sm:-bottom-11 left-6 lg:-left-4 z-30 hidden animate-float items-center gap-2 rounded-full border border-secondary/30 bg-[#08090C]/90 px-4 py-2 font-mono text-[11px] text-[#8E93A4] shadow-hairline backdrop-blur-xl md:flex [animation-delay:2.5s]">
+          <Zap className="h-3.5 w-3.5 text-secondary" />
+          <span>
+            <strong className="text-secondary">&bull; Real-Time Inspector</strong> &mdash; 1-Click IDE Jump
+          </span>
+        </div>
+
+        <AppMockup />
+      </motion.div>
     </section>
   );
 }

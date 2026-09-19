@@ -48,7 +48,7 @@ export function WelcomeView({
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
           <div className="rounded-xl border border-outline-variant/30 bg-surface-container p-3">
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[10px] uppercase tracking-wider text-outline font-bold">Proxync Mesh Relay</span>
+              <span className="font-mono text-[10px] uppercase tracking-wider text-white/60 font-bold">Proxync Mesh Relay</span>
               <SignalBars latency={28} />
             </div>
             <div className="mt-1 font-mono text-sm font-bold text-primary">28 ms</div>
@@ -57,7 +57,7 @@ export function WelcomeView({
 
           <div className="rounded-xl border border-outline-variant/30 bg-surface-container p-3">
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[10px] uppercase tracking-wider text-outline font-bold">Cloudflare Quick Tunnel</span>
+              <span className="font-mono text-[10px] uppercase tracking-wider text-white/60 font-bold">Cloudflare Quick Tunnel</span>
               <SignalBars latency={42} />
             </div>
             <div className="mt-1 font-mono text-sm font-bold text-secondary">42 ms</div>
@@ -66,7 +66,7 @@ export function WelcomeView({
 
           <div className="rounded-xl border border-outline-variant/30 bg-surface-container p-3">
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[10px] uppercase tracking-wider text-outline font-bold">Local Loopback Edge</span>
+              <span className="font-mono text-[10px] uppercase tracking-wider text-white/60 font-bold">Local Loopback Edge</span>
               <SignalBars latency={1} />
             </div>
             <div className="mt-1 font-mono text-sm font-bold text-tertiary">&lt;1 ms</div>
@@ -76,20 +76,22 @@ export function WelcomeView({
 
         {/* Active Tunnels */}
         <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-3">
-          <div className="flex items-center justify-between border-b border-outline-variant/20 pb-2">
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-xs font-bold uppercase tracking-wider text-on-surface">Active Workspace Tunnels</span>
-              <span className="font-mono text-[9.5px] text-tertiary font-bold px-2 py-0.5 rounded bg-tertiary/10 border border-tertiary/30">
+          <div className="flex flex-wrap items-center justify-between border-b border-outline-variant/20 pb-2 gap-2">
+            <span className="font-mono text-xs font-bold uppercase tracking-wider text-white">
+              Active Workspace Tunnels
+            </span>
+            <div className="flex items-center gap-2.5 shrink-0">
+              <span className="font-mono text-[9.5px] text-emerald-400 font-bold px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30">
                 1 Active Tunnel
               </span>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-lg border border-rose-500/40 bg-rose-500/10 px-2.5 py-0.5 font-mono text-[10px] font-bold text-rose-400 hover:bg-rose-500/20 transition-all cursor-pointer"
+                title="Stop All Active Tunnels"
+              >
+                Stop All
+              </button>
             </div>
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 rounded-lg border border-error/40 bg-error/10 px-2 py-0.5 font-mono text-[10px] font-bold text-error hover:bg-error/20 transition-all cursor-pointer"
-              title="Stop All Active Tunnels"
-            >
-              Stop All
-            </button>
           </div>
           <div className="mt-2 flex flex-col sm:flex-row sm:items-center justify-between rounded-xl border border-outline-variant/30 bg-surface-container-low p-2.5 gap-2">
             <div className="flex items-center gap-2.5 min-w-0">

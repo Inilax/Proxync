@@ -31,7 +31,7 @@ export function AppMockup() {
   const [showConsole, setShowConsole] = useState<boolean>(true);
 
   return (
-    <div className="relative mx-auto w-full max-w-6xl">
+    <div className="relative mx-auto w-full max-w-6xl xl:max-w-7xl">
       <div
         aria-hidden="true"
         className="absolute -inset-x-8 -top-8 h-40 rounded-full bg-primary/20 blur-3xl"
@@ -62,12 +62,12 @@ export function AppMockup() {
           </div>
 
           {/* Center Workspace Search Command Bar (Ctrl+K) */}
-          <div className="hidden md:flex items-center gap-2 rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-3 py-1 font-mono text-[11px] text-on-surface-variant max-w-xs w-full justify-between">
+          <div className="hidden md:flex items-center gap-2 rounded-lg border border-outline-variant/40 bg-surface-container-lowest px-3 py-1 font-mono text-[11px] text-white/80 max-w-xs w-full justify-between">
             <div className="flex items-center gap-2 min-w-0">
               <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
-              <span className="text-on-surface font-semibold truncate">proxync-workspace</span>
+              <span className="text-white font-semibold truncate">proxync-workspace</span>
             </div>
-            <span className="text-[9.5px] font-bold text-outline bg-surface-container px-1.5 py-0.5 rounded border border-outline-variant/40 shrink-0">
+            <span className="text-[9.5px] font-bold text-white/70 bg-surface-container px-1.5 py-0.5 rounded border border-outline-variant/40 shrink-0">
               Ctrl+K
             </span>
           </div>
@@ -76,9 +76,9 @@ export function AppMockup() {
             {/* Live Theme Switcher */}
             <div className="flex items-center rounded-lg border border-outline-variant/40 bg-surface-container px-1 py-0.5">
               {[
+                { id: "dark", label: "Obsidian", color: "#38bdf8" },
                 { id: "slate", label: "Slate", color: "#8aebff" },
                 { id: "dracula", label: "Dracula", color: "#ff79c6" },
-                { id: "dark", label: "Obsidian", color: "#38bdf8" },
                 { id: "emerald", label: "Emerald", color: "#10b981" },
               ].map((t) => (
                 <button
@@ -87,7 +87,9 @@ export function AppMockup() {
                   onClick={() => setTheme(t.id as ThemeId)}
                   className={cn(
                     "flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-mono font-bold transition-all cursor-pointer",
-                    theme === t.id ? "bg-surface-bright text-on-surface shadow-sm" : "text-outline hover:text-on-surface",
+                    theme === t.id
+                      ? "bg-surface-bright text-white shadow-sm ring-1 ring-white/10"
+                      : "text-white/70 hover:text-white",
                   )}
                   title={`Switch to ${t.label} theme`}
                 >
@@ -104,7 +106,7 @@ export function AppMockup() {
         </div>
 
         {/* Main Body */}
-        <div className="relative flex h-[640px] min-h-[640px] max-h-[640px] lg:h-[650px] lg:min-h-[650px] lg:max-h-[650px] w-full overflow-hidden">
+        <div className="relative flex h-[580px] min-h-[580px] max-h-[580px] sm:h-[660px] sm:min-h-[660px] sm:max-h-[660px] lg:h-[680px] lg:min-h-[680px] lg:max-h-[680px] w-full overflow-hidden">
           <Sidebar active={active} onSelect={setActive} />
 
           <div className="min-w-0 flex-1 flex flex-col justify-between bg-surface-container-lowest overflow-hidden h-full">
@@ -133,8 +135,8 @@ export function AppMockup() {
 
             {/* Global Live Engine Terminal Console Panel — Appears on ALL screens when toggled */}
             {showConsole && (
-              <div className="border-t border-outline-variant/30 bg-black/95 p-3 font-mono text-[11px] space-y-1 select-text shrink-0 animate-in fade-in slide-in-from-bottom-2 duration-150 max-h-36 overflow-y-auto">
-                <div className="flex flex-wrap items-center justify-between text-outline text-[9.5px] font-bold uppercase tracking-wider pb-1 border-b border-white/10 mb-1 gap-x-3">
+              <div className="border-t border-outline-variant/30 bg-black/95 p-3 font-mono text-[11px] space-y-1 select-text shrink-0 animate-in fade-in slide-in-from-bottom-2 duration-150 max-h-28 sm:max-h-36 overflow-y-auto">
+                <div className="flex flex-wrap items-center justify-between text-white/70 text-[9.5px] font-bold uppercase tracking-wider pb-1 border-b border-white/10 mb-1 gap-x-3">
                   <div className="flex items-center gap-1.5 text-primary min-w-0">
                     <Terminal className="h-3 w-3 shrink-0" />
                     <span className="truncate">Proxync Engine Log &amp; Network Terminal Stream</span>
@@ -147,39 +149,39 @@ export function AppMockup() {
                     ● Live — Click to Hide
                   </button>
                 </div>
-                <div className="text-secondary truncate"><span className="text-outline">[17:18:02]</span> <span className="font-bold">INFO</span> TCP Proxy Forwarder → 127.0.0.1:5173 → Cloudflare Edge</div>
-                <div className="text-tertiary truncate"><span className="text-outline">[17:18:04]</span> <span className="font-bold">200 OK</span> GET /api/v1/users (14ms · 248 B)</div>
-                <div className="text-primary truncate"><span className="text-outline">[17:18:05]</span> <span className="font-bold">201 CREATED</span> POST /api/v1/session (42ms · 512 B)</div>
-                <div className="text-tertiary truncate"><span className="text-outline">[17:18:08]</span> <span className="font-bold">200 OK</span> GET /api/v1/health (2ms · 42 B)</div>
-                <div className="text-error truncate"><span className="text-outline">[17:18:11]</span> <span className="font-bold">404 NOT FOUND</span> DELETE /api/v1/users/42 (11ms · 0 B)</div>
+                <div className="text-secondary truncate"><span className="text-white/50">[17:18:02]</span> <span className="font-bold">INFO</span> TCP Proxy Forwarder → 127.0.0.1:5173 → Cloudflare Edge</div>
+                <div className="text-tertiary truncate"><span className="text-white/50">[17:18:04]</span> <span className="font-bold">200 OK</span> GET /api/v1/users (14ms · 248 B)</div>
+                <div className="text-primary truncate"><span className="text-white/50">[17:18:05]</span> <span className="font-bold">201 CREATED</span> POST /api/v1/session (42ms · 512 B)</div>
+                <div className="text-tertiary truncate"><span className="text-white/50">[17:18:08]</span> <span className="font-bold">200 OK</span> GET /api/v1/health (2ms · 42 B)</div>
+                <div className="text-rose-400 truncate"><span className="text-white/50">[17:18:11]</span> <span className="font-bold">404 NOT FOUND</span> DELETE /api/v1/users/42 (11ms · 0 B)</div>
               </div>
             )}
 
             {/* Bottom Status Footer */}
             <div className="flex items-center justify-between border-t border-outline-variant/30 bg-surface-container px-3 py-1 font-mono text-[10px] shrink-0 select-none">
-              <div className="flex items-center gap-3 text-on-surface-variant">
-                <span className="flex items-center gap-1 text-outline">
-                  <span className="h-1.5 w-1.5 rounded-full bg-outline" />
-                  No Active Tunnels
+              <div className="flex items-center gap-2 sm:gap-3 text-on-surface-variant min-w-0">
+                <span className="flex items-center gap-1.5 text-primary font-bold shrink-0">
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+                  <span>1 Active Tunnel (:5173)</span>
                 </span>
                 <span className="text-outline">|</span>
-                <span className="text-outline">Port -</span>
-                <span className="text-outline">|</span>
-                <span className="text-outline">Latency: 14ms</span>
+                <span className="text-outline truncate hidden xs:inline">relay.proxync.dev</span>
                 <span className="text-outline hidden sm:inline">|</span>
+                <span className="text-outline hidden sm:inline">Latency: 28ms</span>
+                <span className="text-outline hidden md:inline">|</span>
                 <button
                   type="button"
                   onClick={() => setShowConsole(!showConsole)}
-                  className="hidden sm:inline-flex items-center gap-1 text-primary hover:underline cursor-pointer font-bold"
+                  className="hidden sm:inline-flex items-center gap-1 text-primary hover:underline cursor-pointer font-bold shrink-0"
                 >
                   <Terminal className="h-2.5 w-2.5" />
                   <span>Console {showConsole ? "(Open)" : ""}</span>
                 </button>
               </div>
 
-              <div className="flex items-center gap-2 text-outline">
-                <span>Encoding: UTF-8</span>
-                <span>|</span>
+              <div className="flex items-center gap-2 text-outline shrink-0">
+                <span className="hidden sm:inline">Encoding: UTF-8</span>
+                <span className="hidden sm:inline">|</span>
                 <span className="text-secondary font-bold">STABLE</span>
               </div>
             </div>

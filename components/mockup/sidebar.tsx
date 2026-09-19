@@ -1,6 +1,6 @@
 "use client";
 
-import { HelpCircle, LayoutGrid, Lock, RefreshCw } from "lucide-react";
+import { HelpCircle, LayoutGrid, RefreshCw, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_CATEGORIES, PROCESSES, TUNNEL_URL, ViewId } from "./types";
 
@@ -21,7 +21,7 @@ export function Sidebar({
           </div>
           <div className="hidden lg:block">
             <span className="block text-xs font-bold text-on-surface leading-tight">Proxync Engine</span>
-            <span className="block font-mono text-[9px] text-outline leading-tight">
+            <span className="block font-mono text-[9px] text-white/60 leading-tight">
               v0.2.2-stable
             </span>
           </div>
@@ -29,13 +29,13 @@ export function Sidebar({
 
         {/* Active Workspace Selector */}
         <div className="hidden lg:block space-y-1">
-          <div className="flex items-center justify-between px-1 text-[9px] font-mono uppercase tracking-wider text-outline font-bold">
+          <div className="flex items-center justify-between px-1 text-[9px] font-mono uppercase tracking-wider text-white/60 font-bold">
             <span>ACTIVE WORKSPACE</span>
-            <LayoutGrid className="h-3 w-3 text-outline" />
+            <LayoutGrid className="h-3 w-3 text-white/60" />
           </div>
           <div className="flex items-center gap-2 rounded-lg border border-outline-variant/40 bg-surface-container px-2.5 py-1.5 cursor-pointer hover:border-primary/40 transition-colors">
             <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-            <span className="text-xs font-bold text-on-surface truncate">Local Workspace</span>
+            <span className="text-xs font-bold text-white truncate">Local Workspace</span>
           </div>
         </div>
 
@@ -43,7 +43,7 @@ export function Sidebar({
         <nav className="flex flex-col gap-2.5" aria-label="Primary">
           {NAV_CATEGORIES.map((cat) => (
             <div key={cat.category} className="flex flex-col gap-0.5">
-              <div className="hidden lg:block px-2 py-0.5 text-[8.5px] font-mono font-bold tracking-wider text-outline uppercase">
+              <div className="hidden lg:block px-2 py-0.5 text-[8.5px] font-mono font-bold tracking-wider text-white/50 uppercase">
                 {cat.category}
               </div>
               {cat.items.map((item) => {
@@ -59,8 +59,8 @@ export function Sidebar({
                     className={cn(
                       "group relative flex items-center justify-center lg:justify-start gap-2.5 rounded-lg px-0 lg:px-2.5 py-1.5 text-xs font-medium transition-all text-left w-full cursor-pointer",
                       isActive
-                        ? "bg-primary/10 text-primary font-bold shadow-sm"
-                        : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high",
+                        ? "bg-primary/15 text-primary font-bold shadow-sm"
+                        : "text-white/80 hover:text-white hover:bg-surface-container-high",
                     )}
                   >
                     {isActive && (
@@ -69,7 +69,7 @@ export function Sidebar({
                     <Icon
                       className={cn(
                         "h-3.5 w-3.5 shrink-0 transition-colors",
-                        isActive ? "text-primary" : "text-outline group-hover:text-on-surface",
+                        isActive ? "text-primary" : "text-white/60 group-hover:text-white",
                       )}
                     />
                     <span className="hidden lg:inline truncate text-[11.5px]">{item.label}</span>
@@ -85,19 +85,16 @@ export function Sidebar({
       <div className="hidden lg:flex flex-col gap-2 pt-2.5 border-t border-outline-variant/20 mt-2">
         <button
           type="button"
-          className="flex items-center gap-2 px-2 py-1 text-xs text-outline hover:text-on-surface transition-colors cursor-pointer"
+          className="flex items-center gap-2 px-2 py-1 text-xs text-white/70 hover:text-white transition-colors cursor-pointer"
         >
-          <HelpCircle className="h-3.5 w-3.5 text-outline" />
+          <HelpCircle className="h-3.5 w-3.5 text-white/70" />
           <span>Support</span>
         </button>
 
-        <button
-          type="button"
-          className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary/80 to-secondary/80 px-3 py-2 text-xs font-bold text-white shadow-md hover:opacity-95 transition-opacity cursor-pointer"
-        >
-          <Lock className="h-3.5 w-3.5" />
-          <span>Sign In</span>
-        </button>
+        <div className="flex items-center justify-center gap-1.5 rounded-xl bg-surface-container border border-outline-variant/30 px-2.5 py-1.5 font-mono text-[10px] text-white/70 select-none">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+          <span className="text-white/80 font-medium">100% Local &middot; Zero Cloud</span>
+        </div>
       </div>
     </aside>
   );
