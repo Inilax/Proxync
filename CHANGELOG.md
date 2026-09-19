@@ -2,6 +2,28 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/ci-macos-release-dependabot-hardening] - 2026-09-19 (macOS CI Re-integration & Dependabot Flood Prevention)
+- **Feature Summary**:
+  - **macOS Re-added to CI Build Matrix**: Re-added `macos-latest` runner to both `prepare-release.yml` (test matrix) and `release.yml` (build matrix). macOS now builds automatically alongside Windows and Linux in CI.
+  - **Universal Binary Target**: Configured `--target universal-apple-darwin` in `release.yml` so the macOS runner compiles a single Universal Binary (`.dmg`) supporting both Apple Silicon (M1–M4) and Intel Macs.
+  - **Rust Cross-Compile Targets**: Added `aarch64-apple-darwin,x86_64-apple-darwin` to `dtolnay/rust-toolchain` in both `prepare-release.yml` and `release.yml` for symmetric cross-compilation setup.
+  - **macOS Auto-Updater Unblocked**: With `includeUpdaterJson: true` already active, `tauri-action` will now produce `Proxync.app.tar.gz`, `Proxync.app.tar.gz.sig`, and populate `darwin` entries inside `latest.json` automatically — fixing the missing `.dmg.sig` and absent Darwin updater entries that were blocking in-app updates for macOS users.
+  - **Dependabot PR Flood Prevention**: Lowered `open-pull-requests-limit` from `10` to `4` across all three Dependabot ecosystems (`github-actions`, `npm`, `cargo`). All ecosystems already target `develop` — this prevents the initial onboarding surge (24 simultaneous PRs) that occurred when `dependabot.yml` first landed on `main`.
+- **Modified Files**:
+  - `.github/workflows/prepare-release.yml`
+  - `.github/workflows/release.yml`
+  - `.github/dependabot.yml`
+  - `CHANGELOG.md`
+
+### 🍎 macOS Installation Note
+> Proxync is open-source and currently distributed without Apple notarization. macOS Gatekeeper may show **"Proxync is damaged and cannot be opened"** on first launch. This is a standard security warning for apps downloaded from the web that are not signed with an Apple Developer ID — the app itself is safe.
+>
+> **One-time fix — run this in Terminal after dragging Proxync to your Applications folder:**
+> ```bash
+> xattr -cr /Applications/Proxync.app
+> ```
+> After running this command once, Proxync will open normally and auto-update silently in the background for all future releases.
+
 ## [fix/readme-cross-platform-roadmap-refresh] - 2026-09-19 (README Modernization, Cross-Platform Alignment & Unified Roadmap)
 - **Feature Summary**:
   - **Cross-Platform Status Alignment**: Updated `README.md` to reflect full desktop support across Windows, Linux, and macOS with active platform badges and native bundle targets (`.msi`/`.exe`, `.deb`/`.AppImage`, `.dmg`/`.app`).
