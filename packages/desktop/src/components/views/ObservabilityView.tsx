@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { WorkspaceConfig, ProcessCandidate, Tunnel, RequestLog } from './SharedComponents';
-import type { MainView } from '../../lib/types';
+import type { MainView, SchemaDriftReport } from '../../lib/types';
 
 interface ObservabilityViewProps {
   workspace: WorkspaceConfig | null;
@@ -8,6 +8,7 @@ interface ObservabilityViewProps {
   tunnel: Tunnel | null;
   requests: RequestLog[];
   telemetryMode?: 'enhanced' | 'basic';
+  driftReports?: SchemaDriftReport[];
   onNavigateView?: (view: MainView) => void;
   onOpenDetail?: (request: RequestLog) => void;
   onSendToPostman?: (request: RequestLog) => void;
@@ -21,6 +22,7 @@ export function ObservabilityView({
   tunnel,
   requests,
   telemetryMode = 'enhanced',
+  driftReports,
   onNavigateView,
   onOpenDetail,
   onSendToPostman,
@@ -36,6 +38,20 @@ export function ObservabilityView({
     const totalCount = requests.length;
     let count5xx = 0;
     const errorLogs: RequestLog[] = [];
+
+    const contractStats = {
+      pct: 100,
+      breaking: 0,
+      warnings: 0,
+      drifted: 0,
+    };
+    if (driftReports && driftReports.length > 0) {
+      contractStats.breaking = driftReports.reduce((s, r) => s + r.breakingCount, 0);
+      contractStats.warnings = driftReports.reduce((s, r) => s + r.warningCount, 0);
+      contractStats.drifted = new Set(driftReports.filter((r) => r.hasDrift).map((r) => `${r.method} ${r.path}`)).size;
+      const totalRoutes = Math.max(1, new Set(requests.map((r) => `${r.method} ${r.path}`)).size);
+      contractStats.pct = Math.max(0, Math.round(((totalRoutes - Math.min(totalRoutes, contractStats.drifted)) / totalRoutes) * 100));
+    }
 
     // ── BASIC MODE: Minimal CPU Overhead — Bypass non-fatal math ──
     if (telemetryMode === 'basic') {
@@ -62,6 +78,7 @@ export function ObservabilityView({
         leaderboards: [],
         errorLogs: errorLogs.reverse(),
         webhookLogs: [],
+        contractStats,
       };
     }
     let sumDuration = 0;
@@ -174,6 +191,8 @@ export function ObservabilityView({
 
     const successRate = totalCount > 0 ? (((count2xx + count3xx) / totalCount) * 100).toFixed(1) : '100.0';
 
+
+
     return {
       totalCount,
       avgMs,
@@ -189,8 +208,9 @@ export function ObservabilityView({
       leaderboards,
       errorLogs: errorLogs.reverse(),
       webhookLogs: webhookLogs.reverse(),
+      contractStats,
     };
-  }, [requests, telemetryMode]);
+  }, [requests, telemetryMode, driftReports]);
 
   const cards = [
     {
@@ -213,6 +233,13 @@ export function ObservabilityView({
       note: telemetryMode === 'basic' ? `${telemetry.count5xx} critical failures` : `${telemetry.count2xx + telemetry.count3xx} pass / ${telemetry.count4xx + telemetry.count5xx} fail`,
       status: Number(telemetry.successRate) > 95 ? 'good' : Number(telemetry.successRate) > 80 ? 'warn' : 'danger',
       icon: 'check_circle',
+    },
+    {
+      label: 'Contract Health',
+      value: `${telemetry.contractStats.pct}%`,
+      note: telemetry.contractStats.breaking > 0 ? `🚨 ${telemetry.contractStats.breaking} breaking violations` : `${telemetry.contractStats.warnings} additive changes`,
+      status: telemetry.contractStats.breaking > 0 ? 'danger' : telemetry.contractStats.warnings > 0 ? 'warn' : 'good',
+      icon: 'verified_user',
     },
     {
       label: 'Bandwidth & Posture',
@@ -292,7 +319,7 @@ export function ObservabilityView({
       </div>
 
       {/* Metrics Top Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         {cards.map((card) => {
           const dotColor =
             card.status === 'good'
@@ -487,6 +514,89 @@ export function ObservabilityView({
                 <span className="text-lg font-bold text-error font-mono">{telemetry.p99} ms</span>
               </div>
             </div>
+          </div>
+
+          {/* API Contract Health & Schema Drift Dashboard Panel */}
+          <div className="p-6 bg-surface-container rounded-xl border border-outline-variant/30 space-y-4 shadow-sm">
+            <div className="flex items-center justify-between border-b border-outline-variant/20 pb-3">
+              <div className="flex items-center gap-3">
+                <span className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                  <span className="material-symbols-outlined text-[20px]">verified_user</span>
+                </span>
+                <div>
+                  <h3 className="font-headline-sm text-sm text-on-surface font-bold">
+                    API Contract Health & Schema Drift Radar
+                  </h3>
+                  <p className="text-xs text-on-surface-variant">
+                    Real-time verification of runtime response payloads against documented OpenAPI contracts
+                  </p>
+                </div>
+              </div>
+              <span
+                className={`text-xs font-mono px-3 py-1 rounded-full border flex items-center gap-1.5 ${
+                  telemetry.contractStats.breaking > 0
+                    ? 'text-error bg-error/10 border-error/20 font-bold'
+                    : 'text-secondary bg-secondary/10 border-secondary/20 font-bold'
+                }`}
+              >
+                {telemetry.contractStats.pct}% Contract Compliant
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-mono">
+              <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/20">
+                <span className="text-[10px] text-outline uppercase block font-sans">Breaking Violations</span>
+                <span className="text-lg font-bold text-error">{telemetry.contractStats.breaking}</span>
+              </div>
+              <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/20">
+                <span className="text-[10px] text-outline uppercase block font-sans">Additive Schema Changes</span>
+                <span className="text-lg font-bold text-amber-400">{telemetry.contractStats.warnings}</span>
+              </div>
+              <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/20">
+                <span className="text-[10px] text-outline uppercase block font-sans">Drifted Endpoints</span>
+                <span className="text-lg font-bold text-on-surface">{telemetry.contractStats.drifted}</span>
+              </div>
+            </div>
+
+            {driftReports && driftReports.filter((r) => r.hasDrift).length > 0 ? (
+              <div className="space-y-2 pt-2">
+                <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider block">
+                  Active Drifted Routes
+                </span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {driftReports
+                    .filter((r) => r.hasDrift)
+                    .map((r, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => onNavigateView?.('traffic')}
+                        className="p-2.5 rounded-lg bg-surface-container-low border border-outline-variant/30 hover:border-primary/50 cursor-pointer flex items-center justify-between gap-2 transition-all"
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${
+                              r.breakingCount > 0 ? 'bg-error/20 text-error' : 'bg-amber-500/20 text-amber-400'
+                            }`}
+                          >
+                            {r.method}
+                          </span>
+                          <span className="text-xs font-mono text-on-surface truncate font-medium">
+                            {r.path}
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-semibold text-primary hover:underline shrink-0">
+                          Inspect Traffic →
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-secondary text-center py-2 flex items-center justify-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                All live response payloads strictly adhere to documented schemas.
+              </p>
+            )}
           </div>
         </div>
       )}

@@ -240,11 +240,60 @@ pub async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, 
                     }
                 }
 
+                // ── Response Body Preview Extraction (Schema Drift Engine) ──────────────────
+                // ponytail: 4 KB IPC cap — high-frequency Tauri events; upgrade path: expose
+                // cap as configurable AppSettings field if users need larger previews.
+                const RESP_BODY_PREVIEW_BYTES: usize = 4096;
+
+                let (response_headers_map, response_body_preview): (serde_json::Value, Option<String>) = {
+                    if is_ws_upgrade || is_sse {
+                        // Never capture streaming protocols — bidirectional relay follows immediately
+                        (serde_json::json!({}), None)
+                    } else {
+                        let header_body_parts: Vec<&str> = res_str.splitn(2, "\r\n\r\n").collect();
+                        let resp_header_section = header_body_parts.get(0).copied().unwrap_or("");
+                        let resp_body_section   = header_body_parts.get(1).copied().unwrap_or("");
+
+                        // Parse response headers into a JSON map (skip status line at index 0)
+                        let mut resp_hdrs = serde_json::Map::new();
+                        let mut content_type_val = String::new();
+                        let mut content_encoding_val = String::new();
+                        for line in resp_header_section.lines().skip(1) {
+                            if let Some((k, v)) = line.split_once(':') {
+                                let key_lc = k.trim().to_lowercase();
+                                let val    = v.trim().to_string();
+                                if key_lc == "content-type" { content_type_val = val.clone(); }
+                                if key_lc == "content-encoding" { content_encoding_val = val.clone(); }
+                                resp_hdrs.insert(k.trim().to_string(), serde_json::Value::String(val));
+                            }
+                        }
+
+                        // Only capture body preview for JSON and when not compressed with gzip/br/deflate
+                        let is_json = content_type_val.to_lowercase().contains("json");
+                        let is_compressed = !content_encoding_val.is_empty() && content_encoding_val != "identity";
+
+                        let body_preview = if is_json && !is_compressed && !resp_body_section.is_empty() {
+                            let preview: String = resp_body_section
+                                .trim()
+                                .chars()
+                                .take(RESP_BODY_PREVIEW_BYTES)
+                                .collect();
+                            if preview.is_empty() { None } else { Some(preview) }
+                        } else {
+                            None
+                        };
+
+                        (serde_json::Value::Object(resp_hdrs), body_preview)
+                    }
+                };
+
                 let res_meta = serde_json::json!({
                     "id": req_id.clone(),
                     "requestId": req_id.clone(),
                     "status": status,
                     "durationMs": duration_ms,
+                    "responseHeaders": response_headers_map,
+                    "responseBodyPreview": response_body_preview,
                     "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()
                 });
                 let _ = app_clone.emit("request:log:response", res_meta);

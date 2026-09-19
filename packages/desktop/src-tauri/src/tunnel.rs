@@ -17,7 +17,7 @@ use crate::proxy::stop_proxy;
 
 lazy_static! {
     static ref ACTIVE_TUNNELS: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>> = Arc::new(Mutex::new(HashMap::new()));
-    static ref LOCALTUNNEL_PROCESSES: Arc<Mutex<HashMap<String, tokio::process::Child>>> = Arc::new(Mutex::new(HashMap::new()));
+    static ref SPAWNED_TUNNEL_PROCESSES: Arc<Mutex<HashMap<String, tokio::process::Child>>> = Arc::new(Mutex::new(HashMap::new()));
     static ref HTTP_CLIENT: Client = Client::builder()
         .tcp_nodelay(true)
         .pool_idle_timeout(std::time::Duration::from_secs(90))
@@ -210,6 +210,8 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
                                     body: String::new(),
                                 };
 
+                                let mut preview_str: Option<String> = None;
+
                                 if let Ok(res) = response {
                                     res_payload.status = res.status().as_u16();
                                     for (k, v) in res.headers() {
@@ -222,15 +224,29 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
                                         }
                                     }
                                     if let Ok(bytes) = res.bytes().await {
+                                        let is_json = res_payload.headers.get("content-type")
+                                            .map(|ct| ct.to_lowercase().contains("json"))
+                                            .unwrap_or(false);
+                                        if is_json {
+                                            if let Ok(raw_s) = std::str::from_utf8(&bytes) {
+                                                let p: String = raw_s.trim().chars().take(4096).collect();
+                                                if !p.is_empty() {
+                                                    preview_str = Some(p);
+                                                }
+                                            }
+                                        }
                                         res_payload.body = BASE64_STANDARD.encode(&bytes);
                                         res_payload.headers.insert("content-length".to_string(), bytes.len().to_string());
                                     }
                                 }
 
                                 let res_meta = serde_json::json!({
+                                    "id": res_payload.request_id.clone(),
                                     "requestId": res_payload.request_id,
                                     "status": res_payload.status,
                                     "durationMs": duration_ms,
+                                    "responseHeaders": res_payload.headers,
+                                    "responseBodyPreview": preview_str,
                                     "timestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()
                                 });
                                 let _ = app_clone.emit("request:log:response", res_meta);
@@ -255,6 +271,32 @@ pub async fn open_tunnel(app: tauri::AppHandle, tunnel_id: String, local_port: u
     Ok(())
 }
 
+// Helper Function: Unified tree teardown for cross-platform tunnel subprocesses (kills process groups and child daemons).
+async fn kill_child_process_tree(child: &mut tokio::process::Child) {
+    #[cfg(target_os = "windows")]
+    if let Some(pid) = child.id() {
+        let mut cmd = std::process::Command::new("taskkill");
+        cmd.creation_flags(0x08000000);
+        let _ = cmd.args(&["/F", "/T", "/PID", &pid.to_string()]).output();
+    } else {
+        let _ = child.kill().await;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Some(pid) = child.id() {
+            // Kill entire process group using '--' delimiter to avoid POSIX option parsing ambiguities on BSD/macOS
+            let _ = std::process::Command::new("kill")
+                .args(&["-KILL", "--", &format!("-{}", pid)])
+                .output();
+            let _ = std::process::Command::new("pkill")
+                .args(&["-KILL", "-P", &pid.to_string()])
+                .output();
+        }
+        let _ = child.kill().await;
+    }
+}
+
 #[tauri::command]
 pub async fn close_tunnel(tunnel_id: String, local_port: Option<u16>) -> Result<(), String> {
     let mut found = false;
@@ -265,22 +307,9 @@ pub async fn close_tunnel(tunnel_id: String, local_port: Option<u16>) -> Result<
         found = true;
     }
 
-    let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
-    if let Some(mut child) = lt_procs.remove(&tunnel_id) {
-        if let Some(pid) = child.id() {
-            #[cfg(target_os = "windows")]
-            {
-                let mut cmd = std::process::Command::new("taskkill");
-                cmd.creation_flags(0x08000000);
-                let _ = cmd.args(&["/F", "/T", "/PID", &pid.to_string()]).output();
-            }
-            #[cfg(not(target_os = "windows"))]
-            {
-                let _ = child.kill().await;
-            }
-        } else {
-            let _ = child.kill().await;
-        }
+    let mut child_procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+    if let Some(mut child) = child_procs.remove(&tunnel_id) {
+        kill_child_process_tree(&mut child).await;
         found = true;
     }
 
@@ -302,112 +331,46 @@ pub async fn close_all_tunnels() -> Result<(), String> {
         handle.abort();
     }
 
-    let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
-    for (_, mut child) in lt_procs.drain() {
-        if let Some(pid) = child.id() {
-            #[cfg(target_os = "windows")]
-            {
-                let mut cmd = std::process::Command::new("taskkill");
-                cmd.creation_flags(0x08000000);
-                let _ = cmd.args(&["/F", "/T", "/PID", &pid.to_string()]).output();
-            }
-            #[cfg(not(target_os = "windows"))]
-            {
-                let _ = child.kill().await;
-            }
-        } else {
-            let _ = child.kill().await;
-        }
+    let mut child_procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+    for (_, mut child) in child_procs.drain() {
+        //helper function Used
+        kill_child_process_tree(&mut child).await;
     }
 
     stop_proxy(None).await;
     Ok(())
 }
 
-#[tauri::command]
-pub async fn open_localtunnel(
-    app: tauri::AppHandle,
-    tunnel_id: String,
-    local_port: u16,
-    subdomain: Option<String>
-) -> Result<String, String> {
-    let mut cmd = tokio::process::Command::new("cmd");
-    #[cfg(target_os = "windows")]
-    cmd.creation_flags(0x08000000);
-    cmd.args(&["/C", "npx", "-y", "localtunnel@2.0.2", "--port", &local_port.to_string()]);
-    if let Some(sub) = subdomain {
-        let clean_sub: String = sub
-            .to_lowercase()
-            .chars()
-            .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
-            .collect();
-        let clean_sub = clean_sub.trim_matches('-').to_string();
-        if !clean_sub.is_empty() {
-            cmd.args(&["--subdomain", &clean_sub]);
+#[cfg(not(target_os = "windows"))]
+fn gui_toolchain_path() -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let mut paths = vec![
+        format!("{home}/.local/bin"),
+        format!("{home}/.local/share/pnpm"),
+        format!("{home}/.bun/bin"),
+        format!("{home}/.volta/bin"),
+        format!("{home}/.asdf/shims"),
+        format!("{home}/.nvm/current/bin"),
+    ];
+    if let Ok(nvm_bin) = std::env::var("NVM_BIN") {
+        paths.push(nvm_bin);
+    } else if let Ok(entries) = std::fs::read_dir(format!("{home}/.nvm/versions/node")) {
+        let mut vers: Vec<_> = entries.filter_map(|e| e.ok().map(|e| e.path().join("bin"))).collect();
+        vers.sort();
+        if let Some(latest) = vers.pop() {
+            paths.push(latest.to_string_lossy().to_string());
         }
     }
-    cmd.stdout(std::process::Stdio::piped());
-    
-    let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn localtunnel: {}", e))?;
-    let stdout = child.stdout.take().ok_or("Failed to open localtunnel stdout".to_string())?;
-    
-    let (tx, rx) = tokio::sync::oneshot::channel();
+    paths.extend(["/opt/homebrew/bin".into(), "/usr/local/bin".into()]);
+    if let Ok(cur) = std::env::var("PATH") {
+        paths.push(cur);
+    }
+    paths.into_iter().filter(|p| !p.is_empty()).collect::<Vec<_>>().join(":")
+}
 
-    tokio::spawn(async move {
-        let mut reader = tokio::io::BufReader::new(stdout).lines();
-        let mut tx_opt = Some(tx);
-        while let Ok(Some(line)) = reader.next_line().await {
-            if let Some(tx_sender) = tx_opt.take() {
-                if line.contains("your url is:") {
-                    let resolved = line.replace("your url is:", "").trim().to_string();
-                    let _ = tx_sender.send(Ok(resolved));
-                } else {
-                    tx_opt = Some(tx_sender);
-                }
-            }
-        }
-        if let Some(tx_sender) = tx_opt {
-            let _ = tx_sender.send(Err("localtunnel process exited without returning URL".to_string()));
-        }
-    });
-
-    let timeout_duration = std::time::Duration::from_secs(15);
-    let url = match tokio::time::timeout(timeout_duration, rx).await {
-        Ok(Ok(Ok(resolved_url))) => resolved_url,
-        Ok(Ok(Err(err))) => {
-            let _ = child.kill().await;
-            return Err(err);
-        }
-        _ => {
-            let _ = child.kill().await;
-            return Err("Timed out waiting for localtunnel URL".to_string());
-        }
-    };
-
-    let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
-    lt_procs.insert(tunnel_id.clone(), child);
-
-    let tunnel_id_clone = tunnel_id.clone();
-    let app_clone = app.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        let mut has_child = true;
-        while has_child {
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            let mut procs = LOCALTUNNEL_PROCESSES.lock().await;
-            if let Some(child_proc) = procs.get_mut(&tunnel_id_clone) {
-                if let Ok(Some(_)) = child_proc.try_wait() {
-                    procs.remove(&tunnel_id_clone);
-                    let _ = app_clone.emit("tunnel:auto-closed", serde_json::json!({ "tunnelId": tunnel_id_clone }));
-                    has_child = false;
-                }
-            } else {
-                has_child = false;
-            }
-        }
-    });
-
-    Ok(url)
+#[cfg(not(target_os = "windows"))]
+fn inject_gui_toolchain_path(cmd: &mut tokio::process::Command) {
+    cmd.env("PATH", gui_toolchain_path());
 }
 
 #[tauri::command]
@@ -416,17 +379,30 @@ pub async fn open_cloudflare_tunnel(
     tunnel_id: String,
     local_port: u16,
 ) -> Result<String, String> {
-    let mut cmd = tokio::process::Command::new("cmd");
+    let local_target = format!("127.0.0.1:{}", local_port);
     #[cfg(target_os = "windows")]
-    cmd.creation_flags(0x08000000);
-    let local_target = format!("localhost:{}", local_port);
+    let mut cmd = {
+        let mut c = tokio::process::Command::new("cmd");
+        c.creation_flags(0x08000000);
+        c.args(&["/C", "npx"]);
+        c
+    };
+    #[cfg(not(target_os = "windows"))]
+    let mut cmd = tokio::process::Command::new("npx");
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.as_std_mut().process_group(0);
+        inject_gui_toolchain_path(&mut cmd);
+    }
+
     cmd.args(&[
-        "/C",
-        "npx",
         "-y",
         "--package=cloudflared",
         "cloudflared",
         "tunnel",
+        "--protocol",
+        "http2",
         "--metrics",
         "localhost:0",
         "--no-autoupdate",
@@ -441,32 +417,57 @@ pub async fn open_cloudflare_tunnel(
     let stderr = child.stderr.take().ok_or("Failed to open cloudflared stderr".to_string())?;
 
     let (tx, rx) = tokio::sync::oneshot::channel();
+    let tx_shared = std::sync::Arc::new(tokio::sync::Mutex::new(Some(tx)));
+    let tx_timer = tx_shared.clone();
+    let tx_reader = tx_shared.clone();
 
     tokio::spawn(async move {
         let mut reader = tokio::io::BufReader::new(stderr).lines();
-        let mut tx_opt = Some(tx);
+        let mut found_url: Option<String> = None;
+
         while let Ok(Some(line)) = reader.next_line().await {
-            if let Some(tx_sender) = tx_opt.take() {
-                if line.contains(".trycloudflare.com") {
-                    if let Some(start_idx) = line.find("https://") {
-                        let rest = &line[start_idx..];
-                        let url = rest
-                            .split_whitespace()
-                            .next()
-                            .unwrap_or("")
-                            .trim_matches(|c| c == '|' || c == ' ' || c == '\r' || c == '\n')
-                            .to_string();
-                        if !url.is_empty() {
-                            let _ = tx_sender.send(Ok(url));
-                            continue;
-                        }
+            if found_url.is_none() && line.contains(".trycloudflare.com") {
+                if let Some(start_idx) = line.find("https://") {
+                    let rest = &line[start_idx..];
+                    let url = rest
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or("")
+                        .trim_matches(|c| c == '|' || c == ' ' || c == '\r' || c == '\n')
+                        .to_string();
+                    if !url.is_empty() {
+                        found_url = Some(url.clone());
+                        // ponytail: 4s safety ceiling — if Cloudflare alters its "Registered tunnel connection" stdout string in a future CLI release, falls back to parsed URL to avoid stalling UI.
+                        let tx_clone = tx_timer.clone();
+                        let url_fallback = url.clone();
+                        tokio::spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_millis(4000)).await;
+                            let mut lock = tx_clone.lock().await;
+                            if let Some(sender) = lock.take() {
+                                let _ = sender.send(Ok(url_fallback));
+                            }
+                        });
                     }
                 }
-                tx_opt = Some(tx_sender);
+            }
+
+            if let Some(ref url) = found_url {
+                if line.contains("Registered tunnel connection") || (line.contains("registered") && line.contains("connIndex")) {
+                    let mut lock = tx_reader.lock().await;
+                    if let Some(sender) = lock.take() {
+                        let _ = sender.send(Ok(url.clone()));
+                    }
+                }
             }
         }
-        if let Some(tx_sender) = tx_opt {
-            let _ = tx_sender.send(Err("cloudflared process exited without returning URL".to_string()));
+
+        let mut lock = tx_reader.lock().await;
+        if let Some(sender) = lock.take() {
+            if let Some(url) = found_url {
+                let _ = sender.send(Ok(url));
+            } else {
+                let _ = sender.send(Err("cloudflared process exited without returning URL".to_string()));
+            }
         }
     });
 
@@ -474,17 +475,17 @@ pub async fn open_cloudflare_tunnel(
     let url = match tokio::time::timeout(timeout_duration, rx).await {
         Ok(Ok(Ok(resolved_url))) => resolved_url,
         Ok(Ok(Err(err))) => {
-            let _ = child.kill().await;
+            kill_child_process_tree(&mut child).await;
             return Err(err);
         }
         _ => {
-            let _ = child.kill().await;
+            kill_child_process_tree(&mut child).await;
             return Err("Timed out waiting for trycloudflare URL".to_string());
         }
     };
 
-    let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
-    lt_procs.insert(tunnel_id.clone(), child);
+    let mut child_procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+    child_procs.insert(tunnel_id.clone(), child);
 
     let tunnel_id_clone = tunnel_id.clone();
     let app_clone = app.clone();
@@ -493,7 +494,7 @@ pub async fn open_cloudflare_tunnel(
         let mut has_child = true;
         while has_child {
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            let mut procs = LOCALTUNNEL_PROCESSES.lock().await;
+            let mut procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
             if let Some(child_proc) = procs.get_mut(&tunnel_id_clone) {
                 if let Ok(Some(_)) = child_proc.try_wait() {
                     procs.remove(&tunnel_id_clone);
@@ -539,6 +540,11 @@ pub async fn open_native_tunnel(
     let temp_dir = std::env::temp_dir().join(format!("proxync_ssh_{}", tunnel_id));
     let _ = std::fs::remove_dir_all(&temp_dir);
     let _ = std::fs::create_dir_all(&temp_dir);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&temp_dir, std::fs::Permissions::from_mode(0o700));
+    }
     let _guard = TempDirGuard(temp_dir.clone());
     
     let key_path = temp_dir.join("id_ed25519");
@@ -549,8 +555,13 @@ pub async fn open_native_tunnel(
         let mut keygen_cmd = std::process::Command::new("ssh-keygen");
         #[cfg(target_os = "windows")]
         keygen_cmd.creation_flags(0x08000000);
+        #[cfg(unix)]
+        keygen_cmd.env("PATH", gui_toolchain_path());
         keygen_cmd
             .args(&["-t", "ed25519", "-f", key_path_for_keygen.to_str().unwrap_or(""), "-q", "-N", ""])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
             .status()
             .map(|s| s.success())
             .unwrap_or(false)
@@ -562,13 +573,13 @@ pub async fn open_native_tunnel(
 
     let known_hosts_path = temp_dir.join("known_hosts");
     let ssh_host = std::env::var("PROXYNC_SSH_HOST")
-        .unwrap_or_else(|_| "104.208.83.199".to_string());
+        .unwrap_or_else(|_| crate::recon::DEFAULT_PROXYNC_SSH_HOST.to_string());
     let strict_host_checking = "yes";
 
     // Pre-seed known_hosts with official Proxync SSH host key to enforce StrictHostKeyChecking=yes
     let pinned_host_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDyV3ZNPsHhwJaW6akzFMg/KAE7F1K4WamVtMaeP/vi9 root@Proxync-tunnel";
     let seed_entry = format!(
-        "[{}]:2222 {}\n[104.208.83.199]:2222 {}\n[api.proxync.dev]:2222 {}\n",
+        "[{}]:2222 {}\n[relay.proxync.dev]:2222 {}\n[api.proxync.dev]:2222 {}\n",
         ssh_host, pinned_host_key, pinned_host_key, pinned_host_key
     );
     let _ = std::fs::write(&known_hosts_path, seed_entry);
@@ -612,8 +623,8 @@ pub async fn open_native_tunnel(
             return Err("Failed to register ephemeral public key with Proxync tunnel server. Please check your internet connection.".to_string());
         }
         
-        // Give sish 500ms to absorb the new pubkey from disk into its in-memory key store.
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        // Give sish 150ms to absorb the new pubkey into its key store
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
     }
     let active_key_path = key_path;
 
@@ -628,6 +639,9 @@ pub async fn open_native_tunnel(
                     std::process::Command::new("icacls")
                         .args(&[key_str.as_str(), "/inheritance:r", "/grant:r", user_arg.as_str()])
                         .creation_flags(0x08000000)
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
                         .output()
                 }).await;
             }
@@ -642,10 +656,17 @@ pub async fn open_native_tunnel(
     let mut cmd = tokio::process::Command::new("ssh");
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x08000000);
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.as_std_mut().process_group(0);
+        inject_gui_toolchain_path(&mut cmd);
+    }
 
     cmd.args(&[
         "-i", active_key_path.to_str().unwrap(),
         "-N",
+        "-o", "BatchMode=yes",
         "-o", &format!("StrictHostKeyChecking={}", strict_host_checking),
         "-o", &format!("UserKnownHostsFile={}", known_hosts_path.to_str().unwrap()),
         "-o", if cfg!(target_os = "windows") { "GlobalKnownHostsFile=NUL" } else { "GlobalKnownHostsFile=/dev/null" },
@@ -661,22 +682,24 @@ pub async fn open_native_tunnel(
         &format!("{}@{}", clean_subdomain, ssh_host),
     ]);
     
+    cmd.stdin(std::process::Stdio::null());
+    cmd.stdout(std::process::Stdio::null());
+    cmd.stderr(std::process::Stdio::null());
+    
     let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn ssh: {}", e))?;
     
-    // Await SSH handshake & remote forwarding bind confirmation (~1.5s) so the URL never 404s on first click
+    // Await SSH handshake & remote forwarding bind confirmation (~1500ms).
+    // Fails fast if OpenSSH exits with an error; ensures remote routing is fully active before returning.
     let start_wait = std::time::Instant::now();
-    while start_wait.elapsed() < std::time::Duration::from_millis(2000) {
+    while start_wait.elapsed() < std::time::Duration::from_millis(1500) {
         if let Ok(Some(status)) = child.try_wait() {
             return Err(format!("SSH tunnel process exited prematurely with status: {}", status));
         }
-        if start_wait.elapsed() >= std::time::Duration::from_millis(1600) {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
 
-    let mut lt_procs = LOCALTUNNEL_PROCESSES.lock().await;
-    lt_procs.insert(tunnel_id.clone(), child);
+    let mut child_procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+    child_procs.insert(tunnel_id.clone(), child);
     
     let tunnel_id_clone = tunnel_id.clone();
     let app_clone = app.clone();
@@ -687,7 +710,7 @@ pub async fn open_native_tunnel(
         let mut has_child = true;
         while has_child {
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            let mut procs = LOCALTUNNEL_PROCESSES.lock().await;
+            let mut procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
             if let Some(child_proc) = procs.get_mut(&tunnel_id_clone) {
                 if let Ok(Some(_)) = child_proc.try_wait() {
                     procs.remove(&tunnel_id_clone);
@@ -702,3 +725,25 @@ pub async fn open_native_tunnel(
     
     Ok(format!("https://{}.proxync.dev", clean_subdomain))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn test_kill_child_process_tree_with_process_group() {
+        use std::os::unix::process::CommandExt;
+        let mut cmd = tokio::process::Command::new("sleep");
+        cmd.arg("60");
+        cmd.as_std_mut().process_group(0);
+        let mut child = cmd.spawn().expect("failed to spawn sleep");
+
+        kill_child_process_tree(&mut child).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        let status = child.try_wait().expect("try_wait failed");
+        assert!(status.is_some(), "process should be terminated by kill_child_process_tree");
+    }
+}
+

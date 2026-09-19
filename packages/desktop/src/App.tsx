@@ -10,6 +10,12 @@ import { ToastContainer, showToast, dismissToast } from './lib/toast';
 import { scanCodebaseEndpoints, type ScannedEndpoint } from './lib/codebaseScanner';
 import { generateOpenApiSpec, importSwaggerToSavedRequests, isNoiseOrScannerProbe } from './lib/openApiGenerator';
 import {
+  detectSchemaDrift,
+  syncOpenApiWithPayload,
+  generateDriftBugReportMarkdown,
+} from './lib/schemaDriftDetector';
+import type { SchemaDriftReport } from './lib/types';
+import {
   api,
   ensureLocalWorkspace,
   getToken,
@@ -26,6 +32,7 @@ import {
   type RequestLog,
   type SavedRequest,
   type PostmanResponse,
+  type RequestSessionState,
   type Guardrails,
   type ProcessProfile,
   type WorkspaceConfig,
@@ -59,6 +66,9 @@ import {
   logError,
   logTraffic,
   clearLogs,
+  logAppLaunch,
+  logTunnelSessionStart,
+  logTunnelSessionStop,
 } from './lib/logger';
 
 /* ══════════════════════════════════════════════
@@ -193,13 +203,13 @@ export default function App() {
     return () => {
       mounted = false;
       if (resizeTimer) clearTimeout(resizeTimer);
-      unlistenPromise.then((unlisten) => unlisten()).catch(() => {});
+      unlistenPromise.then((unlisten) => unlisten()).catch(() => { });
     };
   }, []);
 
   const handleMinimize = useCallback(() => {
     try {
-      void getCurrentWindow().minimize().catch(() => {});
+      void getCurrentWindow().minimize().catch(() => { });
     } catch {
       // ignore
     }
@@ -217,7 +227,7 @@ export default function App() {
 
   const handleClose = useCallback(() => {
     try {
-      void getCurrentWindow().close().catch(() => {});
+      void getCurrentWindow().close().catch(() => { });
     } catch {
       // ignore
     }
@@ -279,8 +289,34 @@ export default function App() {
   });
   const [selectedRequest, setSelectedRequest] = useState<RequestLog | null>(null);
   const [savedRequests, setSavedRequests] = useState<SavedRequest[]>([]);
-  const [draftRequest, setDraftRequest] = useState<SavedRequest>(DEFAULT_REQUEST);
+  const [draftRequest, setDraftRequest] = useState<SavedRequest>(() => {
+    try {
+      const stored = localStorage.getItem(LOCAL_WORKSPACES_KEY);
+      const parsedWorkspaces = stored ? (JSON.parse(stored) as WorkspaceConfig[]) : [];
+      const activeWsId = localStorage.getItem(ACTIVE_WORKSPACE_KEY) ?? (parsedWorkspaces.length > 0 ? parsedWorkspaces[0].id : null);
+      if (activeWsId) {
+        const activeWs = parsedWorkspaces.find(w => w.id === activeWsId);
+        if (activeWs) {
+          const wsSaved = activeWs.savedRequests || [];
+          const bookmarkedId = localStorage.getItem(`PLAYGROUND_ACTIVE_${activeWsId}`);
+          if (bookmarkedId) {
+            const found = wsSaved.find(r => r.id === bookmarkedId);
+            if (found) return found;
+          }
+          if (wsSaved.length > 0) return wsSaved[0];
+        }
+      }
+    } catch (e) {
+      console.error('Failed to restore draftRequest bookmark', e);
+    }
+    return DEFAULT_REQUEST;
+  });
   const [postmanResponse, setPostmanResponse] = useState<PostmanResponse | null>(null);
+  // In-memory working sessions (draft + response + history) for requests touched during this desktop session
+  // ponytail: in-memory session only; upgrade path = persist dirty drafts in AppData if multi-tab workbench is unified
+  const [requestSessions, setRequestSessions] = useState<Record<string, RequestSessionState>>({});
+  const draftRequestRef = useRef(draftRequest);
+  draftRequestRef.current = draftRequest;
   const [mainView, setMainView] = useState<MainView>(() => {
     const stored = localStorage.getItem(LOCAL_WORKSPACES_KEY);
     const parsed = stored ? (JSON.parse(stored) as WorkspaceConfig[]) : [];
@@ -320,7 +356,9 @@ export default function App() {
       if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
         try {
           localStorage.setItem(SIDEBAR_DESKTOP_PREF_KEY, String(next));
-        } catch { }
+        } catch (err) {
+          logApp('STORAGE', 'WARN', 'Failed to persist sidebar preference to localStorage', err);
+        }
       }
       return next;
     });
@@ -467,6 +505,8 @@ export default function App() {
   }, [workbenchTabs]);
 
   const [discovering, setDiscovering] = useState(false);
+  // Concurrency guard ref to prevent overlapping background process scans
+  const discoveringRef = useRef(false);
   const [sharingPort, setSharingPort] = useState<number | null>(null);
   const [spawningPorts, setSpawningPorts] = useState<number[]>([]);
 
@@ -492,6 +532,7 @@ export default function App() {
   const [busyDomainId, setBusyDomainId] = useState<string | null>(null);
   const [sharingProcessCandidate, setSharingProcessCandidate] = useState<ProcessCandidate | null>(null);
   const [localIp, setLocalIp] = useState<string>('127.0.0.1');
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
 
   /* ── Derived state ── */
   const searchedWorkspaces = useMemo(() => {
@@ -553,6 +594,42 @@ export default function App() {
     generateOpenApiSpec([], [], 'Proxync Workspace', 'HTTP Server')
   );
   const [generatingSwagger, setGeneratingSwagger] = useState<boolean>(false);
+
+  // ── Schema Drift Detection State & Stable Listener Refs ─────────────────────
+  const [driftAlerts, setDriftAlerts] = useState<Map<string, SchemaDriftReport>>(new Map());
+  const driftAlertsRef = useRef<Map<string, SchemaDriftReport>>(driftAlerts);
+  useEffect(() => { driftAlertsRef.current = driftAlerts; }, [driftAlerts]);
+  const alertedRoutesRef = useRef<Set<string>>(new Set());
+  const openApiDocumentRef = useRef<Record<string, unknown>>(openApiDocument);
+  useEffect(() => { openApiDocumentRef.current = openApiDocument; }, [openApiDocument]);
+  const appSettingsRef = useRef<AppSettings>(appSettings);
+  useEffect(() => { appSettingsRef.current = appSettings; }, [appSettings]);
+
+  // ponytail: unified drift alert notifier covering both breaking errors and additive schema warnings
+  const notifyDriftAlert = useCallback((report: SchemaDriftReport) => {
+    if (!report.hasDrift || alertedRoutesRef.current.has(report.routeKey)) return;
+    alertedRoutesRef.current.add(report.routeKey);
+
+    if (report.breakingCount > 0) {
+      const top = report.items.find((i) => i.severity === 'breaking');
+      showToast(
+        `🚨 Breaking Contract Drift on ${report.method} ${report.path}: ${top?.message ?? `${report.breakingCount} violation(s)`}`,
+        'error'
+      );
+    } else if (report.warningCount > 0) {
+      showToast(
+        `⚠️ Schema Change on ${report.method} ${report.path}: +${report.warningCount} additive field(s) detected`,
+        'warning'
+      );
+    }
+
+    logApp(
+      'HTTP',
+      'WARN',
+      `Schema drift on ${report.routeKey}: ${report.breakingCount} breaking, ${report.warningCount} warnings`,
+      { routeKey: report.routeKey, violations: report.items }
+    );
+  }, []);
 
   // Auto-scan codebase endpoints when effective project root is detected or changed
   useEffect(() => {
@@ -651,6 +728,12 @@ export default function App() {
       draftRequest,
       activeSubTab: 'devtools',
       authSyncedState: 'unsynced',
+      lastResponse: requestLog ? {
+        status: typeof requestLog.status === 'number' ? requestLog.status : parseInt(String(requestLog.status || 200), 10),
+        duration: requestLog.durationMs || 12,
+        headers: requestLog.responseHeaders || {},
+        body: requestLog.responseBodyPreview || requestLog.bodyPreview || '',
+      } : undefined,
       executionHistory: requestLog
         ? [
           {
@@ -660,7 +743,7 @@ export default function App() {
             status: typeof requestLog.status === 'number' ? requestLog.status : parseInt(String(requestLog.status || 200), 10),
             durationMs: requestLog.durationMs || 12,
             headers: requestLog.responseHeaders || { 'Content-Type': 'application/json' },
-            body: requestLog.bodyPreview || '{\n  "status": "initial captured log"\n}',
+            body: requestLog.responseBodyPreview || requestLog.bodyPreview || '{\n  "status": "initial captured log"\n}',
             note: 'Captured Log Intercept',
           },
         ]
@@ -799,28 +882,121 @@ export default function App() {
     );
   }
 
-  useEffect(() => {
-    let mounted = true;
-    let updaterInterval: ReturnType<typeof setInterval> | null = null;
+  const runUpdateCheck = useCallback(
+    async (isStartupCheck = false, isManual = false) => {
+      if (isManual) {
+        setCheckingUpdates(true);
+        showToast('🔍 Checking for Proxync updates...', 'info');
+      }
 
-    async function runUpdateCheck(isStartupCheck = false) {
       try {
         const update = await check();
-        if (!mounted || !update) return;
+        if (isManual) setCheckingUpdates(false);
+
+        if (!update) {
+          if (isManual) {
+            showToast('✅ Proxync is up to date (v0.2.2)', 'success');
+          }
+          return;
+        }
 
         const isCVE = isCriticalSecurityUpdate(update);
         const forced = isCVE || isForceUpdate(update.currentVersion, update.version);
 
-        // Standard Feature Release: Respect autoUpdate preference on startup if not forced/CVE
-        if (!forced && !appSettings.autoUpdate && isStartupCheck) {
+        // Standard Feature Release: Respect autoUpdate preference on startup if not forced/CVE and not manual
+        if (!forced && !appSettings.autoUpdate && isStartupCheck && !isManual) {
           return;
         }
 
-        // Skip logic only applies to non-forced (patch-only) updates
-        if (!forced) {
+        // Skip logic only applies to non-forced (patch-only) updates, unless user initiated manually
+        if (!forced && !isManual) {
           const skipped = localStorage.getItem(SKIP_UPDATE_KEY);
           if (skipped === update.version) return;
         }
+
+        const triggerAutomatedRestart = (version: string) => {
+          let timer: ReturnType<typeof setTimeout> | null = null;
+          let restarted = false;
+
+          const executeRestart = async () => {
+            if (restarted) return;
+            restarted = true;
+            if (timer) clearTimeout(timer);
+            try {
+              await relaunch();
+            } catch (relaunchErr) {
+              restarted = false;
+              console.error('[AutoUpdater] Relaunch failed:', relaunchErr);
+              showToast(
+                `Restart failed: ${relaunchErr instanceof Error ? relaunchErr.message : String(relaunchErr)}. Please restart Proxync manually.`,
+                'error'
+              );
+            }
+          };
+
+          showToast(
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ fontWeight: 600 }}>✅ Update v{version} installed!</div>
+              <div style={{ fontSize: '0.82em', opacity: 0.9 }}>
+                Restarting Proxync in 2 seconds to apply update...
+              </div>
+              <button
+                style={{
+                  alignSelf: 'flex-start',
+                  padding: '5px 12px',
+                  cursor: 'pointer',
+                  background: '#10b981',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '5px',
+                  fontWeight: 600,
+                }}
+                onClick={executeRestart}
+              >
+                Restart Now
+              </button>
+            </div>,
+            'success',
+            true
+          );
+
+          timer = setTimeout(executeRestart, 2000);
+        };
+
+        const executeDownloadAndInstall = async (btn: HTMLButtonElement, toastId: string) => {
+          btn.disabled = true;
+          btn.innerText = 'Downloading...';
+
+          let downloaded = 0;
+          let contentLength = 0;
+          try {
+            await update.downloadAndInstall((event: any) => {
+              switch (event.event) {
+                case 'Started':
+                  contentLength = event.data.contentLength || 0;
+                  break;
+                case 'Progress':
+                  downloaded += event.data.chunkLength;
+                  if (contentLength) {
+                    const pct = Math.round((downloaded / contentLength) * 100);
+                    btn.innerText = `Downloading... ${pct}%`;
+                  }
+                  break;
+                case 'Finished':
+                  btn.innerText = 'Installing...';
+                  break;
+              }
+            });
+
+            dismissToast(toastId);
+            triggerAutomatedRestart(update.version);
+          } catch (downloadErr) {
+            btn.disabled = false;
+            btn.innerText = 'Retry Update';
+            console.error('[AutoUpdater] Download/Install failed:', downloadErr);
+            showToast(`Download failed: ${downloadErr instanceof Error ? downloadErr.message : String(downloadErr)}`, 'error');
+          }
+        };
 
         if (forced) {
           // ── FORCE UPDATE TOAST ── No Skip, No Later ────────────────
@@ -838,47 +1014,7 @@ export default function App() {
                 <button
                   id={`updater-force-btn-${update.version}`}
                   style={{ padding: '5px 14px', cursor: 'pointer', background: '#ef4444', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 700 }}
-                  onClick={async (e) => {
-                    const btn = e.currentTarget as HTMLButtonElement;
-                    btn.disabled = true;
-                    btn.innerText = 'Downloading...';
-
-                    let downloaded = 0;
-                    let contentLength = 0;
-                    await update.downloadAndInstall((event: any) => {
-                      switch (event.event) {
-                        case 'Started':
-                          contentLength = event.data.contentLength || 0;
-                          break;
-                        case 'Progress':
-                          downloaded += event.data.chunkLength;
-                          if (contentLength) {
-                            const pct = Math.round((downloaded / contentLength) * 100);
-                            btn.innerText = `Downloading... ${pct}%`;
-                          }
-                          break;
-                        case 'Finished':
-                          btn.innerText = 'Done!';
-                          break;
-                      }
-                    });
-
-                    dismissToast(forceToastId);
-                    showToast(
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        <div style={{ fontWeight: 600 }}>✅ Update v{update.version} ready</div>
-                        <div style={{ fontSize: '0.82em', opacity: 0.8 }}>Restart Proxync to apply the update.</div>
-                        <button
-                          style={{ padding: '5px 10px', cursor: 'pointer', background: '#10b981', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 600 }}
-                          onClick={() => relaunch()}
-                        >
-                          Restart Now
-                        </button>
-                      </div>,
-                      'success',
-                      true
-                    );
-                  }}
+                  onClick={(e) => executeDownloadAndInstall(e.currentTarget as HTMLButtonElement, forceToastId)}
                 >
                   Update Now
                 </button>
@@ -897,56 +1033,7 @@ export default function App() {
                 <button
                   id={`updater-btn-${update.version}`}
                   style={{ padding: '5px 10px', cursor: 'pointer', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 600 }}
-                  onClick={async (e) => {
-                    const btn = e.currentTarget as HTMLButtonElement;
-                    btn.disabled = true;
-                    btn.innerText = 'Starting...';
-
-                    let downloaded = 0;
-                    let contentLength = 0;
-                    await update.downloadAndInstall((event: any) => {
-                      switch (event.event) {
-                        case 'Started':
-                          contentLength = event.data.contentLength || 0;
-                          btn.innerText = 'Downloading...';
-                          break;
-                        case 'Progress':
-                          downloaded += event.data.chunkLength;
-                          if (contentLength) {
-                            const pct = Math.round((downloaded / contentLength) * 100);
-                            btn.innerText = `Downloading... ${pct}%`;
-                          }
-                          break;
-                        case 'Finished':
-                          btn.innerText = 'Done!';
-                          break;
-                      }
-                    });
-
-                    dismissToast(toastId);
-                    const restartId = showToast(
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        <div style={{ fontWeight: 600 }}>✅ Update v{update.version} ready</div>
-                        <div style={{ fontSize: '0.82em', opacity: 0.8 }}>Restart Proxync to apply the update.</div>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button
-                            style={{ padding: '5px 10px', cursor: 'pointer', background: '#10b981', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 600 }}
-                            onClick={() => relaunch()}
-                          >
-                            Restart Now
-                          </button>
-                          <button
-                            style={{ padding: '5px 10px', cursor: 'pointer', background: 'transparent', color: 'inherit', border: '1px solid currentColor', borderRadius: '5px' }}
-                            onClick={() => dismissToast(restartId)}
-                          >
-                            Later
-                          </button>
-                        </div>
-                      </div>,
-                      'success',
-                      true
-                    );
-                  }}
+                  onClick={(e) => executeDownloadAndInstall(e.currentTarget as HTMLButtonElement, toastId)}
                 >
                   Update Now
                 </button>
@@ -972,17 +1059,32 @@ export default function App() {
           );
         }
       } catch (err) {
+        if (isManual) setCheckingUpdates(false);
         console.error('[AutoUpdater] Failed to check for updates:', err);
+        if (isManual) {
+          const msg = err instanceof Error ? err.message : String(err);
+          // If the remote lacks a valid release JSON or returns a 404, we assume there is no newer release available yet.
+          if (msg.includes('404') || msg.toLowerCase().includes('could not fetch a valid release')) {
+            showToast('✅ Proxync is up to date', 'success');
+          } else {
+            showToast(`Update check failed: ${msg}`, 'error');
+          }
+        }
       }
-    }
+    },
+    [appSettings.autoUpdate]
+  );
 
-    // ── Schedule update checks based on autoUpdate setting ────────
+  useEffect(() => {
+    let mounted = true;
+    let updaterInterval: ReturnType<typeof setInterval> | null = null;
+
     // Startup pre-flight check runs unconditionally for CVE security radar
-    void runUpdateCheck(true);
+    void runUpdateCheck(true, false);
 
     if (appSettings.autoUpdate) {
       // Auto-update ON: check periodically every 2 hours
-      updaterInterval = setInterval(() => { void runUpdateCheck(false); }, 2 * 60 * 60 * 1000);
+      updaterInterval = setInterval(() => { void runUpdateCheck(false, false); }, 2 * 60 * 60 * 1000);
     } else {
       // Auto-update OFF: check every 7 days as background fallback
       const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
@@ -990,11 +1092,11 @@ export default function App() {
       const now = Date.now();
       if (now - lastCheck >= sevenDaysMs) {
         localStorage.setItem(LAST_UPDATE_CHECK_KEY, String(now));
-        void runUpdateCheck(false);
+        void runUpdateCheck(false, false);
       }
       updaterInterval = setInterval(() => {
         localStorage.setItem(LAST_UPDATE_CHECK_KEY, String(Date.now()));
-        void runUpdateCheck(false);
+        void runUpdateCheck(false, false);
       }, sevenDaysMs);
     }
 
@@ -1042,16 +1144,17 @@ export default function App() {
       appLogging: appSettings.appLogging ?? true,
       trafficLogging: appSettings.trafficLogging ?? false,
     });
-    logApp(
-      'SYSTEM',
-      'INFO',
-      `Proxync studio initialized (Theme: ${appSettings.theme || 'slate'}, Telemetry: ${appSettings.telemetry || 'enhanced'}, AppLogging: ${appSettings.appLogging ?? true ? 'ON' : 'OFF'}, TrafficLogging: ${appSettings.trafficLogging ?? false ? 'ON' : 'OFF'})`
-    );
+    void logAppLaunch({
+      appVersion: 'v0.2.2',
+      theme: appSettings.theme || 'slate',
+      telemetry: appSettings.telemetry || 'enhanced',
+      autoUpdate: appSettings.autoUpdate ?? true,
+    });
 
     if (!navigator.onLine) {
       logApp('SYSTEM', 'WARN', 'Application started while offline');
       showToast(
-        '⚠️ You are currently offline. Cloud tunnels (Cloudflare & Localtunnel) require internet connection. Local network sharing is active.',
+        '⚠️ You are currently offline. Cloud tunnels (Proxync Tunnel & Cloudflare) require internet connection. Local network sharing is active.',
         'warning'
       );
     }
@@ -1067,7 +1170,7 @@ export default function App() {
     const handleOnline = () => {
       logApp('SYSTEM', 'INFO', 'Network connection restored — online');
       showToast(
-        '🌐 Network connected: Back online! Cloud tunnels (Cloudflare & Localtunnel) are ready.',
+        '🌐 Network connected: Back online! Cloud tunnels (Proxync Tunnel & Cloudflare) are ready.',
         'success'
       );
     };
@@ -1116,15 +1219,31 @@ export default function App() {
 
   useEffect(() => {
     if (!activeWorkspace) return;
-    setSavedRequests(activeWorkspace.savedRequests || []);
+    const wsSaved = activeWorkspace.savedRequests || [];
+    setSavedRequests(wsSaved);
     // ponytail: merge workspace requests into pool without wiping previous workspace captures
     if (activeWorkspace.capturedRequests && activeWorkspace.capturedRequests.length > 0) {
       setRequests((current) => mergeUniqueRequests(current, activeWorkspace.capturedRequests));
     }
-    setStarterSuggestions((activeWorkspace.savedRequests || []).filter((r) => r.source === 'starter-scan'));
+    setStarterSuggestions(wsSaved.filter((r) => r.source === 'starter-scan'));
     if (activeWorkspace.remoteWorkspaceId) {
       localStorage.setItem('proxync_workspace', activeWorkspace.remoteWorkspaceId);
     }
+
+    // Restore Playground Bookmark on workspace switch
+    const bookmarkKey = `PLAYGROUND_ACTIVE_${activeWorkspace.id}`;
+    const bookmarkedId = localStorage.getItem(bookmarkKey);
+    const bookmarkedReq = bookmarkedId ? wsSaved.find((r) => r.id === bookmarkedId) : null;
+    if (bookmarkedReq) {
+      setDraftRequest(bookmarkedReq);
+    } else {
+      setDraftRequest(wsSaved[0] || DEFAULT_REQUEST);
+      if (bookmarkedId) localStorage.removeItem(bookmarkKey);
+    }
+
+    // ponytail: reset in-memory working sessions on workspace change (zero cross-workspace pollution)
+    setRequestSessions({});
+    setPostmanResponse(null);
   }, [activeWorkspaceId]);
 
   useEffect(() => {
@@ -1262,15 +1381,65 @@ export default function App() {
         const resolvedDuration = typeof payload.durationMs === 'number' ? payload.durationMs : null;
         console.log(`[Proxync Response] Req ID ${targetId} -> Status ${payload.status} (${resolvedDuration ?? 0}ms)`);
         logApp('HTTP', 'DEBUG', `Response received for req ${targetId} -> Status ${payload.status} (${resolvedDuration ?? 0}ms)`);
+
+        let driftReport: SchemaDriftReport | null = null;
+        let matchedReqId = '';
+        let matchedRawId = '';
+
         setRequests((current) =>
           current.map((r: any) => {
             if (r.id === targetId || r.rawRequestId === targetId) {
+              matchedReqId = r.id;
+              matchedRawId = r.rawRequestId || '';
               const dur = resolvedDuration !== null ? resolvedDuration : (r.capturedAtMs ? Math.max(1, Date.now() - r.capturedAtMs) : (r.durationMs || 12));
-              return { ...r, status: payload.status, durationMs: dur };
+
+              // Real-time Schema Drift Detection
+              if (!r.isProbe && payload.responseBodyPreview && payload.status !== 'pending') {
+                driftReport = detectSchemaDrift(
+                  r.method,
+                  r.path,
+                  payload.status,
+                  payload.responseBodyPreview,
+                  openApiDocumentRef.current,
+                );
+              }
+
+              // Guardrails check for body capture
+              const guardrailsCapture = appSettingsRef.current?.guardrails?.captureBodies ?? true;
+
+              return {
+                ...r,
+                status: payload.status,
+                durationMs: dur,
+                responseHeaders: payload.responseHeaders || r.responseHeaders,
+                responseBodyPreview: guardrailsCapture
+                  ? (payload.responseBodyPreview || r.responseBodyPreview)
+                  : r.responseBodyPreview,
+                schemaDrift: driftReport ?? r.schemaDrift,
+              };
             }
             return r;
           }),
         );
+
+        if (driftReport && (driftReport as SchemaDriftReport).hasDrift) {
+          const report = driftReport as SchemaDriftReport;
+          setDriftAlerts((prev) => {
+            const next = new Map(prev);
+            if (matchedReqId) next.set(matchedReqId, report);
+            if (matchedRawId) next.set(matchedRawId, report);
+            next.set(targetId, report);
+            // ponytail: bounded to 300 entries matching terminalLogs buffer to prevent memory leakage
+            if (next.size > 300) {
+              const keysToDelete = Array.from(next.keys()).slice(0, next.size - 300);
+              for (const k of keysToDelete) next.delete(k);
+            }
+            return next;
+          });
+
+          // Debounced high-visibility notification for breaking and additive drift
+          notifyDriftAlert(report);
+        }
       });
       if (!active) { uRes(); } else { unlistenResponse = uRes; }
 
@@ -1390,6 +1559,9 @@ export default function App() {
   /* ── Action handlers ── */
 
   async function discoverProcesses(bypassCache: boolean = false, silent: boolean = false) {
+    // Prevent overlapping discovery scans while in-flight
+    if (discoveringRef.current) return;
+    discoveringRef.current = true;
     setDiscovering(true);
     try {
       const discovered = await readNativeProcesses(bypassCache);
@@ -1416,7 +1588,10 @@ export default function App() {
       if (!silent) {
         showToast(error instanceof Error ? error.message : 'Process discovery failed', 'error');
       }
-    } finally { setDiscovering(false); }
+    } finally {
+      discoveringRef.current = false;
+      setDiscovering(false);
+    }
   }
 
   // ponytail: Reused createWorkspace helper accepting optional explicit name
@@ -1707,7 +1882,6 @@ export default function App() {
     const token = getToken();
 
     try {
-      logApp('TUNNEL', 'INFO', `Initiating Cloudflare Tunnel for port :${process.port}...`);
       localStorage.setItem('proxync_workspace', targetWorkspaceId);
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
       const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
@@ -1716,11 +1890,19 @@ export default function App() {
         invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined),
         invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port),
       ]);
+      logTunnelSessionStart({
+        provider: 'Cloudflare Tunnel',
+        localPort: process.port,
+        proxyPort,
+        processName: process.name,
+        workspaceName: activeWorkspace.name,
+        workspaceId: targetWorkspaceId,
+      });
       logApp('PROXY', 'INFO', `Bound ephemeral proxy to 127.0.0.1:${proxyPort} -> :${process.port}`);
       showToast('Starting Cloudflare Tunnel service...', 'info');
       const cfTunnelUrl = await invoke<string>('open_cloudflare_tunnel', { tunnelId: tunnel.id, localPort: proxyPort });
 
-      const cloudflareBoundTunnel: Tunnel = { ...tunnel, publicUrl: cfTunnelUrl, subdomain: cfTunnelUrl.replace('https://', '').replace('.trycloudflare.com', '') };
+      const cloudflareBoundTunnel: Tunnel = { ...tunnel, publicUrl: cfTunnelUrl, subdomain: cfTunnelUrl.replace('https://', '').replace('.trycloudflare.com', ''), provider: 'cloudflare' };
       setActiveTunnel(cloudflareBoundTunnel);
       setTunnels((current) => [cloudflareBoundTunnel, ...current.filter((item) => item.id !== tunnel.id)]);
       setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false);
@@ -1781,7 +1963,6 @@ export default function App() {
     const token = getToken();
 
     try {
-      logApp('TUNNEL', 'INFO', `Initiating Proxync Native SSH Tunnel for port :${process.port}...`);
       localStorage.setItem('proxync_workspace', targetWorkspaceId);
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
       const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
@@ -1790,11 +1971,19 @@ export default function App() {
         invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined),
         invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port),
       ]);
+      logTunnelSessionStart({
+        provider: 'Proxync Native SSH',
+        localPort: process.port,
+        proxyPort,
+        processName: process.name,
+        workspaceName: activeWorkspace.name,
+        workspaceId: targetWorkspaceId,
+      });
       logApp('PROXY', 'INFO', `Bound ephemeral proxy to 127.0.0.1:${proxyPort} -> :${process.port}`);
       const suggestedSub = generateRandomSubdomain('px');
       showToast('Starting Proxync Native SSH tunnel...', 'info');
       const nativeTunnelUrl = await invoke<string>('open_native_tunnel', { tunnelId: tunnel.id, localPort: proxyPort, subdomain: suggestedSub });
-      const boundTunnel: Tunnel = { ...tunnel, publicUrl: nativeTunnelUrl, subdomain: suggestedSub };
+      const boundTunnel: Tunnel = { ...tunnel, publicUrl: nativeTunnelUrl, subdomain: suggestedSub, provider: 'native' };
       setActiveTunnel(boundTunnel);
       setTunnels((current) => [boundTunnel, ...current.filter((item) => item.id !== tunnel.id)]);
       setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false);
@@ -1810,72 +1999,6 @@ export default function App() {
     finally { removeSpawningPort(process.port); }
   }
 
-  async function shareProcessLocaltunnel(process: ProcessCandidate, customSubdomain?: string) {
-    if (!activeWorkspace) return;
-    const existingActive = tunnels.find((t) => t.localPort === process.port && t.status === 'ACTIVE');
-    if (existingActive) {
-      showToast(`Tunnel is already active for port ${process.port} (${existingActive.publicUrl}). Stop the existing tunnel first.`, 'warning');
-      setActiveTunnel(existingActive);
-      setSelectedProcessId(process.id);
-      return;
-    }
-    if (spawningPorts.includes(process.port) || sharingPort === process.port) {
-      showToast(`A tunnel is currently launching for port ${process.port}. Please wait...`, 'info');
-      return;
-    }
-
-    const isLive = await verifyPortIsLive(process.port);
-    if (!isLive) {
-      showToast(`⚠️ Port :${process.port} is offline. Please start your local server on port ${process.port} before creating a localtunnel.`, 'warning');
-      void discoverProcesses(true, true);
-      return;
-    }
-
-    const isConnected = await checkRealInternetConnection();
-    if (!isConnected) {
-      showToast('⚠️ No internet connection detected. Localtunnel service requires an active internet connection. Please connect to the internet and try again.', 'error');
-      return;
-    }
-    if (!process.directory || process.directory === 'unknown') {
-      void refreshProcessDirectory(process);
-    }
-    if (isViteProcess(process)) {
-      showToast('⚠️ Sharing Vite dev servers over public tunnel is currently under development.', 'warning');
-      return;
-    }
-    addSpawningPort(process.port);
-    setProcesses((curr) => [process, ...curr.filter((p) => p.id !== process.id)]);
-    const starterScan = buildStarterRequests(process);
-    setStarterSuggestions(starterScan);
-    setSavedRequests((current) => mergeRequests(current, starterScan));
-    updateActiveWorkspace((ws) => ({ ...ws, profiles: upsertProfile(ws.profiles, process, starterScan.length), selectedProfileId: makeProfileId(process), languageHint: detectLanguageLabel(process) }));
-
-    const targetWorkspaceId = activeWorkspace.remoteWorkspaceId || activeWorkspace.id;
-    const token = getToken();
-
-    try {
-      localStorage.setItem('proxync_workspace', targetWorkspaceId);
-      const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
-      const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
-      const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
-      const [, proxyPort] = await Promise.all([
-        invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined),
-        invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port),
-      ]);
-      const suggestedSub = customSubdomain || `${activeWorkspace.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${process.port}`;
-      showToast('Starting localtunnel service...', 'info');
-      const localtunnelUrl = await invoke<string>('open_localtunnel', { tunnelId: tunnel.id, localPort: proxyPort, subdomain: suggestedSub });
-      const localtunnelBoundTunnel: Tunnel = { ...tunnel, publicUrl: localtunnelUrl, subdomain: localtunnelUrl.replace('https://', '').replace('.localtunnel.me', '') };
-      setActiveTunnel(localtunnelBoundTunnel);
-      setTunnels((current) => [localtunnelBoundTunnel, ...current.filter((item) => item.id !== tunnel.id)]);
-      setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false);
-      // ponytail: scope clear to active workspace only — preserve other workspaces' traffic history
-      setRequests((current) => current.filter((r) => r.workspaceId && r.workspaceId !== activeWorkspaceIdRef.current));
-      showToast(`Localtunnel is active! URL: ${localtunnelUrl}`, 'success');
-      updateActiveWorkspace((ws) => ({ ...ws, profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: localtunnelUrl } : p) }));
-    } catch (error) { showToast(error instanceof Error ? error.message : String(error), 'error'); }
-    finally { removeSpawningPort(process.port); }
-  }
 
   async function shareProcess(process: ProcessCandidate, customDomain?: string) {
     if (!activeWorkspace) return;
@@ -1939,13 +2062,30 @@ export default function App() {
         languageHint: detectLanguageLabel(process),
       }));
       const proxyPort = await invoke<number>('start_proxy', { localPort: process.port }).catch(() => process.port);
+      logTunnelSessionStart({
+        provider: customDomain ? `Custom Domain (${customDomain})` : 'Local Proxy',
+        localPort: process.port,
+        proxyPort,
+        processName: process.name,
+        subdomain: customDomain,
+        workspaceName: activeWorkspace.name,
+        workspaceId: targetWorkspaceId,
+      });
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined, customDomain);
       if (customDomain) {
         tunnel.publicUrl = customDomain.includes(':') ? customDomain : `http://${customDomain}:${proxyPort}`;
+        tunnel.customDomain = customDomain;
+        tunnel.provider = 'custom';
       }
       const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
       const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
-      await invoke('open_tunnel', { tunnelId: tunnel.id, localPort: proxyPort, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined);
+      let relayConnected = true;
+      try {
+        await invoke('open_tunnel', { tunnelId: tunnel.id, localPort: proxyPort, token, workspaceId: targetWorkspaceId, relayUrl });
+      } catch (relayErr) {
+        relayConnected = false;
+        logApp('TUNNEL', 'WARN', `Relay connection warning for ${tunnel.id}:`, relayErr);
+      }
       setActiveTunnel(tunnel);
       setTunnels((current) => [tunnel, ...current.filter((item) => item.id !== tunnel.id)]);
       setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false);
@@ -1955,7 +2095,11 @@ export default function App() {
         ...ws,
         profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: tunnel.publicUrl } : p)
       }));
-      showToast(`Tunnel active on ${tunnel.publicUrl}. Traffic interception enabled!`, 'success');
+      if (!relayConnected && customDomain) {
+        showToast(`Proxy active on ${tunnel.publicUrl}, but relay server is unreachable. Inbound external traffic requires an active relay.`, 'warning');
+      } else {
+        showToast(`Tunnel active on ${tunnel.publicUrl}. Traffic interception enabled!`, 'success');
+      }
     } catch (error) {
       logError('TUNNEL', `Unable to share process on Port :${process.port}`, error, 'Check if local server is listening and port is available', `Port :${process.port}`);
       showToast(error instanceof Error ? error.message : 'Unable to share process', 'error');
@@ -1980,10 +2124,23 @@ export default function App() {
   async function stopTunnel(tunnel: Tunnel) {
     if (!activeWorkspace) return;
     touchWorkspaceActivity(activeWorkspace.id);
+    const providerName = tunnel.publicUrl?.includes('cloudflare')
+      ? 'Cloudflare Tunnel'
+      : tunnel.publicUrl?.includes('inilax') || tunnel.subdomain?.startsWith('px-')
+        ? 'Proxync Native SSH'
+        : tunnel.customDomain
+          ? `Custom Domain (${tunnel.customDomain})`
+          : 'Local Proxy';
+
+    logTunnelSessionStop({
+      provider: providerName,
+      localPort: tunnel.localPort,
+      tunnelId: tunnel.id,
+    });
     logApp('TUNNEL', 'INFO', `Stopping tunnel ${tunnel.id} (Port :${tunnel.localPort})`);
     try {
       await invoke('close_tunnel', { tunnelId: tunnel.id, localPort: tunnel.localPort }).catch(() => undefined);
-      if (!tunnel.id.startsWith('lt-') && activeWorkspace.remoteWorkspaceId) {
+      if (activeWorkspace.remoteWorkspaceId) {
         await api.tunnels.close(activeWorkspace.remoteWorkspaceId, tunnel.id).catch(() => undefined);
       }
       setTunnels((current) => current.filter((item) => item.id !== tunnel.id));
@@ -2004,7 +2161,9 @@ export default function App() {
     if (listToClose.length === 0) {
       try {
         await invoke('close_all_tunnels');
-      } catch { }
+      } catch (err) {
+        logApp('TUNNEL', 'WARN', `Failed to invoke close_all_tunnels: ${err}`);
+      }
       setTunnels([]);
       setActiveTunnel(null);
       return;
@@ -2017,14 +2176,16 @@ export default function App() {
       await Promise.all(
         listToClose.map(async (tunnel) => {
           await invoke('close_tunnel', { tunnelId: tunnel.id, localPort: tunnel.localPort }).catch(() => undefined);
-          if (!tunnel.id.startsWith('lt-') && activeWorkspace?.remoteWorkspaceId) {
+          if (activeWorkspace?.remoteWorkspaceId) {
             await api.tunnels.close(activeWorkspace.remoteWorkspaceId, tunnel.id).catch(() => undefined);
           }
         })
       );
       try {
         await invoke('close_all_tunnels');
-      } catch { }
+      } catch (err) {
+        logApp('TUNNEL', 'WARN', `Failed to invoke close_all_tunnels during shutdown: ${err}`);
+      }
       setTunnels([]);
       setActiveTunnel(null);
       logApp('TUNNEL', 'INFO', `All ${listToClose.length} tunnels closed`);
@@ -2058,6 +2219,7 @@ export default function App() {
       let status = 200;
       let durationMs = 0;
       let resHeaders: Record<string, string> = {};
+      let bodyText = '';
 
       try {
         const res = await invoke<{ status: number; headers: Record<string, string>; body: string }>('execute_http_request', {
@@ -2069,6 +2231,7 @@ export default function App() {
         durationMs = Date.now() - startedAt;
         status = res.status;
         resHeaders = res.headers;
+        bodyText = res.body;
       } catch {
         const response = await fetch(targetUrl, {
           method: request.method,
@@ -2078,6 +2241,18 @@ export default function App() {
         durationMs = Date.now() - startedAt;
         status = response.status;
         resHeaders = Object.fromEntries(response.headers.entries());
+        bodyText = await response.text();
+      }
+
+      let replayDrift: SchemaDriftReport | null = null;
+      if (bodyText) {
+        replayDrift = detectSchemaDrift(
+          request.method,
+          request.path,
+          status,
+          bodyText,
+          openApiDocumentRef.current,
+        );
       }
 
       const replayedLog: RequestLog = {
@@ -2089,12 +2264,30 @@ export default function App() {
         headers: request.headers,
         bodyPreview: request.bodyPreview,
         responseHeaders: resHeaders,
+        responseBodyPreview: bodyText || undefined,
+        schemaDrift: replayDrift ?? undefined,
         capturedAt: new Date().toISOString(),
       };
 
       logApp('HTTP', 'INFO', `Replayed request: ${request.method} ${request.path} -> Status ${status} (${durationMs}ms)`);
       setRequests((current) => [replayedLog, ...current].slice(0, 150));
-      showToast(`Replayed ${request.method} ${request.path} (${status})`, 'success');
+
+      if (replayDrift && replayDrift.hasDrift) {
+        setDriftAlerts((prev) => {
+          const next = new Map(prev);
+          next.set(replayedLog.id, replayDrift!);
+          if (next.size > 300) {
+            const oldestKey = next.keys().next().value;
+            if (oldestKey) next.delete(oldestKey);
+          }
+          return next;
+        });
+
+        notifyDriftAlert(replayDrift);
+        showToast(`Replayed ${request.method} ${request.path} (${status})`, 'success');
+      } else {
+        showToast(`Replayed ${request.method} ${request.path} (${status})`, 'success');
+      }
     } catch (error) {
       logApp('HTTP', 'ERROR', `Replay failed: ${request.method} ${request.path}`, error);
       showToast(error instanceof Error ? error.message : 'Replay failed', 'error');
@@ -2123,7 +2316,45 @@ export default function App() {
     return `https://${trimmed}`;
   }
 
+  // Unified draft change handler syncing active draft and in-memory session store
+  // ponytail: sparse session hash map prevents disk auto-save while persisting session work
+  const handleDraftChange = useCallback((updated: SavedRequest) => {
+    setDraftRequest(updated);
+    if (updated.id) {
+      setRequestSessions((prev) => {
+        const existing = prev[updated.id];
+        return {
+          ...prev,
+          [updated.id]: {
+            draft: updated,
+            response: existing ? existing.response : null,
+          },
+        };
+      });
+    }
+  }, []);
+
+  // Smart request loader restoring in-memory session (draft + response) or falling back to saved pristine version
+  const handleLoadRequest = useCallback((target: SavedRequest) => {
+    if (activeWorkspaceId) {
+      if (target.id && target.id !== 'draft') {
+        localStorage.setItem(`PLAYGROUND_ACTIVE_${activeWorkspaceId}`, target.id);
+      } else {
+        localStorage.removeItem(`PLAYGROUND_ACTIVE_${activeWorkspaceId}`);
+      }
+    }
+    const session = requestSessions[target.id];
+    if (session) {
+      setDraftRequest(session.draft);
+      setPostmanResponse(session.response);
+    } else {
+      setDraftRequest(target);
+      setPostmanResponse(null);
+    }
+  }, [requestSessions, activeWorkspaceId]);
+
   async function runPostmanRequest() {
+    const executingId = draftRequest.id;
     setSendingRequest(true); setPostmanResponse(null);
     const startedAt = Date.now();
     const targetUrl = resolveTargetUrl(draftRequest.path);
@@ -2159,7 +2390,37 @@ export default function App() {
         bodyText = await response.text();
       }
 
-      setPostmanResponse({ status, duration: durationMs, headers: resHeaders, body: bodyText });
+      const newResponse: PostmanResponse = { status, duration: durationMs, headers: resHeaders, body: bodyText };
+
+      // 1. Always bind latest response to executingId's session
+      if (executingId) {
+        setRequestSessions((prev) => {
+          const existing = prev[executingId];
+          return {
+            ...prev,
+            [executingId]: {
+              draft: existing?.draft || draftRequest,
+              response: newResponse,
+            },
+          };
+        });
+      }
+
+      // 2. Race-Safe view update: only update active postmanResponse if user is still on executingId
+      if (draftRequestRef.current.id === executingId) {
+        setPostmanResponse(newResponse);
+      }
+
+      let sendDrift: SchemaDriftReport | null = null;
+      if (bodyText) {
+        sendDrift = detectSchemaDrift(
+          draftRequest.method,
+          draftRequest.path,
+          status,
+          bodyText,
+          openApiDocumentRef.current,
+        );
+      }
 
       const newLog: RequestLog = {
         id: crypto.randomUUID(),
@@ -2169,11 +2430,30 @@ export default function App() {
         durationMs,
         headers: draftRequest.headers,
         bodyPreview: draftRequest.body,
+        responseHeaders: resHeaders,
+        responseBodyPreview: bodyText || undefined,
+        schemaDrift: sendDrift ?? undefined,
         capturedAt: new Date().toISOString(),
       };
       logApp('HTTP', 'INFO', `Manual request: ${draftRequest.method} ${targetUrl} -> Status ${status} (${durationMs}ms)`);
       setRequests((current) => [newLog, ...current].slice(0, 150));
-      showToast(`Request to ${targetUrl} completed (${status})`, 'success');
+
+      if (sendDrift && sendDrift.hasDrift) {
+        setDriftAlerts((prev) => {
+          const next = new Map(prev);
+          next.set(newLog.id, sendDrift!);
+          if (next.size > 300) {
+            const oldestKey = next.keys().next().value;
+            if (oldestKey) next.delete(oldestKey);
+          }
+          return next;
+        });
+
+        notifyDriftAlert(sendDrift);
+        showToast(`Request to ${targetUrl} completed (${status})`, 'success');
+      } else {
+        showToast(`Request to ${targetUrl} completed (${status})`, 'success');
+      }
     } catch (error) {
       logApp('HTTP', 'ERROR', `Manual request failed: ${draftRequest.method} ${targetUrl}`, error);
       showToast(error instanceof Error ? error.message : 'Request failed', 'error');
@@ -2184,18 +2464,101 @@ export default function App() {
 
   function saveDraftRequest() {
     const folder = draftRequest.collectionName || 'Default Collection';
+    const oldId = draftRequest.id;
+    const id = oldId === 'draft' ? crypto.randomUUID() : oldId;
     const saved: SavedRequest = {
       ...draftRequest,
-      id: draftRequest.id === 'draft' ? crypto.randomUUID() : draftRequest.id,
+      id,
       name: stripMethodPrefix(draftRequest.name.trim() || draftRequest.path) || draftRequest.path,
       collectionName: folder,
     };
-    setSavedRequests((current) => mergeRequests(current, [saved]));
+    setSavedRequests((current) => {
+      const exists = current.some((r) => r.id === saved.id);
+      return exists
+        ? current.map((r) => (r.id === saved.id ? saved : r))
+        : [...current, saved];
+    });
     setDraftRequest(saved);
+
+    if (activeWorkspaceId) {
+      localStorage.setItem(`PLAYGROUND_ACTIVE_${activeWorkspaceId}`, id);
+    }
+
+    // Commit working draft to session and migrate temporary 'draft' key if needed
+    setRequestSessions((prev) => {
+      const next = { ...prev };
+      const existingSession = prev[oldId];
+      if (oldId === 'draft') {
+        delete next['draft'];
+      }
+      next[id] = {
+        draft: saved,
+        response: existingSession ? existingSession.response : postmanResponse,
+      };
+      return next;
+    });
+
     showToast(`Request saved to "${folder}"`, 'success');
   }
 
+  // ponytail: Pure deletion with contiguous sibling selection and decoupled state update
   function deleteSavedRequest(id: string) {
+    const getFolder = (r?: SavedRequest | null) =>
+      r?.collectionName || (r?.source === 'starter-scan' ? 'Scanned Endpoints' : r?.source === 'captured' ? 'Captured Traffic' : 'Default Collection');
+
+    const idx = savedRequests.findIndex((r) => r.id === id);
+    const deletingReq = idx !== -1 ? savedRequests[idx] : null;
+    const targetFolder = getFolder(deletingReq) || getFolder(draftRequest);
+
+    if (draftRequest.id === id) {
+      let next: SavedRequest | undefined;
+      if (deletingReq) {
+        const inFolder = savedRequests.filter((r) => getFolder(r) === targetFolder);
+        const folderIdx = inFolder.findIndex((r) => r.id === id);
+        if (folderIdx !== -1) {
+          if (folderIdx < inFolder.length - 1) {
+            next = inFolder[folderIdx + 1];
+          } else if (folderIdx > 0) {
+            next = inFolder[folderIdx - 1];
+          }
+        }
+      }
+      if (!next) {
+        next = savedRequests.filter((r) => r.id !== id).find((r) => getFolder(r) === targetFolder)
+          || savedRequests.filter((r) => r.id !== id)[0];
+      }
+
+      if (next) {
+        if (activeWorkspaceId) localStorage.setItem(`PLAYGROUND_ACTIVE_${activeWorkspaceId}`, next.id);
+        const nextSession = requestSessions[next.id];
+        if (nextSession) {
+          setDraftRequest(nextSession.draft);
+          setPostmanResponse(nextSession.response);
+        } else {
+          setDraftRequest(next);
+          setPostmanResponse(null);
+        }
+      } else {
+        if (activeWorkspaceId) localStorage.removeItem(`PLAYGROUND_ACTIVE_${activeWorkspaceId}`);
+        // Reset to blank draft and clear stale response when collection empties after delete
+        setDraftRequest({
+          ...DEFAULT_REQUEST,
+          collectionName: targetFolder,
+          queryParams: [],
+          description: '',
+        });
+        setPostmanResponse(null);
+      }
+    }
+
+    // Purge deleted request from in-memory sessions (zero memory leak)
+    setRequestSessions((prev) => {
+      if (!prev[id]) return prev;
+      const copy = { ...prev };
+      delete copy[id];
+      return copy;
+    });
+
     setSavedRequests((current) => current.filter((r) => r.id !== id));
     showToast('Request removed from collection', 'info');
   }
@@ -2204,6 +2567,94 @@ export default function App() {
     setSavedRequests(next);
   }
 
+  const handleSyncOpenApiWithDrift = useCallback((
+    method: string,
+    path: string,
+    statusCode: string,
+    responseBodyPreview: string,
+  ) => {
+    setOpenApiDocument((current) =>
+      syncOpenApiWithPayload(current, method, path, statusCode, responseBodyPreview)
+    );
+
+    // Clear resolved drift reports so Swagger, Observability, and Workbench alerts clear immediately
+    const cleanPath = path.split('?')[0].replace(/^https?:\/\/[^/]+/, '') || path;
+    const normMethod = method.toUpperCase();
+
+    // ponytail: compute otherDriftCount synchronously via driftAlertsRef — no closure dep, no updater side effects
+    const uniqueRemainingRoutes = new Set<string>();
+    for (const v of driftAlertsRef.current.values()) {
+      const vClean = v.path.split('?')[0].replace(/^https?:\/\/[^/]+/, '') || v.path;
+      if (v.hasDrift && (v.method.toUpperCase() !== normMethod || (v.path !== path && vClean !== cleanPath))) {
+        uniqueRemainingRoutes.add(`${v.method.toUpperCase()} ${vClean}`);
+      }
+    }
+    const otherDriftCount = uniqueRemainingRoutes.size;
+
+    setDriftAlerts((prev) => {
+      const next = new Map();
+      for (const [k, v] of prev.entries()) {
+        const vClean = v.path.split('?')[0].replace(/^https?:\/\/[^/]+/, '') || v.path;
+        if (v.method.toUpperCase() !== normMethod || (v.path !== path && vClean !== cleanPath)) {
+          next.set(k, v);
+        }
+      }
+      return next;
+    });
+
+    alertedRoutesRef.current.delete(`${normMethod} ${path}`);
+    alertedRoutesRef.current.delete(`${normMethod} ${cleanPath}`);
+
+    setRequests((current) =>
+      current.map((r) => {
+        const rClean = r.path.split('?')[0].replace(/^https?:\/\/[^/]+/, '') || r.path;
+        if (r.method.toUpperCase() === normMethod && (r.path === path || rClean === cleanPath)) {
+          return { ...r, schemaDrift: undefined };
+        }
+        return r;
+      })
+    );
+
+    setWorkbenchTabs((current) =>
+      current.map((t) => {
+        const tClean = t.path.split('?')[0].replace(/^https?:\/\/[^/]+/, '') || t.path;
+        if (t.method.toUpperCase() === normMethod && (t.path === path || tClean === cleanPath)) {
+          return {
+            ...t,
+            requestLog: t.requestLog ? { ...t.requestLog, schemaDrift: undefined } : undefined,
+          };
+        }
+        return t;
+      })
+    );
+
+    if (otherDriftCount > 0) {
+      showToast(
+        `✅ Synced ${normMethod} ${cleanPath} (HTTP ${statusCode}). Note: ${otherDriftCount} other endpoint(s) still have pending drift.`,
+        'success'
+      );
+    } else {
+      showToast(
+        `✅ OpenAPI contract synchronized for ${normMethod} ${cleanPath} (HTTP ${statusCode}) — 100% compliant`,
+        'success'
+      );
+    }
+    logApp('HTTP', 'INFO', `Contract synced for ${method} ${path} (status ${statusCode}), ${otherDriftCount} other drifted routes remaining`);
+  }, []);
+  // ponytail: dep [] is correct — reads latest state via driftAlertsRef.current.
+
+  const handleCopyDriftBugReport = useCallback((report: SchemaDriftReport) => {
+    const md = generateDriftBugReportMarkdown(report);
+    copyText(md, '📋 Bug report copied to clipboard');
+  }, []);
+
+  // P2: Memoized drift reports array — avoids allocating a new Set+Array on every render.
+  // Consumed by both SwaggerView and ObservabilityView.
+  const driftReports = useMemo(
+    () => Array.from(new Set(driftAlerts.values())),
+    [driftAlerts]
+  );
+
   function importStarterRequests() {
     if (starterSuggestions.length === 0) return;
     setSavedRequests((current) => mergeRequests(current, starterSuggestions));
@@ -2211,7 +2662,10 @@ export default function App() {
     showToast(`Loaded ${starterSuggestions.length} starter requests. Test the likely endpoints and refine from there.`, 'success');
   }
 
-  function updateDraftHeader(rawHeaders: string) { setDraftRequest((current) => ({ ...current, headers: parseHeaderText(rawHeaders) })); }
+  function updateDraftHeader(rawHeaders: string) {
+    const next = { ...draftRequest, headers: parseHeaderText(rawHeaders) };
+    handleDraftChange(next);
+  }
 
   function updateGuardrails(patch: Partial<Guardrails>) {
     const nextGuardrails = { ...appSettings.guardrails, ...patch };
@@ -2295,7 +2749,7 @@ export default function App() {
   async function updateAppLogging(enabled: boolean) {
     setAppSettings((current) => ({ ...current, appLogging: enabled }));
     await setAppLogging(enabled, {
-      appVersion: 'v0.2.1-stable',
+      appVersion: 'v0.2.2-stable',
       theme: appSettings.theme,
       platform: typeof navigator !== 'undefined' ? navigator.platform : 'desktop',
     });
@@ -2310,7 +2764,7 @@ export default function App() {
   async function updateTrafficLogging(enabled: boolean) {
     setAppSettings((current) => ({ ...current, trafficLogging: enabled }));
     await setTrafficLogging(enabled, {
-      appVersion: 'v0.2.1-stable',
+      appVersion: 'v0.2.2-stable',
     });
     showToast(
       enabled
@@ -2398,6 +2852,8 @@ export default function App() {
   function clearTrafficLogs() {
     setRequests([]);
     setSelectedRequest(null);
+    setDriftAlerts(new Map());
+    alertedRoutesRef.current.clear();
     setWorkspaces((current) =>
       current.map((ws) => ({
         ...ws,
@@ -2576,13 +3032,12 @@ export default function App() {
                             setSearchOpen(false);
                             setSearchQuery('');
                           }}
-                          className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all ${
-                            isHighlighted
-                              ? 'bg-primary/20 ring-1 ring-primary/40 text-on-surface'
-                              : isActive
+                          className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all ${isHighlighted
+                            ? 'bg-primary/20 ring-1 ring-primary/40 text-on-surface'
+                            : isActive
                               ? 'bg-primary/10 border border-primary/30 text-on-surface'
                               : 'hover:bg-surface-container-highest text-on-surface-variant hover:text-on-surface'
-                          }`}
+                            }`}
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
                             <span className={`material-symbols-outlined text-[18px] shrink-0 ${isActive ? 'text-primary' : 'text-outline'}`}>
@@ -2744,7 +3199,7 @@ export default function App() {
           {!sidebarCollapsed ? (
             <div className="px-6 mb-5">
               <h2 className="text-headline-sm font-bold text-primary truncate">Proxync Engine</h2>
-              <p className="text-code-sm text-on-surface-variant opacity-60">v0.2.1-stable</p>
+              <p className="text-code-sm text-on-surface-variant opacity-60">v0.2.2-stable</p>
             </div>
           ) : (
             <div className="flex flex-col items-center mb-4">
@@ -2814,8 +3269,8 @@ export default function App() {
                       disabled={isDisabled}
                       title={item.label}
                       className={`nav-item flex items-center ${sidebarCollapsed ? 'collapsed justify-center px-1.5 py-2 mx-auto w-[42px] rounded-xl' : 'gap-3 px-6 py-2'} w-full text-left transition-colors font-label-md text-sm ${isSelected
-                          ? 'active text-on-surface border-secondary-container bg-surface-container-high font-semibold'
-                          : 'text-on-surface-variant hover:bg-surface-container-highest border-l-2 border-transparent'
+                        ? 'active text-on-surface border-secondary-container bg-surface-container-high font-semibold'
+                        : 'text-on-surface-variant hover:bg-surface-container-highest border-l-2 border-transparent'
                         } ${isDisabled ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'cursor-pointer'}`}
                       onClick={() => {
                         if (item.view === 'settings') {
@@ -2935,12 +3390,26 @@ export default function App() {
               />
             )}
             {mainView === 'traffic' && (
-              <TrafficView requests={requests} workspaces={workspaces} processes={processes} activeTunnel={activeTunnel} onOpen={openRequestDetail} onSendToPostman={sendToPostman} onClear={clearTrafficLogs} onOpenWorkbench={openRequestInWorkbench} />
+              <TrafficView
+                requests={requests}
+                workspaces={workspaces}
+                processes={processes}
+                activeTunnel={activeTunnel}
+                driftAlerts={driftAlerts}
+                captureBodies={appSettings.guardrails?.captureBodies ?? true}
+                onOpen={openRequestDetail}
+                onSendToPostman={sendToPostman}
+                onClear={clearTrafficLogs}
+                onOpenWorkbench={openRequestInWorkbench}
+                onSyncDrift={handleSyncOpenApiWithDrift}
+                onCopyBugReport={handleCopyDriftBugReport}
+              />
             )}
             {mainView === 'postman' && (
               <PostmanView
                 draft={draftRequest}
                 savedRequests={savedRequests}
+                requestSessions={requestSessions}
                 response={postmanResponse}
                 sending={sendingRequest}
                 starterSuggestions={starterSuggestions}
@@ -2955,12 +3424,20 @@ export default function App() {
                   }
                 }}
                 selectedProcessPort={selectedProcess?.port}
-                onDraftChange={setDraftRequest}
+                onDraftChange={handleDraftChange}
                 onHeaderTextChange={updateDraftHeader}
                 onRun={runPostmanRequest}
-                onClearResponse={() => setPostmanResponse(null)}
+                onClearResponse={() => {
+                  setPostmanResponse(null);
+                  if (draftRequest.id) {
+                    setRequestSessions((prev) => prev[draftRequest.id] ? {
+                      ...prev,
+                      [draftRequest.id]: { ...prev[draftRequest.id], response: null }
+                    } : prev);
+                  }
+                }}
                 onSave={saveDraftRequest}
-                onLoad={setDraftRequest}
+                onLoad={handleLoadRequest}
                 onImportStarterRequests={importStarterRequests}
                 onDeleteRequest={deleteSavedRequest}
                 onUpdateSavedRequests={updateSavedRequests}
@@ -2980,6 +3457,7 @@ export default function App() {
                 requests={requests}
                 activeTunnel={activeTunnel}
                 generating={generatingSwagger}
+                driftReports={driftReports}
                 onGenerateSpec={handleGenerateSwaggerSpec}
                 onClearSpec={handleClearSwaggerSpec}
                 onChangePanel={setSwaggerPanel}
@@ -3024,6 +3502,8 @@ export default function App() {
                 tunnels={tunnels}
                 activeProcessPort={selectedProcess?.port}
                 activeTunnelUrl={activeTunnel?.publicUrl}
+                driftAlerts={driftAlerts}
+                openApiDocument={openApiDocument}
                 onClose={() => setMainView('traffic')}
                 onTabsChange={(updatedTabs, nextActiveId) => {
                   setWorkbenchTabs(updatedTabs);
@@ -3032,6 +3512,8 @@ export default function App() {
                 onSaveRequestToCollection={saveDraftRequest}
                 onUpdateProjectRoot={updateProjectRootPath}
                 onScannedEndpointsUpdate={setScannedEndpoints}
+                onSyncDrift={handleSyncOpenApiWithDrift}
+                onCopyBugReport={handleCopyDriftBugReport}
               />
             )}
             {mainView === 'docs' && (
@@ -3044,6 +3526,7 @@ export default function App() {
                 tunnel={activeTunnel}
                 requests={requests}
                 telemetryMode={appSettings.telemetry ?? 'enhanced'}
+                driftReports={driftReports}
                 onNavigateView={setMainView}
                 onOpenDetail={openRequestDetail}
                 onSendToPostman={sendToPostman}
@@ -3077,6 +3560,9 @@ export default function App() {
                 onUpdateEnableDevTools={updateEnableDevTools}
                 onUpdateAppLogging={updateAppLogging}
                 onUpdateTrafficLogging={updateTrafficLogging}
+                onCheckForUpdates={() => runUpdateCheck(false, true)}
+                checkingUpdates={checkingUpdates}
+                appVersion="v0.2.2"
                 initialSection={settingsSection}
               />
             )}
@@ -3137,8 +3623,8 @@ export default function App() {
               {tunnels.filter((t) => t.status === 'ACTIVE').length > 0
                 ? `${tunnels.filter((t) => t.status === 'ACTIVE').length} Live ${tunnels.filter((t) => t.status === 'ACTIVE').length === 1 ? 'Tunnel' : 'Tunnels'} (${tunnels.filter((t) => t.status === 'ACTIVE').map((t) => `:${t.localPort}`).join(', ')})${tunnels.some((t) => t.status === 'STANDBY') ? ` + ${tunnels.filter((t) => t.status === 'STANDBY').length} Standby` : ''}`
                 : tunnels.filter((t) => t.status === 'STANDBY').length > 0
-                ? `${tunnels.filter((t) => t.status === 'STANDBY').length} Standby (${tunnels.filter((t) => t.status === 'STANDBY').map((t) => `:${t.localPort}`).join(', ')})`
-                : 'No Active Tunnels'}
+                  ? `${tunnels.filter((t) => t.status === 'STANDBY').length} Standby (${tunnels.filter((t) => t.status === 'STANDBY').map((t) => `:${t.localPort}`).join(', ')})`
+                  : 'No Active Tunnels'}
             </span>
           </span>
           <span className="text-outline/50 shrink-0">|</span>
@@ -3203,11 +3689,18 @@ export default function App() {
           process={sharingProcessCandidate}
           domains={domains.filter((d) => d.verified)}
           onClose={() => setSharingProcessCandidate(null)}
-          onConfirm={(selectedOption, ltSubdomain) => {
-            if (selectedOption === 'proxync_native') { void shareProcessNative(sharingProcessCandidate); }
-            else if (selectedOption === 'localtunnel') { void shareProcessLocaltunnel(sharingProcessCandidate, ltSubdomain); }
-            else if (selectedOption === 'cloudflare') { void shareProcessCloudflare(sharingProcessCandidate); }
-            else { void shareProcess(sharingProcessCandidate, selectedOption === 'default' ? undefined : selectedOption); }
+          onConfirm={(selectedOption) => {
+            if (selectedOption === 'proxync_native') {
+              void shareProcessNative(sharingProcessCandidate);
+            } else if (selectedOption === 'cloudflare') {
+              void shareProcessCloudflare(sharingProcessCandidate);
+            } else if (selectedOption === 'custom_subdomain_unconnected' || selectedOption === 'default') {
+              showToast('⚠️ Subdomain not connected. Please add and verify your custom subdomain in Settings → Custom Domains.', 'warning');
+              setSettingsSection('domains');
+              setMainView('settings');
+            } else {
+              void shareProcess(sharingProcessCandidate, selectedOption);
+            }
             setSharingProcessCandidate(null);
           }}
         />
@@ -3355,7 +3848,10 @@ function buildStarterRequests(process: ProcessCandidate): SavedRequest[] {
 
 function mergeRequests(current: SavedRequest[], incoming: SavedRequest[]): SavedRequest[] {
   const map = new Map<string, SavedRequest>();
-  for (const r of [...incoming, ...current]) { map.set(`${r.method}:${r.path}:${r.name}`, r); }
+  for (const r of [...current, ...incoming]) {
+    const key = r.id && r.id !== 'draft' ? `id:${r.id}` : `${r.method}:${r.path}:${r.name}`;
+    map.set(key, r);
+  }
   return Array.from(map.values());
 }
 

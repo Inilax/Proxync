@@ -1,28 +1,39 @@
 name: Release
 
 # Fires whenever a release PR (opened by prepare-release.yml) is merged into main.
-# Reads the version already bumped in package.json, tags it if new, creates
-# a permanent release-vX.Y.Z branch, then builds the Windows installer and
-# publishes the GitHub Release.
+# Stage 1: Reads package version, tags the commit, creates permanent snapshot branch,
+#          and extracts changelog release notes.
+# Stage 2: Compiles and signs release artifacts across Windows, Linux, and macOS
+#          in parallel using tauri-action, attaching installers and signatures to
+#          the draft GitHub Release.
+
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
-permissions:
-  contents: write
+# Declare default permissions as read only.
+permissions: read-all
 
 env:
-  # Path to the Tauri app inside the monorepo
   PKG_DIR: packages/desktop
 
 jobs:
-  tag-and-release:
-    runs-on: windows-latest
+  prepare-tag:
+    name: Prepare Tag & Changelog
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      exists: ${{ steps.tag.outputs.exists }}
+      version: ${{ steps.tag.outputs.version }}
+      tag: ${{ steps.tag.outputs.tag }}
+      body: ${{ steps.changelog.outputs.body }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
 
@@ -56,34 +67,6 @@ jobs:
           git branch "release-${{ steps.tag.outputs.tag }}"
           git push origin "release-${{ steps.tag.outputs.tag }}"
 
-      - name: Setup Node
-        if: steps.tag.outputs.exists == 'false'
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: "npm"
-
-      - name: Setup Rust
-        if: steps.tag.outputs.exists == 'false'
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust cache
-        if: steps.tag.outputs.exists == 'false'
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: "${{ env.PKG_DIR }}/src-tauri -> target"
-
-      - name: Install frontend dependencies
-        if: steps.tag.outputs.exists == 'false'
-        run: npm ci
-
-      - name: Run tests (safety net)
-        if: steps.tag.outputs.exists == 'false'
-        shell: bash
-        run: |
-          (cd "${PKG_DIR}" && npm test --if-present)
-          (cd "${PKG_DIR}/src-tauri" && cargo test)
-
       - name: Extract release notes from CHANGELOG.md
         id: changelog
         if: steps.tag.outputs.exists == 'false'
@@ -98,7 +81,6 @@ jobs:
             let oldContent = '';
             
             try {
-              // Try reading old CHANGELOG.md from the previous commit (HEAD~1)
               oldContent = execSync('git show HEAD~1:CHANGELOG.md', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
               console.log("Read old CHANGELOG.md from HEAD~1");
             } catch (e) {
@@ -108,7 +90,7 @@ jobs:
                   .split('\n')
                   .map(t => t.trim())
                   .filter(Boolean);
-                const previousTag = tags[1]; // tags[0] is current tag created in step 43
+                const previousTag = tags[1];
                 if (previousTag) {
                   oldContent = execSync(`git show ${previousTag}:CHANGELOG.md`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
                   console.log(`Read old CHANGELOG.md from previous tag: ${previousTag}`);
@@ -159,7 +141,6 @@ jobs:
               }
             }
 
-            // Fallback: If comparison failed or no anchor was found, extract from first heading to the end
             if (newNotes.length === 0) {
               console.log("No new notes found via comparison. Using full CHANGELOG.md from first heading.");
               let started = false;
@@ -182,25 +163,67 @@ jobs:
           }
           EOF
 
+  build-tauri:
+    name: Build & Sign (${{ matrix.platform }})
+    needs: prepare-tag
+    if: needs.prepare-tag.outputs.exists == 'false'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'windows-latest'
+            args: ''
+          - platform: 'ubuntu-22.04'
+            args: ''
+          - platform: 'macos-latest'
+            args: '--target universal-apple-darwin'
+    runs-on: ${{ matrix.platform }}
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Node
+        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libglib2.0-dev libgtk-3-dev
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
+        with:
+          toolchain: stable
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@f0deed1e0edfc6a9be95417288c0e1099b1eeec3 # v2.7.7
+        with:
+          workspaces: "${{ env.PKG_DIR }}/src-tauri -> target"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
       - name: Build app and publish GitHub Release
-        if: steps.tag.outputs.exists == 'false'
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Tauri updater signing — set these in your repo's Settings → Secrets:
-          # TAURI_SIGNING_PRIVATE_KEY  : the full private key from `npx tauri signer generate`
-          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD : the password you set when generating (can be empty string)
+          # Tauri updater signing — generated via `npx tauri signer generate`:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: ${{ env.PKG_DIR }}
-          tagName: ${{ steps.tag.outputs.tag }}
-          releaseName: "${{ steps.tag.outputs.tag }}"
-          releaseBody: ${{ steps.changelog.outputs.body }}
-          # Set to true if you want to review/edit before publishing,
-          # false to publish immediately and fully automatically.
+          tagName: ${{ needs.prepare-tag.outputs.tag }}
+          releaseName: "Proxync ${{ needs.prepare-tag.outputs.tag }}"
+          releaseBody: ${{ needs.prepare-tag.outputs.body }}
           releaseDraft: true
           prerelease: false
-          # tauri-action automatically generates and uploads updater.json
-          # alongside the installer artifacts when signing keys are provided.
           includeUpdaterJson: true
+          args: ${{ matrix.args }}

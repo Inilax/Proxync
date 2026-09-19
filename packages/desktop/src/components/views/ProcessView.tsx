@@ -1,6 +1,6 @@
 import { openUrl } from '@tauri-apps/plugin-opener';
 import type { WorkspaceConfig, ProcessCandidate, ProcessProfile, Tunnel, SavedRequest } from './SharedComponents';
-import { InfoTile, formatDate } from './SharedComponents';
+import { InfoTile, formatDate, getTunnelMetadata } from './SharedComponents';
 
 function handleOpenUrl(url: string) {
   openUrl(url).catch(() => window.open(url, '_blank'));
@@ -8,22 +8,11 @@ function handleOpenUrl(url: string) {
 
 export function getTunnelProviderLabel(tunnel: Tunnel | null): string {
   if (!tunnel?.publicUrl) return 'Proxync Tunnel';
-  const lower = tunnel.publicUrl.toLowerCase();
-  if (lower.includes('trycloudflare.com') || lower.includes('cloudflare')) {
-    return 'Cloudflare Tunnel';
+  const { providerLabel, hostname } = getTunnelMetadata(tunnel);
+  if (providerLabel === 'Custom Domain') {
+    return hostname ? `Custom Domain (${hostname})` : 'Custom Domain';
   }
-  if (lower.includes('localtunnel.me') || lower.includes('localtunnel')) {
-    return 'Localtunnel';
-  }
-  if (lower.includes('proxync') || tunnel.subdomain?.startsWith('px-')) {
-    return 'Proxync Tunnel';
-  }
-  try {
-    const urlObj = new URL(tunnel.publicUrl.startsWith('http') ? tunnel.publicUrl : `https://${tunnel.publicUrl}`);
-    return urlObj.hostname ? `Custom Domain (${urlObj.hostname})` : 'Proxync Tunnel';
-  } catch {
-    return 'Proxync Tunnel';
-  }
+  return `${providerLabel} Tunnel`;
 }
 
 export function ProcessView({
@@ -156,9 +145,9 @@ export function ProcessView({
             <span className="badge muted">{workspace?.languageHint ?? 'Unknown language'}</span>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center justify-end gap-2 w-full sm:w-auto sm:ml-auto shrink-0">
           {isTunnelOpen && tunnel ? (
-            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center justify-end gap-2 w-full sm:w-auto">
               {onInspectTraffic && (
                 <button
                   className="btn-secondary flex-1 sm:flex-initial justify-center"
@@ -177,7 +166,7 @@ export function ProcessView({
               </button>
             </div>
           ) : sharingPort === processLike.port ? (
-            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center justify-end gap-2 w-full sm:w-auto">
               {onInspectTraffic && (
                 <button
                   className="btn-secondary flex-1 sm:flex-initial justify-center"
@@ -196,7 +185,7 @@ export function ProcessView({
               </button>
             </div>
           ) : process ? (
-            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center justify-end gap-2 w-full sm:w-auto">
               <button
                 className="btn-secondary flex-1 sm:flex-initial justify-center"
                 onClick={() => onShareLocal(process)}

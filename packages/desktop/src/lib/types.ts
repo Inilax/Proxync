@@ -35,7 +35,9 @@ export interface Tunnel {
   localPort: number;
   status: 'ACTIVE' | 'STANDBY' | 'CLOSED' | string;
   subdomain?: string;
+  customDomain?: string;
   createdAt?: string;
+  provider?: string;
 }
 
 export interface RequestLog {
@@ -56,6 +58,9 @@ export interface RequestLog {
   subdomain?: string;
   tunnelId?: string;
   isProbe?: boolean;
+  rawRequestId?: string;
+  responseBodyPreview?: string;
+  schemaDrift?: SchemaDriftReport;
 }
 
 export interface SavedRequest {
@@ -67,6 +72,8 @@ export interface SavedRequest {
   body: string;
   source: 'manual' | 'starter-scan' | 'captured';
   collectionName?: string;
+  queryParams?: { key: string; value: string; enabled: boolean }[];
+  description?: string;
 }
 
 export interface PostmanResponse {
@@ -74,6 +81,11 @@ export interface PostmanResponse {
   duration: number;
   headers: Record<string, string>;
   body: string;
+}
+
+export interface RequestSessionState {
+  draft: SavedRequest;
+  response: PostmanResponse | null;
 }
 
 export interface Guardrails {
@@ -143,7 +155,7 @@ export interface AppLogEntry {
   seq: number;
   timestamp: string;
   level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG';
-  source: 'SYSTEM' | 'RECON' | 'TUNNEL' | 'PROXY' | 'HTTP' | 'SCANNER' | 'UPDATER';
+  source: 'SYSTEM' | 'RECON' | 'TUNNEL' | 'PROXY' | 'HTTP' | 'SCANNER' | 'UPDATER' | 'STORAGE';
   message: string;
   details?: string;
 }
@@ -154,6 +166,19 @@ export interface LogsSummary {
   traffic_log_bytes: number;
   app_log_lines: number;
   traffic_log_lines: number;
+}
+
+export interface SystemInfo {
+  os_name: string;
+  os_version: string;
+  distro: string;
+  arch: string;
+  bitness: string;
+  formatted: string;
+  hostname: string;
+  local_ip: string;
+  webview_version: string;
+  pid: number;
 }
 
 export interface ExecutionRun {
@@ -185,5 +210,40 @@ export interface WorkbenchTab {
   bearerToken?: string;
 }
 
+// ── Schema Drift Detection Types ─────────────────────────────────────────────
 
+export type DriftChangeType =
+  | 'BREAKING_FIELD_REMOVED'
+  | 'BREAKING_TYPE_MISMATCH'
+  | 'BREAKING_NULLABILITY'
+  | 'BREAKING_ARRAY_ITEM_MISMATCH'
+  | 'BREAKING_FIELD_RENAMED'
+  | 'NON_BREAKING_FIELD_ADDED'
+  | 'NON_BREAKING_TYPE_WIDENED'
+  | 'STATUS_UNDOCUMENTED';
 
+export type DriftSeverity = 'breaking' | 'warning' | 'info';
+
+export interface SchemaDriftItem {
+  path: string;
+  changeType: DriftChangeType;
+  severity: DriftSeverity;
+  expected: string;
+  actual: string;
+  message: string;
+  suggestion: string;
+}
+
+export interface SchemaDriftReport {
+  routeKey: string;
+  method: string;
+  path: string;
+  statusCode: number | string;
+  hasDrift: boolean;
+  breakingCount: number;
+  warningCount: number;
+  items: SchemaDriftItem[];
+  detectedAt: string;
+  baselineSchemaSnapshot: string;
+  actualSchemaSnapshot: string;
+}

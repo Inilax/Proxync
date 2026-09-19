@@ -1,6 +1,8 @@
 import type { ScannedEndpoint } from './codebaseScanner';
 import type { RequestLog } from './types';
-import { stripMethodPrefix } from '../components/views/SharedComponents';
+function stripMethodPrefix(path: string): string {
+  return path.replace(/^(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD)\s+/i, '').trim();
+}
 
 export interface OpenApiSchema {
   type?: string;
@@ -71,8 +73,15 @@ export function inferJsonSchemaFromValue(value: unknown): OpenApiSchema {
 export function inferSchemaFromRawBody(bodyStr?: string): OpenApiSchema | null {
   if (!bodyStr || !bodyStr.trim()) return null;
 
+  let clean = bodyStr.trim();
+  // Strip leading HTTP/1.1 chunked hex size prefix (e.g. "2a\r\n{..." or "1f\n{...")
+  if (/^[0-9a-fA-F]+\r?\n/.test(clean)) {
+    clean = clean.replace(/^[0-9a-fA-F]+\r?\n/, '').trim();
+  }
+  clean = clean.replace(/\r?\n0(?:\r?\n)*$/, '').trim();
+
   try {
-    const parsed = JSON.parse(bodyStr);
+    const parsed = JSON.parse(clean);
     return inferJsonSchemaFromValue(parsed);
   } catch {
     // If not JSON, default to text payload schema
@@ -296,8 +305,19 @@ export function generateOpenApiSpec(
       return;
     }
 
-    // Remove query params from path and parameterize dynamic IDs e.g. /api/todos/todo-123 -> /api/todos/{id}
-    const urlPath = req.path.split('?')[0];
+    // Remove query params, strip protocol/host if absolute URL, and parameterize dynamic IDs e.g. /api/todos/todo-123 -> /api/todos/{id}
+    let urlPath = req.path.split('?')[0].trim();
+    if (urlPath.startsWith('http://') || urlPath.startsWith('https://')) {
+      try {
+        urlPath = new URL(urlPath).pathname;
+      } catch {
+        urlPath = urlPath.replace(/^https?:\/\/[^/]+/, '');
+      }
+    }
+    if (!urlPath.startsWith('/')) {
+      urlPath = '/' + urlPath;
+    }
+
     const { parameterizedPath, pathParams } = parameterizePath(urlPath);
     const methodLower = (req.method || 'GET').toLowerCase();
 
@@ -366,8 +386,8 @@ export function generateOpenApiSpec(
     const statusCode = String(req.status || '200');
     const responsesObj = (methodOperation.responses as Record<string, unknown>) || {};
 
-    // Infer Response Schema from captured body
-    const respSchema = inferSchemaFromRawBody(req.bodyPreview);
+    // Infer Response Schema from captured response body (or fallback to body preview)
+    const respSchema = inferSchemaFromRawBody(req.responseBodyPreview || req.bodyPreview);
     responsesObj[statusCode] = {
       description: `Status ${statusCode} HTTP Response`,
       content: {

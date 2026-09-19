@@ -6,7 +6,7 @@ import { showToast } from '../../lib/toast';
 export interface TerminalLogEntry {
   id: string;
   timestamp: string;
-  source: 'proxy' | 'cloudflared' | 'localtunnel' | 'scanner' | 'system';
+  source: 'proxy' | 'cloudflared' | 'scanner' | 'system';
   level: 'info' | 'warn' | 'error' | 'debug';
   message: string;
 }
@@ -119,7 +119,6 @@ export function TerminalDrawer({
             <option value="ALL">All Sources</option>
             <option value="proxy">Proxy Interceptor</option>
             <option value="cloudflared">Cloudflare Tunnel</option>
-            <option value="localtunnel">Localtunnel</option>
             <option value="scanner">Code Scanner</option>
             <option value="system">System</option>
           </select>
@@ -197,11 +196,9 @@ export function TerminalDrawer({
                   className={`text-[10px] font-bold uppercase px-1.5 py-0.2 rounded shrink-0 ${
                     log.source === 'cloudflared'
                       ? 'bg-amber-500/20 text-amber-300'
-                      : log.source === 'localtunnel'
-                        ? 'bg-sky-500/20 text-sky-300'
-                        : log.source === 'proxy'
-                          ? 'bg-emerald-500/20 text-emerald-300'
-                          : 'bg-neutral-800 text-neutral-300'
+                      : log.source === 'proxy'
+                        ? 'bg-emerald-500/20 text-emerald-300'
+                        : 'bg-neutral-800 text-neutral-300'
                   }`}
                 >
                   {log.source}

@@ -1,4 +1,65 @@
 import type { Tunnel, RequestLog, DomainRecord } from '../components/views/SharedComponents';
+import { logApp } from './logger';
+
+// ponytail: shared DoH resolver bypassing browser HTTP caching
+async function fetchTxtRecords(host: string): Promise<string[]> {
+  const values: string[] = [];
+  const t = Date.now();
+  // 1. Google DoH
+  try {
+    const res = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(host)}&type=TXT&_t=${t}`, {
+      cache: 'no-store',
+    });
+    if (res.ok) {
+      const json = await res.json();
+      for (const ans of json.Answer || []) {
+        if (typeof ans.data === 'string') {
+          const clean = ans.data.replace(/^"|"$/g, '').trim();
+          if (!values.includes(clean)) values.push(clean);
+        }
+      }
+    }
+  } catch (err) {
+    logApp('SYSTEM', 'WARN', `Google DoH lookup failed for ${host}`, err);
+  }
+
+  // 2. Cloudflare DoH fallback (only if Google DoH returned no answers or failed)
+  if (values.length === 0) {
+    try {
+      const res = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(host)}&type=TXT&_t=${t}`, {
+        headers: { Accept: 'application/dns-json' },
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        const json = await res.json();
+        for (const ans of json.Answer || []) {
+          if (typeof ans.data === 'string') {
+            const clean = ans.data.replace(/^"|"$/g, '').trim();
+            if (!values.includes(clean)) values.push(clean);
+          }
+        }
+      }
+    } catch (err) {
+      logApp('SYSTEM', 'WARN', `Cloudflare DoH lookup failed for ${host}`, err);
+    }
+  }
+
+  return values;
+}
+
+// ponytail: match either exact token or any valid proxync-verify-* hash published in DNS
+function matchVerificationToken(values: string[], expectedToken: string): { verified: boolean; token: string } {
+  if (values.some((v) => v.includes(expectedToken))) {
+    return { verified: true, token: expectedToken };
+  }
+  for (const v of values) {
+    const m = v.match(/proxync-verification=(proxync-verify-[a-f0-9-]+)/i);
+    if (m && m[1]) {
+      return { verified: true, token: m[1] };
+    }
+  }
+  return { verified: false, token: expectedToken };
+}
 
 // Standalone mock API client for local-only desktop app
 export const api = {
@@ -25,7 +86,9 @@ export const api = {
         try {
           const items: DomainRecord[] = JSON.parse(localStorage.getItem(k) || '[]');
           for (const d of items) { if (d.id && !seen.has(d.id)) seen.set(d.id, d); }
-        } catch {}
+        } catch (err) {
+          logApp('STORAGE', 'WARN', `Failed to parse custom domains from key: ${k}`, err);
+        }
       }
       return Promise.resolve(Array.from(seen.values()));
     },
@@ -66,57 +129,18 @@ export const api = {
       }
 
       const fullTxtHost = `_proxync.${target.name}`;
-      const foundTxtValues: string[] = [];
-
-      const checkHost = async (host: string) => {
-        try {
-          const res = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(host)}&type=TXT`);
-          if (res.ok) {
-            const json = await res.json();
-            const answers = json.Answer || [];
-            for (const ans of answers) {
-              if (typeof ans.data === 'string') {
-                const cleanData = ans.data.replace(/^"|"$/g, '').trim();
-                if (!foundTxtValues.includes(cleanData)) foundTxtValues.push(cleanData);
-              }
-            }
-          }
-        } catch {
-          // Ignore fetch errors
-        }
-
-        try {
-          const res = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(host)}&type=TXT`, {
-            headers: { Accept: 'application/dns-json' },
-          });
-          if (res.ok) {
-            const json = await res.json();
-            const answers = json.Answer || [];
-            for (const ans of answers) {
-              if (typeof ans.data === 'string') {
-                const cleanData = ans.data.replace(/^"|"$/g, '').trim();
-                if (!foundTxtValues.includes(cleanData)) foundTxtValues.push(cleanData);
-              }
-            }
-          }
-        } catch {
-          // Ignore fetch errors
-        }
-      };
-
-      await checkHost(fullTxtHost);
+      let foundTxtValues = await fetchTxtRecords(fullTxtHost);
       if (foundTxtValues.length === 0) {
-        await checkHost(target.name);
+        foundTxtValues = await fetchTxtRecords(target.name);
       }
 
-      const isVerified = foundTxtValues.some((val) => val.includes(target.verificationToken));
+      const match = matchVerificationToken(foundTxtValues, target.verificationToken);
 
-      if (!isVerified) {
-        const newToken = `proxync-verify-${crypto.randomUUID().substring(0, 8)}`;
-        const unverifiedDomain = {
+      if (!match.verified) {
+        // ponytail: Keep token stable — never rotate on failure so DNS has time to propagate
+        const unverifiedDomain: DomainRecord = {
           ...target,
           verified: false,
-          verificationToken: newToken,
           updatedAt: new Date().toISOString(),
         };
         const newList = list.map((d) => (d.id === domainId ? unverifiedDomain : d));
@@ -124,16 +148,16 @@ export const api = {
         localStorage.setItem('proxync_custom_domains', JSON.stringify(newList));
 
         if (foundTxtValues.length > 0) {
-          throw new Error(`Token mismatch! DNS has '${foundTxtValues[0]}', expected '${target.verificationToken}'. Domain reset to Pending.`);
+          throw new Error(`Token mismatch! DNS has '${foundTxtValues[0]}', expected '${target.verificationToken}'.`);
         } else {
           const apex = target.name.split('.').slice(-2).join('.');
           const isSub = target.name !== apex;
           const hostPrefix = isSub ? `_proxync.${target.name.slice(0, -(apex.length + 1))}` : '_proxync';
-          throw new Error(`TXT record missing at '${fullTxtHost}'. Ensure Host is '${hostPrefix}' and value includes '${target.verificationToken}'. Domain reset to Pending.`);
+          throw new Error(`TXT record missing at '${fullTxtHost}'. Ensure Host is '${hostPrefix}' and value includes '${target.verificationToken}'.`);
         }
       }
 
-      const updated = list.map((d) => (d.id === domainId ? { ...d, verified: true, updatedAt: new Date().toISOString() } : d));
+      const updated = list.map((d) => (d.id === domainId ? { ...d, verificationToken: match.token, verified: true, updatedAt: new Date().toISOString() } : d));
       localStorage.setItem(key, JSON.stringify(updated));
       localStorage.setItem('proxync_custom_domains', JSON.stringify(updated));
       return updated.find((d) => d.id === domainId)!;
@@ -154,62 +178,28 @@ export const api = {
       }
 
       const fullTxtHost = `_proxync.${domain.name}`;
-      const foundTxtValues: string[] = [];
+      let foundTxtValues = await fetchTxtRecords(fullTxtHost);
+      if (foundTxtValues.length === 0) {
+        foundTxtValues = await fetchTxtRecords(domain.name);
+      }
 
-      try {
-        const res = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(fullTxtHost)}&type=TXT`);
-        if (res.ok) {
-          const json = await res.json();
-          for (const ans of (json.Answer || [])) {
-            if (typeof ans.data === 'string') {
-              const clean = ans.data.replace(/^"|"$/g, '').trim();
-              if (!foundTxtValues.includes(clean)) foundTxtValues.push(clean);
-            }
-          }
-        }
-      } catch {}
-
-      try {
-        const res = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(fullTxtHost)}&type=TXT`, {
-          headers: { Accept: 'application/dns-json' },
-        });
-        if (res.ok) {
-          const json = await res.json();
-          for (const ans of (json.Answer || [])) {
-            if (typeof ans.data === 'string') {
-              const clean = ans.data.replace(/^"|"$/g, '').trim();
-              if (!foundTxtValues.includes(clean)) foundTxtValues.push(clean);
-            }
-          }
-        }
-      } catch {}
-
-      const hasToken = foundTxtValues.some((v) => v.includes(domain.verificationToken));
+      const match = matchVerificationToken(foundTxtValues, domain.verificationToken);
       const key = `proxync_custom_domains_${workspaceId}`;
       const stored = localStorage.getItem(key) || localStorage.getItem('proxync_custom_domains');
       const list: DomainRecord[] = stored ? JSON.parse(stored) : [];
 
-      if (hasToken) {
-        const updatedDomain = { ...domain, verified: true, updatedAt: new Date().toISOString() };
-        const newList = list.map((d) => (d.id === domain.id ? updatedDomain : d));
-        localStorage.setItem(key, JSON.stringify(newList));
-        localStorage.setItem('proxync_custom_domains', JSON.stringify(newList));
-        return { verified: true, tokenChanged: false, domain: updatedDomain };
-      } else if (domain.verified) {
-        const newToken = `proxync-verify-${crypto.randomUUID().substring(0, 8)}`;
-        const updatedDomain = {
-          ...domain,
-          verified: false,
-          verificationToken: newToken,
-          updatedAt: new Date().toISOString(),
-        };
-        const newList = list.map((d) => (d.id === domain.id ? updatedDomain : d));
-        localStorage.setItem(key, JSON.stringify(newList));
-        localStorage.setItem('proxync_custom_domains', JSON.stringify(newList));
-        return { verified: false, tokenChanged: true, domain: updatedDomain };
-      } else {
-        return { verified: false, tokenChanged: false, domain };
-      }
+      const tokenChanged = match.token !== domain.verificationToken;
+      const updatedDomain: DomainRecord = {
+        ...domain,
+        verificationToken: match.token,
+        verified: match.verified,
+        updatedAt: new Date().toISOString(),
+      };
+      const newList = list.map((d) => (d.id === domain.id ? updatedDomain : d));
+      localStorage.setItem(key, JSON.stringify(newList));
+      localStorage.setItem('proxync_custom_domains', JSON.stringify(newList));
+
+      return { verified: match.verified, tokenChanged, domain: updatedDomain };
     },
     // --- Requirement 2 fix: reads localStorage directly by domain name, no React state dependency ---
     verifyByName: async (workspaceId: string, domainName: string): Promise<{ verified: boolean; domain: DomainRecord | null }> => {
@@ -225,7 +215,9 @@ export const api = {
           const list: DomainRecord[] = JSON.parse(localStorage.getItem(k) || '[]');
           const match = list.find((d) => d.name === domainName);
           if (match) { domain = match; foundKey = k; break; }
-        } catch {}
+        } catch (err) {
+          logApp('STORAGE', 'WARN', `Failed to parse custom domains from key: ${k}`, err);
+        }
       }
 
       if (!domain) {
@@ -239,77 +231,31 @@ export const api = {
       }
 
       const fullTxtHost = `_proxync.${domain.name}`;
-      const foundTxtValues: string[] = [];
-      let googleFetchFailed = false;
-      let cloudflareFetchFailed = false;
-
-      // Google DoH
-      try {
-        const r = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(fullTxtHost)}&type=TXT`);
-        if (r.ok) {
-          const json = await r.json();
-          for (const ans of (json.Answer || [])) {
-            if (typeof ans.data === 'string') {
-              const clean = ans.data.replace(/^"|"$/g, '').trim();
-              if (!foundTxtValues.includes(clean)) foundTxtValues.push(clean);
-            }
-          }
-        }
-      } catch { googleFetchFailed = true; }
-
-      // Cloudflare DoH as fallback
+      let foundTxtValues = await fetchTxtRecords(fullTxtHost);
       if (foundTxtValues.length === 0) {
-        try {
-          const r = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(fullTxtHost)}&type=TXT`, {
-            headers: { Accept: 'application/dns-json' },
-          });
-          if (r.ok) {
-            const json = await r.json();
-            for (const ans of (json.Answer || [])) {
-              if (typeof ans.data === 'string') {
-                const clean = ans.data.replace(/^"|"$/g, '').trim();
-                if (!foundTxtValues.includes(clean)) foundTxtValues.push(clean);
-              }
-            }
-          }
-        } catch { cloudflareFetchFailed = true; }
+        foundTxtValues = await fetchTxtRecords(domain.name);
       }
 
-      // If both fetches failed (network/firewall) — do not silently allow, block the tunnel
-      if (googleFetchFailed && cloudflareFetchFailed) {
-        return { verified: false, domain };
-      }
-
-      const hasToken = foundTxtValues.some((v) => v.includes(domain!.verificationToken));
+      const match = matchVerificationToken(foundTxtValues, domain.verificationToken);
       const storedRaw = localStorage.getItem(foundKey);
       const list: DomainRecord[] = storedRaw ? JSON.parse(storedRaw) : [];
 
-      if (hasToken) {
-        const updated = { ...domain, verified: true, updatedAt: new Date().toISOString() };
-        const newList = list.map((d) => (d.id === domain!.id ? updated : d));
-        localStorage.setItem(foundKey, JSON.stringify(newList));
-        localStorage.setItem('proxync_custom_domains', JSON.stringify(newList));
-        return { verified: true, domain: updated };
-      } else {
-        // DNS record missing or token mismatch — rotate token and mark unverified
-        const newToken = `proxync-verify-${crypto.randomUUID().substring(0, 8)}`;
-        const updated = {
-          ...domain,
-          verified: false,
-          verificationToken: newToken,
-          updatedAt: new Date().toISOString(),
-        };
-        const newList = list.map((d) => (d.id === domain!.id ? updated : d));
-        localStorage.setItem(foundKey, JSON.stringify(newList));
-        localStorage.setItem('proxync_custom_domains', JSON.stringify(newList));
-        return { verified: false, domain: updated };
-      }
+      const updated: DomainRecord = {
+        ...domain,
+        verificationToken: match.token,
+        verified: match.verified,
+        updatedAt: new Date().toISOString(),
+      };
+      const newList = list.map((d) => (d.id === domain!.id ? updated : d));
+      localStorage.setItem(foundKey, JSON.stringify(newList));
+      localStorage.setItem('proxync_custom_domains', JSON.stringify(newList));
+      return { verified: match.verified, domain: updated };
     },
   },
   tunnels: {
     list: (_workspaceId?: string): Promise<Tunnel[]> => Promise.resolve([]),
     create: (_workspaceId: string, localPort: number, _protocol = 'http', _password?: string, customDomain?: string): Promise<Tunnel> => {
-      let publicUrl = `https://proxync-local-${localPort}.trycloudflare.com`;
+      let publicUrl = `http://127.0.0.1:${localPort}`;
       if (customDomain) {
         if (customDomain.startsWith('http://') || customDomain.startsWith('https://')) {
           publicUrl = customDomain.includes(':', 7) ? customDomain : `${customDomain}:${localPort}`;
@@ -323,6 +269,8 @@ export const api = {
         localPort,
         status: 'ACTIVE',
         subdomain: customDomain ?? '',
+        customDomain,
+        provider: customDomain ? 'custom' : 'local',
         createdAt: new Date().toISOString(),
       });
     },
@@ -375,8 +323,8 @@ export async function ensureLocalWorkspace(): Promise<LocalWorkspaceContext> {
   };
 }
 
-export function saveTokens(_accessToken: string, _refreshToken: string) {}
-export function clearTokens() {}
+export function saveTokens(_accessToken: string, _refreshToken: string) { }
+export function clearTokens() { }
 export function getToken() {
   return 'local-token';
 }

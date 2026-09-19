@@ -36,6 +36,9 @@ export function SettingsView({
   onUpdateEnableDevTools,
   onUpdateAppLogging,
   onUpdateTrafficLogging,
+  onCheckForUpdates,
+  checkingUpdates = false,
+  appVersion = 'v0.2.2',
   initialSection = 'general',
 }: {
   workspace: WorkspaceConfig | null;
@@ -62,6 +65,9 @@ export function SettingsView({
   onUpdateEnableDevTools?: (enabled: boolean) => void;
   onUpdateAppLogging?: (enabled: boolean) => void;
   onUpdateTrafficLogging?: (enabled: boolean) => void;
+  onCheckForUpdates?: () => void;
+  checkingUpdates?: boolean;
+  appVersion?: string;
   initialSection?: 'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger';
 }) {
   const [activeSection, setActiveSection] = useState<'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger'>(initialSection);
@@ -226,27 +232,47 @@ export function SettingsView({
                 </label>
               </div>
 
-              <div className="flex items-center justify-between p-4 bg-surface-container rounded-xl border border-outline-variant/30">
-                <div>
-                  <p className="font-body-lg text-body-lg text-on-surface">Automatic Updates</p>
-                  <p className="text-on-surface-variant text-[13px]">Keep the engine updated with the latest security patches.</p>
+              <div className="p-4 bg-surface-container rounded-xl border border-outline-variant/30 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-body-lg text-body-lg text-on-surface">Automatic Updates</p>
+                    <p className="text-on-surface-variant text-[13px]">Keep the engine updated with the latest security patches.</p>
+                  </div>
+                  <label className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={appSettings.autoUpdate}
+                      onChange={(e) => {
+                        onUpdateAutoUpdate(e.target.checked);
+                        showToast(
+                          e.target.checked
+                            ? 'Auto-update enabled — checks every 2 hours'
+                            : 'Auto-update set to weekly checks',
+                          'info'
+                        );
+                      }}
+                    />
+                    <span className="toggle-slider" />
+                  </label>
                 </div>
-                <label className="toggle-switch">
-                  <input
-                    type="checkbox"
-                    checked={appSettings.autoUpdate}
-                    onChange={(e) => {
-                      onUpdateAutoUpdate(e.target.checked);
-                      showToast(
-                        e.target.checked
-                          ? 'Auto-update enabled — checks every 2 hours'
-                          : 'Auto-update set to weekly checks',
-                        'info'
-                      );
-                    }}
-                  />
-                  <span className="toggle-slider" />
-                </label>
+                <div className="pt-2 border-t border-outline-variant/20 flex items-center justify-between text-xs text-on-surface-variant">
+                  <span className="flex items-center gap-1.5">
+                    Current Version: <code className="px-1.5 py-0.5 rounded bg-surface-container-high font-mono text-[11px] text-on-surface">{appVersion}</code>
+                  </span>
+                  {onCheckForUpdates && (
+                    <button
+                      type="button"
+                      disabled={checkingUpdates}
+                      onClick={() => onCheckForUpdates()}
+                      className="px-3 py-1 rounded-lg bg-surface-container-high hover:bg-primary/20 text-primary border border-outline-variant/40 font-medium transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      <span className={`material-symbols-outlined text-[14px] ${checkingUpdates ? 'animate-spin' : ''}`}>
+                        {checkingUpdates ? 'sync' : 'update'}
+                      </span>
+                      <span>{checkingUpdates ? 'Checking...' : 'Check for updates'}</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="p-4 bg-surface-container rounded-xl border border-outline-variant/30 space-y-3">
