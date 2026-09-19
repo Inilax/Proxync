@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/Inilax/Proxync/releases"><img src="https://img.shields.io/badge/version-v0.2.2-blue?style=flat" alt="Version v0.2.2" /></a>&nbsp;
-  <!-- <a href="https://github.com/Inilax/Proxync"><img src="https://img.shields.io/badge/platform-Windows-lightgrey?style=flat" alt="Windows" /></a>&nbsp; -->
+  <a href="https://github.com/Inilax/Proxync"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blue?style=flat" alt="Platform: Windows | Linux | macOS" /></a>&nbsp;
   <a href="https://github.com/Inilax/Proxync/stargazers"><img src="https://img.shields.io/github/stars/Inilax/Proxync?style=flat" alt="Stars" /></a>&nbsp;
   <a href="https://github.com/Inilax/Proxync/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Inilax/Proxync?style=flat" alt="License" /></a>&nbsp;
   <a href="https://github.com/Inilax/Proxync/issues"><img src="https://img.shields.io/github/issues-raw/Inilax/Proxync?style=flat" alt="Issues" /></a>&nbsp;
@@ -21,7 +21,7 @@
 
 ---
 
-Proxync is a standalone, local-first desktop application available on **Windows** (with **Linux** and **macOS** coming in the next release) that sits right next to your running server. Click a button, and your `localhost:3000` is instantly accessible on a secure public URL — with every request flowing through it logged, inspectable, and replayable in real time.
+Proxync is a standalone, local-first desktop application available across **Windows**, **Linux**, and **macOS** that sits right next to your running dev server. Click a button, and your `localhost:3000` is instantly accessible on a secure public URL — with every request flowing through it logged, inspectable, and replayable in real time.
 
 It combines the best of **ngrok**, **Postman**, and **Swagger UI** into a single native workspace running entirely on your machine.
 
@@ -33,15 +33,20 @@ We got tired of switching between five tabs and apps just to test a single webho
 
 ### What you get
 
-- **Native High-Speed Proxync Tunneling** — Ultra-low latency, zero-setup proprietary tunneling infrastructure built for high throughput and instantaneous connections alongside Cloudflare Quick Tunnels.
-- **Resilient Standby Mode** — Server restarts (`Ctrl+C` or hot-reload) won't kill your tunnel. Proxync preserves your public URL in standby and automatically recovers the moment your local dev server boots back up.
-- **Live Traffic Inspector & Intercepting TCP Proxy** — Real-time request and response logging with full header inspection, body formatting (JSON/XML/form-data), timing breakdown, and status codes.
-- **Auto-Generated OpenAPI / Swagger Docs** — Analyzes your live incoming and outgoing HTTP traffic to build OpenAPI 3.0 specifications on the fly — no manual YAML writing required.
-- **Built-in API Workbench & Request Runner** — Test, tweak, and replay endpoints directly inside the app with full parameter editing, collection grouping, and native CORS-bypassing execution.
-- **Smart Process & Framework Discovery** — Automatically detects active dev servers (Next.js, Vite, Express, FastAPI, Django, Rails, Spring Boot, etc.) and open ports with 1-click sharing.
-- **Observability & Health Dashboard** — Monitor real-time traffic volume, latency metrics, environment health, and diagnostic support bundles.
-- **Custom Domains** — Map your own domains directly to your local tunnels with DNS verification guidelines and instant status checks.
-- **Local-First & Data Privacy** — Zero telemetry on request bodies. All logs, settings, and workspace profiles are stored strictly on your local machine.
+- **Native High-Speed Proxync Tunneling & Origin Relay** — Ultra-low latency, zero-setup proprietary tunneling infrastructure (`relay.proxync.dev` on port 2222) alongside Cloudflare Quick Tunnels and local LAN sharing.
+- **Resilient Standby Mode** — Server restarts (`Ctrl+C` or hot reload) won't destroy your public URL. Proxync holds your public URL in standby and automatically recovers the moment your local dev server boots back up.
+- **Live Traffic Inspector & Intercepting TCP Proxy** — Real-time request and response capture with full header inspection, body formatting (JSON, XML, HTML, form-data), status tracking, and latency breakdowns.
+- **Real-Time Schema Drift Detection** — Pure AST diff engine that continuously analyzes live incoming/outgoing payloads against your baseline OpenAPI contracts, immediately flagging breaking changes, type mutations, and missing parameters.
+- **Auto-Generated OpenAPI / Swagger 3.0 Specs** — Synthesizes OpenAPI 3.0 specifications on the fly from intercepted traffic with intelligent noise and bot probe filtering. Includes built-in interactive Swagger UI.
+- **Built-in API Workbench & Request Runner** — Postman-grade REST API playground with synchronous restart persistence, draft/response tab caching, collections management, and native CORS-bypassing execution.
+- **Instant Multi-Language Code Snippets** — 1-click export for intercepted or crafted requests into cURL, JavaScript (Fetch), Python (Requests), Go, and Rust.
+- **Smart Multi-Platform Reconnaissance** — OS-native port & process scanner (Windows `netstat`/WMI, Linux `ss`/`/proc`, macOS Darwin kernel `proc_pidpath`/`lsof`). Automatically detects frameworks (Next.js, Vite, Express, FastAPI, Django, Flask, Rails, Spring Boot, Python HTTP server, Go, etc.) with system daemon noise filtering, whitespace-safe command parsing, and symlink cycle defense.
+- **Zero-Orphan Process Group Architecture** — POSIX process group isolation (`setpgid(0, 0)`) ensures child tunnel processes (SSH, Cloudflared) are cleanly terminated on exit, leaving zero orphan processes holding open ports.
+- **GUI Toolchain PATH Resolution** — Dynamically discovers and injects user-space Node & package manager paths (`pnpm`, `bun`, `nvm`, `volta`, `asdf`, `homebrew`) so tunnels execute seamlessly inside packaged desktop GUI sessions.
+- **Custom Domains & Multi-Provider DoH** — Map your own branded domains directly to local tunnels with resilient DNS-over-HTTPS token verification (Google DoH with Cloudflare DoH fallback).
+- **Seamless In-App Auto-Updates** — Native background updater powered by Tauri v2 with Minisign cryptographic verification, dual-manifest fallback, and an automated 2-second grace countdown relaunch flow.
+- **Local-First Privacy & System Telemetry** — Zero telemetry on request bodies. All logs, settings, and workspace profiles are stored strictly on your local machine. Includes startup hardware/OS diagnostic banners (`os_info`), Rust panic hooks, and dual-stream rotating disk logs (`app.log` at 5MB, `traffic.log` at 10MB).
+- **Hardened Security & Supply Chain Defense** — Evaluated with OpenSSF Scorecard, automated CodeQL static analysis, SSRF & TCP latency probe whitelisting, strict hostname sanitization (CWE-20 immunity), and universal native file dialogs via `tauri-plugin-dialog`.
 
 ---
 
@@ -52,8 +57,8 @@ Proxync is engineered with [Tauri v2](https://v2.tauri.app/) and Rust for minima
 | Platform | Architecture | Binary / Package | State Storage Location | Status |
 | :--- | :--- | :--- | :--- | :--- |
 | **Windows** | Windows 10 / 11 (`x64`) | `.msi`, NSIS Setup `.exe` | `%APPDATA%\Proxync\` (`AppData/Roaming/Proxync/`) | Supported |
-| **Linux** | Ubuntu, Debian, Fedora, Arch (`x64`) | `.deb`, `.AppImage` | `~/.config/Proxync/` | Planned (Next Release) |
-| **macOS** | Apple Silicon & Intel | `.dmg`, `.app` | `~/Library/Application Support/Proxync/` | Planned (Next Release) |
+| **Linux** | Ubuntu, Debian, Fedora, Arch (`x64`) | `.deb`, `.AppImage` | `~/.config/Proxync/` | Supported |
+| **macOS** | Apple Silicon & Intel (`arm64`, `x64`) | `.dmg`, `.app` | `~/Library/Application Support/Proxync/` | Supported |
 
 ---
 
@@ -85,7 +90,10 @@ cd packages/desktop
 npm run tauri build
 ```
 
-The compiled native installer or bundle will be generated under `packages/desktop/src-tauri/target/release/bundle/` (e.g. `.exe`/`.msi` on Windows).
+The compiled native installer or bundle will be generated under `packages/desktop/src-tauri/target/release/bundle/`:
+- **Windows**: `.exe` (NSIS) / `.msi`
+- **Linux**: `.deb` / `.AppImage`
+- **macOS**: `.dmg` / `.app`
 
 ---
 
@@ -105,23 +113,25 @@ We'd love your help! Here is how to get started:
 Check out [`CHANGELOG.md`](CHANGELOG.md) for recent architectural milestones and release notes.
 
 #### Guidelines:
-- Avoid blocking the Tauri main thread — use `tokio::spawn` for asynchronous background processes.
+- Avoid blocking the Tauri main thread — use `tokio::spawn` or `tauri::async_runtime::spawn_blocking` for asynchronous background processes.
 - Ensure all local app state serialization is thread-safe and non-blocking.
-- Guarantee child tunnel processes are monitored and gracefully terminated on application exit.
+- Guarantee child tunnel processes are isolated with process groups and gracefully terminated on application exit.
+- Maintain zero hardcoded environment paths — all process targets and workspaces must be dynamically resolved at runtime.
 
 ---
 
 ### Roadmap
 
-- [x] **v0.2.1 Stabilization & UX Redesign** — Complete studio UI/UX redesign, framework fingerprinting, and enhanced custom domain verification.
-- [x] **Native High-Speed Proxync Tunneling** — Proprietary low-latency WebSocket/SSH origin relay infrastructure with instant standby URL preservation.
-- [ ] **Cross-Platform Desktop Support (Linux & macOS)** — Native packaging for Linux (`.deb`, `.AppImage`) and macOS (`.dmg`, `.app` with Apple Silicon & Intel support) in the upcoming release.
-- [ ] **CLI Companion (`proxync-cli`)** — Run quick tunnels directly from your terminal without opening the desktop GUI when you only need tunneling.
-- [ ] **AI-Powered Traffic Debugger** — Local diagnostic intelligence that flags slow endpoints, common header/schema mismatches, and suggests fixes.
-- [ ] **On-The-Fly Request & Response Mocking** — Intercept and mutate HTTP request/response headers and payloads before hitting localhost.
-- [ ] **Offline-First SQLite State Engine** — High-performance indexed storage for large payload analysis and fast log queries.
-- [ ] **Native OS Webhook & Tunnel Notifications** — Instant OS alerts for incoming webhooks and tunnel lifecycle events.
-- [ ] **Enterprise Edition** — Team collaboration workspaces, team sharing, live session preservation for team uptime, and organization-wide custom domains.
+- [x] **Native High-Speed Proxync Tunneling** — Proprietary low-latency origin relay infrastructure (`relay.proxync.dev` on port 2222) with instant standby URL preservation across dev server restarts.
+- [x] **Real-Time Schema Drift & OpenAPI Synthesis** — Continuous AST diff engine detecting contract breaking changes, paired with automated OpenAPI 3.0 generation from live traffic.
+- [x] **Postman-Grade API Workbench** — Local-first REST client with synchronous restart persistence, collection grouping, and native CORS-bypassing runner.
+- [ ] **macOS & Linux Production Stabilization** — Multi-distribution hardening across Linux (Wayland/XDG desktop portal, AppImage, `.deb`) and macOS (Apple Silicon notarization, Gatekeeper compliance, and Darwin kernel syscall refinements).
+- [ ] **CLI Companion (`proxync-cli`)** — Ultra-lightweight terminal companion to launch tunnels, test endpoints, and stream traffic logs directly from the command line.
+- [ ] **Enterprise Edition** — Team collaboration workspaces, persistent shared tunnels, organization-wide custom domains, centralized audit telemetry, and autonomous AI agent background execution.
+- [ ] **On-The-Fly Request & Response Mocking** — Intercept and mutate HTTP request/response headers and payloads before hitting localhost, enabling rapid frontend development against unbuilt backends.
+- [ ] **Automated Test Suite Synthesizer** — 1-click generation of end-to-end integration tests (Jest, Vitest, Pytest, Playwright) synthesized directly from live intercepted traffic.
+- [ ] **Offline-First SQLite State Engine** — High-performance indexed storage for large payload analysis, deep fuzzy search, and historical log queries.
+- [ ] **Native OS Webhook & Tunnel Notifications** — Instant desktop alerts for incoming webhook deliveries and tunnel health events.
 
 ---
 

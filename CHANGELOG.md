@@ -2,6 +2,16 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/readme-cross-platform-roadmap-refresh] - 2026-09-19 (README Modernization, Cross-Platform Alignment & Unified Roadmap)
+- **Feature Summary**:
+  - **Cross-Platform Status Alignment**: Updated `README.md` to reflect full desktop support across Windows, Linux, and macOS with active platform badges and native bundle targets (`.msi`/`.exe`, `.deb`/`.AppImage`, `.dmg`/`.app`).
+  - **Release Feature Parity**: Documented native origin relay (`relay.proxync.dev:2222`), resilient standby mode, real-time AST schema drift detection, OpenAPI 3.0 auto-generation, Postman-grade API workbench, multi-language code snippets, process group isolation (`setpgid(0, 0)`), GUI toolchain PATH injection, and in-app auto-updates.
+  - **Verified Localtunnel Decommissioning**: Verified zero trace of legacy localtunnel remains in documentation.
+  - **Unified Milestone-Driven Roadmap**: Consolidated roadmap into a single continuous checklist tracking macOS/Linux stabilization, CLI companion, Enterprise Edition (teasing autonomous AI agent background execution), request mocking, and automated test synthesis.
+- **Modified Files**:
+  - `README.md`
+  - `CHANGELOG.md`
+
 ## [196-fixrecon-preserve-process-names-and-command-paths-containing-whitespace-on-macos] - 2026-09-19 (Preserve Process Names & Command Paths with Whitespace on macOS #196)
 - **Feature Summary**:
   - **Native Darwin Kernel Path Lookup (`proc_pidpath`)**: Replaced Darwin `ps -o comm=` 16-char truncation and $O(N)$ `lsof` subprocess loops with in-process `proc_pidpath` syscalls, resolving canonical paths with spaces in microseconds.
