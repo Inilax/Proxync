@@ -8,12 +8,10 @@ import {
   CheckCircle2,
   Clock,
   Globe,
-  Radio,
   Send,
   ShieldCheck,
   Terminal,
   Webhook,
-  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -140,7 +138,7 @@ export function ObservabilityView() {
           )}
         >
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-          <span>Error Center<span className="hidden xs:inline"> (0)</span></span>
+          <span>Error Center<span className="hidden sm:inline"> (0)</span></span>
         </button>
 
         <button
@@ -154,7 +152,7 @@ export function ObservabilityView() {
           )}
         >
           <Webhook className="h-3.5 w-3.5 shrink-0" />
-          <span>Webhook Stream<span className="hidden xs:inline"> (0)</span></span>
+          <span>Webhook Stream<span className="hidden sm:inline"> (0)</span></span>
         </button>
 
         <button

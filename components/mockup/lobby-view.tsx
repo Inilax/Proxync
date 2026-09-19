@@ -1,21 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import {
-  ArrowRight,
-  CheckCircle2,
-  Code2,
-  Folder,
-  Globe,
-  Layers,
-  Network,
-  Plus,
-  RefreshCw,
-  Search,
-  Server,
-  Zap,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useEffect, useRef, useState } from "react";
+import { Folder, RefreshCw, Search, Zap } from "lucide-react";
 
 interface LocalServer {
   id: string;
@@ -69,22 +55,37 @@ const LOCAL_SERVERS: LocalServer[] = [
 export function LobbyView() {
   const [servers, setServers] = useState<LocalServer[]>(LOCAL_SERVERS);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const showToast = (msg: string) => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 2500);
+    toastTimeoutRef.current = setTimeout(() => {
+      setToastMessage(null);
+      toastTimeoutRef.current = null;
+    }, 2500);
   };
+
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleExpose = (server: LocalServer, type: "Proxync" | "Cloudflare" | "LAN") => {
     showToast(`Launched ${type} Tunnel for ${server.framework} on port :${server.port}`);
   };
 
   return (
-    <div className="flex h-full w-full flex-col bg-surface-container p-2.5 sm:p-3.5 gap-2.5 sm:gap-3 fade-in select-none font-mono text-xs overflow-y-auto overflow-x-hidden">
+    <div className="relative flex h-full w-full flex-col bg-surface-container p-2.5 sm:p-3.5 gap-2.5 sm:gap-3 fade-in select-none font-mono text-xs overflow-y-auto overflow-x-hidden">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-12 right-6 z-50 rounded-lg border border-primary/40 bg-surface-container-high/95 backdrop-blur-md px-3.5 py-2 text-primary shadow-xl animate-in fade-in slide-in-from-bottom-2 text-xs flex items-center gap-2 font-bold">
-          <Zap className="h-3.5 w-3.5" />
+        <div className="absolute bottom-4 right-4 z-30 rounded-lg border border-primary/40 bg-surface-container-high/95 backdrop-blur-md px-3.5 py-2 text-primary shadow-xl animate-in fade-in slide-in-from-bottom-2 text-xs flex items-center gap-2 font-bold pointer-events-none">
+          <Zap className="h-3.5 w-3.5 shrink-0" />
           <span>{toastMessage}</span>
         </div>
       )}

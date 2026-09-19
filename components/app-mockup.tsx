@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Cloud, Settings, Terminal } from "lucide-react";
+import { Terminal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLatestRelease } from "@/lib/releases";
 
@@ -109,7 +109,7 @@ export function AppMockup() {
             </div>
 
             <span className="font-mono text-xs font-bold text-primary px-2.5 py-0.5 bg-primary/10 rounded border border-primary/30 hidden sm:inline">
-              v0.2.2-stable
+              {release?.version ? `v${release.version}-stable` : "v0.2.2-stable"}
             </span>
           </div>
         </div>
@@ -173,11 +173,11 @@ export function AppMockup() {
               <div className="flex items-center gap-1.5 sm:gap-3 text-on-surface-variant min-w-0">
                 <span className="flex items-center gap-1 sm:gap-1.5 text-primary font-bold shrink-0">
                   <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-                  <span className="hidden xs:inline">1 Active Tunnel (:5173)</span>
-                  <span className="xs:hidden">:5173 Active</span>
+                  <span className="hidden sm:inline">1 Active Tunnel (:5173)</span>
+                  <span className="sm:hidden">:5173 Active</span>
                 </span>
                 <span className="text-outline">|</span>
-                <span className="text-outline truncate hidden xs:inline">relay.proxync.dev</span>
+                <span className="text-outline truncate hidden sm:inline">relay.proxync.dev</span>
                 <span className="text-outline hidden sm:inline">|</span>
                 <span className="text-outline hidden sm:inline">Latency: 28ms</span>
                 <span className="text-outline hidden sm:inline">|</span>

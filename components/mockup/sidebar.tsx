@@ -1,8 +1,9 @@
 "use client";
 
-import { HelpCircle, LayoutGrid, RefreshCw, Shield } from "lucide-react";
+import { HelpCircle, LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { NAV_CATEGORIES, PROCESSES, TUNNEL_URL, ViewId } from "./types";
+import { LogoMark } from "@/components/logo";
+import { NAV_CATEGORIES, ViewId } from "./types";
 
 export function Sidebar({
   active,
@@ -15,11 +16,16 @@ export function Sidebar({
     <aside className="flex flex-col w-11 min-w-[44px] max-w-[44px] sm:w-14 sm:min-w-[56px] sm:max-w-[56px] lg:w-[230px] lg:min-w-[230px] lg:max-w-[230px] shrink-0 border-r border-outline-variant/30 bg-surface-container-low px-1 sm:px-1.5 lg:px-3 py-2 sm:py-3 select-none justify-between h-full overflow-hidden">
       <div className="space-y-3">
         {/* Brand Header */}
-        <div className="hidden lg:block pb-2.5 pt-0.5 border-b border-outline-variant/20 px-1">
-          <span className="block text-xs font-bold text-on-surface leading-tight">Proxync Engine</span>
-          <span className="block font-mono text-[9px] text-white/60 leading-tight">
-            v0.2.2-stable
-          </span>
+        <div className="pb-2.5 pt-0.5 border-b border-outline-variant/20 px-1 flex flex-col items-center lg:items-start">
+          <div className="lg:hidden flex items-center justify-center py-0.5">
+            <LogoMark className="h-4 w-4 shrink-0" />
+          </div>
+          <div className="hidden lg:block">
+            <span className="block text-xs font-bold text-on-surface leading-tight">Proxync Engine</span>
+            <span className="block font-mono text-[9px] text-white/60 leading-tight">
+              v0.2.2-stable
+            </span>
+          </div>
         </div>
 
         {/* Active Workspace Selector */}

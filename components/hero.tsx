@@ -201,7 +201,7 @@ export function Hero() {
                                     {asset.label}
                                   </span>
                                   {isDetected && (
-                                    <span className="px-1.5 py-0.2 rounded bg-primary/15 text-primary text-[9px] font-mono">
+                                    <span className="px-1.5 py-0.5 rounded bg-primary/15 text-primary text-[9px] font-mono">
                                       Detected
                                     </span>
                                   )}

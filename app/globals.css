@@ -9,6 +9,8 @@
 }
 
 @theme {
+  --breakpoint-xs: 30rem; /* 480px */
+
   /* ── Precision Obsidian Void Palette (Yutori + Stitch) ── */
   --color-surface:                    #08090c;
   --color-surface-dim:                #050608;

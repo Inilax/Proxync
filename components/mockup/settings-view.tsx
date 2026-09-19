@@ -1,6 +1,6 @@
 import { Bug, Download, FileText, FolderOpen, Key, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ThemeId, TUNNEL_URL } from "./types";
+import { ThemeId } from "./types";
 
 export function SettingsView({
   theme,
@@ -75,7 +75,7 @@ export function SettingsView({
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-1 gap-2 border-t border-outline-variant/20">
           <div className="font-mono text-[9px] sm:text-[10px] text-white/70 truncate">
-            Path: %APPDATA%/Proxync/logs (42.8 KB)
+            Path: ~/.proxync/logs (42.8 KB)
           </div>
           <div className="flex items-center gap-1.5 shrink-0 w-full sm:w-auto">
             <button

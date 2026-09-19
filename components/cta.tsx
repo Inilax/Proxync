@@ -61,7 +61,7 @@ export function Cta() {
               <div className="flex flex-col text-left">
                 <span className="text-xs font-bold text-white flex items-center gap-1.5">
                   <span>Windows</span>
-                  <span className="px-1.5 py-0.2 rounded bg-primary/20 text-primary text-[9px] font-mono">
+                  <span className="px-1.5 py-0.5 rounded bg-primary/20 text-primary text-[9px] font-mono">
                     {download.platform === "windows" ? "Detected (Latest)" : "Latest"}
                   </span>
                 </span>
@@ -84,7 +84,7 @@ export function Cta() {
               <div className="flex flex-col text-left">
                 <span className="text-xs font-bold text-white flex items-center gap-1.5">
                   <span>macOS</span>
-                  <span className="px-1.5 py-0.2 rounded bg-primary/20 text-primary text-[9px] font-mono">
+                  <span className="px-1.5 py-0.5 rounded bg-primary/20 text-primary text-[9px] font-mono">
                     {download.platform === "macos" ? "Detected (Latest)" : "v0.2.2"}
                   </span>
                 </span>
@@ -107,7 +107,7 @@ export function Cta() {
               <div className="flex flex-col text-left">
                 <span className="text-xs font-bold text-white flex items-center gap-1.5">
                   <span>Linux</span>
-                  <span className="px-1.5 py-0.2 rounded bg-primary/20 text-primary text-[9px] font-mono">
+                  <span className="px-1.5 py-0.5 rounded bg-primary/20 text-primary text-[9px] font-mono">
                     {download.platform === "linux" ? "Detected (Latest)" : "v0.2.2"}
                   </span>
                 </span>

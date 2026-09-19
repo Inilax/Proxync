@@ -5,6 +5,14 @@ import { CheckCircle2, Search, Send, Trash2, XCircle, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { METHOD_BADGE, METHOD_STYLE, ROWS, STATUS_STYLE } from "./types";
 
+const STATUS_TEXT: Record<number, string> = {
+  200: "OK",
+  201: "Created",
+  301: "Moved",
+  404: "Not Found",
+  500: "Internal Error",
+};
+
 export function TrafficView() {
   const [selectedId, setSelectedId] = useState<string>("req-1");
   const selectedRow = ROWS.find((r) => r.id === selectedId) || ROWS[0];
@@ -94,7 +102,7 @@ export function TrafficView() {
                   {row.method}
                 </div>
                 <div className={cn("w-12 sm:w-20 shrink-0 flex items-center gap-0.5 sm:gap-1 text-[10px] sm:text-xs", STATUS_STYLE[row.status])}>
-                  <span className="hidden xs:inline">{row.status < 400 ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}</span>
+                  <span className="hidden sm:inline">{row.status < 400 ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}</span>
                   <span>{row.status}</span>
                 </div>
                 <div className="flex-1 min-w-0 truncate text-white text-[10.5px] sm:text-xs pr-1">{row.path}</div>
@@ -127,7 +135,9 @@ export function TrafficView() {
           </div>
 
           <div className="flex items-center justify-between font-mono text-xs">
-            <span className={cn(STATUS_STYLE[selectedRow.status])}>{selectedRow.status} OK</span>
+            <span className={cn(STATUS_STYLE[selectedRow.status])}>
+              {selectedRow.status} {STATUS_TEXT[selectedRow.status] ?? (selectedRow.status < 400 ? "OK" : "Error")}
+            </span>
             <span className="text-white/80 font-bold">{selectedRow.latency}</span>
             <span className="text-tertiary text-[10px] font-bold">{selectedRow.targetBadge}</span>
           </div>

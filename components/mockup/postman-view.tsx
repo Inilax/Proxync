@@ -5,14 +5,11 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  Code2,
-  Copy,
   Folder,
   FolderOpen,
   Keyboard,
   Lock,
   Plus,
-  Radio,
   Search,
   Send,
   Upload,
@@ -167,7 +164,7 @@ export function PostmanView() {
                       <Folder className="h-3 w-3 text-secondary shrink-0" />
                       <span className="truncate text-[10.5px]">{folder}</span>
                     </div>
-                    <span className="text-[9px] text-outline bg-black/40 px-1.5 py-0.2 rounded font-bold shrink-0">
+                    <span className="text-[9px] text-outline bg-black/40 px-1.5 py-0.5 rounded font-bold shrink-0">
                       {folderReqs.length}
                     </span>
                   </div>
@@ -191,7 +188,7 @@ export function PostmanView() {
                           )}
                         >
                           <div className="flex items-center gap-1.5 min-w-0">
-                            <span className={cn("text-[9px] font-bold px-1 py-0.2 rounded shrink-0", METHOD_BADGE[item.method])}>
+                            <span className={cn("text-[9px] font-bold px-1 py-0.5 rounded shrink-0", METHOD_BADGE[item.method])}>
                               {item.method}
                             </span>
                             <span className="truncate text-[10.5px]">{item.name}</span>
@@ -271,8 +268,8 @@ export function PostmanView() {
             </span>
 
             <div className="flex flex-1 min-w-0 items-center bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-2 sm:px-2.5 py-1 sm:py-1.5 text-[10.5px] sm:text-xs overflow-hidden">
-              <span className="text-white/50 truncate shrink-0 hidden xs:inline">localhost:{activeReq.port}</span>
-              <span className="text-white/50 shrink-0 xs:hidden">:{activeReq.port}</span>
+              <span className="text-white/50 truncate shrink-0 hidden sm:inline">localhost:{activeReq.port}</span>
+              <span className="text-white/50 shrink-0 sm:hidden">:{activeReq.port}</span>
               <span className="text-white font-semibold truncate pl-1">{activeReq.path}</span>
             </div>
 
@@ -428,7 +425,7 @@ export function PostmanView() {
 
                 {responseSubTab === "body" ? (
                   <pre className="text-secondary leading-relaxed font-mono">
-                    {`{\n  "success": true,\n  "data": {\n    "id": "usr_99a8b7c6",\n    "email": "ada@acme.dev",\n    "role": "admin",\n    "activeTunnels": 2,\n    "timestamp": "${new Date().toISOString()}"\n  }\n}`}
+                    {`{\n  "success": true,\n  "data": {\n    "id": "usr_99a8b7c6",\n    "email": "ada@acme.dev",\n    "role": "admin",\n    "activeTunnels": 2,\n    "timestamp": "2026-09-19T11:48:02.140Z"\n  }\n}`}
                   </pre>
                 ) : (
                   <div className="space-y-1 text-[10px]">

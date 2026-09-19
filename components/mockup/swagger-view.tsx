@@ -2,7 +2,7 @@
 
 import { Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { METHOD_BADGE, METHOD_EDGE, TUNNEL_URL } from "./types";
+import { METHOD_BADGE, METHOD_EDGE } from "./types";
 
 const SWAGGER_ENDPOINTS = [
   { method: "GET", path: "/api/v1/users", summary: "List users (Inferred OpenAPI 3.0)", responses: "200 responses" },
