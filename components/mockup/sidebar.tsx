@@ -15,16 +15,11 @@ export function Sidebar({
     <aside className="flex flex-col w-14 min-w-[56px] max-w-[56px] lg:w-[230px] lg:min-w-[230px] lg:max-w-[230px] shrink-0 border-r border-outline-variant/30 bg-surface-container-low px-1.5 lg:px-3 py-3 select-none justify-between h-full overflow-hidden">
       <div className="space-y-3">
         {/* Brand Header */}
-        <div className="flex items-center gap-2.5 pb-2.5 pt-0.5 border-b border-outline-variant/20 justify-center lg:justify-start px-0.5 lg:px-1">
-          <div className="h-7 w-7 shrink-0 rounded-lg bg-primary/10 border border-primary/25 flex items-center justify-center">
-            <span className="font-mono text-xs font-bold text-primary">PX</span>
-          </div>
-          <div className="hidden lg:block">
-            <span className="block text-xs font-bold text-on-surface leading-tight">Proxync Engine</span>
-            <span className="block font-mono text-[9px] text-white/60 leading-tight">
-              v0.2.2-stable
-            </span>
-          </div>
+        <div className="hidden lg:block pb-2.5 pt-0.5 border-b border-outline-variant/20 px-1">
+          <span className="block text-xs font-bold text-on-surface leading-tight">Proxync Engine</span>
+          <span className="block font-mono text-[9px] text-white/60 leading-tight">
+            v0.2.2-stable
+          </span>
         </div>
 
         {/* Active Workspace Selector */}
