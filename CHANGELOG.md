@@ -2,6 +2,17 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [196-fixrecon-preserve-process-names-and-command-paths-containing-whitespace-on-macos] - 2026-09-19 (Preserve Process Names & Command Paths with Whitespace on macOS #196)
+- **Feature Summary**:
+  - **Native Darwin Kernel Path Lookup (`proc_pidpath`)**: Replaced Darwin `ps -o comm=` 16-char truncation and $O(N)$ `lsof` subprocess loops with in-process `proc_pidpath` syscalls, resolving canonical paths with spaces in microseconds.
+  - **Uncut Command Parsing**: Switched to `ps -o pid=,ppid=,command=`, ensuring numeric PID/PPID tokens and preserving the entire command line verbatim without delimiter collisions.
+  - **Quote-Aware Tokenizer (`tokenize_cmd`)**: Added a quote-preserving tokenizer so commands and paths with spaces (e.g. `node "/path/with spaces/server.js"`) resolve correctly in `walk_up_to_project_root`.
+  - **Daemon Filtering & Fallback**: Hardened scanner fallback with `tokenize_cmd` and added `google chrome` and `visual studio code` to `is_system_process_name`.
+  - **Regression Tests**: Added unit tests covering Darwin FFI path resolution, command tokenization, and quoted paths with spaces.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `CHANGELOG.md`
+
 ## [fix/ci-release-workflow-hardening] - 2026-09-19 (CI Release Workflow — Windows & Linux Hardening)
 - **Feature Summary**:
   - **Rust Toolchain Fix**: Added explicit `toolchain: stable` to `dtolnay/rust-toolchain` in both `prepare-release.yml` and `release.yml`, eliminating the runner setup failure caused by missing required parameter.

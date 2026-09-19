@@ -438,6 +438,26 @@ impl PlatformScanner for WindowsScanner {
 /* ══════════════════════════════════════════════
    MACOS SCANNER (lsof + ps batch engine)
    ══════════════════════════════════════════════ */
+#[cfg(target_os = "macos")]
+fn get_proc_path(pid: u32) -> Option<String> {
+    extern "C" {
+        fn proc_pidpath(pid: i32, buffer: *mut u8, buffersize: u32) -> i32;
+    }
+
+    let mut buf = [0u8; 4096];
+    let len = unsafe { proc_pidpath(pid as i32, buf.as_mut_ptr(), buf.len() as u32) };
+    if len > 0 {
+        let safe_len = (len as usize).min(buf.len());
+        let bytes = &buf[..safe_len];
+        let clean = match bytes.iter().position(|&b| b == 0) {
+            Some(pos) => &bytes[..pos],
+            None => bytes,
+        };
+        Some(String::from_utf8_lossy(clean).trim().to_string()).filter(|s| !s.is_empty())
+    } else {
+        None
+    }
+}
 
 #[cfg(target_os = "macos")]
 struct MacOsScanner;
@@ -504,8 +524,11 @@ impl PlatformScanner for MacOsScanner {
             .join(",");
 
         let mut map = HashMap::new();
+
+        // ps only needs to provide pid, ppid, and the full command line.
+        // pid and ppid are guaranteed space-free numbers.
         if let Ok(output) = std::process::Command::new("ps")
-            .args(&["-p", &pid_csv, "-o", "pid=,ppid=,comm=,command="])
+            .args(&["-p", &pid_csv, "-o", "pid=,ppid=,command="])
             .output()
         {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -515,75 +538,56 @@ impl PlatformScanner for MacOsScanner {
                     continue;
                 }
 
-                // Tokenize first 3 whitespace fields by index to preserve command arguments with spaces
-                let mut word_indices: Vec<(usize, &str)> = Vec::new();
-                let mut in_word = false;
-                let mut start_idx = 0;
-                for (i, c) in trimmed.char_indices() {
-                    if !c.is_whitespace() {
-                        if !in_word {
-                            in_word = true;
-                            start_idx = i;
-                        }
-                    } else if in_word {
-                        in_word = false;
-                        word_indices.push((start_idx, &trimmed[start_idx..i]));
-                        if word_indices.len() == 3 {
-                            break;
-                        }
-                    }
-                }
-                if in_word && word_indices.len() < 3 {
-                    word_indices.push((start_idx, &trimmed[start_idx..]));
-                }
-
-                if word_indices.len() < 3 {
-                    continue;
-                }
-
-                let pid: u32 = match word_indices[0].1.parse() {
-                    Ok(p) => p,
-                    Err(_) => continue,
+                let mut parts = trimmed.split_whitespace();
+                let pid: u32 = match parts.next().and_then(|s| s.parse().ok()) {
+                    Some(p) => p,
+                    None => continue,
                 };
-                let ppid: Option<u32> = word_indices[1].1.parse().ok();
-                let comm = word_indices[2].1.to_string();
+                let ppid: Option<u32> = parts.next().and_then(|s| s.parse().ok());
 
-                let comm_end = word_indices[2].0 + word_indices[2].1.len();
-                let command = if comm_end < trimmed.len() {
-                    let cmd_part = trimmed[comm_end..].trim();
-                    if !cmd_part.is_empty() {
-                        Some(cmd_part.to_string())
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-
-                let cmd_exec_name = command.as_ref().and_then(|cmd| {
-                    cmd.split_whitespace().next().and_then(|first| {
-                        let p = std::path::Path::new(first);
-                        p.file_name().map(|f| f.to_string_lossy().to_string())
+                // Grab everything following pid and ppid verbatim to keep flags and whitespace intact
+                let command = trimmed
+                    .find(|c: char| c.is_whitespace())
+                    .and_then(|i| {
+                        let after_pid = trimmed[i..].trim_start();
+                        after_pid
+                            .find(|c: char| c.is_whitespace())
+                            .map(|j| after_pid[j..].trim().to_string())
                     })
-                });
+                    .filter(|s| !s.is_empty());
 
-                let short_name = cmd_exec_name
+                // Native macOS kernel query: returns the canonical executable path with zero parsing
+                let exec_path = get_proc_path(pid);
+
+                // Extract filename cleanly from the kernel-resolved path
+                let name = exec_path
+                    .as_deref()
+                    .and_then(|p| std::path::Path::new(p).file_name())
+                    .map(|f| f.to_string_lossy().to_string())
                     .filter(|s| !s.is_empty())
                     .or_else(|| {
-                        std::path::Path::new(&comm)
-                            .file_name()
-                            .map(|f| f.to_string_lossy().to_string())
-                            .filter(|s| !s.is_empty())
+                        // Fallback in case of kernel query permission denial
+                        command.as_ref().and_then(|cmd| {
+                            tokenize_cmd(cmd)
+                                .into_iter()
+                                .next()
+                                .and_then(|s| {
+                                    std::path::Path::new(&s)
+                                        .file_name()
+                                        .map(|f| f.to_string_lossy().to_string())
+                                })
+                                .filter(|s| !s.is_empty())
+                        })
                     })
-                    .unwrap_or_else(|| comm.clone());
+                    .unwrap_or_else(|| format!("PID {pid}"));
 
                 map.insert(
                     pid,
                     RawProcess {
                         pid,
                         parent_pid: ppid,
-                        name: short_name,
-                        exec_path: Some(comm),
+                        name,
+                        exec_path,
                         cmd_line: command,
                     },
                 );
@@ -717,6 +721,7 @@ fn is_system_process_name(name: &str) -> bool {
         || lower.starts_with("spotify")
         || lower.starts_with("zoom")
         || lower.starts_with("chrome")
+        || lower.starts_with("google chrome")
         || lower.starts_with("msedge")
         || lower.starts_with("firefox")
         || lower.starts_with("brave")
@@ -728,6 +733,7 @@ fn is_system_process_name(name: &str) -> bool {
         || lower.starts_with("textinputhost")
         || lower.starts_with("wmiprvse")
         || lower.starts_with("code")
+        || lower.starts_with("visual studio code")
         || lower.starts_with("cursor")
         || lower.starts_with("antigravity")
         || lower.starts_with("agy")
@@ -1002,10 +1008,43 @@ fn walk_up_to_project_root(start: &std::path::Path) -> Option<String> {
     None
 }
 
+fn tokenize_cmd(cmd_line: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut in_quote = None;
+
+    for c in cmd_line.chars() {
+        match in_quote {
+            Some(quote_char) => {
+                if c == quote_char {
+                    in_quote = None;
+                } else {
+                    current.push(c);
+                }
+            }
+            None => {
+                if c == '"' || c == '\'' {
+                    in_quote = Some(c);
+                } else if c.is_whitespace() {
+                    if !current.is_empty() {
+                        tokens.push(std::mem::take(&mut current));
+                    }
+                } else {
+                    current.push(c);
+                }
+            }
+        }
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+    tokens
+}
+
 fn extract_candidate_paths_from_cmd(cmd_line: &str) -> Vec<String> {
     let mut paths = Vec::new();
-    for word in cmd_line.split_whitespace() {
-        let clean = word.trim_matches('"').trim_matches('\'');
+    for token in tokenize_cmd(cmd_line) {
+        let clean = token.trim();
         if is_absolute_win_path(clean) || is_absolute_unix_path(clean) || clean.contains('/') || clean.contains('\\') {
             let lower = clean.to_lowercase();
             if let Some(idx) = lower.find("/node_modules/").or_else(|| lower.find("\\node_modules\\")) {
@@ -1705,7 +1744,7 @@ mod tests {
             _ => panic!("Expected Dev for Node.js server.js"),
         }
     }
-
+  
     #[tokio::test]
     async fn test_probe_tcp_latency_local() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1773,5 +1812,33 @@ mod tests {
         let (custom_host, custom_port) = resolve_probe_target_internal("127.0.0.1", 8080, None);
         assert_eq!(custom_host, "127.0.0.1");
         assert_eq!(custom_port, 8080);
+    }
+  
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_macos_get_proc_path_self() {
+        let path = get_proc_path(std::process::id());
+        assert!(path.is_some(), "get_proc_path should resolve current test executable");
+        let file_name = std::path::Path::new(&path.unwrap())
+            .file_name()
+            .map(|f| f.to_string_lossy().to_string());
+        assert!(file_name.is_some_and(|n| !n.is_empty()));
+    }
+
+    #[test]
+    fn test_tokenize_cmd_and_paths_with_spaces() {
+        let cmd = "node \"/Users/name/My Projects/app/server.js\" --port 3000";
+        let tokens = tokenize_cmd(cmd);
+        assert_eq!(tokens, vec!["node", "/Users/name/My Projects/app/server.js", "--port", "3000"]);
+
+        let paths = extract_candidate_paths_from_cmd(cmd);
+        assert_eq!(paths, vec!["/Users/name/My Projects/app/server.js"]);
+
+        let win_cmd = "python 'C:\\Users\\name\\My Projects\\manage.py' runserver";
+        let win_paths = extract_candidate_paths_from_cmd(win_cmd);
+        assert_eq!(win_paths, vec!["C:\\Users\\name\\My Projects\\manage.py"]);
+
+        assert!(is_system_process_name("Google Chrome"));
+        assert!(is_system_process_name("Visual Studio Code"));
     }
 }
