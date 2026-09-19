@@ -23,34 +23,31 @@ export function ObservabilityView() {
   return (
     <div className="flex h-full w-full flex-col bg-surface-container p-2 sm:p-3.5 gap-2 sm:gap-3 fade-in select-none font-mono text-xs overflow-y-auto overflow-x-hidden">
       {/* ── 1. Title Row & Quick Actions ── */}
-      <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2 border-b border-outline-variant/30 pb-2 sm:pb-2.5 shrink-0">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-2 border-b border-outline-variant/30 pb-2 sm:pb-2.5 shrink-0">
         <div className="min-w-0 flex-1 space-y-0.5">
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             <h1 className="text-xs sm:text-base font-bold text-white truncate">Observability Hub</h1>
-            <span className="hidden xs:inline-flex rounded-full bg-surface-container-high border border-outline-variant/30 px-1.5 sm:px-2 py-0.5 text-[9px] font-bold text-white/80">
-              Enhanced Telemetry
-            </span>
             <span className="rounded-full bg-primary/20 border border-primary/40 px-1.5 sm:px-2 py-0.5 text-[8.5px] sm:text-[9px] font-bold text-primary flex items-center gap-1 shrink-0">
               <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
               Real-Time
             </span>
           </div>
-          <p className="text-[9.5px] sm:text-[10.5px] text-white/70 truncate sm:line-clamp-none">
-            Zero-config local performance metrics, public tunnel health &amp; webhook stream.
+          <p className="text-[9.5px] sm:text-[10.5px] text-white/70 truncate">
+            Zero-config local telemetry &amp; public tunnel health.
           </p>
         </div>
 
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 w-full sm:w-auto">
           <button
             type="button"
-            className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-outline-variant/30 bg-surface-container-lowest text-white hover:text-primary hover:border-primary/40 transition-all cursor-pointer text-[10.5px] sm:text-xs font-semibold whitespace-nowrap"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-outline-variant/30 bg-surface-container-lowest text-white hover:text-primary hover:border-primary/40 transition-all cursor-pointer text-[10px] sm:text-xs font-semibold whitespace-nowrap"
           >
             <Terminal className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-primary shrink-0" />
-            <span className="hidden xs:inline">Inspect </span><span>Logs</span>
+            <span>Inspect Logs</span>
           </button>
           <button
             type="button"
-            className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-outline-variant/30 bg-surface-container-lowest text-white hover:text-secondary hover:border-secondary/40 transition-all cursor-pointer text-[10.5px] sm:text-xs font-semibold whitespace-nowrap"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg border border-outline-variant/30 bg-surface-container-lowest text-white hover:text-secondary hover:border-secondary/40 transition-all cursor-pointer text-[10px] sm:text-xs font-semibold whitespace-nowrap"
           >
             <Send className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-secondary shrink-0" />
             <span>REST Client</span>
@@ -62,23 +59,23 @@ export function ObservabilityView() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5 sm:gap-2.5 shrink-0">
         {/* Card 1: Tunnel Status */}
         <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-2 sm:p-3 space-y-0.5 sm:space-y-1 min-w-0 overflow-hidden">
-          <div className="flex items-center justify-between text-[8.5px] sm:text-[9.5px] uppercase font-bold text-white/60 gap-1">
+          <div className="flex items-center justify-between text-[8px] sm:text-[9.5px] uppercase font-bold text-white/60 gap-1">
             <span className="flex items-center gap-1 sm:gap-1.5 truncate">
               <Globe className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-white/70 shrink-0" />
               <span className="truncate">TUNNEL STATUS</span>
             </span>
             <span className="h-1.5 w-1.5 rounded-full bg-white/40 shrink-0" />
           </div>
-          <div className="flex items-center gap-1.5 text-xs sm:text-sm font-bold text-white truncate">
+          <div className="flex items-center gap-1.5 text-[11px] sm:text-sm font-bold text-white truncate">
             <span className="h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-white shrink-0" />
-            <span className="truncate">Waiting for Tunnel</span>
+            <span className="truncate">Idle (No Tunnel)</span>
           </div>
-          <p className="text-[9px] sm:text-[10px] text-white/60 truncate">No active public tunnel</p>
+          <p className="text-[8.5px] sm:text-[10px] text-white/60 truncate">Ready for exposure</p>
         </div>
 
         {/* Card 2: P90 Latency */}
         <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-2 sm:p-3 space-y-0.5 sm:space-y-1 min-w-0 overflow-hidden">
-          <div className="flex items-center justify-between text-[8.5px] sm:text-[9.5px] uppercase font-bold text-white/60 gap-1">
+          <div className="flex items-center justify-between text-[8px] sm:text-[9.5px] uppercase font-bold text-white/60 gap-1">
             <span className="flex items-center gap-1 sm:gap-1.5 truncate">
               <Clock className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-primary shrink-0" />
               <span className="truncate">P90 LATENCY</span>
@@ -86,12 +83,12 @@ export function ObservabilityView() {
             <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
           </div>
           <div className="text-sm sm:text-base font-bold text-primary truncate">13 ms</div>
-          <p className="text-[9px] sm:text-[10px] text-white/60 truncate">P50: 4ms · P99: 45ms</p>
+          <p className="text-[8.5px] sm:text-[10px] text-white/60 truncate">P50: 4ms · P99: 45ms</p>
         </div>
 
         {/* Card 3: Success Rate */}
         <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-2 sm:p-3 space-y-0.5 sm:space-y-1 min-w-0 overflow-hidden">
-          <div className="flex items-center justify-between text-[8.5px] sm:text-[9.5px] uppercase font-bold text-white/60 gap-1">
+          <div className="flex items-center justify-between text-[8px] sm:text-[9.5px] uppercase font-bold text-white/60 gap-1">
             <span className="flex items-center gap-1 sm:gap-1.5 truncate">
               <CheckCircle2 className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-secondary shrink-0" />
               <span className="truncate">SUCCESS RATE</span>
@@ -99,12 +96,12 @@ export function ObservabilityView() {
             <span className="h-1.5 w-1.5 rounded-full bg-secondary shrink-0" />
           </div>
           <div className="text-sm sm:text-base font-bold text-secondary truncate">100.0%</div>
-          <p className="text-[9px] sm:text-[10px] text-white/60 truncate">12 pass / 0 fail</p>
+          <p className="text-[8.5px] sm:text-[10px] text-white/60 truncate">12 pass / 0 fail</p>
         </div>
 
         {/* Card 4: Bandwidth & Posture */}
         <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-2 sm:p-3 space-y-0.5 sm:space-y-1 min-w-0 overflow-hidden">
-          <div className="flex items-center justify-between text-[8.5px] sm:text-[9.5px] uppercase font-bold text-white/60 gap-1">
+          <div className="flex items-center justify-between text-[8px] sm:text-[9.5px] uppercase font-bold text-white/60 gap-1">
             <span className="flex items-center gap-1 sm:gap-1.5 truncate">
               <ShieldCheck className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-tertiary shrink-0" />
               <span className="truncate">BANDWIDTH</span>
@@ -112,7 +109,7 @@ export function ObservabilityView() {
             <span className="h-1.5 w-1.5 rounded-full bg-tertiary shrink-0" />
           </div>
           <div className="text-sm sm:text-base font-bold text-white truncate">11.8 KB</div>
-          <p className="text-[9px] sm:text-[10px] text-secondary font-semibold truncate">PII Redaction Active</p>
+          <p className="text-[8.5px] sm:text-[10px] text-secondary font-semibold truncate">PII Redacted</p>
         </div>
       </div>
 
@@ -122,14 +119,14 @@ export function ObservabilityView() {
           type="button"
           onClick={() => setActiveTab("overview")}
           className={cn(
-            "flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-t-lg font-bold transition-all cursor-pointer shrink-0 whitespace-nowrap text-[11px] sm:text-xs",
+            "flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-t-lg font-bold transition-all cursor-pointer shrink-0 whitespace-nowrap text-[10px] sm:text-xs",
             activeTab === "overview"
               ? "border-b-2 border-primary text-primary bg-surface-container-lowest"
               : "text-white/60 hover:text-white"
           )}
         >
           <Activity className="h-3.5 w-3.5 shrink-0" />
-          <span>Overview<span className="hidden xs:inline"> &amp; Tunnel</span></span>
+          <span>Overview</span>
         </button>
 
         <button

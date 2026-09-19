@@ -73,21 +73,21 @@ export function SettingsView({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between pt-1 gap-2 border-t border-outline-variant/20">
-          <div className="font-mono text-[9.5px] sm:text-[10px] text-white/70 truncate flex-1 min-w-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-1 gap-2 border-t border-outline-variant/20">
+          <div className="font-mono text-[9px] sm:text-[10px] text-white/70 truncate">
             Path: %APPDATA%/Proxync/logs (42.8 KB)
           </div>
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0 w-full sm:w-auto">
             <button
               type="button"
-              className="inline-flex items-center gap-1 rounded-lg border border-outline-variant/40 bg-surface-container-low px-2 sm:px-2.5 py-1 font-mono text-[10px] sm:text-[11px] font-bold text-white hover:bg-surface-container-high transition-all cursor-pointer whitespace-nowrap"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1 rounded-lg border border-outline-variant/40 bg-surface-container-low px-2 sm:px-2.5 py-1 font-mono text-[10px] sm:text-[11px] font-bold text-white hover:bg-surface-container-high transition-all cursor-pointer whitespace-nowrap"
             >
               <FolderOpen className="h-3 w-3 text-white/70" />
               <span>Folder</span>
             </button>
             <button
               type="button"
-              className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 sm:px-3 py-1 font-mono text-[10px] sm:text-[11px] font-bold text-on-primary hover:bg-primary/90 transition-all shadow-sm shadow-primary/25 cursor-pointer whitespace-nowrap"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1 rounded-lg bg-primary px-2.5 sm:px-3 py-1 font-mono text-[10px] sm:text-[11px] font-bold text-on-primary hover:bg-primary/90 transition-all shadow-sm shadow-primary/25 cursor-pointer whitespace-nowrap"
             >
               <Download className="h-3 w-3" />
               <span>Export Bundle</span>
@@ -106,7 +106,7 @@ export function SettingsView({
             1-Click Live Switch
           </span>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-1.5 sm:gap-3 sm:grid-cols-4">
           {[
             { id: "dark", name: "Obsidian Dark", color: "#38bdf8", desc: "Default Dark" },
             { id: "slate", name: "Midnight Slate", color: "#8aebff", desc: "Slate Glow" },
@@ -118,7 +118,7 @@ export function SettingsView({
               type="button"
               onClick={() => onThemeChange(item.id as ThemeId)}
               className={cn(
-                "flex flex-col items-start rounded-xl border p-2 sm:p-3 text-left transition-all cursor-pointer min-w-0",
+                "flex flex-col items-start rounded-xl border p-1.5 sm:p-3 text-left transition-all cursor-pointer min-w-0",
                 theme === item.id
                   ? "border-primary bg-primary/10 shadow-md shadow-primary/10 ring-2 ring-primary/40"
                   : "border-outline-variant/30 bg-surface-container-lowest hover:border-outline-variant",
@@ -126,9 +126,9 @@ export function SettingsView({
             >
               <div className="flex items-center gap-1.5 sm:gap-2 w-full min-w-0">
                 <span className="h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                <span className="text-[11px] sm:text-xs font-bold text-white truncate">{item.name}</span>
+                <span className="text-[10.5px] sm:text-xs font-bold text-white truncate">{item.name}</span>
               </div>
-              <span className="mt-1 font-mono text-[9px] sm:text-[10px] text-white/70 truncate w-full">{item.desc}</span>
+              <span className="mt-0.5 sm:mt-1 font-mono text-[8.5px] sm:text-[10px] text-white/70 truncate w-full">{item.desc}</span>
             </button>
           ))}
         </div>

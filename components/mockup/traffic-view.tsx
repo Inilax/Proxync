@@ -37,18 +37,18 @@ export function TrafficView() {
         </div>
 
         {/* Filters */}
-        <div className="flex items-center gap-1.5 p-1.5 bg-surface-container-lowest rounded-lg border border-outline-variant/30 shrink-0">
+        <div className="flex items-center gap-1.5 p-1 sm:p-1.5 bg-surface-container-lowest rounded-lg border border-outline-variant/30 shrink-0">
           <div className="flex-1 min-w-0 relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/50 h-3 w-3 sm:h-3.5 sm:w-3.5" />
             <input
               type="text"
-              className="w-full bg-surface-container-low border border-outline-variant/30 rounded-lg pl-7 sm:pl-8 pr-2 py-1 text-[11px] sm:text-xs text-white placeholder:text-white/40 focus:outline-none"
+              className="w-full bg-surface-container-low border border-outline-variant/30 rounded-lg pl-7 sm:pl-8 pr-2 py-1 text-[10.5px] sm:text-xs text-white placeholder:text-white/40 focus:outline-none"
               placeholder="Filter path, port..."
               defaultValue="/api/v1"
             />
           </div>
-          <select className="text-[11px] sm:text-xs bg-surface-container-low border border-outline-variant/30 rounded-lg px-2 py-1 text-white font-mono cursor-pointer shrink-0">
-            <option>All Methods</option>
+          <select className="text-[10px] sm:text-xs bg-surface-container-low border border-outline-variant/30 rounded-lg px-1.5 sm:px-2 py-1 text-white font-mono cursor-pointer shrink-0 max-w-[85px] sm:max-w-none">
+            <option>Methods</option>
             <option>GET</option>
             <option>POST</option>
             <option>PUT</option>
@@ -69,12 +69,12 @@ export function TrafficView() {
 
         {/* Table Container - Fills Height */}
         <div className="flex-1 min-h-0 border border-outline-variant/30 rounded-xl bg-surface-container-lowest overflow-hidden flex flex-col justify-between">
-          <div className="flex items-center border-b border-outline-variant bg-surface-container-low font-mono text-[10px] sm:text-[11px] font-bold text-white/70 py-1.5 sm:py-2 px-2.5 sm:px-3 uppercase tracking-wider shrink-0">
-            <div className="w-12 sm:w-16 shrink-0">Method</div>
-            <div className="w-14 sm:w-20 shrink-0">Status</div>
+          <div className="flex items-center border-b border-outline-variant bg-surface-container-low font-mono text-[9.5px] sm:text-[11px] font-bold text-white/70 py-1.5 sm:py-2 px-2 sm:px-3 uppercase tracking-wider shrink-0">
+            <div className="w-11 sm:w-16 shrink-0">Method</div>
+            <div className="w-12 sm:w-20 shrink-0">Status</div>
             <div className="flex-1 min-w-0">Request Path</div>
             <div className="hidden sm:block w-24 shrink-0 text-right">Server</div>
-            <div className="w-11 sm:w-14 shrink-0 text-right">Time</div>
+            <div className="w-10 sm:w-14 shrink-0 text-right">Time</div>
             <div className="hidden md:block w-28 shrink-0 text-right">Target</div>
           </div>
 
@@ -84,24 +84,24 @@ export function TrafficView() {
                 key={row.id}
                 onClick={() => setSelectedId(row.id)}
                 className={cn(
-                  "flex items-center px-2.5 sm:px-3 py-1.5 sm:py-2 font-mono text-[11px] sm:text-xs transition-colors cursor-pointer",
+                  "flex items-center px-2 sm:px-3 py-1.5 sm:py-2 font-mono text-[10.5px] sm:text-xs transition-colors cursor-pointer",
                   selectedId === row.id
                     ? "bg-primary/10 border-l-2 sm:border-l-4 border-l-primary font-bold"
                     : "hover:bg-surface-container-low/60",
                 )}
               >
-                <div className={cn("w-12 sm:w-16 shrink-0 font-bold text-[10.5px] sm:text-xs", METHOD_STYLE[row.method])}>
+                <div className={cn("w-11 sm:w-16 shrink-0 font-bold text-[10px] sm:text-xs", METHOD_STYLE[row.method])}>
                   {row.method}
                 </div>
-                <div className={cn("w-14 sm:w-20 shrink-0 flex items-center gap-1 text-[10.5px] sm:text-xs", STATUS_STYLE[row.status])}>
-                  {row.status < 400 ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
-                  {row.status}
+                <div className={cn("w-12 sm:w-20 shrink-0 flex items-center gap-0.5 sm:gap-1 text-[10px] sm:text-xs", STATUS_STYLE[row.status])}>
+                  <span className="hidden xs:inline">{row.status < 400 ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}</span>
+                  <span>{row.status}</span>
                 </div>
-                <div className="flex-1 min-w-0 truncate text-white text-[11px] sm:text-xs">{row.path}</div>
+                <div className="flex-1 min-w-0 truncate text-white text-[10.5px] sm:text-xs pr-1">{row.path}</div>
                 <div className="hidden sm:block w-24 shrink-0 text-right text-primary text-[11px] font-bold truncate">
                   {row.serverName}
                 </div>
-                <div className="w-11 sm:w-14 shrink-0 text-right text-white/70 text-[10px] sm:text-[11px]">{row.latency}</div>
+                <div className="w-10 sm:w-14 shrink-0 text-right text-white/70 text-[9.5px] sm:text-[11px]">{row.latency}</div>
                 <div className="hidden md:block w-28 shrink-0 text-right font-bold text-tertiary text-[10px] truncate">
                   {row.targetBadge}
                 </div>
@@ -109,9 +109,9 @@ export function TrafficView() {
             ))}
           </div>
 
-          <div className="border-t border-outline-variant/20 bg-surface-container-low px-2.5 sm:px-3 py-1 sm:py-1.5 font-mono text-[9.5px] sm:text-[10px] text-white/70 flex items-center justify-between gap-2 shrink-0">
-            <span className="truncate">5 requests intercepted (:5173, :8000, :4000)</span>
-            <span className="hidden md:inline text-secondary font-bold shrink-0">● Multi-Tunnel Segregation Active</span>
+          <div className="border-t border-outline-variant/20 bg-surface-container-low px-2 sm:px-3 py-1 sm:py-1.5 font-mono text-[9px] sm:text-[10px] text-white/70 flex items-center justify-between gap-2 shrink-0">
+            <span className="truncate">5 requests intercepted</span>
+            <span className="hidden md:inline text-secondary font-bold shrink-0">● Multi-Tunnel Segregation</span>
           </div>
         </div>
       </div>

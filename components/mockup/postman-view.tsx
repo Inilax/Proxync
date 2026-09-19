@@ -266,19 +266,20 @@ export function PostmanView() {
 
           {/* URL & Send Bar — min-w-0 ensures Send button is NEVER pushed off-screen */}
           <div className="flex items-center gap-1.5 sm:gap-2">
-            <span className={cn("px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg font-bold text-[10.5px] sm:text-xs border shrink-0", METHOD_BADGE[activeReq.method])}>
+            <span className={cn("px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-lg font-bold text-[10px] sm:text-xs border shrink-0", METHOD_BADGE[activeReq.method])}>
               {activeReq.method}
             </span>
 
-            <div className="flex flex-1 min-w-0 items-center bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-2 sm:px-2.5 py-1 sm:py-1.5 text-[11px] sm:text-xs overflow-hidden">
-              <span className="text-white/50 truncate shrink-0">http://localhost:{activeReq.port}</span>
+            <div className="flex flex-1 min-w-0 items-center bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-2 sm:px-2.5 py-1 sm:py-1.5 text-[10.5px] sm:text-xs overflow-hidden">
+              <span className="text-white/50 truncate shrink-0 hidden xs:inline">localhost:{activeReq.port}</span>
+              <span className="text-white/50 shrink-0 xs:hidden">:{activeReq.port}</span>
               <span className="text-white font-semibold truncate pl-1">{activeReq.path}</span>
             </div>
 
             <button
               onClick={handleSend}
               disabled={isSending}
-              className="flex items-center gap-1 px-3 sm:px-4 py-1 sm:py-1.5 rounded-lg bg-primary font-bold text-xs text-on-primary shadow-sm hover:opacity-90 transition-all cursor-pointer shrink-0 whitespace-nowrap"
+              className="flex items-center gap-1 px-2.5 sm:px-4 py-1 sm:py-1.5 rounded-lg bg-primary font-bold text-xs text-on-primary shadow-sm hover:opacity-90 transition-all cursor-pointer shrink-0 whitespace-nowrap"
             >
               <Send className={cn("h-3 w-3 sm:h-3.5 sm:w-3.5", isSending ? "animate-spin" : "")} />
               <span>{isSending ? "..." : "Send"}</span>

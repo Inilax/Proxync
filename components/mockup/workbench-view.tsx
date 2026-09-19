@@ -70,8 +70,8 @@ export function WorkbenchView() {
       </div>
 
       {/* ── 2. Sub-Header Controls & Actions ── */}
-      <div className="flex flex-wrap items-center justify-between gap-1.5 shrink-0">
-        <div className="space-y-0.5 min-w-0 flex-1">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-2 shrink-0">
+        <div className="space-y-0.5 min-w-0">
           <div className="flex items-center gap-1.5">
             <h2 className="text-xs sm:text-sm font-bold text-white truncate">DevTools &amp; Mapping</h2>
             <span className="text-[8.5px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
@@ -84,8 +84,8 @@ export function WorkbenchView() {
         </div>
 
         {/* Toolbar: Switcher + Actions */}
-        <div className="flex items-center gap-1 shrink-0">
-          <div className="flex items-center rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-0.5 text-[10px] sm:text-[10.5px]">
+        <div className="flex items-center gap-1 shrink-0 overflow-x-auto">
+          <div className="flex items-center rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-0.5 text-[9.5px] sm:text-[10.5px]">
             <button
               onClick={() => setActiveSubView("devtools")}
               className={cn(
@@ -219,7 +219,7 @@ export function WorkbenchView() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 text-[10px] pt-0.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2 text-[10px] pt-0.5">
             <div className="min-w-0">
               <span className="text-white/60 uppercase block font-bold text-[8px]">HANDLER FUNCTION</span>
               <span className="text-white font-semibold font-mono truncate block">getProfile(req, res)</span>
