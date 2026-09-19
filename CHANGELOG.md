@@ -2,6 +2,18 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/ci-release-workflow-hardening] - 2026-09-19 (CI Release Workflow — Windows & Linux Hardening)
+- **Feature Summary**:
+  - **Rust Toolchain Fix**: Added explicit `toolchain: stable` to `dtolnay/rust-toolchain` in both `prepare-release.yml` and `release.yml`, eliminating the runner setup failure caused by missing required parameter.
+  - **macOS Removed from CI Matrix**: Removed `macos-latest` from `test-matrix` and `build-tauri` jobs. macOS `.dmg` built and signed locally by maintainer, manually attached to GitHub Draft Release before publishing.
+  - **Apple Secrets Cleaned Up**: Removed unused `APPLE_*` env vars from `release.yml` to eliminate missing-secret CI warnings.
+  - **Fast Sanity Build**: Added `--no-bundle` to `prepare-release.yml` sanity step — cuts pre-flight CI from ~12min to ~3min.
+  - **Root Package Version Sync**: Added `npm version` call for root `package.json` to keep monorepo root in sync with `packages/desktop` on version bump.
+  - **Updated Comments & PR Template**: Header comments and PR template body updated to accurately reflect Windows + Linux automated CI with manual macOS DMG workflow.
+- **Modified Files**:
+  - `.github/workflows/prepare-release.yml`
+  - `.github/workflows/release.yml`
+
 ## [fix/relay-dns-latency-hardening] - 2026-09-18 (CodeQL CWE-20 URL Sanitization & Tunnel Metadata Hardening)
 - **Feature Summary**:
   - **CodeQL CWE-20 Incomplete URL Substring Sanitization Fix**: Centralized tunnel metadata extraction into `getTunnelMetadata()` in `SharedComponents.tsx`. Replaced naive substring checks (`.includes('trycloudflare.com')`, `.includes('proxync')`) with strict hostname matching (`.endsWith('.trycloudflare.com')`, `.endsWith('.proxync.dev')`) to prevent domain spoofing attacks.
