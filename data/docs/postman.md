@@ -1,35 +1,58 @@
 ---
 title: Playground
-description: REST client with Generic Replay Engine, native Rust HTTP executor, glass right-click context menus, and Target Route Badges.
+description: Fast, built-in REST API client with zero CORS errors, persistent draft sessions, folder organization, and native Rust execution.
 ---
 
-In Proxync v0.2.1, the REST client view is **Playground** — featuring a native Rust HTTP executor, Generic Replay Engine, glass context menus, and Target Route Badges.
+Testing your APIs shouldn't require launching a heavy external app, signing up for an account, or bumping into monthly subscription limits.
 
-## Key Features in v0.2.1
+The **Playground** is Proxync's built-in REST API studio. It gives you a clean, intuitive interface to build requests, inspect JSON responses, organize endpoints into folders, and test your backend—with zero setup friction.
 
-- **Generic Replay Engine** — Replay any HTTP method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`) via native Rust HTTP executor (`execute_http_request`), bypassing browser CORS limitations and automatically appending results to Traffic Logs.
-- **Target Route Badges** — A pill-shaped badge next to the Send button displays the active route target:
-  - `Proxync Native` — Traffic routed through high-throughput Native SSH tunnels (Direct Origin Port 2222).
-  - `Cloudflare Edge` — Traffic routed through public Cloudflare edge tunnels.
-  - `Public Tunnel` — Traffic routed through public Localtunnel edge proxies.
-  - `Local Loopback` — Traffic routed through local dev server ports.
-- **Glass Right-Click Context Menu** — Right-click any collection request item to access **Rename**, **Copy URL**, **Duplicate Request**, or **Delete**.
-- **Keyboard Shortcuts Modal** — Press `Ctrl + /` or `Ctrl + ?` anywhere in Playground to display the hotkey reference sheet (`Ctrl + Enter` to Send, `Ctrl + S` to Save directly to collection).
-- **Inline Collection Folder Management** — Expanded 280px sidebar rail with inline folder creation, renaming, and contrast-overhauled action buttons.
-- **Automatic Decompression** — Supports automatic `gzip`, `deflate`, and `brotli` payload decompression for accurate response rendering.
+> **Why you'll never see a CORS error in Playground:**  
+> Have you ever tried testing an API from a web browser tool, only to be blocked by a red `CORS policy` error? Browser extensions and web apps are subject to strict browser cross-origin rules. Because Playground runs natively inside Proxync's desktop engine, your requests run directly on your operating system with **zero CORS blocks**.
 
-## Collection Item Sources
+---
 
-| Source | Description |
-| --- | --- |
-| `manual` | Created manually using the request builder. |
-| `starter-scan` | Auto-scanned from dev server routes. |
-| `captured` | Sent from Traffic Inspector. |
-| `swagger-import` | Imported from OpenAPI 3.0 specs. |
+## Why Developers & Vibe Coders Love Playground
 
-## Playground Keyboard Shortcuts
+- **Runs 100% Offline & Private:** Your API keys, headers, and request bodies never touch any third-party cloud.
+- **Persistent Drafts:** If you restart Proxync or reboot your computer, your open tabs, unsaved drafts, and recent responses are preserved automatically.
+- **Target Route Badges:** Next to the **Send** button, a dynamic badge shows where your request is going:
+  - `Local Loopback` — Sent directly to your local port (`localhost:3000`).
+  - `Proxync Native` — Routed through your high-speed SSH tunnel (`relay.proxync.dev`).
+  - `Cloudflare Edge` — Routed through your public Cloudflare tunnel.
+- **Right-Click Context Menus:** Easily rename, duplicate, copy URL, or delete saved requests in your collection sidebar.
+- **Built-in Decompression:** Supports automatic `gzip`, `brotli`, and `deflate` decompression so payloads always display as readable JSON or text.
 
-- `Ctrl + Enter` — Send active request.
-- `Ctrl + S` — Save active request to selected collection.
-- `Ctrl + /` or `Ctrl + ?` — Toggle keyboard shortcut overlay.
-- `Esc` — Dismiss open dialogs or context menus.
+---
+
+## Where Requests Come From
+
+You can populate your Playground collections in four convenient ways:
+
+| Source | How It Works |
+| :--- | :--- |
+| **Manual Builder** | Click `+ New Request` to type an endpoint URL, pick an HTTP method, and set headers. |
+| **Sent from Traffic** | Click **Send to Playground** on any item in the Traffic Inspector to inspect real webhooks. |
+| **Auto-Scanned Codebase** | Proxync's route scanner detects endpoints in Next.js, FastAPI, or Express projects automatically. |
+| **OpenAPI / Swagger Import** | Import an existing OpenAPI YAML or JSON file to populate a complete collection instantly. |
+
+---
+
+## Keyboard Shortcuts
+
+Work faster with convenient keyboard shortcuts:
+
+| Shortcut (Windows / Linux) | Shortcut (macOS) | Action |
+| :--- | :--- | :--- |
+| `Ctrl + Enter` | `Cmd + Enter` | Send active request |
+| `Ctrl + S` | `Cmd + S` | Save active request to collection |
+| `Ctrl + /` | `Cmd + /` | Open the keyboard shortcuts cheat sheet |
+| `Esc` | `Esc` | Close context menus and dialogs |
+
+---
+
+## What to Read Next
+
+- **[Request Workbench](/docs/workbench)** — Compare live responses against captured traffic with visual diffs.
+- **[Swagger & OpenAPI Studio](/docs/swagger)** — Generate interactive API docs and export them to Playground in one click.
+- **[Traffic Inspector](/docs/traffic)** — Capture real-world traffic to send into your Playground collections.

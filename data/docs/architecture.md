@@ -1,48 +1,84 @@
 ---
 title: Architecture
-description: Technical architecture of Proxync v0.2.1 — Tauri v2 desktop shell, modular Rust backend, Pro Debugger, React 19 frontend, and state model.
+description: Technical architecture of Proxync — Tauri v2 desktop shell, modular Rust backend, React 19 frontend, and local state engine.
 ---
 
-## System Architecture
+Proxync is engineered as a lightweight, private, and high-performance desktop studio. Unlike traditional development tools that rely on heavy Electron wrappers consuming hundreds of megabytes of RAM, Proxync uses **Tauri v2** and **native Rust**, keeping memory usage lean (~12MB RAM) while delivering sub-millisecond networking performance.
+
+---
+
+## High-Level System Architecture
 
 ```text
 ┌────────────────────────────────────────────────────────────────────────┐
-│  Desktop Shell (Tauri v2 / WebView2 Container)                        │
+│  Desktop Application Shell (Tauri v2 / WebView2 Container)             │
 │  ┌──────────────────────────────────────────────────────────────────┐  │
 │  │  React 19 + TypeScript Frontend (Vite 7)                         │  │
 │  │  Views: Explore · Workspaces · Tunnels · Traffic · Playground ·   │  │
-│  │         Observability · Swagger · Settings                       │  │
+│  │         Workbench · Observability · Swagger · Settings           │  │
 │  │  Modules: logger.ts · openApiGenerator.ts · api.ts · toast.tsx   │  │
 │  └──────────────────────────────┬───────────────────────────────────┘  │
-│                                 │ invoke / IPC events                  │
+│                                 │ Tauri IPC Commands & Events          │
 │  ┌──────────────────────────────┴───────────────────────────────────┐  │
-│  │  Modular Rust Native Backend (proxync_lib)                       │  │
-│  │  ├─ recon.rs   : Dynamic netstat full-port & bulk WMI recon      │  │
-│  │  ├─ tunnel.rs  : Native SSH (2222), Cloudflare, Localtunnel      │  │
-│  │  ├─ proxy.rs   : TCP stream proxy, bot filter, port attribution  │  │
-│  │  ├─ storage.rs : AppData JSON persistence & disk logger          │  │
-│  │  └─ http.rs    : CORS-bypassing Reqwest HTTP engine              │  │
+│  │  Modular Native Rust Backend (proxync_lib)                       │  │
+│  │  ├─ recon.rs   : OS port & process discovery (WMI / Darwin FFI)  │  │
+│  │  ├─ tunnel.rs  : Native SSH (relay.proxync.dev:2222) & Cloudflare│  │
+│  │  ├─ proxy.rs   : TCP stream proxy, SSRF shield, port attribution │  │
+│  │  ├─ storage.rs : AppData JSON persistence & log rotation (5/10MB)│  │
+│  │  └─ http.rs    : Multi-OS User-Agent Reqwest CORS-bypassing engine│ │
 │  └──────────────────────────────┬───────────────────────────────────┘  │
-│                                 │                                      │
+│                                 │ Outbound Network Streams             │
 │      ┌──────────────────────────┼──────────────────────────┐           │
 │      │                          │                          │           │
-│  Native SSH Tunnel        Cloudflare Edge            Local Proxy       │
-│  (Port 2222, JIT TLS)     (cloudflared npx)          (127.0.0.1:*)     │
+│  Native Origin Relay      Cloudflare Edge            Local Proxy       │
+│  (relay.proxync.dev:2222) (cloudflared quick)        (127.0.0.1:*)     │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Stack
+---
 
-- **Desktop Shell:** Tauri v2 (`proxync`, version `0.2.1`).
-- **Frontend:** React 19 + TypeScript, Vite 7, Material 3 & Nunito Sans design tokens, Lucide icons, Motion animations.
-- **Backend:** Rust 2021 edition with modular domain architecture (`http.rs`, `proxy.rs`, `recon.rs`, `storage.rs`, `tunnel.rs`), Tokio async runtime, Reqwest (with automatic decompression and connection pooling), `tauri-plugin-autostart`, and `tauri-plugin-updater`.
-- **Packaging:** Windows NSIS and MSI installers with High-DPI NSIS header/sidebar bitmaps and embedded MIT open-source license.
+## The Tech Stack
 
-## Key Subsystems in v0.2.1
+- **Desktop Shell:** [Tauri v2](https://v2.tauri.app/) — Native windowing and IPC bridge with minimal overhead.
+- **Frontend:** React 19, TypeScript, Vite 7, Tailwind CSS with Obsidian Void tokens, Lucide icons, and Motion 60fps animations.
+- **Backend:** Rust (2021 Edition), Tokio async runtime, Reqwest HTTP client with connection pooling and automated payload decompression.
+- **Packaging:** Native desktop installers across Windows (signed NSIS `.exe` and `.msi`), macOS (Universal `.dmg` for Apple Silicon and Intel), and Linux (`.deb` and `.AppImage`).
 
-1. **Dynamic Netstat Full-Port Discovery (`recon.rs`)** — Dynamically captures all listening dev services across IPv4 and IPv6 via single-pass `netstat -ano` and single bulk WMI/CIM process query (`Get-CimInstance Win32_Process`).
-2. **Proxync Native High-Throughput Tunnels (`tunnel.rs`)** — High-speed SSH tunnels on direct origin port 2222 with JIT Ed25519 TLS certs, host key pinning, zero-trace `TempDirGuard`, and random subdomain auto-generation (`px-*.proxync.dev`).
-3. **Pro Debugger & Dual-Stream Logging (`storage.rs`, `logger.ts`)** — Disk logging in `%APPDATA%/Proxync/logs` (`app.log` on by default, `traffic.log` stream on-demand), AI agent diagnostic directives (`reason`, `target`, `hint`), sensitive token redaction, and 1-click support bundle export.
-4. **Traffic Segregation & Bot Probe Noise Filtering (`proxy.rs`, `openApiGenerator.ts`)** — Deterministic `port`/`tunnelId`/`requestId` metadata tagging on proxy events, automated bot probe rejection (`/.env`, `/.git`, `*.pem`), and SPA catch-all HTML suppression.
-5. **Incremental OpenAPI Spec Ingestion (`openApiGenerator.ts`)** — Dynamic URL path parameterization (`/api/todos/{id}`) and continuous deep-merging across sequential requests.
-6. **Emergency CVE Security Radar (`App.tsx`)** — Unconditional pre-flight startup scan for urgent vulnerability patches.
+---
+
+## Core Backend Subsystems
+
+### 1. Smart OS Reconnaissance (`recon.rs`)
+Proxync quietly discovers local development servers without requiring you to remember port numbers:
+- **Windows:** Queries active listening ports via `netstat -ano` and resolves process details via bulk WMI (`Win32_Process`).
+- **macOS:** Uses Darwin kernel system APIs (`proc_pidpath` and unprivileged `lsof`) to bypass standard 16-character process name truncation and locate the project's root folder.
+- **Daemon Filtering:** Automatically filters out internal operating system daemons (`ControlCenter`, `rapportd`, `identityservicesd`, `launchd`) so only your actual web servers are shown.
+- **Framework Detection:** Fingerprints common development servers including Next.js, Vite, FastAPI, Express, NestJS, Spring Boot, Go, Bun, and Python HTTP server.
+
+### 2. Resilient Tunnel Engine (`tunnel.rs`)
+- **Origin Relay Routing:** Connects to `relay.proxync.dev` on Direct Origin Port `2222` with dynamic DNS resolution, allowing seamless background server failover.
+- **Resilient Standby Mode:** When your local server restarts during code hot-reloading, Proxync keeps your public URL active in standby and reconnects the instant your code reboots.
+- **Clean Process Isolation:** Spawns child tunnel processes as leaders of isolated process groups (`setpgid(0, 0)` on Unix). When you quit or stop a tunnel, the OS kernel cleanly terminates the entire process tree, leaving zero zombie processes locking ports.
+
+### 3. SSRF Intranet Shield (`proxy.rs`)
+To protect private corporate networks and home Wi-Fi environments:
+- Enforces strict loopback whitelisting (`is_permitted_probe_host`).
+- Completely blocks attempts to probe private subnets (`192.168.x.x`, `10.x.x.x`, `172.16.x.x`, and cloud metadata endpoints like `169.254.169.254`).
+
+### 4. Pro Debugger & Dual-Stream Logging (`storage.rs`, `logger.ts`)
+- **System Telemetry Banner:** Generates a structured hardware/OS banner on startup detailing platform, kernel version, architecture, and WebView version.
+- **Automatic Log Rotation:** Keeps disk usage predictable by archiving `app.log` at 5MB and `traffic.log` at 10MB.
+- **Panic Protection:** Intercepts unexpected Rust panics and logs formatted stack traces directly to `app.log`.
+
+### 5. Native CORS-Bypassing HTTP Engine (`http.rs`)
+- Executes HTTP requests directly from the desktop operating system using Rust's `reqwest` library.
+- Automatically injects platform-appropriate `User-Agent` headers (`Windows NT`, `Macintosh`, `X11; Linux`) matching the host system.
+- Completely eliminates browser CORS restrictions for hassle-free API testing.
+
+---
+
+## What to Read Next
+
+- **[API Reference](/docs/api-reference)** — Complete Tauri IPC command and event documentation.
+- **[Configuration](/docs/configuration)** — File locations and settings schema.
+- **[Roadmap](/docs/roadmap)** — Explore planned features and future releases.

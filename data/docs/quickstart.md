@@ -1,58 +1,95 @@
 ---
 title: Quickstart
-description: Share a local server with a high-speed Native SSH tunnel, inspect live traffic with multi-port segregation, and monitor diagnostics in Pro Debugger.
+description: Share a local dev server with a secure tunnel, inspect live traffic, and test APIs in under three minutes with Proxync.
 ---
 
-This guide gets you from installation to a shared, inspectable development server in under five minutes using Proxync v0.2.1.
+Welcome to the Proxync quickstart! In less than three minutes, you will share a local web project with a secure public link, test an API call, and see live traffic stream in.
 
-## 1. Create a Workspace
+No signups, no credit cards, and no complex command-line flags required.
 
-Launch Proxync. The onboarding wizard or inline workspace builder creates an isolated workspace tracking processes, saved collections, traffic logs, and activity stats. See [Workspaces](/docs/workspaces) for details.
+---
 
-## 2. Discover Your Process with Dynamic Netstat
+## Step 1: Launch Proxync & Open a Workspace
 
-Open **Tunnels & Recon**. Proxync scans all listening dev services across IPv4 and IPv6 (`netstat -ano`) with single bulk WMI process lookups. It automatically identifies running PIDs, ports (e.g. `3000`, `5173`, `8000`, `4000`, or custom ports), and framework signatures (Next.js, Vite, FastAPI, NestJS, Go, Spring Boot, Bun).
+When you launch Proxync for the first time, it automatically creates your default workspace.
 
-## 3. Share Your Local Server
+Think of a **Workspace** as an organized project folder that holds your discovered dev servers, saved API requests, and live traffic history. You can rename it anytime or create new workspaces for separate projects.
 
-Choose a sharing method:
+---
 
-- **Proxync Native SSH** — launches high-throughput hardware-accelerated SSH tunnels over Direct Origin Port 2222 with JIT Ed25519 TLS certs and automatic 8-character random subdomains (`https://px-*.proxync.dev`).
-- **Cloudflare** — launches a free HTTPS public `*.trycloudflare.com` tunnel protected by our **Active Internet Connectivity Guard**.
-- **Localtunnel** — launches a public `*.loca.lt` tunnel with optional custom subdomains.
-- **Custom Domain** — maps custom domains with live DNS-over-HTTPS pre-flight verification.
-- **LAN** — exposes local IP addresses for testing on local networks.
+## Step 2: Start Your Dev Server
 
-Click **Open in Browser** from the tunnel actions menu (`⋮`) to view your live public server.
+Start your local backend or full-stack app as you normally would in your terminal or IDE (such as Cursor, VS Code, or WebStorm):
 
-## 4. Inspect Live Traffic with Port Attribution
+```bash
+# Example: Next.js, Vite, Express, or FastAPI
+npm run dev
+# or
+uvicorn main:app --reload
+```
 
-Open **Traffic**. Real-time HTTP & WebSocket traffic flows into the inspector:
-- Deterministic port, tunnelId, and server attribution accurately tracks concurrent multi-tunnel traffic without misattribution.
-- Malicious automated vulnerability bot probes (`/.env`, `/.git`) and SPA catch-alls are automatically filtered.
-- Expand entries to inspect headers HashMaps, timing, and raw response body previews.
+Now switch over to Proxync and click **Tunnels & Recon**:
+- Proxync automatically detects running dev servers across common ports (like `3000`, `5173`, `8000`, `4000`, or `8080`).
+- It recognizes your framework (Next.js, Vite, FastAPI, Python, Go, etc.) without you having to manually configure anything.
 
-## 5. Replay in Playground
+---
 
-Click **Send to Playground** on any captured log item or open **Playground**:
-- Use the **Generic Replay Engine** to execute requests directly via native Rust HTTP executor (bypassing CORS).
-- Notice the **Target Route Badge** (`Proxync Native`, `Cloudflare Edge`, `Public Tunnel`, `Local Loopback`) next to the Send button.
-- Use right-click glass context menus to rename, duplicate, or delete saved endpoints.
-- Press `Ctrl + /` anywhere in Playground to open the hotkey reference sheet (`Ctrl + Enter` to Send, `Ctrl + S` to Save).
+## Step 3: Share Your Local App
 
-## 6. Pro Debugger & Observability Hub
+Next to your detected server, click **Share**:
 
-- Open **Settings** to inspect live diagnostic streams (`app.log` / `traffic.log`) or click **Export Support Bundle** (`proxync-support-bundle.json`).
-- Open **Observability Hub** to inspect P50/P90/P99 latency percentiles, total bandwidth meters, status code gauges, and public webhook stream replays.
+Choose how you'd like to share it:
+1. **Proxync Native Relay (Recommended)**  
+   Launches a fast, secure SSH tunnel via `relay.proxync.dev:2222` and instantly assigns you an 8-character public HTTPS link (e.g. `https://px-a1b2c3d4.proxync.dev`).
+2. **Cloudflare Quick Tunnel**  
+   Launches a free public `*.trycloudflare.com` link through Cloudflare's edge network.
+3. **LAN Share**  
+   Gives you a clean local Wi-Fi IP (e.g. `http://192.168.1.50:3000`) to test your app on your phone or tablet on the same network.
 
-## 7. Generate OpenAPI Docs & Codebase Scanner
+Click the **Open in Browser** icon (`⋮` menu) to test your link. Anyone you send this URL to can now view your local app!
 
-Open **Swagger**. Run the **Automatic Multi-Framework Codebase Scanner** (Next.js, Vite, NestJS, FastAPI, Express, Spring Boot, Go) to infer incremental OpenAPI 3.0 specs with dynamic URL path parameterization (`/api/todos/{id}`) and export 2-way Playground collections.
+> [!TIP]
+> **Why Resilient Standby Mode is a Lifesaver for Vibe Coders:**  
+> When you edit code in Cursor or VS Code and your server restarts, traditional tunnel tools crash and drop your link. Proxync holds your public URL alive in standby and seamlessly routes traffic the millisecond your dev server finishes compiling. You never have to copy-paste a new webhook URL into Stripe or Slack!
+
+---
+
+## Step 4: Watch Live Traffic & Webhooks Flow In
+
+Click **Traffic** in the left sidebar:
+
+- As people browse your site or external services send webhooks, requests appear in real time.
+- Click any request row to see HTTP headers, query parameters, timing, and formatted JSON response bodies.
+- Unwanted internet bot scans (like automated probes searching for `/.env` or `/wp-admin`) are automatically filtered out so your feed stays clean.
+
+---
+
+## Step 5: Test & Replay in Playground
+
+Want to test an API endpoint or retry a failed webhook?
+
+- On any traffic item, click **Send to Playground**.
+- Proxync opens the request in its built-in API testing tab.
+- Tweak request bodies or headers, then press `Ctrl + Enter` (or `Cmd + Enter` on macOS) to send it.
+- Because Playground runs natively inside the desktop app, you will **never encounter browser CORS errors**.
+
+---
+
+## Step 6: 1-Click Jump to Your Code
+
+If you notice a bug or unexpected response while inspecting traffic:
+
+- Click the **Open in Editor** icon.
+- Proxync immediately opens the controller or route file in **VS Code** or **Cursor** at the exact line of code handling that request.
+
+---
 
 ## Next Steps
 
-- [Tunnels & Sharing](/docs/tunnels) — detailed tunnel configuration and internet connection guards.
-- [Traffic Inspector](/docs/traffic) — live traffic inspection.
-- [Playground](/docs/postman) — Playground REST client & Replay Engine.
-- [Observability Hub](/docs/observability) — performance monitoring dashboard.
-- [Swagger & OpenAPI](/docs/swagger) — spec generator & codebase scanner.
+Now that your first server is running and shared, explore the rest of Proxync's toolkit:
+
+- **[Tunnels & Sharing](/docs/tunnels)** — Learn about standby modes, custom domains, and clean process teardown.
+- **[Traffic Inspector](/docs/traffic)** — Master multi-server traffic segregation and payload filtering.
+- **[API Playground](/docs/postman)** — Organize requests into reusable folders and environments.
+- **[Request Workbench](/docs/workbench)** — Compare live responses against captured requests with visual diffing.
+- **[Swagger & OpenAPI Studio](/docs/swagger)** — Auto-generate interactive API documentation from your code.

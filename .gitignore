@@ -53,4 +53,9 @@ next-env.d.ts
 # Agents workspace directory
 .agents/
 
+# Next.js auto-generated assistant files
+/AGENTS.md
+/CLAUDE.md
+
+
 

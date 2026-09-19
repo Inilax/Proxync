@@ -1,49 +1,84 @@
 ---
 title: API Reference
-description: The Tauri IPC command surface, Rust native functions, emitted events, and shared data contracts of Proxync v0.2.1.
+description: Complete reference for Tauri IPC commands, Rust backend functions, emitted events, and shared data contracts in Proxync.
 ---
 
-Proxync's modular Rust backend exposes Tauri v2 IPC commands and events for dynamic process discovery, HTTP proxying, native SSH tunneling, dual-stream disk logging, and auto-updating.
+This page provides the technical specification for the Tauri v2 Inter-Process Communication (IPC) command surface connecting the React frontend to the native Rust engine.
+
+---
 
 ## Native IPC Commands
 
 ### `execute_http_request`
-Executes any HTTP request (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `HEAD`) natively in Rust using pooled `reqwest` clients with automatic `gzip`, `deflate`, and `brotli` decompression, bypassing browser CORS restrictions.
+Executes an HTTP request natively in Rust, completely bypassing browser CORS restrictions. Uses pooled `reqwest` clients with automatic `gzip`, `deflate`, and `brotli` decompression, and automatically attaches OS-appropriate `User-Agent` strings.
 
 | Parameter | Type | Description |
-| --- | --- | --- |
-| `request` | `HttpRequest` | Payload containing `method`, `url`, `headers`, and optional `body`. |
+| :--- | :--- | :--- |
+| `request` | `HttpRequest` | Object containing `method`, `url`, `headers`, and optional `body`. |
 
-**Returns:** `HttpResponse` (`status`, `headers`, `body`, `durationMs`).
+**Returns:** `HttpResponse` containing `status`, `headers`, `body`, and `durationMs`.
+
+---
 
 ### `open_tunnel` & `close_tunnel`
-- `open_tunnel`: Spawns Proxync Native SSH (Direct Origin Port 2222, JIT Ed25519 TLS certs), Cloudflare Quick Tunnels, or Localtunnel.
-- `close_tunnel`: Terminates tunnel child process trees (`taskkill /F /T` on Windows) and cleans up ephemeral keys via `TempDirGuard`.
+- **`open_tunnel`**: Spawns a Proxync Native Relay tunnel (`relay.proxync.dev:2222`) or Cloudflare Quick Tunnel. Automatically establishes process group isolation (`setpgid(0, 0)`) on Unix.
+- **`close_tunnel`**: Cleanly terminates the entire child process tree (`taskkill /F /T` on Windows, atomic POSIX `SIGKILL` on Unix) and wipes ephemeral keys.
+
+---
 
 ### `scan_ports` & `scan_processes`
-Dynamically scans all listening services across IPv4 and IPv6 (`netstat -ano`) and performs single batch WMI/CIM queries (`Get-CimInstance Win32_Process`) with framework fingerprinting.
+Scans all active listening dev servers across IPv4 and IPv6:
+- **Windows:** Uses `netstat -ano` combined with bulk WMI queries (`Win32_Process`).
+- **macOS:** Inspects Darwin kernel sockets via `lsof -iTCP` and resolves process names via `proc_pidpath`, filtering internal macOS daemons (`ControlCenter`, `rapportd`).
+- **Linux:** Uses `ss -tulpn` and `/proc` filesystem inspection.
 
-### `append_log_entry`, `read_logs_summary`, `clear_log_files`, `open_logs_folder`
-- `append_log_entry`: Writes structured diagnostic logs to disk (`app.log` / `traffic.log`).
-- `read_logs_summary`: Returns live disk metrics (`app_log_bytes`, `traffic_log_bytes`, line counts).
-- `clear_log_files`: Safely wipes log streams on disk.
-- `open_logs_folder`: Opens the OS log folder in File Explorer / Finder.
+---
+
+### `resolve_process_directory`
+Discovers the working project folder for a running dev server using unprivileged `lsof` (macOS), `/proc/<pid>/cwd` (Linux), or WMI (Windows).
+
+---
+
+### `get_system_info`
+Returns host platform diagnostic fingerprinting via `os_info`:
+- Operating system, kernel distribution, CPU architecture, bitness.
+- Hostname, local IP, process PID, and WebView engine version.
+
+---
+
+### `save_support_bundle_dialog`
+Opens the operating system's native save dialog to export `proxync-support-bundle.json` with sanitized logs and system diagnostics.
+
+---
+
+### Log Management Commands
+- **`append_log_entry`**: Appends a structured log entry to `app.log` or `traffic.log` with automatic 5MB/10MB file rotation.
+- **`read_logs_summary`**: Returns current disk usage statistics (file sizes in bytes, line counts).
+- **`clear_log_files`**: Safely clears log files on disk.
+- **`open_logs_folder`**: Opens the operating system's file manager to Proxync's logs folder.
+
+---
 
 ### `save_app_state` & `load_app_state`
-Persists non-blocking JSON state directly to `%APPDATA%\Proxync\data.json`.
+Persists and reads application state and workspace data directly to `data.json`.
 
-## Backend Events
+---
 
-| Event Name | Payload | Description |
-| --- | --- | --- |
-| `request:log` | `{ requestId, port, tunnelId, method, path, headers, timestamp }` | Emitted when proxy intercepts an incoming HTTP request. |
-| `request:log:response` | `{ requestId, status, responseHeaders, bodyPreview, durationMs, timestamp }` | Emitted when proxy intercepts an HTTP response. |
-| `tunnel:auto-closed` | `{ tunnelId }` | Emitted when a background tunnel process terminates. |
-| `offline` / `online` | `{ status }` | Network connectivity status events from edge ping checks. |
+## Real-Time Events (Backend to Frontend)
 
-## Data Models in v0.2.1
+| Event Name | Payload | When It Fires |
+| :--- | :--- | :--- |
+| `request:log` | `{ requestId, port, tunnelId, method, path, headers, timestamp }` | Fired when the proxy intercepts an incoming request. |
+| `request:log:response` | `{ requestId, status, responseHeaders, bodyPreview, durationMs, timestamp }` | Fired when the backend returns a response. |
+| `tunnel:auto-closed` | `{ tunnelId }` | Fired when an active background tunnel disconnects or terminates. |
+| `offline` / `online` | `{ status }` | Fired when the active internet connectivity guard detects a network change. |
+
+---
+
+## Core TypeScript Data Contracts
 
 ```ts
+// Application Settings
 type AppSettings = {
   defaultProjectRootPath: string;
   notes: string;
@@ -55,6 +90,7 @@ type AppSettings = {
   lastUpdateCheckedAt?: number;
 };
 
+// Diagnostic Log Entry
 type AppLogEntry = {
   seq: number;
   timestamp: string;
@@ -64,6 +100,7 @@ type AppLogEntry = {
   details?: Record<string, unknown>;
 };
 
+// Logs Summary on Disk
 type LogsSummary = {
   logs_dir: string;
   app_log_bytes: number;
@@ -71,4 +108,24 @@ type LogsSummary = {
   app_log_lines: number;
   traffic_log_lines: number;
 };
+
+// Host System Telemetry
+type SystemInfo = {
+  os_type: string;
+  os_version: string;
+  architecture: string;
+  bitness: string;
+  hostname: string;
+  local_ip: string;
+  webview_version: string;
+  pid: number;
+};
 ```
+
+---
+
+## What to Read Next
+
+- **[Architecture Deep-Dive](/docs/architecture)** — Detailed breakdown of Proxync's Rust subsystems.
+- **[Configuration](/docs/configuration)** — File locations and data format reference.
+- **[Settings & Domains](/docs/settings)** — Managing preferences from the user interface.

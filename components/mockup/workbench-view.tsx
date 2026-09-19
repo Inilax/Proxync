@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Activity,
-  ArrowRight,
   Bookmark,
   CheckCircle2,
   Code2,
@@ -11,7 +10,6 @@ import {
   FileCode,
   FolderOpen,
   Globe,
-  Layers,
   Network,
   Plus,
   RefreshCw,
@@ -24,342 +22,449 @@ import { cn } from "@/lib/utils";
 export function WorkbenchView() {
   const [activeSubView, setActiveSubView] = useState<"devtools" | "replay">("devtools");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const showToast = (msg: string) => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 2500);
+    toastTimeoutRef.current = setTimeout(() => {
+      setToastMessage(null);
+      toastTimeoutRef.current = null;
+    }, 2500);
   };
 
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+      }
+    };
+  }, []);
+
   return (
-    <div className="flex h-full w-full flex-col bg-surface-container p-3 gap-2.5 fade-in select-none font-mono text-xs overflow-y-auto">
+    <div className="relative flex h-full w-full flex-col bg-surface-container p-2 sm:p-3 gap-1.5 sm:gap-2 fade-in select-none font-mono text-xs overflow-y-auto overflow-x-hidden">
       {/* Toast Overlay */}
       {toastMessage && (
-        <div className="fixed bottom-12 right-6 z-50 rounded-lg border border-primary/40 bg-surface-container-high/95 backdrop-blur-md px-3.5 py-2 text-primary shadow-xl animate-in fade-in slide-in-from-bottom-2 text-xs flex items-center gap-2 font-bold">
-          <Zap className="h-3.5 w-3.5" />
+        <div className="absolute bottom-4 right-4 z-30 rounded-lg border border-primary/40 bg-surface-container-high/95 backdrop-blur-md px-3.5 py-2 text-primary shadow-xl animate-in fade-in slide-in-from-bottom-2 text-xs flex items-center gap-2 font-bold pointer-events-none">
+          <Zap className="h-3.5 w-3.5 shrink-0" />
           <span>{toastMessage}</span>
         </div>
       )}
 
       {/* ── 1. Top Tab Strip ── */}
-      <div className="flex items-center justify-between border-b border-outline-variant/30 pb-2">
-        <div className="flex items-center gap-1.5">
-          <div className="flex items-center gap-2 rounded-lg bg-surface-container-lowest border border-outline-variant/40 px-3 py-1 text-on-surface font-semibold shadow-sm">
-            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-tertiary/20 text-tertiary border border-tertiary/30">
+      <div className="flex items-center justify-between border-b border-outline-variant/30 pb-1.5 shrink-0 gap-1.5">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 rounded-lg bg-surface-container-lowest border border-outline-variant/40 px-2 sm:px-3 py-0.5 sm:py-1 text-white font-semibold shadow-sm min-w-0">
+            <span className="text-[8.5px] sm:text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
               GET
             </span>
-            <span className="text-xs">/api/v1/user/profile</span>
-            <button className="text-outline hover:text-on-surface ml-1 text-xs">✕</button>
+            <span className="text-[11px] sm:text-xs text-white truncate max-w-[140px] sm:max-w-none">
+              /api/v1/user/profile
+            </span>
+            <button className="text-white/60 hover:text-white ml-0.5 text-xs shrink-0">✕</button>
           </div>
 
           <button
             onClick={() => showToast("Opened fresh draft tab")}
-            className="p-1 rounded-lg hover:bg-surface-container-high text-outline hover:text-primary transition-colors cursor-pointer"
+            className="p-1 rounded-lg hover:bg-surface-container-high text-white/70 hover:text-primary transition-colors cursor-pointer shrink-0"
             title="New Tab"
           >
             <Plus className="h-3.5 w-3.5" />
           </button>
         </div>
 
-        <div className="relative">
+        <div className="relative hidden sm:block shrink-0">
           <input
             type="text"
             placeholder="Filter tab..."
-            className="bg-surface-container-lowest border border-outline-variant/25 rounded-lg px-2.5 py-0.5 text-[11px] text-on-surface focus:outline-none placeholder:text-outline w-32 sm:w-40"
+            className="bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-2.5 py-0.5 text-[11px] text-white focus:outline-none placeholder:text-white/40 w-32 sm:w-40"
           />
         </div>
       </div>
 
       {/* ── 2. Sub-Header Controls & Actions ── */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="space-y-0.5">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-bold text-on-surface">DevTools &amp; Controller Mapping</h2>
-            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-tertiary/20 text-tertiary border border-tertiary/30">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-2 shrink-0">
+        <div className="space-y-0.5 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <h2 className="text-xs sm:text-sm font-bold text-white truncate">
+              {activeSubView === "replay" ? "Traffic & Replay Session" : "DevTools & Mapping"}
+            </h2>
+            <span className="text-[8.5px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
               GET
             </span>
           </div>
-          <p className="text-[10px] text-outline">
-            TARGET: <span className="text-on-surface font-semibold">/api/v1/user/profile</span>
+          <p className="text-[9.5px] sm:text-[10px] text-white/70 font-medium truncate">
+            TARGET: <span className="text-white font-bold">/api/v1/user/profile</span>
           </p>
         </div>
 
-        {/* View Toggle */}
-        <div className="flex items-center rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-0.5 text-[11px]">
-          <button
-            onClick={() => setActiveSubView("devtools")}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1 rounded-md font-bold transition-all cursor-pointer",
-              activeSubView === "devtools"
-                ? "bg-primary/20 text-primary shadow-sm"
-                : "text-outline hover:text-on-surface"
-            )}
-          >
-            <Code2 className="h-3 w-3" />
-            <span>DevTools &amp; Mapping</span>
-          </button>
-          <button
-            onClick={() => setActiveSubView("replay")}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1 rounded-md font-bold transition-all cursor-pointer",
-              activeSubView === "replay"
-                ? "bg-primary/20 text-primary shadow-sm"
-                : "text-outline hover:text-on-surface"
-            )}
-          >
-            <Activity className="h-3 w-3" />
-            <span>Traffic &amp; Replay</span>
-          </button>
-        </div>
+        {/* Toolbar: Switcher + Actions */}
+        <div className="flex items-center gap-1 shrink-0 overflow-x-auto">
+          <div className="flex items-center rounded-lg border border-outline-variant/30 bg-surface-container-lowest p-0.5 text-[9.5px] sm:text-[10.5px]">
+            <button
+              onClick={() => setActiveSubView("devtools")}
+              className={cn(
+                "flex items-center gap-1 px-2 sm:px-2.5 py-0.5 rounded-md font-bold transition-all cursor-pointer whitespace-nowrap",
+                activeSubView === "devtools"
+                  ? "bg-primary/20 text-primary shadow-sm"
+                  : "text-white/70 hover:text-white"
+              )}
+            >
+              <Code2 className="h-3 w-3" />
+              <span>DevTools<span className="hidden sm:inline"> &amp; Mapping</span></span>
+            </button>
+            <button
+              onClick={() => setActiveSubView("replay")}
+              className={cn(
+                "flex items-center gap-1 px-2 sm:px-2.5 py-0.5 rounded-md font-bold transition-all cursor-pointer whitespace-nowrap",
+                activeSubView === "replay"
+                  ? "bg-primary/20 text-primary shadow-sm"
+                  : "text-white/70 hover:text-white"
+              )}
+            >
+              <Activity className="h-3 w-3" />
+              <span>Traffic<span className="hidden sm:inline"> &amp; Replay</span></span>
+            </button>
+          </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center gap-1.5">
           <button
             onClick={() => showToast("Exported cURL & Fetch code snippets")}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-outline-variant/30 bg-surface-container-lowest text-on-surface hover:text-primary hover:border-primary/40 transition-all cursor-pointer text-[10px] font-semibold"
+            className="flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg border border-outline-variant/30 bg-surface-container-lowest text-white/90 hover:text-primary hover:border-primary/40 transition-all cursor-pointer text-[10px] font-semibold shrink-0"
+            title="Export Code"
           >
-            <Code2 className="h-3 w-3" />
-            <span>Export Code</span>
+            <Code2 className="h-3 w-3 text-primary" />
+            <span className="hidden sm:inline">Export</span>
           </button>
 
           <button
             onClick={() => showToast("Saved to Default Collection")}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-outline-variant/30 bg-surface-container-lowest text-on-surface hover:text-secondary hover:border-secondary/40 transition-all cursor-pointer text-[10px] font-semibold"
+            className="flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg border border-outline-variant/30 bg-surface-container-lowest text-white/90 hover:text-secondary hover:border-secondary/40 transition-all cursor-pointer text-[10px] font-semibold shrink-0"
+            title="Save to Collection"
           >
             <Bookmark className="h-3 w-3 text-secondary" />
-            <span>Save to Collection</span>
+            <span className="hidden sm:inline">Save</span>
           </button>
 
           <button
             onClick={() => showToast("Opening in browser...")}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-outline-variant/30 bg-surface-container-lowest text-on-surface hover:text-primary transition-all cursor-pointer text-[10px] font-semibold"
+            className="flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg border border-outline-variant/30 bg-surface-container-lowest text-white/90 hover:text-primary transition-all cursor-pointer text-[10px] font-semibold shrink-0"
+            title="Open in Browser"
           >
-            <Globe className="h-3 w-3" />
-            <span>Browser</span>
+            <Globe className="h-3 w-3 text-white/80" />
+            <span className="hidden sm:inline">Browser</span>
           </button>
         </div>
       </div>
 
-      {/* ── 3. Green Optimal Execution Banner ── */}
-      <div className="flex items-center justify-between rounded-xl border border-secondary/40 bg-secondary/10 px-3.5 py-2 text-secondary">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <CheckCircle2 className="h-4 w-4 shrink-0 text-secondary" />
-          <div className="min-w-0">
-            <div className="font-bold text-xs uppercase tracking-wide">
-              HTTP 200 — 200 OK OPTIMAL EXECUTION
+      {activeSubView === "devtools" ? (
+        <>
+          {/* ── 3. Green Optimal Execution Banner ── */}
+          <div className="flex items-center justify-between rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-2.5 sm:px-3 py-1 sm:py-1.5 text-emerald-400 shrink-0">
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+              <span className="font-bold text-[10.5px] sm:text-[11px] uppercase tracking-wide text-emerald-300 truncate">
+                HTTP 200 OK <span className="hidden sm:inline">&mdash; OPTIMAL EXECUTION</span>
+              </span>
             </div>
-            <div className="text-[10.5px] text-secondary/90 truncate">
-              Controller responded cleanly in 38ms with zero runtime errors.
+
+            <div className="text-[9.5px] sm:text-[10px] font-mono font-bold text-emerald-300 shrink-0 ml-2">
+              42MB <span className="text-emerald-500/50">|</span> 38ms
             </div>
           </div>
-        </div>
 
-        <div className="text-[10.5px] font-bold text-secondary shrink-0 hidden sm:block">
-          Heap: 42MB | Latency: 38ms
-        </div>
-      </div>
+          {/* ── 4. Middle Section: IDE Integration & Memory Heap Mini-Chart ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-1.5 sm:gap-2">
+            {/* Left: IDE Integration Card (2 cols) */}
+            <div className="lg:col-span-2 rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-2 sm:p-2.5 space-y-1.5">
+              <div className="flex items-center justify-between border-b border-outline-variant/20 pb-1">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Code2 className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <div className="min-w-0">
+                    <span className="font-bold text-xs text-white truncate block">IDE Integration</span>
+                    <span className="text-[9px] text-white/70 truncate block">Inferred Near-Miss Controller</span>
+                  </div>
+                </div>
 
-      {/* ── 4. Middle Section: IDE Integration & Memory Heap Mini-Chart ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5">
-        {/* Left: IDE Integration Card (2 cols) */}
-        <div className="lg:col-span-2 rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-3 space-y-2.5">
-          <div className="flex items-center justify-between border-b border-outline-variant/20 pb-1.5">
-            <div className="flex items-center gap-2">
-              <Code2 className="h-3.5 w-3.5 text-primary" />
-              <div>
-                <span className="font-bold text-xs text-on-surface">IDE Integration</span>
-                <span className="text-[10px] text-outline block">Inferred Near-Miss Controller</span>
+                <span className="px-1.5 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/30 text-[8.5px] sm:text-[9px] font-bold shrink-0">
+                  ● INFERRED<span className="hidden sm:inline"> NEAR-MISS</span>
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between bg-surface-container px-2 sm:px-2.5 py-1 rounded-lg border border-outline-variant/20 text-[10px] sm:text-[10.5px] gap-1">
+                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                  <FolderOpen className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <span className="text-white/60 uppercase font-bold text-[8px] sm:text-[8.5px] shrink-0">ROOT:</span>
+                  <span className="text-white font-semibold truncate font-mono min-w-0">~/projects/backend-api</span>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => showToast("Select new project directory")}
+                    className="px-1.5 py-0.5 rounded bg-surface-container-lowest text-white/80 hover:text-white border border-outline-variant/30 text-[9px] cursor-pointer"
+                  >
+                    Change
+                  </button>
+                  <button
+                    onClick={() => showToast("Rescanned project root (14 endpoints discovered)")}
+                    className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-surface-container-lowest text-primary text-[9px] border border-primary/30 hover:bg-primary/10 cursor-pointer font-bold"
+                  >
+                    <RefreshCw className="h-2 w-2" />
+                    <span>Rescan</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between bg-surface-container px-2 sm:px-2.5 py-1 rounded-lg border border-outline-variant/20 text-[10px] sm:text-[10.5px]">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <FileCode className="h-3.5 w-3.5 text-secondary shrink-0" />
+                  <span className="text-white font-bold font-mono truncate">server.js:1</span>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => showToast("Opening VS Code at server.js:1")}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-primary/20 text-primary border border-primary/40 text-[9px] sm:text-[9.5px] font-bold hover:bg-primary/30 transition-all cursor-pointer"
+                  >
+                    <ExternalLink className="h-2.5 w-2.5" />
+                    <span>VS Code</span>
+                  </button>
+                  <button
+                    onClick={() => showToast("Opening Cursor at server.js:1")}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-surface-container-lowest text-white/90 hover:text-white border border-outline-variant/40 text-[9px] sm:text-[9.5px] font-bold transition-all cursor-pointer"
+                  >
+                    <Zap className="h-2.5 w-2.5 text-amber-400" />
+                    <span>Cursor</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2 text-[10px] pt-0.5">
+                <div className="min-w-0">
+                  <span className="text-white/60 uppercase block font-bold text-[8px]">HANDLER FUNCTION</span>
+                  <span className="text-white font-semibold font-mono truncate block">getProfile(req, res)</span>
+                </div>
+                <div className="min-w-0">
+                  <span className="text-white/60 uppercase block font-bold text-[8px]">MIDDLEWARE PIPELINE</span>
+                  <span className="text-white font-semibold font-mono truncate block">authMiddleware, rateLimiter</span>
+                </div>
               </div>
             </div>
 
-            <span className="px-2 py-0.5 rounded-full bg-primary/15 text-primary border border-primary/30 text-[9px] font-bold">
-              ● INFERRED NEAR-MISS
-            </span>
-          </div>
+            {/* Right: Memory Heap Waveform & Near-Miss Suggestions */}
+            <div className="space-y-1.5">
+              <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-2 sm:p-2.5 space-y-1">
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="text-white/60 uppercase font-bold text-[8px] sm:text-[8.5px]">MEMORY HEAP</span>
+                  <span className="text-primary font-bold font-mono text-[9.5px]">42MB / 512MB</span>
+                </div>
 
-          <div className="flex items-center justify-between bg-surface-container p-2 rounded-lg border border-outline-variant/20 text-[11px]">
-            <div className="flex items-center gap-2 min-w-0">
-              <FolderOpen className="h-3.5 w-3.5 text-primary shrink-0" />
-              <span className="text-outline uppercase font-bold text-[9px]">PROJECT ROOT:</span>
-              <span className="text-on-surface font-semibold truncate">~/projects/backend-api</span>
-            </div>
-            <div className="flex items-center gap-1 shrink-0">
-              <button
-                onClick={() => showToast("Select new project directory")}
-                className="px-2 py-0.5 rounded bg-surface-container-lowest text-outline hover:text-on-surface text-[10px]"
-              >
-                Change
-              </button>
-              <button
-                onClick={() => showToast("Rescanned project root (14 endpoints discovered)")}
-                className="flex items-center gap-1 px-2 py-0.5 rounded bg-surface-container-lowest text-primary text-[10px] hover:bg-primary/10"
-              >
-                <RefreshCw className="h-2.5 w-2.5" />
-                <span>Rescan</span>
-              </button>
-            </div>
-          </div>
+                {/* Smooth SVG wave graph */}
+                <div className="h-7 sm:h-8 w-full flex items-center justify-center">
+                  <svg className="w-full h-full text-primary" viewBox="0 0 100 25" preserveAspectRatio="none">
+                    <path
+                      d="M0,15 Q15,5 30,12 T60,8 T85,18 T100,6"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    />
+                    <circle cx="85" cy="18" r="2.5" fill="currentColor" />
+                  </svg>
+                </div>
 
-          <div className="flex items-center justify-between bg-surface-container p-2 rounded-lg border border-outline-variant/20 text-[11px]">
-            <div className="flex items-center gap-2">
-              <FileCode className="h-3.5 w-3.5 text-secondary" />
-              <span className="text-on-surface font-bold">server.js:1</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => showToast("Opening VS Code at server.js:1")}
-                className="flex items-center gap-1 px-2.5 py-1 rounded bg-primary/20 text-primary border border-primary/30 text-[10px] font-bold hover:bg-primary/30 transition-all cursor-pointer"
-              >
-                <ExternalLink className="h-3 w-3" />
-                <span>VS Code</span>
-              </button>
-              <button
-                onClick={() => showToast("Opening Cursor at server.js:1")}
-                className="flex items-center gap-1 px-2.5 py-1 rounded bg-surface-container-lowest text-outline hover:text-on-surface border border-outline-variant/30 text-[10px] font-bold transition-all cursor-pointer"
-              >
-                <Zap className="h-3 w-3" />
-                <span>Cursor</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 text-[10px] pt-1">
-            <div>
-              <span className="text-outline uppercase block font-bold text-[8.5px]">HANDLER FUNCTION</span>
-              <span className="text-on-surface font-semibold">getProfile(req, res)</span>
-            </div>
-            <div>
-              <span className="text-outline uppercase block font-bold text-[8.5px]">MIDDLEWARE PIPELINE</span>
-              <span className="text-on-surface font-semibold">authMiddleware, rateLimiter</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Right: Memory Heap Waveform & Near-Miss Suggestions */}
-        <div className="space-y-2.5">
-          <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-3 space-y-2">
-            <div className="flex items-center justify-between text-[10px]">
-              <span className="text-outline uppercase font-bold">MEMORY HEAP</span>
-              <span className="text-primary font-bold">42MB / 512MB</span>
-            </div>
-
-            {/* Smooth SVG wave graph */}
-            <div className="h-10 w-full flex items-center justify-center">
-              <svg className="w-full h-full text-primary" viewBox="0 0 100 25" preserveAspectRatio="none">
-                <path
-                  d="M0,15 Q15,5 30,12 T60,8 T85,18 T100,6"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                />
-                <circle cx="85" cy="18" r="2.5" fill="currentColor" />
-              </svg>
-            </div>
-
-            <div className="flex items-center justify-between text-[9.5px] border-t border-outline-variant/20 pt-1.5">
-              <div>
-                <span className="text-outline block">REQ/SEC</span>
-                <strong className="text-on-surface text-[11px]">1.2k</strong>
+                <div className="flex items-center justify-between text-[9px] border-t border-outline-variant/20 pt-1">
+                  <div>
+                    <span className="text-white/60 block text-[8px]">REQ/SEC</span>
+                    <strong className="text-white text-[10px]">1.2k</strong>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-white/60 block text-[8px]">AVG LATENCY</span>
+                    <strong className="text-emerald-400 text-[10px]">38ms</strong>
+                  </div>
+                </div>
               </div>
-              <div className="text-right">
-                <span className="text-outline block">AVG LATENCY</span>
-                <strong className="text-secondary text-[11px]">38ms</strong>
+
+              <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-1.5 sm:p-2 space-y-0.5 text-[10px]">
+                <div className="text-white/60 uppercase font-bold flex items-center gap-1 text-[8px] sm:text-[8.5px]">
+                  <Search className="h-2.5 w-2.5 text-primary" />
+                  <span>NEAR-MISS SUGGESTIONS</span>
+                </div>
+                <p className="text-white/70 text-[8.5px] sm:text-[9px] leading-relaxed">
+                  Zero fuzzy routes above calibrated threshold (&ge;15).
+                </p>
               </div>
             </div>
           </div>
 
-          <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-2.5 space-y-1 text-[10px]">
-            <div className="text-outline uppercase font-bold flex items-center gap-1.5">
-              <Search className="h-3 w-3 text-primary" />
-              <span>NEAR-MISS SUGGESTIONS</span>
+          {/* ── 5. Request Execution Pipeline Graph ── */}
+          <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-2 sm:p-2.5 space-y-1 shrink-0 overflow-hidden">
+            <div className="flex items-center justify-between border-b border-outline-variant/20 pb-1 text-[10px]">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Network className="h-3.5 w-3.5 text-primary shrink-0" />
+                <span className="font-bold text-[11px] sm:text-xs text-white truncate">Execution Pipeline</span>
+              </div>
+              <span className="text-white/60 font-bold text-[8px] sm:text-[8.5px] shrink-0">Live Architecture Flow</span>
             </div>
-            <p className="text-outline text-[9.5px] leading-relaxed">
-              Zero fuzzy routes above calibrated threshold (&ge;15).
-            </p>
+
+            <div className="flex items-center justify-between py-1 text-[10px] w-full">
+              <div className="flex flex-col items-center gap-0.5 shrink-0">
+                <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-full border-2 border-primary/70 bg-primary/15 flex items-center justify-center font-bold text-[7.5px] sm:text-[8px] text-primary">
+                  <span className="sm:hidden">IN</span>
+                  <span className="hidden sm:inline">INGRESS</span>
+                </div>
+                <span className="text-white/80 text-[8px] sm:text-[8.5px]">Port 4000</span>
+              </div>
+
+              <div className="h-0.5 flex-1 bg-white/20 mx-1 sm:mx-2 min-w-[8px]" />
+
+              <div className="flex flex-col items-center gap-0.5 shrink-0">
+                <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-full border-2 border-amber-400/70 bg-amber-400/15 flex items-center justify-center font-bold text-[7.5px] sm:text-[8px] text-amber-300 text-center">
+                  <span className="sm:hidden">MID</span>
+                  <span className="hidden sm:inline">MIDDLE</span>
+                </div>
+                <span className="text-white/80 text-[8px] sm:text-[8.5px] truncate max-w-[60px] sm:max-w-none">authMid</span>
+              </div>
+
+              <div className="h-0.5 flex-1 bg-white/20 mx-1 sm:mx-2 min-w-[8px]" />
+
+              <div className="flex flex-col items-center gap-0.5 shrink-0">
+                <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-full border-2 border-purple-400/70 bg-purple-400/15 flex items-center justify-center font-bold text-[7.5px] sm:text-[8px] text-purple-300">
+                  CTRL
+                </div>
+                <span className="text-white/80 text-[8px] sm:text-[8.5px]">server:1</span>
+              </div>
+
+              <div className="h-0.5 flex-1 bg-white/20 mx-1 sm:mx-2 min-w-[8px]" />
+
+              <div className="flex flex-col items-center gap-0.5 shrink-0">
+                <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-full border-2 border-emerald-400/70 bg-emerald-400/15 flex items-center justify-center font-bold text-[7.5px] sm:text-[8px] text-emerald-300">
+                  200
+                </div>
+                <span className="text-white/80 text-[8px] sm:text-[8.5px]">HTTP 200</span>
+              </div>
+            </div>
+          </div>
+
+          {/* ── 6. Bottom: Correlated Diagnostic Logs ── */}
+          <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-1.5 sm:p-2 space-y-1 text-[10px] shrink-0 overflow-hidden">
+            <div className="flex items-center justify-between border-b border-outline-variant/20 pb-0.5">
+              <div className="flex items-center gap-1.5 text-white font-bold text-[9.5px] sm:text-[10px] truncate min-w-0">
+                <Terminal className="h-3 w-3 text-amber-400 shrink-0" />
+                <span className="truncate">CORRELATED LOGS</span>
+              </div>
+              <span className="text-white/60 text-[8px] sm:text-[8.5px] shrink-0">All (20) &middot; Likely (12)</span>
+            </div>
+
+            <div className="space-y-0.5 font-mono text-[9px] sm:text-[9.5px]">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[7.5px] sm:text-[8px] font-bold shrink-0">
+                  LIKELY
+                </span>
+                <span className="text-sky-400 font-semibold text-[8.5px] shrink-0">[TRAFFIC]</span>
+                <span className="text-white/90 truncate min-w-0">GET /api/todos &rarr; 200 (12ms)</span>
+              </div>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[7.5px] sm:text-[8px] font-bold shrink-0">
+                  LIKELY
+                </span>
+                <span className="text-sky-400 font-semibold text-[8.5px] shrink-0">[TRAFFIC]</span>
+                <span className="text-white/90 truncate min-w-0">POST /api/todos &rarr; 201 (45ms)</span>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : (
+        /* ── Replay & Differential Inspection Sub-Panel ── */
+        <div className="space-y-2 flex-1 flex flex-col justify-between min-h-0">
+          <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-2.5 sm:p-3 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-outline-variant/20 pb-2">
+              <div className="flex items-center gap-2">
+                <div className="h-6 w-6 rounded bg-primary/20 flex items-center justify-center text-primary">
+                  <Activity className="h-3.5 w-3.5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-xs text-white">Live Traffic Replay Session #1042</h3>
+                  <p className="text-[10px] text-white/60">Deterministic capture re-fired to local backend (:5173)</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => showToast("Fired replay batch: 5 iterations completed")}
+                  className="px-2.5 py-1 rounded-lg bg-primary text-on-primary font-bold text-[10.5px] hover:opacity-90 transition-all cursor-pointer flex items-center gap-1 shadow-sm"
+                >
+                  <Zap className="h-3 w-3" />
+                  <span>Execute Replay</span>
+                </button>
+                <button
+                  onClick={() => showToast("Generated differential payload assertion")}
+                  className="px-2 py-1 rounded-lg border border-outline-variant/30 bg-surface-container text-white/80 hover:text-white text-[10.5px] font-semibold cursor-pointer"
+                >
+                  Diff Baseline
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
+              <div className="p-2 rounded-lg bg-surface-container border border-outline-variant/20">
+                <span className="text-white/60 block text-[8.5px] uppercase font-bold">REPLAY STATUS</span>
+                <span className="text-emerald-400 font-bold text-xs">200 OK (0 drift)</span>
+              </div>
+              <div className="p-2 rounded-lg bg-surface-container border border-outline-variant/20">
+                <span className="text-white/60 block text-[8.5px] uppercase font-bold">LATENCY DELTA</span>
+                <span className="text-primary font-bold text-xs">38ms (-4ms faster)</span>
+              </div>
+              <div className="p-2 rounded-lg bg-surface-container border border-outline-variant/20">
+                <span className="text-white/60 block text-[8.5px] uppercase font-bold">PAYLOAD CHECKSUM</span>
+                <span className="text-tertiary font-bold text-xs">sha256:8f2a...c01</span>
+              </div>
+              <div className="p-2 rounded-lg bg-surface-container border border-outline-variant/20">
+                <span className="text-white/60 block text-[8.5px] uppercase font-bold">CACHE HIT RATIO</span>
+                <span className="text-secondary font-bold text-xs">100% Deterministic</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0 grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-2.5 flex flex-col justify-between overflow-hidden">
+              <div className="space-y-1.5 overflow-hidden">
+                <div className="flex items-center justify-between border-b border-outline-variant/20 pb-1 text-[10px]">
+                  <span className="font-bold text-white/80">Original Captured Request</span>
+                  <span className="text-white/50 font-mono">11:42:01.204</span>
+                </div>
+                <pre className="text-[10px] text-white/80 leading-relaxed font-mono p-2 rounded bg-surface-container overflow-x-auto border border-outline-variant/20">
+{`GET /api/v1/user/profile
+Host: api.proxync.local:5173
+Authorization: Bearer ••••••••••••
+Content-Type: application/json`}
+                </pre>
+              </div>
+              <div className="text-[9.5px] text-white/60 pt-1 border-t border-outline-variant/15 flex items-center justify-between">
+                <span>Original Origin: Tunnel #1</span>
+                <span className="text-emerald-400 font-bold">Captured 200 OK</span>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-2.5 flex flex-col justify-between overflow-hidden">
+              <div className="space-y-1.5 overflow-hidden">
+                <div className="flex items-center justify-between border-b border-outline-variant/20 pb-1 text-[10px]">
+                  <span className="font-bold text-primary">Replayed Response (Local Target)</span>
+                  <span className="text-emerald-400 font-bold">0 Byte Diff</span>
+                </div>
+                <pre className="text-[10px] text-emerald-300 leading-relaxed font-mono p-2 rounded bg-surface-container overflow-x-auto border border-emerald-500/20">
+{`HTTP/1.1 200 OK
+Content-Type: application/json
+X-Proxync-Replayed: true
+
+{"id": 42, "status": "active", "tier": "pro"}`}
+                </pre>
+              </div>
+              <div className="text-[9.5px] text-white/60 pt-1 border-t border-outline-variant/15 flex items-center justify-between">
+                <span>Target Port: :5173</span>
+                <span className="text-primary font-bold">Exact Match</span>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-
-      {/* ── 5. Request Execution Pipeline Graph ── */}
-      <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-3 space-y-2">
-        <div className="flex items-center justify-between border-b border-outline-variant/20 pb-1.5 text-[10px]">
-          <div className="flex items-center gap-2">
-            <Network className="h-3.5 w-3.5 text-primary" />
-            <span className="font-bold text-xs text-on-surface">Request Execution Pipeline Graph</span>
-          </div>
-          <span className="text-outline font-bold text-[9px]">Live Architecture Flow</span>
-        </div>
-
-        <div className="flex items-center justify-around py-2 overflow-x-auto text-[10px]">
-          <div className="flex flex-col items-center gap-1">
-            <div className="h-10 w-10 rounded-full border-2 border-primary/60 bg-primary/10 flex items-center justify-center font-bold text-[9px] text-primary">
-              INGRESS
-            </div>
-            <span className="text-outline text-[9px]">Port 4000</span>
-          </div>
-
-          <div className="h-0.5 flex-1 bg-outline-variant/30 mx-2" />
-
-          <div className="flex flex-col items-center gap-1">
-            <div className="h-10 w-10 rounded-full border-2 border-amber-500/60 bg-amber-500/10 flex items-center justify-center font-bold text-[8.5px] text-amber-400 text-center">
-              MIDDLEWARE
-            </div>
-            <span className="text-outline text-[9px]">authMiddleware</span>
-          </div>
-
-          <div className="h-0.5 flex-1 bg-outline-variant/30 mx-2" />
-
-          <div className="flex flex-col items-center gap-1">
-            <div className="h-10 w-10 rounded-full border-2 border-tertiary/60 bg-tertiary/10 flex items-center justify-center font-bold text-[9px] text-tertiary">
-              CONTROLLER
-            </div>
-            <span className="text-outline text-[9px]">:1</span>
-          </div>
-
-          <div className="h-0.5 flex-1 bg-outline-variant/30 mx-2" />
-
-          <div className="flex flex-col items-center gap-1">
-            <div className="h-10 w-10 rounded-full border-2 border-secondary/60 bg-secondary/10 flex items-center justify-center font-bold text-[9px] text-secondary">
-              200
-            </div>
-            <span className="text-outline text-[9px]">Entity: User</span>
-          </div>
-        </div>
-      </div>
-
-      {/* ── 6. Bottom: Correlated Diagnostic Logs ── */}
-      <div className="rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-2.5 space-y-1.5 text-[10px]">
-        <div className="flex items-center justify-between border-b border-outline-variant/20 pb-1">
-          <div className="flex items-center gap-1.5 text-on-surface font-bold">
-            <Terminal className="h-3 w-3 text-amber-400" />
-            <span>CORRELATED DIAGNOSTIC LOGS</span>
-          </div>
-          <span className="text-outline text-[9px]">All (20) &middot; Likely (12)</span>
-        </div>
-
-        <div className="space-y-1 font-mono text-[10px]">
-          <div className="flex items-center gap-2">
-            <span className="px-1.5 py-0.2 rounded bg-secondary/20 text-secondary border border-secondary/30 text-[8.5px] font-bold">
-              LIKELY RELATED
-            </span>
-            <span className="text-outline">[TRAFFIC]</span>
-            <span className="text-on-surface">GET /api/todos &rarr; HTTP 200 (12ms)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="px-1.5 py-0.2 rounded bg-secondary/20 text-secondary border border-secondary/30 text-[8.5px] font-bold">
-              LIKELY RELATED
-            </span>
-            <span className="text-outline">[TRAFFIC]</span>
-            <span className="text-on-surface">POST /api/todos &rarr; HTTP 201 (45ms)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="px-1.5 py-0.2 rounded bg-secondary/20 text-secondary border border-secondary/30 text-[8.5px] font-bold">
-              LIKELY RELATED
-            </span>
-            <span className="text-outline">[TRAFFIC]</span>
-            <span className="text-on-surface">GET /api/todos &rarr; HTTP 304 (2ms)</span>
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
