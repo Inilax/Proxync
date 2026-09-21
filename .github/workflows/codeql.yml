@@ -145,6 +145,6 @@ jobs:
 
     - name: Perform CodeQL Analysis
       if: steps.check.outputs.run_analysis == 'true'
-      uses: github/codeql-action/analyze@b56ba49b26e50535fa1e7f7db0f4f7b4bf65d80d
+      uses: github/codeql-action/analyze@1c5b675653bb5c22dbe9b12b556ec555138e09fd
       with:
         category: "/language:${{matrix.language}}"
