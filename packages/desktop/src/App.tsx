@@ -895,7 +895,7 @@ export default function App() {
 
         if (!update) {
           if (isManual) {
-            showToast('✅ Proxync is up to date (v0.2.2)', 'success');
+            showToast('✅ Proxync is up to date (v0.2.3)', 'success');
           }
           return;
         }
@@ -1145,7 +1145,7 @@ export default function App() {
       trafficLogging: appSettings.trafficLogging ?? false,
     });
     void logAppLaunch({
-      appVersion: 'v0.2.2',
+      appVersion: 'v0.2.3',
       theme: appSettings.theme || 'slate',
       telemetry: appSettings.telemetry || 'enhanced',
       autoUpdate: appSettings.autoUpdate ?? true,
@@ -2749,7 +2749,7 @@ export default function App() {
   async function updateAppLogging(enabled: boolean) {
     setAppSettings((current) => ({ ...current, appLogging: enabled }));
     await setAppLogging(enabled, {
-      appVersion: 'v0.2.2-stable',
+      appVersion: 'v0.2.3-stable',
       theme: appSettings.theme,
       platform: typeof navigator !== 'undefined' ? navigator.platform : 'desktop',
     });
@@ -2764,7 +2764,7 @@ export default function App() {
   async function updateTrafficLogging(enabled: boolean) {
     setAppSettings((current) => ({ ...current, trafficLogging: enabled }));
     await setTrafficLogging(enabled, {
-      appVersion: 'v0.2.2-stable',
+      appVersion: 'v0.2.3-stable',
     });
     showToast(
       enabled
@@ -3199,7 +3199,7 @@ export default function App() {
           {!sidebarCollapsed ? (
             <div className="px-6 mb-5">
               <h2 className="text-headline-sm font-bold text-primary truncate">Proxync Engine</h2>
-              <p className="text-code-sm text-on-surface-variant opacity-60">v0.2.2-stable</p>
+              <p className="text-code-sm text-on-surface-variant opacity-60">v0.2.3-stable</p>
             </div>
           ) : (
             <div className="flex flex-col items-center mb-4">
@@ -3562,7 +3562,7 @@ export default function App() {
                 onUpdateTrafficLogging={updateTrafficLogging}
                 onCheckForUpdates={() => runUpdateCheck(false, true)}
                 checkingUpdates={checkingUpdates}
-                appVersion="v0.2.2"
+                appVersion="v0.2.3"
                 initialSection={settingsSection}
               />
             )}

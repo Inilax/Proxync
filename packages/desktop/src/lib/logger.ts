@@ -115,7 +115,7 @@ export async function logAppLaunch(envMeta?: Record<string, any>): Promise<void>
 
   const sysInfo = await getSystemInfo();
   const now = new Date().toISOString();
-  const appVersion = envMeta?.appVersion || 'v0.2.2-stable';
+  const appVersion = envMeta?.appVersion || 'v0.2.3-stable';
   const theme = envMeta?.theme || 'slate';
   const telemetry = envMeta?.telemetry || 'enhanced';
   const autoUpdate = envMeta?.autoUpdate ?? true;
@@ -219,7 +219,7 @@ export async function setTrafficLogging(enabled: boolean, envMeta?: Record<strin
   const now = new Date().toISOString();
 
   if (enabled && !wasEnabled) {
-    const appVersion = envMeta?.appVersion || 'v0.2.2-stable';
+    const appVersion = envMeta?.appVersion || 'v0.2.3-stable';
     const header = [
       '══════════════════════════════════════════════════════════════════════════════',
       'PROXYNC PRO DEBUGGER LOG — HTTP & TUNNEL TRAFFIC STREAM',
@@ -451,7 +451,7 @@ export interface SupportBundleContext {
 
 export async function exportSupportBundle(ctx: SupportBundleContext): Promise<{ success: boolean; path?: string; cancelled?: boolean }> {
   const generatedAt = new Date().toISOString();
-  const appVersion = ctx.appVersion || 'v0.2.2-stable';
+  const appVersion = ctx.appVersion || 'v0.2.3-stable';
   const sysInfo = await getSystemInfo();
 
   const bundle = {

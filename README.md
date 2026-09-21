@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Inilax/Proxync/releases"><img src="https://img.shields.io/badge/version-v0.2.2-blue?style=flat" alt="Version v0.2.2" /></a>&nbsp;
+  <a href="https://github.com/Inilax/Proxync/releases"><img src="https://img.shields.io/badge/version-v0.2.3-blue?style=flat" alt="Version v0.2.3" /></a>&nbsp;
   <a href="https://github.com/Inilax/Proxync"><img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blue?style=flat" alt="Platform: Windows | Linux | macOS" /></a>&nbsp;
   <a href="https://github.com/Inilax/Proxync/stargazers"><img src="https://img.shields.io/github/stars/Inilax/Proxync?style=flat" alt="Stars" /></a>&nbsp;
   <a href="https://github.com/Inilax/Proxync/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Inilax/Proxync?style=flat" alt="License" /></a>&nbsp;
