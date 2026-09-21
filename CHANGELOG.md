@@ -2,6 +2,26 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [fix/v0.2.3-version-bump] - 2026-09-21 (Workspace & Studio Version Bump to v0.2.3 for Next Release Cycle)
+- **Feature Summary**:
+  - **Comprehensive Version Bump to v0.2.3**: Synchronized workspace and package manifests (`package.json`, `packages/desktop/package.json`, `package-lock.json`, `Cargo.toml`, `Cargo.lock`, and `tauri.conf.json`) to version `0.2.3`.
+  - **Native HTTP Network Headers & Diagnostics**: Updated Rust client diagnostic banner in `storage.rs` to `Proxync v0.2.3 (Engine: Tauri v2.11 Core)`. Synchronized frontend diagnostic logging metadata, log session directives, and support bundle fallbacks in `App.tsx` and `logger.ts` to `v0.2.3-stable`.
+  - **UI Version Presentation Alignment**: Updated `SettingsView.tsx` default prop to `v0.2.3`, `App.tsx` update toast message (`v0.2.3`), and sidebar engine indicator (`v0.2.3-stable`).
+  - **Recon & Documentation Badge Alignment**: Updated README version shield badge and `.agents/architecture.json` static recon map to reflect version `0.2.3`.
+- **Modified Files**:
+  - `README.md`
+  - `package-lock.json`
+  - `package.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/lib/logger.ts`
+  - `CHANGELOG.md`
+
 ## [fix/ci-macos-release-dependabot-hardening] - 2026-09-19 (macOS CI Re-integration & Dependabot Flood Prevention)
 - **Feature Summary**:
   - **macOS Re-added to CI Build Matrix**: Re-added `macos-latest` runner to both `prepare-release.yml` (test matrix) and `release.yml` (build matrix). macOS now builds automatically alongside Windows and Linux in CI.
