@@ -6,7 +6,7 @@ updates:
     target-branch: "develop"
     schedule:
       interval: "cron"
-      cron: "0 6 */3 * *"
+      cronjob: "0 6 */3 * *"
     open-pull-requests-limit: 5
     commit-message:
       prefix: "ci"
@@ -22,7 +22,7 @@ updates:
     target-branch: "develop"
     schedule:
       interval: "cron"
-      cron: "0 6 */3 * *"
+      cronjob: "0 6 */3 * *"
     open-pull-requests-limit: 5
     versioning-strategy: "increase"
     commit-message:
@@ -35,7 +35,7 @@ updates:
     target-branch: "develop"
     schedule:
       interval: "cron"
-      cron: "0 6 */3 * *"
+      cronjob: "0 6 */3 * *"
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore"
