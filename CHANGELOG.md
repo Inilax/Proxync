@@ -2,6 +2,26 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [fix/dependency-version-bump] - 2026-09-25 (Dependencies Upgrade, GitHub Actions Pinning & Dependabot Grouping)
+- **Feature Summary**:
+  - **Rust Backend Crates Upgrade**: Upgraded `reqwest` to `0.13` (enabling rustls TLS engine and json/compression features), `tokio-tungstenite` to `0.30`, and `base64` to `0.23`. Added `#[cfg(unix)]` guard on test import in `tunnel.rs`.
+  - **Frontend Workspace Modernization**: Upgraded React and React-DOM to `19.3.0`, TailwindCSS to `4.3.3`, `@tailwindcss/vite` to `4.3.3`, Vite to `7.3.6`, `@vitejs/plugin-react` to `4.7.0`, and `@tauri-apps/*` plugins to latest releases (`plugin-opener 2.5.5`, `plugin-process 2.3.1`, `plugin-dialog 2.7.3`, `plugin-updater 2.12.0`, `cli 2.11.5`). Pruned unused `@tauri-apps/plugin-shell` dependency.
+  - **CI & GitHub Actions Security Pinning**: Updated all action workflows (`ci.yml`, `codeql.yml`, `prepare-release.yml`, `release.yml`, `scorecard.yml`) to immutable, latest-release commit SHAs: `actions/checkout@v7.0.1`, `actions/setup-node@v7.0.0`, `dorny/paths-filter@v4.0.3`, `swatinem/rust-cache@v2.9.2`, `github/codeql-action/*@v4.38.2`, `peter-evans/create-pull-request@v8.1.1`, and `actions/upload-artifact@v7.0.1`.
+  - **Dependabot Anti-Spam Grouping & Limits**: Enhanced `.github/dependabot.yml` by grouping GitHub Actions, npm dependencies, and Cargo crates into unified update bundles (`actions`, `npm-dependencies`, `cargo-dependencies`) and setting `open-pull-requests-limit: 3` to eliminate multi-PR alert spam.
+- **Modified Files**:
+  - `.github/dependabot.yml`
+  - `.github/workflows/ci.yml`
+  - `.github/workflows/codeql.yml`
+  - `.github/workflows/prepare-release.yml`
+  - `.github/workflows/release.yml`
+  - `.github/workflows/scorecard.yml`
+  - `package-lock.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `CHANGELOG.md`
+
 ## [fix/codeql-sanitization-and-dependencies-upgrade] - 2026-09-25 (CodeQL String Sanitization & Dependency Audit Hardening)
 - **Feature Summary**:
   - **CodeQL High-Severity Alerts Remediation**: Fixed alerts #14 and #15 (`js/incomplete-sanitization`) in `interopUtils.ts` by escaping backslash meta-characters (`.replace(/\\/g, '\\\\')`) prior to escaping quotation marks in cURL header and body argument generation, preventing backslash neutralization attacks.
