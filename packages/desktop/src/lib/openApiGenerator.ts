@@ -291,7 +291,8 @@ export function generateOpenApiSpec(
   });
 
   // 2. Ingestion & Schema Enrichment from Live Captured Traffic
-  requests.forEach((req) => {
+  // ponytail: process oldest to newest so latest captured response payload takes precedence
+  [...requests].reverse().forEach((req) => {
     if (!req.path) return;
 
     // Reject automated scanner/bot probes, SPA HTML fallbacks, and bundler noise

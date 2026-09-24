@@ -2,6 +2,15 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [fix/schema-drift-response-preview-capture] - 2026-09-25 (Schema Drift Response Preview Capture & Ingestion Precedence)
+- **Feature Summary**:
+  - **Chunked HTTP Response Preview Capture**: In `proxy.rs`, added bounded initial body segment reading with a dedicated constant `BODY_CHUNK_TIMEOUT_MS = 150` when headers terminate exactly at the first TCP buffer boundary. This guarantees that modern frameworks like Next.js and Node.js that flush HTTP headers before chunked body data have their initial response payloads captured into `responseBodyPreview` for schema drift evaluation.
+  - **OpenAPI Runtime Ingestion Precedence**: In `openApiGenerator.ts`, reversed captured traffic iteration (`[...requests].reverse()`) so the latest live responses take precedence over older snapshots when enriching OpenAPI endpoint schemas.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src/lib/openApiGenerator.ts`
+  - `CHANGELOG.md`
+
 ## [fix/dependabot-cadence-and-workspace-targeting] - 2026-09-24 (Dependabot Cadence, Desktop Workspace & Grouping Hardening)
 - **Feature Summary**:
   - **3-Day Cron Pipeline**: Replaced weekly Monday schedule across all ecosystems (`github-actions`, `npm`, `cargo`) with a unified 3-day cron cadence (`0 6 */3 * *`) to establish a continuous, fast-feedback dependency review pipeline.
