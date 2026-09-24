@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the Proxync (Portly) workspace studio project are documented here.
+All notable changes to the Proxync workspace studio project are documented here.
 
 ## [fix/dependabot-cadence-and-workspace-targeting] - 2026-09-24 (Dependabot Cadence, Desktop Workspace & Grouping Hardening)
 - **Feature Summary**:
