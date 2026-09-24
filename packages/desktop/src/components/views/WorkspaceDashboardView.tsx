@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import type { Tunnel, RequestLog } from './SharedComponents';
+import { getTunnelMetadata } from './SharedComponents';
 import type { ProcessCandidate, WorkspaceConfig } from '../../lib/types';
 import { showToast } from '../../lib/toast';
 function getFrameworkSubtitle(proc: ProcessCandidate): string {
@@ -242,15 +243,14 @@ export function WorkspaceDashboardView({
                     <div
                       key={proc.id}
                       onClick={() => onSelectProcess(proc.id)}
-                      className={`p-4 sm:p-5 bg-surface-container border rounded-2xl flex flex-col justify-between gap-4 transition-all cursor-pointer group shadow-sm hover:shadow-md ${
-                        isLive && !isStandby
+                      className={`p-4 sm:p-5 bg-surface-container border rounded-2xl flex flex-col justify-between gap-4 transition-all cursor-pointer group shadow-sm hover:shadow-md ${isLive && !isStandby
                           ? 'border-emerald-500/60 shadow-emerald-500/10'
                           : isStandby
                             ? 'border-amber-500/60 shadow-amber-500/10'
                             : isSpawning
                               ? 'border-primary/50 ring-1 ring-primary/30'
                               : 'border-outline-variant/60 hover:border-primary/50'
-                      }`}
+                        }`}
                     >
                       <div className="space-y-3.5">
                         {/* Top Header: Icon + Name + Subtitle + Status Pills */}
@@ -276,13 +276,12 @@ export function WorkspaceDashboardView({
 
                           {/* Top Right Badges */}
                           <div className="flex items-center gap-1.5 shrink-0">
-                            <span className={`px-2.5 py-1 bg-surface-container-high rounded-full border text-[11px] font-mono font-medium flex items-center gap-1.5 ${
-                              isLive && !isStandby
+                            <span className={`px-2.5 py-1 bg-surface-container-high rounded-full border text-[11px] font-mono font-medium flex items-center gap-1.5 ${isLive && !isStandby
                                 ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10'
                                 : isStandby
-                                ? 'border-amber-500/40 text-amber-400 bg-amber-500/10'
-                                : 'border-outline-variant/50 text-on-surface-variant'
-                            }`}>
+                                  ? 'border-amber-500/40 text-amber-400 bg-amber-500/10'
+                                  : 'border-outline-variant/50 text-on-surface-variant'
+                              }`}>
                               <span className={`w-1.5 h-1.5 rounded-full ${isLive && !isStandby ? 'bg-emerald-400 animate-pulse' : isStandby ? 'bg-amber-400' : 'bg-outline'}`}></span>
                               {isLive && !isStandby ? 'ONLINE' : isStandby ? 'STANDBY' : 'LOCAL'}
                             </span>
@@ -488,39 +487,46 @@ export function WorkspaceDashboardView({
               </div>
             ) : (
               <div className="space-y-4">
-                {activeTunnels.map((tunnel, idx) => (
+                {activeTunnels.map((tunnel) => (
                   <div
                     key={tunnel.id}
                     className="p-4 sm:p-5 bg-surface-container border border-outline-variant rounded-xl flex flex-col gap-4 hover:border-primary/50 transition-colors"
                   >
                     <div className="flex justify-between items-start gap-2">
                       <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
-                        <div className="w-10 h-10 rounded-lg bg-surface-container-high border border-outline-variant flex items-center justify-center shrink-0">
-                          <span className={`material-symbols-outlined ${idx % 2 === 0 ? 'text-primary' : 'text-secondary'}`}>
-                            {idx % 2 === 0 ? 'link' : 'cloud_queue'}
-                          </span>
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 group/url">
-                            <h4 className="font-body-lg text-body-lg text-on-surface truncate max-w-[140px] xs:max-w-[200px] sm:max-w-[320px] md:max-w-[440px] lg:max-w-[560px]" title={new URL(tunnel.publicUrl).hostname}>
-                              {new URL(tunnel.publicUrl).hostname}
-                            </h4>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigator.clipboard.writeText(tunnel.publicUrl);
-                                showToast('Public URL copied!', 'success');
-                              }}
-                              className="p-1 rounded text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer flex items-center justify-center opacity-70 sm:opacity-0 group-hover/url:opacity-100 focus:opacity-100 shrink-0"
-                              title="Copy URL"
-                            >
-                              <span className="material-symbols-outlined text-[14px]">content_copy</span>
-                            </button>
-                          </div>
-                          <p className="font-code-sm text-code-sm text-on-surface-variant truncate">
-                            {idx % 2 === 0 ? 'Relay Subdomain' : 'Cloudflare'} • Port {tunnel.localPort}
-                          </p>
-                        </div>
+                        {(() => {
+                          const { providerLabel, iconName, iconColor, hostname } = getTunnelMetadata(tunnel);
+                          return (
+                            <>
+                              <div className="w-8 h-8 rounded-lg bg-surface-container-high border border-outline-variant/30 flex items-center justify-center shrink-0">
+                                <span className={`material-symbols-outlined ${iconColor}`}>
+                                  {iconName}
+                                </span>
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 group/url">
+                                  <h4 className="font-body-lg text-body-lg text-on-surface truncate max-w-[140px] xs:max-w-[200px] sm:max-w-[320px] md:max-w-[440px] lg:max-w-[560px]" title={hostname || tunnel.publicUrl}>
+                                    {hostname || tunnel.publicUrl}
+                                  </h4>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      navigator.clipboard.writeText(tunnel.publicUrl);
+                                      showToast('Public URL copied!', 'success');
+                                    }}
+                                    className="p-1 rounded text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer flex items-center justify-center opacity-70 sm:opacity-0 group-hover/url:opacity-100 focus:opacity-100 shrink-0"
+                                    title="Copy URL"
+                                  >
+                                    <span className="material-symbols-outlined text-[14px]">content_copy</span>
+                                  </button>
+                                </div>
+                                <p className="font-code-sm text-code-sm text-on-surface-variant truncate">
+                                  {providerLabel} • Port {tunnel.localPort}
+                                </p>
+                              </div>
+                            </>
+                          );
+                        })()}
                       </div>
 
                       <div className="relative shrink-0">

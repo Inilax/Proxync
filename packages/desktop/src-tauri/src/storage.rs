@@ -747,7 +747,7 @@ r#"
         sys.local_ip,
         sys.pid.to_string(),
         sys.webview_version,
-        "Proxync v0.2.2 (Engine: Tauri v2.11 Core)",
+        "Proxync v0.2.3 (Engine: Tauri v2.11 Core)",
         "Standard (app.log active, traffic.log on-demand)",
         boot_time,
         cleared_str

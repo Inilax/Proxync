@@ -1,6 +1,138 @@
 # Changelog
 
-All notable changes to the Proxync (Portly) workspace studio project are documented here.
+All notable changes to the Proxync workspace studio project are documented here.
+
+## [fix/dependabot-cadence-and-workspace-targeting] - 2026-09-24 (Dependabot Cadence, Desktop Workspace & Grouping Hardening)
+- **Feature Summary**:
+  - **3-Day Cron Pipeline**: Replaced weekly Monday schedule across all ecosystems (`github-actions`, `npm`, `cargo`) with a unified 3-day cron cadence (`0 6 */3 * *`) to establish a continuous, fast-feedback dependency review pipeline.
+  - **Desktop Workspace Targeting**: Configured `package-ecosystem: "npm"` to target `directory: "/packages/desktop"` directly and set `versioning-strategy: "increase"`. This resolves the silent omission caused by the empty root manifest and ensures actual application packages (`react`, `vite`, `tailwindcss`, `@tauri-apps/*`) receive automated PRs.
+  - **CodeQL Action Grouping**: Added `groups: codeql-action` targeting `github/codeql-action/*` to ensure `init`, `analyze`, and `upload-sarif` are bundled into a single atomic PR, eliminating runtime version skew and CI breakage.
+  - **Throttling & Backpressure**: Enforced `open-pull-requests-limit: 5` across all ecosystems to prevent review fatigue and repository inbox flooding.
+- **Modified Files**:
+  - `.github/dependabot.yml`
+  - `CHANGELOG.md`
+
+## [fix/v0.2.3-version-bump] - 2026-09-21 (Workspace & Studio Version Bump to v0.2.3 for Next Release Cycle)
+- **Feature Summary**:
+  - **Comprehensive Version Bump to v0.2.3**: Synchronized workspace and package manifests (`package.json`, `packages/desktop/package.json`, `package-lock.json`, `Cargo.toml`, `Cargo.lock`, and `tauri.conf.json`) to version `0.2.3`.
+  - **Native HTTP Network Headers & Diagnostics**: Updated Rust client diagnostic banner in `storage.rs` to `Proxync v0.2.3 (Engine: Tauri v2.11 Core)`. Synchronized frontend diagnostic logging metadata, log session directives, and support bundle fallbacks in `App.tsx` and `logger.ts` to `v0.2.3-stable`.
+  - **UI Version Presentation Alignment**: Updated `SettingsView.tsx` default prop to `v0.2.3`, `App.tsx` update toast message (`v0.2.3`), and sidebar engine indicator (`v0.2.3-stable`).
+  - **Recon & Documentation Badge Alignment**: Updated README version shield badge and `.agents/architecture.json` static recon map to reflect version `0.2.3`.
+- **Modified Files**:
+  - `README.md`
+  - `package-lock.json`
+  - `package.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/lib/logger.ts`
+  - `CHANGELOG.md`
+
+## [fix/ci-macos-release-dependabot-hardening] - 2026-09-19 (macOS CI Re-integration & Dependabot Flood Prevention)
+- **Feature Summary**:
+  - **macOS Re-added to CI Build Matrix**: Re-added `macos-latest` runner to both `prepare-release.yml` (test matrix) and `release.yml` (build matrix). macOS now builds automatically alongside Windows and Linux in CI.
+  - **Universal Binary Target**: Configured `--target universal-apple-darwin` in `release.yml` so the macOS runner compiles a single Universal Binary (`.dmg`) supporting both Apple Silicon (M1–M4) and Intel Macs.
+  - **Rust Cross-Compile Targets**: Added `aarch64-apple-darwin,x86_64-apple-darwin` to `dtolnay/rust-toolchain` in both `prepare-release.yml` and `release.yml` for symmetric cross-compilation setup.
+  - **macOS Auto-Updater Unblocked**: With `includeUpdaterJson: true` already active, `tauri-action` will now produce `Proxync.app.tar.gz`, `Proxync.app.tar.gz.sig`, and populate `darwin` entries inside `latest.json` automatically — fixing the missing `.dmg.sig` and absent Darwin updater entries that were blocking in-app updates for macOS users.
+  - **Dependabot PR Flood Prevention**: Lowered `open-pull-requests-limit` from `10` to `4` across all three Dependabot ecosystems (`github-actions`, `npm`, `cargo`). All ecosystems already target `develop` — this prevents the initial onboarding surge (24 simultaneous PRs) that occurred when `dependabot.yml` first landed on `main`.
+- **Modified Files**:
+  - `.github/workflows/prepare-release.yml`
+  - `.github/workflows/release.yml`
+  - `.github/dependabot.yml`
+  - `CHANGELOG.md`
+
+### 🍎 macOS Installation Note
+> Proxync is open-source and currently distributed without Apple notarization. macOS Gatekeeper may show **"Proxync is damaged and cannot be opened"** on first launch. This is a standard security warning for apps downloaded from the web that are not signed with an Apple Developer ID — the app itself is safe.
+>
+> **One-time fix — run this in Terminal after dragging Proxync to your Applications folder:**
+> ```bash
+> xattr -cr /Applications/Proxync.app
+> ```
+> After running this command once, Proxync will open normally and auto-update silently in the background for all future releases.
+
+## [fix/readme-cross-platform-roadmap-refresh] - 2026-09-19 (README Modernization, Cross-Platform Alignment & Unified Roadmap)
+- **Feature Summary**:
+  - **Cross-Platform Status Alignment**: Updated `README.md` to reflect full desktop support across Windows, Linux, and macOS with active platform badges and native bundle targets (`.msi`/`.exe`, `.deb`/`.AppImage`, `.dmg`/`.app`).
+  - **Release Feature Parity**: Documented native origin relay (`relay.proxync.dev:2222`), resilient standby mode, real-time AST schema drift detection, OpenAPI 3.0 auto-generation, Postman-grade API workbench, multi-language code snippets, process group isolation (`setpgid(0, 0)`), GUI toolchain PATH injection, and in-app auto-updates.
+  - **Verified Localtunnel Decommissioning**: Verified zero trace of legacy localtunnel remains in documentation.
+  - **Unified Milestone-Driven Roadmap**: Consolidated roadmap into a single continuous checklist tracking macOS/Linux stabilization, CLI companion, Enterprise Edition (teasing autonomous AI agent background execution), request mocking, and automated test synthesis.
+- **Modified Files**:
+  - `README.md`
+  - `CHANGELOG.md`
+
+## [196-fixrecon-preserve-process-names-and-command-paths-containing-whitespace-on-macos] - 2026-09-19 (Preserve Process Names & Command Paths with Whitespace on macOS #196)
+- **Feature Summary**:
+  - **Native Darwin Kernel Path Lookup (`proc_pidpath`)**: Replaced Darwin `ps -o comm=` 16-char truncation and $O(N)$ `lsof` subprocess loops with in-process `proc_pidpath` syscalls, resolving canonical paths with spaces in microseconds.
+  - **Uncut Command Parsing**: Switched to `ps -o pid=,ppid=,command=`, ensuring numeric PID/PPID tokens and preserving the entire command line verbatim without delimiter collisions.
+  - **Quote-Aware Tokenizer (`tokenize_cmd`)**: Added a quote-preserving tokenizer so commands and paths with spaces (e.g. `node "/path/with spaces/server.js"`) resolve correctly in `walk_up_to_project_root`.
+  - **Daemon Filtering & Fallback**: Hardened scanner fallback with `tokenize_cmd` and added `google chrome` and `visual studio code` to `is_system_process_name`.
+  - **Regression Tests**: Added unit tests covering Darwin FFI path resolution, command tokenization, and quoted paths with spaces.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `CHANGELOG.md`
+
+## [fix/ci-release-workflow-hardening] - 2026-09-19 (CI Release Workflow — Windows & Linux Hardening)
+- **Feature Summary**:
+  - **Rust Toolchain Fix**: Added explicit `toolchain: stable` to `dtolnay/rust-toolchain` in both `prepare-release.yml` and `release.yml`, eliminating the runner setup failure caused by missing required parameter.
+  - **macOS Removed from CI Matrix**: Removed `macos-latest` from `test-matrix` and `build-tauri` jobs. macOS `.dmg` built and signed locally by maintainer, manually attached to GitHub Draft Release before publishing.
+  - **Apple Secrets Cleaned Up**: Removed unused `APPLE_*` env vars from `release.yml` to eliminate missing-secret CI warnings.
+  - **Fast Sanity Build**: Added `--no-bundle` to `prepare-release.yml` sanity step — cuts pre-flight CI from ~12min to ~3min.
+  - **Root Package Version Sync**: Added `npm version` call for root `package.json` to keep monorepo root in sync with `packages/desktop` on version bump.
+  - **Updated Comments & PR Template**: Header comments and PR template body updated to accurately reflect Windows + Linux automated CI with manual macOS DMG workflow.
+- **Modified Files**:
+  - `.github/workflows/prepare-release.yml`
+  - `.github/workflows/release.yml`
+
+## [fix/relay-dns-latency-hardening] - 2026-09-18 (CodeQL CWE-20 URL Sanitization & Tunnel Metadata Hardening)
+- **Feature Summary**:
+  - **CodeQL CWE-20 Incomplete URL Substring Sanitization Fix**: Centralized tunnel metadata extraction into `getTunnelMetadata()` in `SharedComponents.tsx`. Replaced naive substring checks (`.includes('trycloudflare.com')`, `.includes('proxync')`) with strict hostname matching (`.endsWith('.trycloudflare.com')`, `.endsWith('.proxync.dev')`) to prevent domain spoofing attacks.
+  - **URL Parsing Safety & Crash Prevention**: Wrapped URL parsing in safe try/catch blocks with automatic `https://` protocol prefixing across `WelcomeView`, `WorkspaceDashboardView`, and `ProcessView`, completely eliminating unhandled `new URL()` runtime exceptions on malformed or protocol-less URLs.
+- **Modified Files**:
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `CHANGELOG.md`
+
+## [fix/relay-dns-latency-hardening] - 2026-09-18 (Relay DNS Resolution, SSRF Hardening & Tunnel Latency Optimization)
+- **Feature Summary**:
+  - **Dynamic Relay DNS Resolution**: Migrated hardcoded Azure IP `104.208.83.199` to `relay.proxync.dev` and `DEFAULT_PROXYNC_SSH_HOST` across backend (`recon.rs`, `tunnel.rs`) and frontend, allowing seamless zero-downtime server migrations without requiring client app updates.
+  - **SSRF & TCP Latency Probing Whitelist**: Hardened `probe_tcp_latency` with `is_permitted_probe_host`, restricting TCP socket probes strictly to loopback (`127.0.0.1`, `localhost`, `::1`) and Proxync relay endpoints (`relay.proxync.dev`, `api.proxync.dev`, `proxync_native`). Blocks malicious or arbitrary intranet probing and SSRF port scans against private IP ranges (`192.168.x.x`, `10.x.x.x`, `169.254.169.254`).
+  - **Comprehensive Latency Probing & Host Resolution Unit Tests**: Added unit test coverage in `recon.rs` (`test_probe_tcp_latency_local`, `test_probe_tcp_latency_ipv6_and_probe_port`, `test_probe_tcp_latency_rejects_unauthorized_host`, `test_probe_tcp_latency_permitted_hosts`, `test_resolve_probe_target_internal`) ensuring zero environment variable mutation and correct bracket handling for IPv6.
+  - **Tunnel Handshake Stabilization Loop**: Refactored `open_native_tunnel` wait loop to a reliable 1500ms timeout with high-frequency 50ms early-crash polling, completely eliminating vestigial inner break logic while ensuring reverse-proxy routing is fully established before user clicks.
+  - **Custom Domain Verification Resilience**: Upgraded DNS-over-HTTPS token verification to use Google DoH with Cloudflare DoH fallback, added apex domain query fallback when `_proxync.domain` query returns empty, and replaced silent error swallowing with structured `STORAGE` logging.
+  - **Dashboard Provider Badges & UI Consistency**: Enhanced tunnel cards in `WorkspaceDashboardView` to accurately distinguish between Cloudflare, Proxync Native, and Custom Domain tunnels with respective icons and badges; bound Vite development host default to `127.0.0.1`.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/lib.rs`
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `packages/desktop/src/lib/api.ts`
+  - `packages/desktop/src/lib/types.ts`
+  - `packages/desktop/vite.config.ts`
+  - `CHANGELOG.md`
+
+## [fix/macos-port-scan-filtering] - 2026-09-16 (macOS Native Port Scanner & Ghost Port Daemon Filtering)
+- **Feature Summary**:
+  - **Native macOS Port Scanner (`MacOsScanner`)**: Implemented dedicated 3-stage platform scanner for macOS replacing the generic Unix `FallbackScanner` stub. Integrates `lsof -iTCP -sTCP:LISTEN -P -n` and full `ps` command inspection to bypass macOS 16-character process name truncation (e.g. `ControlCenter` -> `ControlCe`).
+  - **Ghost Port Daemon & Noise Filtering**: Hardened system and infrastructure process blacklists with macOS-specific system daemons (`ControlCenter`, `rapportd`, `airplay`, `sharingd`, `identityservicesd`, `launchd`, `remoted`, `cloudpaird`, `universalcontrol`, `megasync`, `dropbox`, `agy`) and system directory paths (`/System/Library/`, `/usr/libexec/`, `/usr/sbin/`). Filters out internal/system daemons from port scan results so only active user dev servers are presented.
+  - **CWD Resolution via Native lsof**: Implemented `get_process_cwd` for macOS using unprivileged `lsof -a -p <pid> -d cwd -Fn` to dynamically resolve working directories for detected services.
+  - **Non-Blocking Async Execution**: Refactored `scan_ports`, `scan_processes`, and `resolve_process_directory` Tauri commands with `tauri::async_runtime::spawn_blocking` and decoupled `RECON_PROCESS_CACHE` mutex locking to prevent blocking the async runtime during subprocess execution.
+  - **Cross-Platform Daemon Classification Test**: Removed `#[cfg(target_os = "macos")]` gate from daemon filtering test; renamed to `test_daemon_filtering_rules` and added negative assertions so Windows and Linux CI now validate classification logic.
+  - **Dead `#[cfg]` Cleanup**: Removed redundant stacked `#[cfg]` attribute on `impl PlatformScanner for FallbackScanner` — now matches the single correct predicate on the struct.
+  - **Tech Debt Documented**: Added `// ponytail:` comment on `MacOsScanner::scan_processes` explaining the known double-`lsof` limitation and the future trait-level fix path.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/recon.rs`
+  - `package-lock.json`
+  - `CHANGELOG.md`
 
 ## [fix/develop-subprocess-group-termination] - 2026-09-15 (Subprocess Group Termination on Linux & Zero-Orphan SSH Tunnels #182)
 - **Feature Summary**:

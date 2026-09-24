@@ -5,21 +5,26 @@ updates:
     directory: "/"
     target-branch: "develop"
     schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 10
+      interval: "cron"
+      cron: "0 6 */3 * *"
+    open-pull-requests-limit: 5
     commit-message:
       prefix: "ci"
       include: "scope"
+    groups:
+      codeql-action:
+        patterns:
+          - "github/codeql-action/*"
 
-  # Maintain dependencies for root npm workspace
+  # Maintain dependencies for desktop npm workspace
   - package-ecosystem: "npm"
-    directory: "/"
+    directory: "/packages/desktop"
     target-branch: "develop"
     schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 10
+      interval: "cron"
+      cron: "0 6 */3 * *"
+    open-pull-requests-limit: 5
+    versioning-strategy: "increase"
     commit-message:
       prefix: "chore"
       include: "scope"
@@ -29,9 +34,10 @@ updates:
     directory: "/packages/desktop/src-tauri"
     target-branch: "develop"
     schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 10
+      interval: "cron"
+      cron: "0 6 */3 * *"
+    open-pull-requests-limit: 5
     commit-message:
       prefix: "chore"
       include: "scope"
+

@@ -57,6 +57,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
         with:
+          toolchain: stable
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
@@ -83,7 +84,7 @@ jobs:
 
       - name: Sanity build (debug, fast)
         working-directory: ${{ env.PKG_DIR }}
-        run: npm run tauri build -- --debug
+        run: npm run tauri build -- --debug --no-bundle
 
   prepare-release:
     name: Bump Version & Open PR
@@ -133,6 +134,7 @@ jobs:
           NEW_VERSION: ${{ steps.version.outputs.version }}
         shell: bash
         run: |
+          npm version "$NEW_VERSION" --no-git-tag-version --allow-same-version
           (cd "${PKG_DIR}" && npm version "$NEW_VERSION" --no-git-tag-version --allow-same-version)
 
           node - "$NEW_VERSION" "$PKG_DIR" <<'EOF'
@@ -174,9 +176,9 @@ jobs:
 
             ### Release Scope
             Merging this PR into `main` triggers `release.yml`, which will build, sign, and publish:
-            - **Windows**: NSIS Setup (`.exe`) and Windows Installer (`.msi`)
-            - **Linux**: Debian package (`.deb`) and AppImage (`.AppImage`)
-            - **macOS**: Universal Binary (`.dmg`, `.app`) for Apple Silicon & Intel
+            - **Windows**: NSIS Setup (`.exe`) and Windows Installer (`.msi`) [Automated CI]
+            - **Linux**: Debian package (`.deb`) and AppImage (`.AppImage`) [Automated CI]
+            - **macOS**: Universal Binary (`.dmg`, `.app`) for Apple Silicon & Intel [Automated CI]
             - **Updater Metadata**: Signed update bundles & signatures (`.sig`, `updater.json`)
             - **Git Snapshot**: Tag `v${{ steps.version.outputs.version }}` & permanent branch `release-v${{ steps.version.outputs.version }}`
 

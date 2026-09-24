@@ -356,7 +356,9 @@ export default function App() {
       if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
         try {
           localStorage.setItem(SIDEBAR_DESKTOP_PREF_KEY, String(next));
-        } catch { }
+        } catch (err) {
+          logApp('STORAGE', 'WARN', 'Failed to persist sidebar preference to localStorage', err);
+        }
       }
       return next;
     });
@@ -893,7 +895,7 @@ export default function App() {
 
         if (!update) {
           if (isManual) {
-            showToast('✅ Proxync is up to date (v0.2.2)', 'success');
+            showToast('✅ Proxync is up to date (v0.2.3)', 'success');
           }
           return;
         }
@@ -1143,7 +1145,7 @@ export default function App() {
       trafficLogging: appSettings.trafficLogging ?? false,
     });
     void logAppLaunch({
-      appVersion: 'v0.2.2',
+      appVersion: 'v0.2.3',
       theme: appSettings.theme || 'slate',
       telemetry: appSettings.telemetry || 'enhanced',
       autoUpdate: appSettings.autoUpdate ?? true,
@@ -1900,7 +1902,7 @@ export default function App() {
       showToast('Starting Cloudflare Tunnel service...', 'info');
       const cfTunnelUrl = await invoke<string>('open_cloudflare_tunnel', { tunnelId: tunnel.id, localPort: proxyPort });
 
-      const cloudflareBoundTunnel: Tunnel = { ...tunnel, publicUrl: cfTunnelUrl, subdomain: cfTunnelUrl.replace('https://', '').replace('.trycloudflare.com', '') };
+      const cloudflareBoundTunnel: Tunnel = { ...tunnel, publicUrl: cfTunnelUrl, subdomain: cfTunnelUrl.replace('https://', '').replace('.trycloudflare.com', ''), provider: 'cloudflare' };
       setActiveTunnel(cloudflareBoundTunnel);
       setTunnels((current) => [cloudflareBoundTunnel, ...current.filter((item) => item.id !== tunnel.id)]);
       setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false);
@@ -1981,7 +1983,7 @@ export default function App() {
       const suggestedSub = generateRandomSubdomain('px');
       showToast('Starting Proxync Native SSH tunnel...', 'info');
       const nativeTunnelUrl = await invoke<string>('open_native_tunnel', { tunnelId: tunnel.id, localPort: proxyPort, subdomain: suggestedSub });
-      const boundTunnel: Tunnel = { ...tunnel, publicUrl: nativeTunnelUrl, subdomain: suggestedSub };
+      const boundTunnel: Tunnel = { ...tunnel, publicUrl: nativeTunnelUrl, subdomain: suggestedSub, provider: 'native' };
       setActiveTunnel(boundTunnel);
       setTunnels((current) => [boundTunnel, ...current.filter((item) => item.id !== tunnel.id)]);
       setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false);
@@ -2073,10 +2075,17 @@ export default function App() {
       if (customDomain) {
         tunnel.publicUrl = customDomain.includes(':') ? customDomain : `http://${customDomain}:${proxyPort}`;
         tunnel.customDomain = customDomain;
+        tunnel.provider = 'custom';
       }
       const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
       const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
-      await invoke('open_tunnel', { tunnelId: tunnel.id, localPort: proxyPort, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined);
+      let relayConnected = true;
+      try {
+        await invoke('open_tunnel', { tunnelId: tunnel.id, localPort: proxyPort, token, workspaceId: targetWorkspaceId, relayUrl });
+      } catch (relayErr) {
+        relayConnected = false;
+        logApp('TUNNEL', 'WARN', `Relay connection warning for ${tunnel.id}:`, relayErr);
+      }
       setActiveTunnel(tunnel);
       setTunnels((current) => [tunnel, ...current.filter((item) => item.id !== tunnel.id)]);
       setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false);
@@ -2086,7 +2095,11 @@ export default function App() {
         ...ws,
         profiles: ws.profiles.map((p) => p.id === makeProfileId(process) ? { ...p, lastSharedAt: new Date().toISOString(), lastTunnelUrl: tunnel.publicUrl } : p)
       }));
-      showToast(`Tunnel active on ${tunnel.publicUrl}. Traffic interception enabled!`, 'success');
+      if (!relayConnected && customDomain) {
+        showToast(`Proxy active on ${tunnel.publicUrl}, but relay server is unreachable. Inbound external traffic requires an active relay.`, 'warning');
+      } else {
+        showToast(`Tunnel active on ${tunnel.publicUrl}. Traffic interception enabled!`, 'success');
+      }
     } catch (error) {
       logError('TUNNEL', `Unable to share process on Port :${process.port}`, error, 'Check if local server is listening and port is available', `Port :${process.port}`);
       showToast(error instanceof Error ? error.message : 'Unable to share process', 'error');
@@ -2148,7 +2161,9 @@ export default function App() {
     if (listToClose.length === 0) {
       try {
         await invoke('close_all_tunnels');
-      } catch { }
+      } catch (err) {
+        logApp('TUNNEL', 'WARN', `Failed to invoke close_all_tunnels: ${err}`);
+      }
       setTunnels([]);
       setActiveTunnel(null);
       return;
@@ -2168,7 +2183,9 @@ export default function App() {
       );
       try {
         await invoke('close_all_tunnels');
-      } catch { }
+      } catch (err) {
+        logApp('TUNNEL', 'WARN', `Failed to invoke close_all_tunnels during shutdown: ${err}`);
+      }
       setTunnels([]);
       setActiveTunnel(null);
       logApp('TUNNEL', 'INFO', `All ${listToClose.length} tunnels closed`);
@@ -2732,7 +2749,7 @@ export default function App() {
   async function updateAppLogging(enabled: boolean) {
     setAppSettings((current) => ({ ...current, appLogging: enabled }));
     await setAppLogging(enabled, {
-      appVersion: 'v0.2.2-stable',
+      appVersion: 'v0.2.3-stable',
       theme: appSettings.theme,
       platform: typeof navigator !== 'undefined' ? navigator.platform : 'desktop',
     });
@@ -2747,7 +2764,7 @@ export default function App() {
   async function updateTrafficLogging(enabled: boolean) {
     setAppSettings((current) => ({ ...current, trafficLogging: enabled }));
     await setTrafficLogging(enabled, {
-      appVersion: 'v0.2.2-stable',
+      appVersion: 'v0.2.3-stable',
     });
     showToast(
       enabled
@@ -3191,7 +3208,7 @@ export default function App() {
           {!sidebarCollapsed ? (
             <div className="px-6 mb-5">
               <h2 className="text-headline-sm font-bold text-primary truncate">Proxync Engine</h2>
-              <p className="text-code-sm text-on-surface-variant opacity-60">v0.2.2-stable</p>
+              <p className="text-code-sm text-on-surface-variant opacity-60">v0.2.3-stable</p>
             </div>
           ) : (
             <div className="flex flex-col items-center mb-4">
@@ -3554,7 +3571,7 @@ export default function App() {
                 onUpdateTrafficLogging={updateTrafficLogging}
                 onCheckForUpdates={() => runUpdateCheck(false, true)}
                 checkingUpdates={checkingUpdates}
-                appVersion="v0.2.2"
+                appVersion="v0.2.3"
                 initialSection={settingsSection}
               />
             )}
@@ -3682,9 +3699,17 @@ export default function App() {
           domains={domains.filter((d) => d.verified)}
           onClose={() => setSharingProcessCandidate(null)}
           onConfirm={(selectedOption) => {
-            if (selectedOption === 'proxync_native') { void shareProcessNative(sharingProcessCandidate); }
-            else if (selectedOption === 'cloudflare') { void shareProcessCloudflare(sharingProcessCandidate); }
-            else { void shareProcess(sharingProcessCandidate, selectedOption === 'default' ? undefined : selectedOption); }
+            if (selectedOption === 'proxync_native') {
+              void shareProcessNative(sharingProcessCandidate);
+            } else if (selectedOption === 'cloudflare') {
+              void shareProcessCloudflare(sharingProcessCandidate);
+            } else if (selectedOption === 'custom_subdomain_unconnected' || selectedOption === 'default') {
+              showToast('⚠️ Subdomain not connected. Please add and verify your custom subdomain in Settings → Custom Domains.', 'warning');
+              setSettingsSection('domains');
+              setMainView('settings');
+            } else {
+              void shareProcess(sharingProcessCandidate, selectedOption);
+            }
             setSharingProcessCandidate(null);
           }}
         />
