@@ -1,16 +1,6 @@
 # Changelog
 
-All notable changes to the Proxync workspace studio project are documented here.
-
-## [fix/dependabot-cadence-and-workspace-targeting] - 2026-09-24 (Dependabot Cadence, Desktop Workspace & Grouping Hardening)
-- **Feature Summary**:
-  - **3-Day Cron Pipeline**: Replaced weekly Monday schedule across all ecosystems (`github-actions`, `npm`, `cargo`) with a unified 3-day cron cadence (`0 6 */3 * *`) to establish a continuous, fast-feedback dependency review pipeline.
-  - **Desktop Workspace Targeting**: Configured `package-ecosystem: "npm"` to target `directory: "/packages/desktop"` directly and set `versioning-strategy: "increase"`. This resolves the silent omission caused by the empty root manifest and ensures actual application packages (`react`, `vite`, `tailwindcss`, `@tauri-apps/*`) receive automated PRs.
-  - **CodeQL Action Grouping**: Added `groups: codeql-action` targeting `github/codeql-action/*` to ensure `init`, `analyze`, and `upload-sarif` are bundled into a single atomic PR, eliminating runtime version skew and CI breakage.
-  - **Throttling & Backpressure**: Enforced `open-pull-requests-limit: 5` across all ecosystems to prevent review fatigue and repository inbox flooding.
-- **Modified Files**:
-  - `.github/dependabot.yml`
-  - `CHANGELOG.md`
+All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
 ## [fix/v0.2.3-version-bump] - 2026-09-21 (Workspace & Studio Version Bump to v0.2.3 for Next Release Cycle)
 - **Feature Summary**:
