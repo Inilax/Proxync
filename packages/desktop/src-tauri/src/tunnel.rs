@@ -728,6 +728,7 @@ pub async fn open_native_tunnel(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use super::*;
 
     #[tokio::test]
