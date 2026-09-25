@@ -1,21 +1,97 @@
 # Changelog
 
-All notable changes to the Proxync (Portly) workspace studio project are documented here.
+All notable changes to the Proxync workspace studio project are documented here.
 
-## [v0.2.3] - 2026-09-25 (API Schema Drifter Hotfix, Dependent Bot Fix & Dependency Modernization)
+## [fix/schema-drift-response-preview-capture] - 2026-09-25 (Schema Drift Response Preview Capture & Ingestion Precedence)
 - **Feature Summary**:
-  - **API Schema Drifter Hotfix**: Resolved an issue where the runtime API schema drifter was failing to detect and reconcile contract drift against active endpoints during traffic inspection.
-  - **Dependent Bot Noise Shield Fix**: Fixed false-positive triggers and traffic noise filtering for dependent background bots, health checkers, and keep-alive pingers.
-  - **Dependency Modernization**: Bumped all outdated workspace libraries and dependencies to their latest stable releases, resolving security advisories.
-  - **Minor Bug Fixes & Stability Polish**: General stability improvements across kernel socket recon fallback, UI state preservation, and background process event handling.
+  - **Chunked HTTP Response Preview Capture**: In `proxy.rs`, added bounded initial body segment reading with a dedicated constant `BODY_CHUNK_TIMEOUT_MS = 150` when headers terminate exactly at the first TCP buffer boundary. This guarantees that modern frameworks like Next.js and Node.js that flush HTTP headers before chunked body data have their initial response payloads captured into `responseBodyPreview` for schema drift evaluation.
+  - **OpenAPI Runtime Ingestion Precedence**: In `openApiGenerator.ts`, reversed captured traffic iteration (`[...requests].reverse()`) so the latest live responses take precedence over older snapshots when enriching OpenAPI endpoint schemas.
 - **Modified Files**:
-  - `components/hero.tsx`
-  - `components/app-mockup.tsx`
-  - `components/cta.tsx`
-  - `lib/release-constants.ts`
-  - `data/docs/installation.md`
-  - `data/docs/faq.md`
-  - `data/docs/roadmap.md`
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src/lib/openApiGenerator.ts`
+
+## [fix/dependency-version-bump] - 2026-09-25 (Dependencies Upgrade, GitHub Actions Pinning & Dependabot Grouping)
+- **Feature Summary**:
+  - **Rust Backend Crates Upgrade**: Upgraded `reqwest` to `0.13` (enabling rustls TLS engine and json/compression features), `tokio-tungstenite` to `0.30`, and `base64` to `0.23`. Added `#[cfg(unix)]` guard on test import in `tunnel.rs`.
+  - **Frontend Workspace Modernization**: Upgraded React and React-DOM to `19.3.0`, TailwindCSS to `4.3.3`, `@tailwindcss/vite` to `4.3.3`, Vite to `7.3.6`, `@vitejs/plugin-react` to `4.7.0`, and `@tauri-apps/*` plugins to latest releases (`plugin-opener 2.5.5`, `plugin-process 2.3.1`, `plugin-dialog 2.7.3`, `plugin-updater 2.12.0`, `cli 2.11.5`). Pruned unused `@tauri-apps/plugin-shell` dependency.
+  - **CI & GitHub Actions Security Pinning**: Updated all action workflows (`ci.yml`, `codeql.yml`, `prepare-release.yml`, `release.yml`, `scorecard.yml`) to immutable, latest-release commit SHAs: `actions/checkout@v7.0.1`, `actions/setup-node@v7.0.0`, `dorny/paths-filter@v4.0.3`, `swatinem/rust-cache@v2.9.2`, `github/codeql-action/*@v4.38.2`, `peter-evans/create-pull-request@v8.1.1`, and `actions/upload-artifact@v7.0.1`.
+  - **Dependabot Anti-Spam Grouping & Limits**: Enhanced `.github/dependabot.yml` by grouping GitHub Actions, npm dependencies, and Cargo crates into unified update bundles (`actions`, `npm-dependencies`, `cargo-dependencies`) and setting `open-pull-requests-limit: 3` to eliminate multi-PR alert spam.
+- **Modified Files**:
+  - `.github/dependabot.yml`
+  - `.github/workflows/ci.yml`
+  - `.github/workflows/codeql.yml`
+  - `.github/workflows/prepare-release.yml`
+  - `.github/workflows/release.yml`
+  - `.github/workflows/scorecard.yml`
+  - `package-lock.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `CHANGELOG.md`
+
+## [fix/codeql-sanitization-and-dependencies-upgrade] - 2026-09-25 (CodeQL String Sanitization & Dependency Audit Hardening)
+- **Feature Summary**:
+  - **CodeQL High-Severity Alerts Remediation**: Fixed alerts #14 and #15 (`js/incomplete-sanitization`) in `interopUtils.ts` by escaping backslash meta-characters (`.replace(/\\/g, '\\\\')`) prior to escaping quotation marks in cURL header and body argument generation, preventing backslash neutralization attacks.
+  - **Desktop Lockfile Audit & Synchronization**: Synchronized `package-lock.json` with desktop workspace dependencies, resolving missing `@tauri-apps/plugin-dialog` manifest registration with 0 audit vulnerabilities.
+  - **Rust Crates Update**: Updated 133 Cargo crates in `Cargo.lock` to latest compatible versions including `tauri v2.11.6`, `tokio-macros v2.7.2`, and `rustls v0.23.45`.
+- **Modified Files**:
+  - `packages/desktop/src/lib/interopUtils.ts`
+  - `package-lock.json`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `CHANGELOG.md`
+
+## [fix/dependabot-cadence-and-workspace-targeting] - 2026-09-24 (Dependabot Cadence, Desktop Workspace & Grouping Hardening)
+- **Feature Summary**:
+  - **3-Day Cron Pipeline**: Replaced weekly Monday schedule across all ecosystems (`github-actions`, `npm`, `cargo`) with a unified 3-day cron cadence (`0 6 */3 * *`) to establish a continuous, fast-feedback dependency review pipeline.
+  - **Desktop Workspace Targeting**: Configured `package-ecosystem: "npm"` to target `directory: "/packages/desktop"` directly and set `versioning-strategy: "increase"`. This resolves the silent omission caused by the empty root manifest and ensures actual application packages (`react`, `vite`, `tailwindcss`, `@tauri-apps/*`) receive automated PRs.
+  - **CodeQL Action Grouping**: Added `groups: codeql-action` targeting `github/codeql-action/*` to ensure `init`, `analyze`, and `upload-sarif` are bundled into a single atomic PR, eliminating runtime version skew and CI breakage.
+  - **Throttling & Backpressure**: Enforced `open-pull-requests-limit: 5` across all ecosystems to prevent review fatigue and repository inbox flooding.
+- **Modified Files**:
+  - `.github/dependabot.yml`
+  - `CHANGELOG.md`
+
+## [fix/v0.2.3-version-bump] - 2026-09-21 (Workspace & Studio Version Bump to v0.2.3 for Next Release Cycle)
+- **Feature Summary**:
+  - **Comprehensive Version Bump to v0.2.3**: Synchronized workspace and package manifests (`package.json`, `packages/desktop/package.json`, `package-lock.json`, `Cargo.toml`, `Cargo.lock`, and `tauri.conf.json`) to version `0.2.3`.
+  - **Native HTTP Network Headers & Diagnostics**: Updated Rust client diagnostic banner in `storage.rs` to `Proxync v0.2.3 (Engine: Tauri v2.11 Core)`. Synchronized frontend diagnostic logging metadata, log session directives, and support bundle fallbacks in `App.tsx` and `logger.ts` to `v0.2.3-stable`.
+  - **UI Version Presentation Alignment**: Updated `SettingsView.tsx` default prop to `v0.2.3`, `App.tsx` update toast message (`v0.2.3`), and sidebar engine indicator (`v0.2.3-stable`).
+  - **Recon & Documentation Badge Alignment**: Updated README version shield badge and `.agents/architecture.json` static recon map to reflect version `0.2.3`.
+- **Modified Files**:
+  - `README.md`
+  - `package-lock.json`
+  - `package.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/lib/logger.ts`
+  - `CHANGELOG.md`
+
+## [fix/ci-macos-release-dependabot-hardening] - 2026-09-19 (macOS CI Re-integration & Dependabot Flood Prevention)
+- **Feature Summary**:
+  - **macOS Re-added to CI Build Matrix**: Re-added `macos-latest` runner to both `prepare-release.yml` (test matrix) and `release.yml` (build matrix). macOS now builds automatically alongside Windows and Linux in CI.
+  - **Universal Binary Target**: Configured `--target universal-apple-darwin` in `release.yml` so the macOS runner compiles a single Universal Binary (`.dmg`) supporting both Apple Silicon (M1–M4) and Intel Macs.
+  - **Rust Cross-Compile Targets**: Added `aarch64-apple-darwin,x86_64-apple-darwin` to `dtolnay/rust-toolchain` in both `prepare-release.yml` and `release.yml` for symmetric cross-compilation setup.
+  - **macOS Auto-Updater Unblocked**: With `includeUpdaterJson: true` already active, `tauri-action` will now produce `Proxync.app.tar.gz`, `Proxync.app.tar.gz.sig`, and populate `darwin` entries inside `latest.json` automatically — fixing the missing `.dmg.sig` and absent Darwin updater entries that were blocking in-app updates for macOS users.
+  - **Dependabot PR Flood Prevention**: Lowered `open-pull-requests-limit` from `10` to `4` across all three Dependabot ecosystems (`github-actions`, `npm`, `cargo`). All ecosystems already target `develop` — this prevents the initial onboarding surge (24 simultaneous PRs) that occurred when `dependabot.yml` first landed on `main`.
+- **Modified Files**:
+  - `.github/workflows/prepare-release.yml`
+  - `.github/workflows/release.yml`
+  - `.github/dependabot.yml`
+  - `CHANGELOG.md`
+
+### 🍎 macOS Installation Note
+> Proxync is open-source and currently distributed without Apple notarization. macOS Gatekeeper may show **"Proxync is damaged and cannot be opened"** on first launch. This is a standard security warning for apps downloaded from the web that are not signed with an Apple Developer ID — the app itself is safe.
+>
+> **One-time fix — run this in Terminal after dragging Proxync to your Applications folder:**
+> ```bash
+> xattr -cr /Applications/Proxync.app
+> ```
+> After running this command once, Proxync will open normally and auto-update silently in the background for all future releases.
 
 ## [fix/readme-cross-platform-roadmap-refresh] - 2026-09-19 (README Modernization, Cross-Platform Alignment & Unified Roadmap)
 - **Feature Summary**:
