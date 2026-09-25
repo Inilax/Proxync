@@ -1,6 +1,81 @@
 # Changelog
 
-All notable changes to the Proxync (Portly) workspace studio project are documented here.
+All notable changes to the Proxync workspace studio project are documented here.
+
+## [fix/changelog-formatting-web-rendering] - 2026-09-25 (Changelog Markdown Formatting & Web Documentation Rendering Fix)
+- **Feature Summary**:
+  - **CommonMark Heading Separation**: Added missing blank lines before section headers throughout `CHANGELOG.md` (specifically before `[fix/dependency-version-bump]`, `[fix/auto-update]`, `[fix/develop-tunnel-process-teardown]`, `[fix/playground-postman-ux]`, and `[feature/develop-schema-drift-detection]`), preventing markdown parsers from swallowing ATX `##` headers into preceding list items and restoring clean rendering across the web documentation portal.
+- **Modified Files**:
+  - `CHANGELOG.md`
+
+## [fix/schema-drift-response-preview-capture] - 2026-09-25 (Schema Drift Response Preview Capture & Ingestion Precedence)
+- **Feature Summary**:
+  - **Chunked HTTP Response Preview Capture**: In `proxy.rs`, added bounded initial body segment reading with a dedicated constant `BODY_CHUNK_TIMEOUT_MS = 150` when headers terminate exactly at the first TCP buffer boundary. This guarantees that modern frameworks like Next.js and Node.js that flush HTTP headers before chunked body data have their initial response payloads captured into `responseBodyPreview` for schema drift evaluation.
+  - **OpenAPI Runtime Ingestion Precedence**: In `openApiGenerator.ts`, reversed captured traffic iteration (`[...requests].reverse()`) so the latest live responses take precedence over older snapshots when enriching OpenAPI endpoint schemas.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src/lib/openApiGenerator.ts`
+
+## [fix/dependency-version-bump] - 2026-09-25 (Dependencies Upgrade, GitHub Actions Pinning & Dependabot Grouping)
+- **Feature Summary**:
+  - **Rust Backend Crates Upgrade**: Upgraded `reqwest` to `0.13` (enabling rustls TLS engine and json/compression features), `tokio-tungstenite` to `0.30`, and `base64` to `0.23`. Added `#[cfg(unix)]` guard on test import in `tunnel.rs`.
+  - **Frontend Workspace Modernization**: Upgraded React and React-DOM to `19.3.0`, TailwindCSS to `4.3.3`, `@tailwindcss/vite` to `4.3.3`, Vite to `7.3.6`, `@vitejs/plugin-react` to `4.7.0`, and `@tauri-apps/*` plugins to latest releases (`plugin-opener 2.5.5`, `plugin-process 2.3.1`, `plugin-dialog 2.7.3`, `plugin-updater 2.12.0`, `cli 2.11.5`). Pruned unused `@tauri-apps/plugin-shell` dependency.
+  - **CI & GitHub Actions Security Pinning**: Updated all action workflows (`ci.yml`, `codeql.yml`, `prepare-release.yml`, `release.yml`, `scorecard.yml`) to immutable, latest-release commit SHAs: `actions/checkout@v7.0.1`, `actions/setup-node@v7.0.0`, `dorny/paths-filter@v4.0.3`, `swatinem/rust-cache@v2.9.2`, `github/codeql-action/*@v4.38.2`, `peter-evans/create-pull-request@v8.1.1`, and `actions/upload-artifact@v7.0.1`.
+  - **Dependabot Anti-Spam Grouping & Limits**: Enhanced `.github/dependabot.yml` by grouping GitHub Actions, npm dependencies, and Cargo crates into unified update bundles (`actions`, `npm-dependencies`, `cargo-dependencies`) and setting `open-pull-requests-limit: 3` to eliminate multi-PR alert spam.
+- **Modified Files**:
+  - `.github/dependabot.yml`
+  - `.github/workflows/ci.yml`
+  - `.github/workflows/codeql.yml`
+  - `.github/workflows/prepare-release.yml`
+  - `.github/workflows/release.yml`
+  - `.github/workflows/scorecard.yml`
+  - `package-lock.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/src/tunnel.rs`
+  - `CHANGELOG.md`
+
+## [fix/codeql-sanitization-and-dependencies-upgrade] - 2026-09-25 (CodeQL String Sanitization & Dependency Audit Hardening)
+- **Feature Summary**:
+  - **CodeQL High-Severity Alerts Remediation**: Fixed alerts #14 and #15 (`js/incomplete-sanitization`) in `interopUtils.ts` by escaping backslash meta-characters (`.replace(/\\/g, '\\\\')`) prior to escaping quotation marks in cURL header and body argument generation, preventing backslash neutralization attacks.
+  - **Desktop Lockfile Audit & Synchronization**: Synchronized `package-lock.json` with desktop workspace dependencies, resolving missing `@tauri-apps/plugin-dialog` manifest registration with 0 audit vulnerabilities.
+  - **Rust Crates Update**: Updated 133 Cargo crates in `Cargo.lock` to latest compatible versions including `tauri v2.11.6`, `tokio-macros v2.7.2`, and `rustls v0.23.45`.
+- **Modified Files**:
+  - `packages/desktop/src/lib/interopUtils.ts`
+  - `package-lock.json`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `CHANGELOG.md`
+
+## [fix/dependabot-cadence-and-workspace-targeting] - 2026-09-24 (Dependabot Cadence, Desktop Workspace & Grouping Hardening)
+- **Feature Summary**:
+  - **3-Day Cron Pipeline**: Replaced weekly Monday schedule across all ecosystems (`github-actions`, `npm`, `cargo`) with a unified 3-day cron cadence (`0 6 */3 * *`) to establish a continuous, fast-feedback dependency review pipeline.
+  - **Desktop Workspace Targeting**: Configured `package-ecosystem: "npm"` to target `directory: "/packages/desktop"` directly and set `versioning-strategy: "increase"`. This resolves the silent omission caused by the empty root manifest and ensures actual application packages (`react`, `vite`, `tailwindcss`, `@tauri-apps/*`) receive automated PRs.
+  - **CodeQL Action Grouping**: Added `groups: codeql-action` targeting `github/codeql-action/*` to ensure `init`, `analyze`, and `upload-sarif` are bundled into a single atomic PR, eliminating runtime version skew and CI breakage.
+  - **Throttling & Backpressure**: Enforced `open-pull-requests-limit: 5` across all ecosystems to prevent review fatigue and repository inbox flooding.
+- **Modified Files**:
+  - `.github/dependabot.yml`
+  - `CHANGELOG.md`
+
+## [fix/v0.2.3-version-bump] - 2026-09-21 (Workspace & Studio Version Bump to v0.2.3 for Next Release Cycle)
+- **Feature Summary**:
+  - **Comprehensive Version Bump to v0.2.3**: Synchronized workspace and package manifests (`package.json`, `packages/desktop/package.json`, `package-lock.json`, `Cargo.toml`, `Cargo.lock`, and `tauri.conf.json`) to version `0.2.3`.
+  - **Native HTTP Network Headers & Diagnostics**: Updated Rust client diagnostic banner in `storage.rs` to `Proxync v0.2.3 (Engine: Tauri v2.11 Core)`. Synchronized frontend diagnostic logging metadata, log session directives, and support bundle fallbacks in `App.tsx` and `logger.ts` to `v0.2.3-stable`.
+  - **UI Version Presentation Alignment**: Updated `SettingsView.tsx` default prop to `v0.2.3`, `App.tsx` update toast message (`v0.2.3`), and sidebar engine indicator (`v0.2.3-stable`).
+  - **Recon & Documentation Badge Alignment**: Updated README version shield badge and `.agents/architecture.json` static recon map to reflect version `0.2.3`.
+- **Modified Files**:
+  - `README.md`
+  - `package-lock.json`
+  - `package.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/src/storage.rs`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/lib/logger.ts`
+  - `CHANGELOG.md`
 
 ## [fix/ci-macos-release-dependabot-hardening] - 2026-09-19 (macOS CI Re-integration & Dependabot Flood Prevention)
 - **Feature Summary**:
@@ -149,6 +224,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Cross-Platform Safety & Zero Overhead**: Gated under `#[cfg(not(target_os = "windows"))]` and called inside `#[cfg(unix)]`, leaving Windows execution (`cmd.exe /C npx` with `CREATE_NO_WINDOW`) intact without semicolon/colon delimiter conflicts. Avoids slow `$SHELL -ilc` startup stalls and POSIX `std::env::set_var` multi-threading race conditions by scoping PATH injection strictly to the child command.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/tunnel.rs`
+
 ## [fix/auto-update] - 2026-09-14 (Auto-Updater IPC Permissions, Manifest Artifacts & Automated Relaunch Flow)
 - **Feature Summary**:
   - **Tauri v2 Process Relaunch Capabilities (`default.json`)**: Added `process:allow-restart` and `process:allow-exit` to `capabilities/default.json`. Resolves fatal Tauri IPC security permission denial (`Operation not permitted (os error 1)`) when calling `relaunch()` from `@tauri-apps/plugin-process` following an update installation.
@@ -287,6 +363,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - `packages/desktop/src-tauri/Cargo.toml`
   - `packages/desktop/src-tauri/Cargo.lock`
   - `packages/desktop/src-tauri/tauri.conf.json`
+
 ## [fix/develop-tunnel-process-teardown] - 2026-09-10 (Cross-Platform Subprocess Tree Teardown, Orphan Daemon Prevention & Tunnel Lifecycle Hardening)
 - **Feature Summary**:
   - **Unified Subprocess Tree Teardown (`kill_child_process_tree`)**: Replaced scattered, duplicated process-killing logic with a shared cross-platform teardown helper. Uses `taskkill /F /T /PID` on Windows to recursively kill child process trees and POSIX `kill -KILL -- -<pid>` (process group kill) alongside `pkill -KILL -P <pid>` on Unix, preventing detached `node` and `cloudflared` background daemon leaks.
@@ -319,6 +396,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `package-lock.json`
+
 ## [fix/playground-postman-ux] - 2026-09-07 (API Playground — Postman-Grade UX Upgrade)
 - **Feature Summary**:
   - **Right-click "Add Request"**: Folder/collection context menu now includes an "Add Request" option to insert new requests directly into a collection without modifying the active draft.
@@ -338,6 +416,7 @@ All notable changes to the Proxync (Portly) workspace studio project are documen
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/components/views/PostmanView.tsx`
   - `packages/desktop/src/components/views/KeyboardShortcutsDialog.tsx`
+
 ## [feature/develop-schema-drift-detection] - 2026-09-07 (Schema Drift Hardening, Council Review Optimizations & Guardrail Indicator)
 - **Feature Summary**:
   - **Fuzzy Rename Guard (`schemaDriftDetector.ts`)**: Enforced a minimum field length check (>= 3 chars) on Levenshtein edit-distance matching, preventing false positive `FIELD_RENAMED` violations between unrelated short identifiers (e.g., `id`, `at`, `ts`, `ip`).
