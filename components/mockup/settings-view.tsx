@@ -197,7 +197,7 @@ export function SettingsView({
             </div>
           </div>
           <span className="self-start sm:self-center rounded border border-primary/40 bg-primary/20 px-2.5 py-0.5 sm:px-3 sm:py-1 font-mono text-[10px] sm:text-xs font-bold text-primary shrink-0 whitespace-nowrap">
-            v0.2.2 Enterprise Preview
+            v0.2.3 Enterprise Preview
           </span>
         </div>
       </div>

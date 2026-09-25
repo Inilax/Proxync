@@ -23,7 +23,7 @@ export function Sidebar({
           <div className="hidden lg:block">
             <span className="block text-xs font-bold text-on-surface leading-tight">Proxync Engine</span>
             <span className="block font-mono text-[9px] text-white/60 leading-tight">
-              v0.2.2-stable
+              v0.2.3-stable
             </span>
           </div>
         </div>

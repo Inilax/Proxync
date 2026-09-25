@@ -13,7 +13,7 @@ export * from "./release-constants";
 
 /**
  * Client hook to get the latest release data dynamically.
- * Starts with DEFAULT_RELEASE (v0.2.2) and updates asynchronously from /api/release.
+ * Starts with DEFAULT_RELEASE (v0.2.3) and updates asynchronously from /api/release.
  */
 export function useLatestRelease(): ReleaseInfo {
   const [release, setRelease] = useState<ReleaseInfo>(DEFAULT_RELEASE);

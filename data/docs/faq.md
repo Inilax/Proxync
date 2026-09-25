@@ -102,9 +102,9 @@ Because Proxync is built with **Tauri v2 and Rust** rather than heavy Electron w
 **Proxync is 100% free and open-source under the Apache 2.0 license.** There are no paywalls, no bandwidth throttling, no artificial tunnel session time limits, and no team seat licenses.
 
 ### Which operating systems are supported today?
-- **Windows (x64):** Available now via signed installer (`Proxync_0.2.2_x64-setup.exe` or `.msi`).
-- **macOS (Apple Silicon & Intel):** Available now via Universal `.dmg` (`Proxync_0.2.2_universal.dmg`).
-- **Linux (x64):** Available now via native `.deb` package (`proxync_0.2.2_amd64.deb`) and universal `.AppImage` (`Proxync_0.2.2_amd64.AppImage`).
+- **Windows (x64):** Available now via signed installer (`Proxync_0.2.3_x64-setup.exe` or `.msi`).
+- **macOS (Apple Silicon & Intel):** Available now via Universal `.dmg` (`Proxync_0.2.3_universal.dmg`).
+- **Linux (x64):** Available now via native `.deb` package (`proxync_0.2.3_amd64.deb`) and universal `.AppImage` (`Proxync_0.2.3_amd64.AppImage`).
 
 ---
 

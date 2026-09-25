@@ -147,7 +147,7 @@ export function TrafficView() {
             <div className="bg-surface-container p-2.5 rounded-lg space-y-1 text-[11px]">
               <div><span className="text-white/70">content-type:</span> <span className="text-white">application/json</span></div>
               <div><span className="text-white/70">authorization:</span> <span className="text-white">Bearer ••••••••</span></div>
-              <div><span className="text-white/70">user-agent:</span> <span className="text-white">Proxync-Desktop/0.2.2</span></div>
+              <div><span className="text-white/70">user-agent:</span> <span className="text-white">Proxync-Desktop/0.2.3</span></div>
             </div>
           </div>
 

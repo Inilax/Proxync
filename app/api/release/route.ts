@@ -56,7 +56,7 @@ export async function GET() {
         return sa.patch >= sb.patch;
       };
 
-      // Only adopt GitHub tag if it's equal to or newer than our DEFAULT_RELEASE (v0.2.2)
+      // Only adopt GitHub tag if it's equal to or newer than our DEFAULT_RELEASE (v0.2.3)
       const tagName = rawTag && isNewerOrEqual(rawTag, DEFAULT_RELEASE.tagName)
         ? rawTag
         : DEFAULT_RELEASE.tagName;

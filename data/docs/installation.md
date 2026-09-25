@@ -11,9 +11,9 @@ Getting started with Proxync is quick and easy. Proxync is packaged as a lightwe
 
 | Operating System | Architecture | Package Format | Status | Local Data Location |
 | :--- | :--- | :--- | :--- | :--- |
-| **Windows** | Windows 10 / 11 (`x64`) | NSIS Setup `.exe` / `.msi` | **Available Now (v0.2.2)** | `%APPDATA%\Proxync\` |
-| **macOS** | Apple Silicon & Intel (`arm64`, `x64`) | `.dmg` / `.app` | **Available Now (v0.2.2)** | `~/Library/Application Support/Proxync/` |
-| **Linux** | Ubuntu, Debian, Fedora, Arch (`x64`) | `.deb` / `.AppImage` | **Available Now (v0.2.2)** | `~/.config/Proxync/` |
+| **Windows** | Windows 10 / 11 (`x64`) | NSIS Setup `.exe` / `.msi` | **Available Now (v0.2.3)** | `%APPDATA%\Proxync\` |
+| **macOS** | Apple Silicon & Intel (`arm64`, `x64`) | `.dmg` / `.app` | **Available Now (v0.2.3)** | `~/Library/Application Support/Proxync/` |
+| **Linux** | Ubuntu, Debian, Fedora, Arch (`x64`) | `.deb` / `.AppImage` | **Available Now (v0.2.3)** | `~/.config/Proxync/` |
 
 ---
 
@@ -35,7 +35,7 @@ To run Proxync, you only need a few standard developer tools:
 The easiest way to install Proxync on Windows is via the signed installer:
 
 1. Head over to the official [GitHub Releases](https://github.com/Inilax/Proxync/releases) page.
-2. Download `Proxync_0.2.2_x64-setup.exe` (or the `.msi` bundle).
+2. Download `Proxync_0.2.3_x64-setup.exe` (or the `.msi` bundle).
 3. Run the installer and follow the setup wizard.
 4. Launch **Proxync** from your Start menu or desktop shortcut.
 
@@ -46,7 +46,7 @@ The easiest way to install Proxync on Windows is via the signed installer:
 Proxync runs natively on Apple Silicon (M-series) and Intel Macs via a Universal binary:
 
 1. Head over to the official [GitHub Releases](https://github.com/Inilax/Proxync/releases) page.
-2. Download `Proxync_0.2.2_universal.dmg`.
+2. Download `Proxync_0.2.3_universal.dmg`.
 3. Open the disk image and drag **Proxync** into your **Applications** folder.
 4. Launch **Proxync** from Spotlight, Launchpad, or Finder.
 
@@ -57,18 +57,18 @@ Proxync runs natively on Apple Silicon (M-series) and Intel Macs via a Universal
 Proxync provides native packages for major 64-bit Linux distributions:
 
 - **Debian / Ubuntu / Mint (`.deb`)**:
-  Download `proxync_0.2.2_amd64.deb` and install it:
+  Download `proxync_0.2.3_amd64.deb` and install it:
   ```bash
-  sudo dpkg -i proxync_0.2.2_amd64.deb
+  sudo dpkg -i proxync_0.2.3_amd64.deb
   # or
-  sudo apt install ./proxync_0.2.2_amd64.deb
+  sudo apt install ./proxync_0.2.3_amd64.deb
   ```
 
 - **Universal AppImage**:
-  Download `Proxync_0.2.2_amd64.AppImage`, make it executable, and run:
+  Download `Proxync_0.2.3_amd64.AppImage`, make it executable, and run:
   ```bash
-  chmod +x Proxync_0.2.2_amd64.AppImage
-  ./Proxync_0.2.2_amd64.AppImage
+  chmod +x Proxync_0.2.3_amd64.AppImage
+  ./Proxync_0.2.3_amd64.AppImage
   ```
 
 > [!NOTE]
