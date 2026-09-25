@@ -2,6 +2,13 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [fix/schema-drift-response-preview-capture] - 2026-09-25 (Schema Drift Response Preview Capture & Ingestion Precedence)
+- **Feature Summary**:
+  - **Chunked HTTP Response Preview Capture**: In `proxy.rs`, added bounded initial body segment reading with a dedicated constant `BODY_CHUNK_TIMEOUT_MS = 150` when headers terminate exactly at the first TCP buffer boundary. This guarantees that modern frameworks like Next.js and Node.js that flush HTTP headers before chunked body data have their initial response payloads captured into `responseBodyPreview` for schema drift evaluation.
+  - **OpenAPI Runtime Ingestion Precedence**: In `openApiGenerator.ts`, reversed captured traffic iteration (`[...requests].reverse()`) so the latest live responses take precedence over older snapshots when enriching OpenAPI endpoint schemas.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src/lib/openApiGenerator.ts`
 ## [fix/dependency-version-bump] - 2026-09-25 (Dependencies Upgrade, GitHub Actions Pinning & Dependabot Grouping)
 - **Feature Summary**:
   - **Rust Backend Crates Upgrade**: Upgraded `reqwest` to `0.13` (enabling rustls TLS engine and json/compression features), `tokio-tungstenite` to `0.30`, and `base64` to `0.23`. Added `#[cfg(unix)]` guard on test import in `tunnel.rs`.
