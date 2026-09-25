@@ -9,7 +9,16 @@ Here is what we have accomplished and what is coming next.
 
 ---
 
-## Completed in v0.2.2 (Current Release)
+## Completed in v0.2.3 (Current Release)
+
+- [x] **API Schema Drifter Hotfix** — Resolved an issue where the runtime API schema drifter was failing to detect and reconcile contract drift against active endpoints during traffic inspection.
+- [x] **Dependent Bot Noise Shield Fix** — Fixed false-positive triggers and traffic noise filtering for dependent background bots, health checkers, and keep-alive pingers.
+- [x] **Workspace Dependency Modernization** — Bumped all outdated workspace libraries and dependencies to their latest stable releases, addressing security vulnerabilities.
+- [x] **Minor Bug Fixes & Stability Polish** — General engine improvements across socket recon fallback, UI state preservation, and background process event handling.
+
+---
+
+## Completed in v0.2.2
 
 - [x] **Dynamic Relay DNS (`relay.proxync.dev:2222`)** — Low-latency origin routing with seamless background server failovers.
 - [x] **Resilient Standby Mode** — Public URLs stay active across local server hot-reloads and restarts, eliminating broken webhook deliveries.

@@ -18,7 +18,7 @@ export interface PlatformDownload {
 }
 
 export const GITHUB_REPO_URL = "https://github.com/Inilax/Proxync";
-export const DEFAULT_VERSION = "0.2.2";
+export const DEFAULT_VERSION = "0.2.3";
 export const DEFAULT_TAG = `v${DEFAULT_VERSION}`;
 
 export function getDownloadsForVersion(version: string): Record<Platform, PlatformDownload> {

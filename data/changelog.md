@@ -2,6 +2,21 @@
 
 All notable changes to the Proxync (Portly) workspace studio project are documented here.
 
+## [v0.2.3] - 2026-09-25 (API Schema Drifter Hotfix, Dependent Bot Fix & Dependency Modernization)
+- **Feature Summary**:
+  - **API Schema Drifter Hotfix**: Resolved an issue where the runtime API schema drifter was failing to detect and reconcile contract drift against active endpoints during traffic inspection.
+  - **Dependent Bot Noise Shield Fix**: Fixed false-positive triggers and traffic noise filtering for dependent background bots, health checkers, and keep-alive pingers.
+  - **Dependency Modernization**: Bumped all outdated workspace libraries and dependencies to their latest stable releases, resolving security advisories.
+  - **Minor Bug Fixes & Stability Polish**: General stability improvements across kernel socket recon fallback, UI state preservation, and background process event handling.
+- **Modified Files**:
+  - `components/hero.tsx`
+  - `components/app-mockup.tsx`
+  - `components/cta.tsx`
+  - `lib/release-constants.ts`
+  - `data/docs/installation.md`
+  - `data/docs/faq.md`
+  - `data/docs/roadmap.md`
+
 ## [fix/readme-cross-platform-roadmap-refresh] - 2026-09-19 (README Modernization, Cross-Platform Alignment & Unified Roadmap)
 - **Feature Summary**:
   - **Cross-Platform Status Alignment**: Updated `README.md` to reflect full desktop support across Windows, Linux, and macOS with active platform badges and native bundle targets (`.msi`/`.exe`, `.deb`/`.AppImage`, `.dmg`/`.app`).

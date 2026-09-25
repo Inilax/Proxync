@@ -91,7 +91,7 @@ export function Hero() {
             <span className="text-[#1F232E] hidden sm:inline">/</span>
             <span>Local-First API Tunneling</span>
             <span className="text-[#1F232E]">·</span>
-            <span className="font-mono text-[10.5px] sm:text-[11px] text-primary font-medium shrink-0">v0.2.2</span>
+            <span className="font-mono text-[10.5px] sm:text-[11px] text-primary font-medium shrink-0">v0.2.3</span>
           </div>
         </motion.div>
 

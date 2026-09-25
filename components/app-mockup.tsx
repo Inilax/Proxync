@@ -109,7 +109,7 @@ export function AppMockup() {
             </div>
 
             <span className="font-mono text-xs font-bold text-primary px-2.5 py-0.5 bg-primary/10 rounded border border-primary/30 hidden sm:inline">
-              {release?.version ? `v${release.version}-stable` : "v0.2.2-stable"}
+              {release?.version ? `v${release.version}-stable` : "v0.2.3-stable"}
             </span>
           </div>
         </div>

@@ -122,7 +122,7 @@ export function WelcomeView({
           </div>
         </div>
 
-        {/* Quick Action Tiles — v0.2.2 Hardened Workflows */}
+        {/* Quick Action Tiles — v0.2.3 Hardened Workflows */}
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-2.5">
           <button
             onClick={() => onNavigate("process")}

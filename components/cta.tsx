@@ -85,7 +85,7 @@ export function Cta() {
                 <span className="text-xs font-bold text-white flex items-center gap-1.5">
                   <span>macOS</span>
                   <span className="px-1.5 py-0.5 rounded bg-primary/20 text-primary text-[9px] font-mono">
-                    {download.platform === "macos" ? "Detected (Latest)" : "v0.2.2"}
+                    {download.platform === "macos" ? "Detected (Latest)" : "v0.2.3"}
                   </span>
                 </span>
                 <span className="text-[10px] font-mono text-[#8E93A4]">{downloads.macos.statusNote}</span>
@@ -108,7 +108,7 @@ export function Cta() {
                 <span className="text-xs font-bold text-white flex items-center gap-1.5">
                   <span>Linux</span>
                   <span className="px-1.5 py-0.5 rounded bg-primary/20 text-primary text-[9px] font-mono">
-                    {download.platform === "linux" ? "Detected (Latest)" : "v0.2.2"}
+                    {download.platform === "linux" ? "Detected (Latest)" : "v0.2.3"}
                   </span>
                 </span>
                 <span className="text-[10px] font-mono text-[#8E93A4]">{downloads.linux.statusNote}</span>
