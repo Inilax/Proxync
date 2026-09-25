@@ -15,7 +15,9 @@
         "title": "Proxync",
         "width": 800,
         "height": 600,
-        "decorations": false
+        "decorations": true,
+        "hiddenTitle": true,
+        "titleBarStyle": "Visible"
       }
     ],
     "security": {
@@ -32,10 +34,8 @@
     "category": "DeveloperTool",
     "createUpdaterArtifacts": true,
     "targets": [
-      "nsis",
-      "msi",
-      "deb",
-      "appimage"
+      "app",
+      "dmg"
     ],
     "icon": [
       "icons/32x32.png",
@@ -44,21 +44,22 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "windows": {
-      "nsis": {
-        "installerIcon": "icons/icon.ico",
-        "uninstallerIcon": "icons/icon.ico",
-        "headerImage": "icons/nsis-header.bmp",
-        "sidebarImage": "icons/nsis-sidebar.bmp"
-      }
-    },
-    "linux": {
-      "deb": {
-        "section": "devel",
-        "priority": "optional"
-      },
-      "appimage": {
-        "bundleMediaFramework": false
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "signingIdentity": "-",
+      "dmg": {
+        "windowSize": {
+          "width": 660,
+          "height": 400
+        },
+        "appPosition": {
+          "x": 180,
+          "y": 170
+        },
+        "applicationFolderPosition": {
+          "x": 480,
+          "y": 170
+        }
       }
     }
   },
