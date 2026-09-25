@@ -2,6 +2,12 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [fix/changelog-formatting-web-rendering] - 2026-09-25 (Changelog Markdown Formatting & Web Documentation Rendering Fix)
+- **Feature Summary**:
+  - **CommonMark Heading Separation**: Added missing blank lines before section headers throughout `CHANGELOG.md` (specifically before `[fix/dependency-version-bump]`, `[fix/auto-update]`, `[fix/develop-tunnel-process-teardown]`, `[fix/playground-postman-ux]`, and `[feature/develop-schema-drift-detection]`), preventing markdown parsers from swallowing ATX `##` headers into preceding list items and restoring clean rendering across the web documentation portal.
+- **Modified Files**:
+  - `CHANGELOG.md`
+
 ## [fix/schema-drift-response-preview-capture] - 2026-09-25 (Schema Drift Response Preview Capture & Ingestion Precedence)
 - **Feature Summary**:
   - **Chunked HTTP Response Preview Capture**: In `proxy.rs`, added bounded initial body segment reading with a dedicated constant `BODY_CHUNK_TIMEOUT_MS = 150` when headers terminate exactly at the first TCP buffer boundary. This guarantees that modern frameworks like Next.js and Node.js that flush HTTP headers before chunked body data have their initial response payloads captured into `responseBodyPreview` for schema drift evaluation.
@@ -9,6 +15,7 @@ All notable changes to the Proxync workspace studio project are documented here.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/proxy.rs`
   - `packages/desktop/src/lib/openApiGenerator.ts`
+
 ## [fix/dependency-version-bump] - 2026-09-25 (Dependencies Upgrade, GitHub Actions Pinning & Dependabot Grouping)
 - **Feature Summary**:
   - **Rust Backend Crates Upgrade**: Upgraded `reqwest` to `0.13` (enabling rustls TLS engine and json/compression features), `tokio-tungstenite` to `0.30`, and `base64` to `0.23`. Added `#[cfg(unix)]` guard on test import in `tunnel.rs`.
@@ -217,6 +224,7 @@ All notable changes to the Proxync workspace studio project are documented here.
   - **Cross-Platform Safety & Zero Overhead**: Gated under `#[cfg(not(target_os = "windows"))]` and called inside `#[cfg(unix)]`, leaving Windows execution (`cmd.exe /C npx` with `CREATE_NO_WINDOW`) intact without semicolon/colon delimiter conflicts. Avoids slow `$SHELL -ilc` startup stalls and POSIX `std::env::set_var` multi-threading race conditions by scoping PATH injection strictly to the child command.
 - **Modified Files**:
   - `packages/desktop/src-tauri/src/tunnel.rs`
+
 ## [fix/auto-update] - 2026-09-14 (Auto-Updater IPC Permissions, Manifest Artifacts & Automated Relaunch Flow)
 - **Feature Summary**:
   - **Tauri v2 Process Relaunch Capabilities (`default.json`)**: Added `process:allow-restart` and `process:allow-exit` to `capabilities/default.json`. Resolves fatal Tauri IPC security permission denial (`Operation not permitted (os error 1)`) when calling `relaunch()` from `@tauri-apps/plugin-process` following an update installation.
@@ -355,6 +363,7 @@ All notable changes to the Proxync workspace studio project are documented here.
   - `packages/desktop/src-tauri/Cargo.toml`
   - `packages/desktop/src-tauri/Cargo.lock`
   - `packages/desktop/src-tauri/tauri.conf.json`
+
 ## [fix/develop-tunnel-process-teardown] - 2026-09-10 (Cross-Platform Subprocess Tree Teardown, Orphan Daemon Prevention & Tunnel Lifecycle Hardening)
 - **Feature Summary**:
   - **Unified Subprocess Tree Teardown (`kill_child_process_tree`)**: Replaced scattered, duplicated process-killing logic with a shared cross-platform teardown helper. Uses `taskkill /F /T /PID` on Windows to recursively kill child process trees and POSIX `kill -KILL -- -<pid>` (process group kill) alongside `pkill -KILL -P <pid>` on Unix, preventing detached `node` and `cloudflared` background daemon leaks.
@@ -387,6 +396,7 @@ All notable changes to the Proxync workspace studio project are documented here.
   - **Missing Manifest UX Hardening (`App.tsx`)**: Upgraded the updater error handler to gracefully swallow HTTP 404s and invalid JSON responses from GitHub (which typically occur prior to CI/CD publishing `latest.json`). Instead of surfacing a scary technical exception, the UI now displays a friendly `"✅ Proxync is up to date"` success toast, improving the unreleased/early-deployment user experience.
 - **Modified Files**:
   - `package-lock.json`
+
 ## [fix/playground-postman-ux] - 2026-09-07 (API Playground — Postman-Grade UX Upgrade)
 - **Feature Summary**:
   - **Right-click "Add Request"**: Folder/collection context menu now includes an "Add Request" option to insert new requests directly into a collection without modifying the active draft.
@@ -406,6 +416,7 @@ All notable changes to the Proxync workspace studio project are documented here.
   - `packages/desktop/src/App.tsx`
   - `packages/desktop/src/components/views/PostmanView.tsx`
   - `packages/desktop/src/components/views/KeyboardShortcutsDialog.tsx`
+
 ## [feature/develop-schema-drift-detection] - 2026-09-07 (Schema Drift Hardening, Council Review Optimizations & Guardrail Indicator)
 - **Feature Summary**:
   - **Fuzzy Rename Guard (`schemaDriftDetector.ts`)**: Enforced a minimum field length check (>= 3 chars) on Levenshtein edit-distance matching, preventing false positive `FIELD_RENAMED` violations between unrelated short identifiers (e.g., `id`, `at`, `ts`, `ip`).
