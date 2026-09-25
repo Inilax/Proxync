@@ -1,11 +1,11 @@
 name: Prepare Release
 
 # Run this manually from the "Actions" tab in GitHub when develop is ready.
-# It tests develop across Windows, Linux, and macOS, bumps the version,
+# It tests develop across Windows and Linux, bumps the version,
 # and opens a PR into main.
 # Merging that PR into main triggers release.yml, which builds and signs the
-# installers for Windows, Linux, and macOS, creates the permanent release-vX.Y.Z
-# branch, and publishes the GitHub Release.
+# Windows and Linux installers, creates the permanent release-vX.Y.Z
+# branch, and publishes the GitHub Release (macOS DMG attached manually).
 
 on:
   workflow_dispatch:
@@ -30,7 +30,6 @@ jobs:
         include:
           - platform: 'windows-latest'
           - platform: 'ubuntu-22.04'
-          - platform: 'macos-latest'
     runs-on: ${{ matrix.platform }}
     permissions:
       contents: read
@@ -58,7 +57,6 @@ jobs:
         uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
         with:
           toolchain: stable
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@f0deed1e0edfc6a9be95417288c0e1099b1eeec3 # v2.7.7
@@ -160,26 +158,26 @@ jobs:
           fs.writeFileSync(cargoPath, cargo);
           EOF
 
-      - name: Open release pull request into main
-        uses: peter-evans/create-pull-request@c5a7806660adbe173f04e3e038b0ccdcd758773c # v6.1.0
-        with:
-          branch: release-staging/v${{ steps.version.outputs.version }}
-          base: main
-          title: "Release v${{ steps.version.outputs.version }}"
-          commit-message: "chore(release): bump version to ${{ steps.version.outputs.version }}"
-          labels: release
-          body: |
-            Automated release PR for **v${{ steps.version.outputs.version }}**.
+      - name: Commit and push bump directly to develop
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(release): bump version to ${{ steps.version.outputs.version }}"
+          git push origin develop
 
-            ### Pre-release Verification
-            - :white_check_mark: Automated tests passed across **Windows**, **Linux**, and **macOS**.
-
-            ### Release Scope
-            Merging this PR into `main` triggers `release.yml`, which will build, sign, and publish:
-            - **Windows**: NSIS Setup (`.exe`) and Windows Installer (`.msi`) [Automated CI]
-            - **Linux**: Debian package (`.deb`) and AppImage (`.AppImage`) [Automated CI]
-            - **macOS**: Universal Binary (`.dmg`, `.app`) for Apple Silicon & Intel [Automated CI]
-            - **Updater Metadata**: Signed update bundles & signatures (`.sig`, `updater.json`)
-            - **Git Snapshot**: Tag `v${{ steps.version.outputs.version }}` & permanent branch `release-v${{ steps.version.outputs.version }}`
-
-            Please review and approve to release.
+      - name: Open PR from develop into main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if an open PR from develop into main already exists
+          EXISTING_PR=$(gh pr list --base main --head develop --state open --json number -q '.[0].number')
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR already exists: #$EXISTING_PR"
+          else
+            gh pr create \
+              --base main \
+              --head develop \
+              --title "Release v${{ steps.version.outputs.version }}" \
+              --label "release" \
+              --body "Automated release PR for **v${{ steps.version.outputs.version }}**."
+          fi
