@@ -7,14 +7,14 @@ updates:
     schedule:
       interval: "cron"
       cronjob: "0 6 */3 * *"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     commit-message:
       prefix: "ci"
       include: "scope"
     groups:
-      codeql-action:
+      actions:
         patterns:
-          - "github/codeql-action/*"
+          - "*"
 
   # Maintain dependencies for desktop npm workspace
   - package-ecosystem: "npm"
@@ -23,11 +23,18 @@ updates:
     schedule:
       interval: "cron"
       cronjob: "0 6 */3 * *"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     versioning-strategy: "increase"
     commit-message:
       prefix: "chore"
       include: "scope"
+    groups:
+      npm-dependencies:
+        patterns:
+          - "*"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   # Maintain dependencies for Rust Tauri backend
   - package-ecosystem: "cargo"
@@ -36,8 +43,12 @@ updates:
     schedule:
       interval: "cron"
       cronjob: "0 6 */3 * *"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     commit-message:
       prefix: "chore"
       include: "scope"
+    groups:
+      cargo-dependencies:
+        patterns:
+          - "*"
 

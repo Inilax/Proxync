@@ -21,18 +21,24 @@ function resolveUrl(req: RequestLog | SavedRequest, baseUrl?: string): string {
 export function generateCurlCommand(req: RequestLog | SavedRequest, baseUrl?: string): string {
   const method = (req.method || 'GET').toUpperCase();
   const fullUrl = resolveUrl(req, baseUrl);
-  const parts: string[] = [`curl -X ${method} "${fullUrl}"`];
+  const safeUrl = fullUrl.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const parts: string[] = [`curl -X ${method} "${safeUrl}"`];
 
   const headers = req.headers || {};
   Object.entries(headers).forEach(([key, val]) => {
     if (key && val) {
-      parts.push(`-H "${key}: ${val.replace(/"/g, '\\"')}"`);
+      // CodeQL js/incomplete-sanitization: escape backslashes first, then double quotes
+      const safeKey = String(key).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      const safeVal = String(val).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      parts.push(`-H "${safeKey}: ${safeVal}"`);
     }
   });
 
   const body = 'bodyPreview' in req ? req.bodyPreview : 'body' in req ? req.body : '';
   if (body && !['GET', 'HEAD'].includes(method)) {
-    parts.push(`-d '${body.replace(/'/g, "\\'")}'`);
+    // CodeQL js/incomplete-sanitization: escape backslashes first, then single quotes
+    const safeBody = body.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    parts.push(`-d '${safeBody}'`);
   }
 
   return parts.join(' \\\n  ');

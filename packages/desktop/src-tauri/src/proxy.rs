@@ -223,10 +223,29 @@ pub async fn start_proxy(app: tauri::AppHandle, local_port: u16) -> Result<u16, 
 
                 // Read initial response chunk to capture HTTP status code and latency duration
                 let mut res_buf = vec![0u8; 16384];
-                let n_res = match target_stream.read(&mut res_buf).await {
+                let mut n_res = match target_stream.read(&mut res_buf).await {
                     Ok(bytes) if bytes > 0 => bytes,
                     _ => return,
                 };
+
+                // ponytail: if headers were flushed in first TCP segment (e.g. Next.js/Node chunked encoding),
+                // read the initial body segment into the buffer so responseBodyPreview is captured for schema drift.
+                // BODY_CHUNK_TIMEOUT_MS: chosen to be > a Node.js event-loop tick (~16 ms) but imperceptible to the user.
+                // Upgrade path: expose via AppSettings if users need tuning.
+                const BODY_CHUNK_TIMEOUT_MS: u64 = 150;
+                if !is_ws_upgrade && !is_sse {
+                    if let Some(pos) = res_buf[..n_res].windows(4).position(|w| w == b"\r\n\r\n") {
+                        let header_end = pos + 4;
+                        if header_end == n_res && n_res < res_buf.len() {
+                            if let Ok(Ok(extra)) = tokio::time::timeout(
+                                std::time::Duration::from_millis(BODY_CHUNK_TIMEOUT_MS),
+                                target_stream.read(&mut res_buf[n_res..]),
+                            ).await {
+                                n_res += extra;
+                            }
+                        }
+                    }
+                }
 
                 let duration_ms = start_instant.elapsed().as_millis() as u64;
                 let res_str = String::from_utf8_lossy(&res_buf[..n_res]);
