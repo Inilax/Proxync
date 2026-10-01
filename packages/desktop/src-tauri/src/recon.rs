@@ -66,7 +66,7 @@ fn is_dev_port(port: u16) -> bool {
 
 pub trait PlatformScanner: Send + Sync {
     fn scan_listening_ports(&self) -> (HashMap<u16, u32>, HashMap<u32, Vec<u16>>);
-    fn scan_processes(&self) -> HashMap<u32, RawProcess>;
+    fn scan_processes(&self, pids: &[u32]) -> HashMap<u32, RawProcess>;
     fn get_process_cwd(&self, pid: u32) -> Option<String>;
 }
 
@@ -122,80 +122,83 @@ impl PlatformScanner for LinuxScanner {
         (port_to_pid, pid_to_ports)
     }
 
-    fn scan_processes(&self) -> HashMap<u32, RawProcess> {
+    fn scan_processes(&self, pids: &[u32]) -> HashMap<u32, RawProcess> {
         let mut map = HashMap::new();
-        let entries = match std::fs::read_dir("/proc") {
-            Ok(e) => e,
-            Err(_) => return map,
-        };
+        if pids.is_empty() {
+            return map;
+        }
 
-        for entry in entries.flatten() {
-            let file_name = entry.file_name();
-            let pid_str = match file_name.to_str() {
-                Some(s) => s,
-                None => continue,
-            };
-            let pid: u32 = match pid_str.parse() {
-                Ok(p) => p,
-                Err(_) => continue,
-            };
+        for &pid in pids {
+            let mut curr = Some(pid);
+            let mut depth = 0;
+            while let Some(target) = curr {
+                if depth >= 5 || map.contains_key(&target) {
+                    break;
+                }
 
-            let proc_dir = entry.path();
+                let proc_dir = std::path::PathBuf::from(format!("/proc/{}", target));
+                if !proc_dir.is_dir() {
+                    break;
+                }
 
-            // 1. Process name: try /proc/[pid]/comm, fallback to stat
-            let mut name = std::fs::read_to_string(proc_dir.join("comm"))
-                .map(|s| s.trim().to_string())
-                .unwrap_or_default();
+                // 1. Process name: try /proc/[pid]/comm, fallback to stat
+                let mut name = std::fs::read_to_string(proc_dir.join("comm"))
+                    .map(|s| s.trim().to_string())
+                    .unwrap_or_default();
 
-            // 2. Parent PID & name fallback: parse /proc/[pid]/stat
-            let mut parent_pid = None;
-            if let Ok(stat_content) = std::fs::read_to_string(proc_dir.join("stat")) {
-                if let Some(rparen) = stat_content.rfind(')') {
-                    let rest = &stat_content[rparen + 1..];
-                    let fields: Vec<&str> = rest.split_whitespace().collect();
-                    if fields.len() >= 2 {
-                        if let Ok(ppid) = fields[1].parse::<u32>() {
-                            parent_pid = Some(ppid);
+                // 2. Parent PID & name fallback: parse /proc/[pid]/stat
+                let mut parent_pid = None;
+                if let Ok(stat_content) = std::fs::read_to_string(proc_dir.join("stat")) {
+                    if let Some(rparen) = stat_content.rfind(')') {
+                        let rest = &stat_content[rparen + 1..];
+                        let fields: Vec<&str> = rest.split_whitespace().collect();
+                        if fields.len() >= 2 {
+                            if let Ok(ppid) = fields[1].parse::<u32>() {
+                                parent_pid = Some(ppid);
+                            }
                         }
-                    }
-                    if name.is_empty() {
-                        if let Some(lparen) = stat_content.find('(') {
-                            name = stat_content[lparen + 1..rparen].to_string();
+                        if name.is_empty() {
+                            if let Some(lparen) = stat_content.find('(') {
+                                name = stat_content[lparen + 1..rparen].to_string();
+                            }
                         }
                     }
                 }
+
+                // 3. Command line: /proc/[pid]/cmdline (arguments separated by \0)
+                let cmd_line = match std::fs::read(proc_dir.join("cmdline")) {
+                    Ok(bytes) if !bytes.is_empty() => {
+                        let parts: Vec<String> = bytes
+                            .split(|&b| b == 0)
+                            .filter(|slice| !slice.is_empty())
+                            .map(|slice| String::from_utf8_lossy(slice).trim().to_string())
+                            .filter(|s| !s.is_empty())
+                            .collect();
+                        if parts.is_empty() {
+                            None
+                        } else {
+                            Some(parts.join(" "))
+                        }
+                    }
+                    _ => None,
+                };
+
+                // 4. Executable path: readlink /proc/[pid]/exe
+                let exec_path = std::fs::read_link(proc_dir.join("exe"))
+                    .ok()
+                    .map(|p| p.to_string_lossy().to_string());
+
+                map.insert(target, RawProcess {
+                    pid: target,
+                    parent_pid,
+                    name,
+                    exec_path,
+                    cmd_line,
+                });
+
+                curr = parent_pid;
+                depth += 1;
             }
-
-            // 3. Command line: /proc/[pid]/cmdline (arguments separated by \0)
-            let cmd_line = match std::fs::read(proc_dir.join("cmdline")) {
-                Ok(bytes) if !bytes.is_empty() => {
-                    let parts: Vec<String> = bytes
-                        .split(|&b| b == 0)
-                        .filter(|slice| !slice.is_empty())
-                        .map(|slice| String::from_utf8_lossy(slice).trim().to_string())
-                        .filter(|s| !s.is_empty())
-                        .collect();
-                    if parts.is_empty() {
-                        None
-                    } else {
-                        Some(parts.join(" "))
-                    }
-                }
-                _ => None,
-            };
-
-            // 4. Executable path: readlink /proc/[pid]/exe
-            let exec_path = std::fs::read_link(proc_dir.join("exe"))
-                .ok()
-                .map(|p| p.to_string_lossy().to_string());
-
-            map.insert(pid, RawProcess {
-                pid,
-                parent_pid,
-                name,
-                exec_path,
-                cmd_line,
-            });
         }
 
         map
@@ -384,8 +387,11 @@ impl PlatformScanner for WindowsScanner {
         (port_to_pid, pid_to_ports)
     }
 
-    fn scan_processes(&self) -> HashMap<u32, RawProcess> {
+    fn scan_processes(&self, pids: &[u32]) -> HashMap<u32, RawProcess> {
         let mut map = HashMap::new();
+        if pids.is_empty() {
+            return map;
+        }
         let ps_cmd = "$procs = Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name, ExecutablePath, CommandLine; $procs | ConvertTo-Json -Depth 2";
 
         let mut cmd = std::process::Command::new("powershell");
@@ -503,21 +509,16 @@ impl PlatformScanner for MacOsScanner {
         (port_to_pid, pid_to_ports)
     }
 
-    fn scan_processes(&self) -> HashMap<u32, RawProcess> {
-        // ponytail: scan_listening_ports() is called again here to build the PID list.
-        // This means callers that call both scan_listening_ports() + scan_processes()
-        // run lsof twice. A future refactor should accept &HashMap<u16,u32> as input
-        // (changing the PlatformScanner trait) to eliminate the duplicate invocation.
-        let (port_to_pid, _) = self.scan_listening_ports();
-        let mut pids: Vec<u32> = port_to_pid.values().copied().collect();
-        pids.sort_unstable();
-        pids.dedup();
-
+    fn scan_processes(&self, pids: &[u32]) -> HashMap<u32, RawProcess> {
         if pids.is_empty() {
             return HashMap::new();
         }
 
-        let pid_csv = pids
+        let mut unique_pids: Vec<u32> = pids.to_vec();
+        unique_pids.sort_unstable();
+        unique_pids.dedup();
+
+        let pid_csv = unique_pids
             .iter()
             .map(|p| p.to_string())
             .collect::<Vec<_>>()
@@ -661,7 +662,7 @@ impl PlatformScanner for FallbackScanner {
         (port_to_pid, pid_to_ports)
     }
 
-    fn scan_processes(&self) -> HashMap<u32, RawProcess> {
+    fn scan_processes(&self, _pids: &[u32]) -> HashMap<u32, RawProcess> {
         HashMap::new()
     }
 
@@ -670,14 +671,22 @@ impl PlatformScanner for FallbackScanner {
     }
 }
 
+fn extract_unique_pids(port_to_pid: &HashMap<u16, u32>) -> Vec<u32> {
+    let mut pids: Vec<u32> = port_to_pid.values().copied().collect();
+    pids.sort_unstable();
+    pids.dedup();
+    pids
+}
+
 #[tauri::command]
 pub async fn scan_ports() -> Result<Vec<u16>, String> {
     tauri::async_runtime::spawn_blocking(|| {
         let scanner = get_platform_scanner();
-        // Call scan_listening_ports once; scan_processes will use the same
-        // port snapshot internally — no duplicate lsof invocations at caller level.
+        // Call scan_listening_ports once; pass listening PIDs to scan_processes —
+        // eliminating duplicate lsof / port scan invocations.
         let (port_to_pid, _) = scanner.scan_listening_ports();
-        let all_procs = scanner.scan_processes();
+        let pids = extract_unique_pids(&port_to_pid);
+        let all_procs = scanner.scan_processes(&pids);
         let mut ports: Vec<u16> = Vec::new();
         for (port, pid) in port_to_pid {
             let proc_opt = all_procs.get(&pid);
@@ -1318,7 +1327,11 @@ pub async fn resolve_process_directory(port: u16, pid: Option<u32>) -> Result<St
         let target_pid = pid.or_else(|| port_to_pid.get(&port).copied());
 
         if let Some(pid_val) = target_pid {
-            let all_procs = scanner.scan_processes();
+            let mut pids = extract_unique_pids(&port_to_pid);
+            if !pids.contains(&pid_val) {
+                pids.push(pid_val);
+            }
+            let all_procs = scanner.scan_processes(&pids);
             if let Some(proc) = all_procs.get(&pid_val) {
                 let resolved = resolve_directory_in_memory(proc, &all_procs);
                 if resolved != "unknown" {
@@ -1340,7 +1353,10 @@ pub async fn resolve_process_directory(port: u16, pid: Option<u32>) -> Result<St
 pub async fn scan_processes(bypass_cache: bool) -> Result<Vec<ProcessCandidate>, String> {
     let (port_to_pid, all_procs) = tauri::async_runtime::spawn_blocking(|| {
         let scanner = get_platform_scanner();
-        (scanner.scan_listening_ports().0, scanner.scan_processes())
+        let (port_to_pid, _) = scanner.scan_listening_ports();
+        let pids = extract_unique_pids(&port_to_pid);
+        let all_procs = scanner.scan_processes(&pids);
+        (port_to_pid, all_procs)
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -1620,8 +1636,8 @@ mod tests {
     #[cfg(target_os = "linux")]
     fn test_linux_scanner_self_process() {
         let scanner = get_platform_scanner();
-        let procs = scanner.scan_processes();
         let self_pid = std::process::id();
+        let procs = scanner.scan_processes(&[self_pid]);
         assert!(procs.contains_key(&self_pid), "Scanner should find current process");
 
         let cwd = scanner.get_process_cwd(self_pid);
@@ -1823,6 +1839,36 @@ mod tests {
             .file_name()
             .map(|f| f.to_string_lossy().to_string());
         assert!(file_name.is_some_and(|n| !n.is_empty()));
+    }
+
+    #[test]
+    fn test_extract_unique_pids() {
+        let mut map = HashMap::new();
+        map.insert(3000, 100);
+        map.insert(3001, 200);
+        map.insert(3002, 100);
+        let pids = extract_unique_pids(&map);
+        assert_eq!(pids, vec![100, 200]);
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_macos_scanner_scan_processes_empty() {
+        let scanner = get_platform_scanner();
+        let procs = scanner.scan_processes(&[]);
+        assert!(procs.is_empty());
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_macos_scanner_scan_processes_self() {
+        let scanner = get_platform_scanner();
+        let self_pid = std::process::id();
+        let procs = scanner.scan_processes(&[self_pid]);
+        assert!(procs.contains_key(&self_pid), "MacOsScanner should find self process");
+        let proc = procs.get(&self_pid).unwrap();
+        assert_eq!(proc.pid, self_pid);
+        assert!(!proc.name.is_empty());
     }
 
     #[test]
