@@ -741,50 +741,6 @@ export function SettingsView({
                   </div>
                 </div>
               )}
-
-              {/* Enterprise & Team Cloud Sync Card */}
-              <div className="p-5 bg-surface-container border border-outline-variant/30 rounded-xl space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-secondary/10 border border-secondary/20 text-secondary flex items-center justify-center">
-                    <span className="material-symbols-outlined text-[24px]">corporate_fare</span>
-                  </div>
-                  <div>
-                    <h3 className="font-body-lg text-body-lg text-on-surface font-bold">Proxync Enterprise & Cloud Sync</h3>
-                    <p className="text-xs text-on-surface-variant">Looking for organization-wide collaboration, SAML SSO, and private VPC relays?</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-outline-variant/20 text-xs">
-                  <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/20 flex items-center gap-2.5">
-                    <span className="material-symbols-outlined text-secondary text-sm">sync</span>
-                    <span className="text-on-surface">Team Workspace Cloud Sync</span>
-                  </div>
-                  <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/20 flex items-center gap-2.5">
-                    <span className="material-symbols-outlined text-secondary text-sm">verified_user</span>
-                    <span className="text-on-surface">SSO / SAML Authentication</span>
-                  </div>
-                  <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/20 flex items-center gap-2.5">
-                    <span className="material-symbols-outlined text-secondary text-sm">key</span>
-                    <span className="text-on-surface">Centralized API Key Management</span>
-                  </div>
-                  <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/20 flex items-center gap-2.5">
-                    <span className="material-symbols-outlined text-secondary text-sm">shield</span>
-                    <span className="text-on-surface">Dedicated Relay Infrastructure</span>
-                  </div>
-                </div>
-
-                <div className="pt-2 flex items-center justify-between">
-                  <span className="text-[11px] text-outline font-mono">Organization Add-on for Engineering Teams</span>
-                  <button
-                    type="button"
-                    onClick={() => handleOpenUrl('https://proxync.dev')}
-                    className="btn-secondary compact text-xs cursor-pointer flex items-center gap-1.5"
-                  >
-                    <span>Learn More at proxync.dev</span>
-                    <span className="material-symbols-outlined text-sm">open_in_new</span>
-                  </button>
-                </div>
-              </div>
             </section>
           )}
 
