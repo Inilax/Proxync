@@ -65,6 +65,19 @@ export const BACKEND_URL = typeof window !== 'undefined' && localStorage.getItem
   ? localStorage.getItem('proxync_backend_url')! 
   : 'http://localhost:3000';
 
+export interface ConnectedProvider {
+  id: string;
+  name: string;
+  type: 'credentials' | 'oauth';
+  connected: boolean;
+  enabled: boolean;
+  identifier: string | null;
+  status: 'connected' | 'not_connected' | 'available_soon';
+  badge: 'Active' | 'Connected' | 'Not Linked' | 'Available Soon';
+  description: string;
+  connectUrl?: string | null;
+}
+
 export interface AuthUser {
   id: string;
   name: string;
@@ -74,6 +87,7 @@ export interface AuthUser {
   googleConnected?: boolean;
   githubConnected?: boolean;
   hasPassword?: boolean;
+  providers?: ConnectedProvider[];
 }
 
 export interface AuthResponse {
@@ -113,6 +127,36 @@ export const api = {
       const data: AuthResponse = await res.json();
       saveAuthSession(data.user, data.accessToken, data.refreshToken);
       return data;
+    },
+    getProfile: async (): Promise<AuthUser> => {
+      const token = getToken();
+      if (!token) throw new Error('Not authenticated');
+      const res = await fetch(`${BACKEND_URL}/api/v1/auth/profile`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Failed to fetch profile' }));
+        throw new Error(errorData.error || `Failed to fetch profile with status ${res.status}`);
+      }
+      const data = await res.json();
+      const current = getAuthSession();
+      if (current && data.user) {
+        saveAuthSession(data.user, current.accessToken, current.refreshToken);
+      }
+      return data.user;
+    },
+    getProviders: async (includeAll = false): Promise<ConnectedProvider[]> => {
+      const token = getToken();
+      if (!token) throw new Error('Not authenticated');
+      const res = await fetch(`${BACKEND_URL}/api/v1/auth/providers${includeAll ? '?include_all=true' : ''}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Failed to fetch providers' }));
+        throw new Error(errorData.error || `Failed to fetch providers with status ${res.status}`);
+      }
+      const data = await res.json();
+      return data.providers;
     },
     updateProfile: async (name: string): Promise<AuthUser> => {
       const token = getToken();
