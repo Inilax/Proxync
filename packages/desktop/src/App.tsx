@@ -3823,6 +3823,7 @@ export default function App() {
                 currentUser={currentUser}
                 onSignIn={handleInitiateLogin}
                 onSignOut={handleLogout}
+                onUpdateUser={(updated) => setCurrentUser(updated)}
                 authStatus={authStatus}
               />
             )}

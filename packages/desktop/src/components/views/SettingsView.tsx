@@ -4,7 +4,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import type { WorkspaceConfig, AppSettings, DomainRecord, Guardrails, Tunnel, ProcessCandidate } from './SharedComponents';
 import { showToast } from '../../lib/toast';
 import { ConfirmPurgeDialog } from './Dialogs';
-import type { AuthUser } from '../../lib/api';
+import { api, type AuthUser } from '../../lib/api';
 import {
   readLogsSummary,
   openLogsFolder,
@@ -55,6 +55,7 @@ export function SettingsView({
   currentUser = null,
   onSignIn,
   onSignOut,
+  onUpdateUser,
   authStatus = 'idle',
 }: {
   workspace: WorkspaceConfig | null;
@@ -88,6 +89,7 @@ export function SettingsView({
   currentUser?: AuthUser | null;
   onSignIn?: () => void;
   onSignOut?: () => void;
+  onUpdateUser?: (updated: AuthUser) => void;
   authStatus?: 'idle' | 'awaiting_approval';
 }) {
   const [activeSection, setActiveSection] = useState<'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger'>(initialSection);
@@ -95,6 +97,66 @@ export function SettingsView({
   const [logsSummary, setLogsSummary] = useState<LogsSummary | null>(null);
   const [cliStatus, setCliStatus] = useState<CliStatus | null>(null);
   const [cliBusy, setCliBusy] = useState(false);
+
+  // Account profile & password editing states
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(currentUser?.name || '');
+  const [savingName, setSavingName] = useState(false);
+
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
+
+  useEffect(() => {
+    if (currentUser?.name) {
+      setNameDraft(currentUser.name);
+    }
+  }, [currentUser?.name]);
+
+  const handleUpdateUsername = async () => {
+    const trimmed = nameDraft.trim();
+    if (!trimmed) {
+      showToast('Username cannot be empty', 'warning');
+      return;
+    }
+    setSavingName(true);
+    try {
+      const updated = await api.auth.updateProfile(trimmed);
+      if (onUpdateUser) onUpdateUser(updated);
+      showToast(`Username updated to "${trimmed}"`, 'success');
+      setIsEditingName(false);
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to update username', 'error');
+    } finally {
+      setSavingName(false);
+    }
+  };
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || newPassword.length < 6) {
+      showToast('New password must be at least 6 characters', 'error');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showToast('Passwords do not match', 'error');
+      return;
+    }
+    setSavingPassword(true);
+    try {
+      const res = await api.auth.changePassword(currentPassword, newPassword);
+      showToast(res.message || 'Password updated successfully!', 'success');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to update password', 'error');
+    } finally {
+      setSavingPassword(false);
+    }
+  };
 
   useEffect(() => {
     setActiveSection(initialSection);
@@ -570,9 +632,59 @@ export function SettingsView({
                         </div>
                         <div className="space-y-1">
                           <div className="flex items-center gap-2.5 flex-wrap">
-                            <h3 className="font-headline-sm text-base sm:text-lg font-bold text-on-surface leading-tight">
-                              {currentUser.name}
-                            </h3>
+                            {isEditingName ? (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={nameDraft}
+                                  onChange={(e) => setNameDraft(e.target.value)}
+                                  className="px-2.5 py-1 text-sm font-semibold text-on-surface bg-surface-container-high border border-primary/50 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary w-40 sm:w-56"
+                                  placeholder="Your name"
+                                  autoFocus
+                                />
+                                <button
+                                  type="button"
+                                  disabled={savingName}
+                                  onClick={handleUpdateUsername}
+                                  className="btn-primary compact text-xs flex items-center gap-1 cursor-pointer"
+                                >
+                                  {savingName ? (
+                                    <span className="material-symbols-outlined text-[14px] animate-spin">sync</span>
+                                  ) : (
+                                    <span className="material-symbols-outlined text-[14px]">check</span>
+                                  )}
+                                  <span>Save</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={savingName}
+                                  onClick={() => {
+                                    setNameDraft(currentUser.name);
+                                    setIsEditingName(false);
+                                  }}
+                                  className="btn-secondary compact text-xs cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <>
+                                <h3 className="font-headline-sm text-base sm:text-lg font-bold text-on-surface leading-tight">
+                                  {currentUser.name}
+                                </h3>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setNameDraft(currentUser.name);
+                                    setIsEditingName(true);
+                                  }}
+                                  className="p-1 rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer"
+                                  title="Change username"
+                                >
+                                  <span className="material-symbols-outlined text-[15px]">edit</span>
+                                </button>
+                              </>
+                            )}
                             {/* Blue PRO pill with Crown Icon */}
                             {currentUser.role === 'PRO' ? (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-[5px] bg-[#0c2a4a]/80 text-[#38bdf8] text-[11px] font-bold tracking-wider uppercase leading-none border border-[#0284c7]/25 select-none">
@@ -630,6 +742,191 @@ export function SettingsView({
                         <span>Direct Cloud Tunnel Session Active</span>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Connected Accounts & Authentication Providers */}
+                  <div className="p-5 bg-surface-container border border-outline-variant/30 rounded-xl space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center">
+                        <span className="material-symbols-outlined text-[24px]">vpn_key</span>
+                      </div>
+                      <div>
+                        <h3 className="font-body-lg text-body-lg text-on-surface font-bold">Connected Authentication Providers</h3>
+                        <p className="text-xs text-on-surface-variant mt-0.5">Manage identity providers linked to your Proxync account.</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-3 border-t border-outline-variant/20">
+                      {/* Google Auth */}
+                      <div className="p-3.5 bg-surface-container-low rounded-xl border border-outline-variant/20 flex flex-col justify-between gap-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <svg width="20" height="20" viewBox="0 0 24 24" className="shrink-0">
+                              <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
+                              <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.27 21.41 7.36 24 12 24z"/>
+                              <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.17 0 9.99 0 12s.45 3.83 1.25 5.42l4.03-3.15z"/>
+                              <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.36 0 3.27 2.59 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                            </svg>
+                            <span className="font-semibold text-xs text-on-surface">Google</span>
+                          </div>
+                          {(currentUser.authProvider === 'GOOGLE' || currentUser.googleConnected || currentUser.email.includes('@gmail.com')) ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                              <span>Connected</span>
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant text-[10px] font-medium border border-outline-variant/30">
+                              Not Linked
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-on-surface-variant truncate">
+                          {(currentUser.authProvider === 'GOOGLE' || currentUser.googleConnected || currentUser.email.includes('@gmail.com'))
+                            ? currentUser.email
+                            : 'Sign in with your Google account'}
+                        </p>
+                      </div>
+
+                      {/* GitHub Auth */}
+                      <div className="p-3.5 bg-surface-container-low rounded-xl border border-outline-variant/20 flex flex-col justify-between gap-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 text-on-surface">
+                              <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+                            </svg>
+                            <span className="font-semibold text-xs text-on-surface">GitHub</span>
+                          </div>
+                          {(currentUser.authProvider === 'GITHUB' || currentUser.githubConnected) ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                              <span>Connected</span>
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant text-[10px] font-medium border border-outline-variant/30">
+                              Available Soon
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-on-surface-variant truncate">
+                          {(currentUser.authProvider === 'GITHUB' || currentUser.githubConnected)
+                            ? 'Linked GitHub Account'
+                            : 'Link your GitHub for code syncing'}
+                        </p>
+                      </div>
+
+                      {/* Email / Local Auth */}
+                      <div className="p-3.5 bg-surface-container-low rounded-xl border border-outline-variant/20 flex flex-col justify-between gap-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <span className="material-symbols-outlined text-[20px] text-primary">mail</span>
+                            <span className="font-semibold text-xs text-on-surface">Email & Password</span>
+                          </div>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                            <span>Active</span>
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-on-surface-variant truncate">
+                          {currentUser.email}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Password & Security Card */}
+                  <div className="p-5 bg-surface-container border border-outline-variant/30 rounded-xl space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center">
+                        <span className="material-symbols-outlined text-[24px]">lock_reset</span>
+                      </div>
+                      <div>
+                        <h3 className="font-body-lg text-body-lg text-on-surface font-bold">Security & Password</h3>
+                        <p className="text-xs text-on-surface-variant mt-0.5">
+                          {(currentUser.authProvider === 'GOOGLE' && !currentUser.hasPassword)
+                            ? 'You are signed in via Google. You can set a password below to also enable email login.'
+                            : 'Update your account login password.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <form onSubmit={handleUpdatePassword} className="space-y-4 pt-3 border-t border-outline-variant/20 max-w-lg">
+                      {currentUser.hasPassword !== false && (
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-medium text-on-surface-variant block">Current Password</label>
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            value={currentPassword}
+                            onChange={(e) => setCurrentPassword(e.target.value)}
+                            placeholder="Enter current password"
+                            className="w-full px-3 py-2 text-xs rounded-lg bg-surface-container-low border border-outline-variant/30 text-on-surface focus:outline-none focus:border-primary transition-colors"
+                          />
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-medium text-on-surface-variant block">New Password</label>
+                          <div className="relative">
+                            <input
+                              type={showPassword ? 'text' : 'password'}
+                              value={newPassword}
+                              onChange={(e) => setNewPassword(e.target.value)}
+                              placeholder="Minimum 6 characters"
+                              className="w-full px-3 py-2 text-xs rounded-lg bg-surface-container-low border border-outline-variant/30 text-on-surface focus:outline-none focus:border-primary transition-colors pr-9"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowPassword(!showPassword)}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface transition-colors cursor-pointer"
+                              tabIndex={-1}
+                            >
+                              <span className="material-symbols-outlined text-[16px]">
+                                {showPassword ? 'visibility_off' : 'visibility'}
+                              </span>
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-medium text-on-surface-variant block">Confirm Password</label>
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            placeholder="Confirm new password"
+                            className="w-full px-3 py-2 text-xs rounded-lg bg-surface-container-low border border-outline-variant/30 text-on-surface focus:outline-none focus:border-primary transition-colors"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="pt-1 flex items-center gap-3">
+                        <button
+                          type="submit"
+                          disabled={savingPassword || !newPassword || !confirmPassword}
+                          className="btn-primary compact text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        >
+                          {savingPassword ? (
+                            <span className="material-symbols-outlined text-[14px] animate-spin">sync</span>
+                          ) : (
+                            <span className="material-symbols-outlined text-[14px]">save</span>
+                          )}
+                          <span>{savingPassword ? 'Updating...' : 'Update Password'}</span>
+                        </button>
+                        {(currentPassword || newPassword || confirmPassword) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCurrentPassword('');
+                              setNewPassword('');
+                              setConfirmPassword('');
+                            }}
+                            className="btn-secondary compact text-xs cursor-pointer"
+                          >
+                            Reset
+                          </button>
+                        )}
+                      </div>
+                    </form>
                   </div>
 
                   {/* Subscription & Plan Status Card */}
