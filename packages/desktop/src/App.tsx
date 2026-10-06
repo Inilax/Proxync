@@ -3399,21 +3399,21 @@ export default function App() {
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       {/* Avatar with Status Dot */}
-                      <div className="w-9 h-9 rounded-full bg-[#1e293b] text-white flex items-center justify-center text-sm font-semibold shrink-0 relative select-none">
-                        <span>{currentUser.name.charAt(0).toUpperCase()}</span>
+                      <div className="w-10 h-10 rounded-full bg-[#1e293b] text-white flex items-center justify-center text-base font-bold shrink-0 relative select-none">
+                        <span className="leading-none">{currentUser.name.charAt(0).toUpperCase()}</span>
                         <span
                           className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-[#10b981] ring-2 ring-surface-container"
                           title="Online"
                         />
                       </div>
                       {!sidebarCollapsed && (
-                        <div className="flex flex-col items-start min-w-0 flex-1 ml-0.5 gap-1">
-                          <span className="text-[13px] font-semibold text-on-surface truncate leading-tight tracking-tight group-hover:text-primary transition-colors">
+                        <div className="flex flex-col items-start min-w-0 flex-1 ml-1 gap-1.5">
+                          <span className="text-sm font-semibold text-on-surface truncate leading-tight tracking-tight group-hover:text-primary transition-colors">
                             {currentUser.name}
                           </span>
                           {/* Subtle Blue PRO pill with Crown Icon */}
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[5px] bg-[#0c2a4a]/80 text-[#38bdf8] text-[10px] font-bold tracking-wider uppercase leading-none border border-[#0284c7]/25 select-none">
-                            <svg width="10" height="9" viewBox="0 0 24 20" fill="currentColor" className="shrink-0 -mt-px">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-[5px] bg-[#0c2a4a]/80 text-[#38bdf8] text-[11px] font-bold tracking-wider uppercase leading-none border border-[#0284c7]/25 select-none">
+                            <svg width="11" height="10" viewBox="0 0 24 20" fill="currentColor" className="shrink-0 -mt-px">
                               <path d="M2 4l4.5 3.5L12 1.5l5.5 6L22 4v10.5H2V4zm0 13h20v2.5H2V17z" />
                             </svg>
                             <span>{currentUser.role || 'PRO'}</span>
