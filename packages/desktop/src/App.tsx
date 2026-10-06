@@ -183,8 +183,36 @@ export default function App() {
   const [searchSelectedIndex, setSearchSelectedIndex] = useState(0);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => getAuthSession()?.user ?? null);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
+  const userCardRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (
+        userMenuRef.current &&
+        !userMenuRef.current.contains(e.target as Node) &&
+        userCardRef.current &&
+        !userCardRef.current.contains(e.target as Node)
+      ) {
+        setUserMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [userMenuOpen]);
 
   useEffect(() => {
     let mounted = true;
@@ -3319,7 +3347,7 @@ export default function App() {
       {/* ── Body: Sidebar + Content ── */}
       <div className="flex flex-1 min-h-0">
         {/* ── Sidebar (260px or 68px) ── */}
-        <aside className={`app-sidebar ${sidebarCollapsed ? 'w-[52px] min-w-[52px]' : 'w-[240px] md:w-[260px] min-w-[240px] md:min-w-[260px]'} flex flex-col py-3 bg-surface-container-low border-r border-outline-variant z-40 transition-all overflow-hidden`}>
+        <aside className={`app-sidebar ${sidebarCollapsed ? 'w-[52px] min-w-[52px]' : 'w-[240px] md:w-[260px] min-w-[240px] md:min-w-[260px]'} flex flex-col py-3 bg-surface-container-low border-r border-outline-variant z-40 transition-all overflow-visible relative`}>
           {!sidebarCollapsed ? (
             <div className="pl-6 pr-4 mb-5 flex items-center justify-between">
               <div className="min-w-0 pr-2">
@@ -3449,36 +3477,40 @@ export default function App() {
               <span className="material-symbols-outlined text-[18px]">help</span>
               {!sidebarCollapsed && <span>Support</span>}
             </button>
-            <div className={`${sidebarCollapsed ? 'px-1.5 py-1.5' : 'px-6 py-3 mt-1'}`}>
+            <div className={`${sidebarCollapsed ? 'px-1.5 py-1.5' : 'px-4 py-2 mt-1'}`}>
               {currentUser ? (
-                <div className={`flex flex-col gap-2 p-2 rounded-xl bg-surface-container border border-outline-variant/60 ${sidebarCollapsed ? 'items-center' : ''}`}>
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-7 h-7 rounded-lg bg-primary/20 text-primary flex items-center justify-center text-xs font-bold border border-primary/40 shrink-0">
-                      {currentUser.name.charAt(0).toUpperCase()}
+                <div>
+                  <div
+                    ref={userCardRef}
+                    onClick={() => setUserMenuOpen(!userMenuOpen)}
+                    className={`flex items-center justify-between gap-2.5 rounded-xl bg-[#101726]/80 border border-slate-700/50 hover:bg-[#152033] hover:border-slate-600/70 transition-all cursor-pointer select-none group shadow-sm ${
+                      sidebarCollapsed ? 'justify-center p-1.5' : 'px-3 py-2.5'
+                    }`}
+                    title={sidebarCollapsed ? `${currentUser.name} (${currentUser.role || 'PRO'})` : undefined}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-9 h-9 rounded-full bg-[#1d4ed8] text-white flex items-center justify-center text-sm font-semibold shrink-0 shadow-sm">
+                        {currentUser.name.charAt(0).toUpperCase()}
+                      </div>
+                      {!sidebarCollapsed && (
+                        <div className="flex flex-col items-start min-w-0 flex-1 ml-0.5">
+                          <span className="text-[13px] font-semibold text-slate-100 truncate leading-tight tracking-tight group-hover:text-white transition-colors">
+                            {currentUser.name}
+                          </span>
+                          <span className="mt-1 inline-flex items-center px-2 py-0.5 rounded-[4px] bg-[#0073c4] text-white text-[10px] font-bold tracking-wider uppercase leading-none shadow-xs">
+                            {currentUser.role || 'PRO'}
+                          </span>
+                        </div>
+                      )}
                     </div>
                     {!sidebarCollapsed && (
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-semibold text-on-surface truncate leading-tight">{currentUser.name}</p>
-                        <span className="text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-primary/20 text-primary uppercase">
-                          {currentUser.role || 'PRO'}
+                      <div className="w-6 h-6 rounded-md flex items-center justify-center text-slate-400 group-hover:text-slate-200 transition-colors">
+                        <span className="material-symbols-outlined text-[18px]">
+                          {userMenuOpen ? 'expand_less' : 'expand_more'}
                         </span>
                       </div>
                     )}
                   </div>
-                  {!sidebarCollapsed && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        clearAuthSession();
-                        setCurrentUser(null);
-                        showToast('Logged out successfully', 'info');
-                      }}
-                      className="text-[11px] text-error hover:text-error/80 flex items-center gap-1.5 pt-1 border-t border-outline-variant/30 cursor-pointer"
-                    >
-                      <span className="material-symbols-outlined text-[14px]">logout</span>
-                      Log out
-                    </button>
-                  )}
                 </div>
               ) : (
                 <button
@@ -3539,6 +3571,89 @@ export default function App() {
               )}
             </div>
           </div>
+
+          {/* Popover Drawer matching mockup */}
+          {currentUser && userMenuOpen && (
+            <div
+              ref={userMenuRef}
+              className="absolute left-full ml-2.5 bottom-2.5 w-[215px] p-1.5 rounded-2xl bg-[#0b1324]/95 backdrop-blur-xl border border-slate-700/60 shadow-2xl shadow-black/80 z-50 animate-in fade-in zoom-in-95 duration-150 select-none"
+            >
+              {/* Left pointer arrow matching mockup */}
+              <div className="absolute -left-[6px] bottom-8 w-3 h-3 bg-[#0b1324] border-l border-b border-slate-700/60 rotate-45 pointer-events-none" />
+
+              <div className="relative z-10 flex flex-col gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    setSettingsSection('account');
+                    setMainView('settings');
+                  }}
+                  className="flex items-center gap-3 px-3 py-2 text-xs font-medium text-slate-200 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer w-full text-left group"
+                >
+                  <span className="material-symbols-outlined text-[18px] text-slate-400 group-hover:text-white transition-colors">person</span>
+                  <span>Profile</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    setSettingsSection('account');
+                    setMainView('settings');
+                    showToast('Billing & plan details', 'info');
+                  }}
+                  className="flex items-center gap-3 px-3 py-2 text-xs font-medium text-slate-200 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer w-full text-left group"
+                >
+                  <span className="material-symbols-outlined text-[18px] text-slate-400 group-hover:text-white transition-colors">credit_card</span>
+                  <span>Billing</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    setSettingsSection('general');
+                    setMainView('settings');
+                  }}
+                  className="flex items-center gap-3 px-3 py-2 text-xs font-medium text-slate-200 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer w-full text-left group"
+                >
+                  <span className="material-symbols-outlined text-[18px] text-slate-400 group-hover:text-white transition-colors">settings</span>
+                  <span>Preferences</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    setSettingsSection('general');
+                    setMainView('settings');
+                    setShortcutsModalOpen(true);
+                  }}
+                  className="flex items-center gap-3 px-3 py-2 text-xs font-medium text-slate-200 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer w-full text-left group"
+                >
+                  <span className="material-symbols-outlined text-[18px] text-slate-400 group-hover:text-white transition-colors">keyboard</span>
+                  <span>Keyboard Shortcuts</span>
+                </button>
+
+                <div className="h-[1px] bg-slate-700/50 my-1 mx-2" />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    clearAuthSession();
+                    setCurrentUser(null);
+                    showToast('Logged out successfully', 'info');
+                  }}
+                  className="flex items-center gap-3 px-3 py-2 text-xs font-medium text-[#f87171] hover:text-[#ef4444] hover:bg-red-500/10 rounded-xl transition-colors cursor-pointer w-full text-left group"
+                >
+                  <span className="material-symbols-outlined text-[18px] text-[#f87171] group-hover:text-[#ef4444] transition-colors">logout</span>
+                  <span>Log out</span>
+                </button>
+              </div>
+            </div>
+          )}
         </aside>
 
         <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
