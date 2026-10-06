@@ -3544,14 +3544,13 @@ export default function App() {
                   type="button"
                   onClick={() => {
                     setUserMenuOpen(false);
-                    setSettingsSection('general');
+                    setSettingsSection('domains');
                     setMainView('settings');
-                    setShortcutsModalOpen(true);
                   }}
                   className="flex items-center gap-3 px-3 py-2 text-xs font-medium text-on-surface hover:text-primary hover:bg-surface-container-highest rounded-xl transition-colors cursor-pointer w-full text-left group"
                 >
-                  <span className="material-symbols-outlined text-[18px] text-on-surface-variant group-hover:text-primary transition-colors">keyboard</span>
-                  <span>Keyboard Shortcuts</span>
+                  <span className="material-symbols-outlined text-[18px] text-on-surface-variant group-hover:text-primary transition-colors">public</span>
+                  <span>Custom Domains</span>
                 </button>
 
                 <div className="h-[1px] bg-outline-variant/40 my-1 mx-2" />
