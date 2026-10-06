@@ -70,6 +70,10 @@ export interface AuthUser {
   name: string;
   email: string;
   role: 'USER' | 'PRO' | 'ADMIN';
+  authProvider?: string;
+  googleConnected?: boolean;
+  githubConnected?: boolean;
+  hasPassword?: boolean;
 }
 
 export interface AuthResponse {
@@ -109,6 +113,45 @@ export const api = {
       const data: AuthResponse = await res.json();
       saveAuthSession(data.user, data.accessToken, data.refreshToken);
       return data;
+    },
+    updateProfile: async (name: string): Promise<AuthUser> => {
+      const token = getToken();
+      if (!token) throw new Error('Not authenticated');
+      const res = await fetch(`${BACKEND_URL}/api/v1/auth/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Failed to update username' }));
+        throw new Error(errorData.error || `Update failed with status ${res.status}`);
+      }
+      const data = await res.json();
+      const current = getAuthSession();
+      if (current) {
+        saveAuthSession(data.user, current.accessToken, current.refreshToken);
+      }
+      return data.user;
+    },
+    changePassword: async (currentPassword: string, newPassword: string): Promise<{ success: boolean; message: string }> => {
+      const token = getToken();
+      if (!token) throw new Error('Not authenticated');
+      const res = await fetch(`${BACKEND_URL}/api/v1/auth/change-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Failed to change password' }));
+        throw new Error(errorData.error || `Failed to change password with status ${res.status}`);
+      }
+      return res.json();
     },
     entitlements: async (): Promise<{ workbench: boolean; dashboard_sharing: boolean; admin_panel: boolean }> => {
       const token = getToken();
