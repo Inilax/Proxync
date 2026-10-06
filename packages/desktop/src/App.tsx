@@ -351,7 +351,9 @@ export default function App() {
   const [swaggerPanel, setSwaggerPanel] = useState<SwaggerPanel>('preview');
   const [panelView, setPanelView] = useState<PanelView>(null);
   const [discoverOpen, setDiscoverOpen] = useState(false);
-  const [waitingForLogin, setWaitingForLogin] = useState(false);
+  const [authStatus, setAuthStatus] = useState<'idle' | 'awaiting_approval'>('idle');
+  const authPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const authTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger'>('general');
 
@@ -1224,6 +1226,8 @@ export default function App() {
     return () => {
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('online', handleOnline);
+      if (authPollingRef.current) clearInterval(authPollingRef.current);
+      if (authTimeoutRef.current) clearTimeout(authTimeoutRef.current);
     };
   }, []);
 
@@ -3478,46 +3482,59 @@ export default function App() {
                 </div>
               ) : (
                 <button
+                  type="button"
                   onClick={() => {
+                    if (authPollingRef.current) clearInterval(authPollingRef.current);
+                    if (authTimeoutRef.current) clearTimeout(authTimeoutRef.current);
+
                     const code = crypto.randomUUID();
-                    setWaitingForLogin(true);
                     const targetUrl = `${BACKEND_URL}/login?code=${encodeURIComponent(code)}`;
                     openUrl(targetUrl).catch(() => {
                       window.open(targetUrl, '_blank');
                     });
                     showToast('Opening browser to sign in on ' + BACKEND_URL + '...', 'info');
 
-                    const interval = setInterval(async () => {
+                    // Gentle background polling without locking the UI button
+                    authPollingRef.current = setInterval(async () => {
                       try {
                         const res = await fetch(`${BACKEND_URL}/api/v1/auth/poll?code=${encodeURIComponent(code)}`);
                         if (res.ok) {
                           const data = await res.json();
                           if (data && data.user && data.accessToken) {
-                            clearInterval(interval);
-                            setWaitingForLogin(false);
-                            saveAuthSession(data.user, data.accessToken, data.refreshToken);
-                            setCurrentUser(data.user);
-                            showToast(`🎉 Welcome to Proxync, ${data.user.name}! (PRO unlocked)`, 'success');
+                            if (authPollingRef.current) clearInterval(authPollingRef.current);
+                            if (authTimeoutRef.current) clearTimeout(authTimeoutRef.current);
+
+                            // Once person signs in, show awaiting approval
+                            setAuthStatus('awaiting_approval');
+
+                            setTimeout(() => {
+                              saveAuthSession(data.user, data.accessToken, data.refreshToken);
+                              setCurrentUser(data.user);
+                              setAuthStatus('idle');
+                              showToast(`🎉 Welcome to Proxync, ${data.user.name}! (PRO unlocked)`, 'success');
+                            }, 1200);
                           }
                         }
                       } catch {
                         // ignore network blips
                       }
-                    }, 1500);
+                    }, 2500);
 
-                    setTimeout(() => {
-                      clearInterval(interval);
-                      setWaitingForLogin(false);
-                    }, 300000);
+                    // Automatically stop polling after 90 seconds if user abandons / never signs in
+                    authTimeoutRef.current = setTimeout(() => {
+                      if (authPollingRef.current) clearInterval(authPollingRef.current);
+                    }, 90000);
                   }}
-                  disabled={waitingForLogin}
-                  title="Sign In"
-                  className={`btn-primary flex items-center justify-center ${sidebarCollapsed ? 'p-1.5 w-full' : 'gap-2 px-4 py-2.5'} w-full rounded-lg text-xs font-bold font-label-md cursor-pointer`}
+                  disabled={authStatus === 'awaiting_approval'}
+                  title={authStatus === 'awaiting_approval' ? 'Awaiting approval...' : 'Sign In'}
+                  className={`btn-primary flex items-center justify-center ${sidebarCollapsed ? 'p-1.5 w-full' : 'gap-2 px-4 py-2.5'} w-full rounded-lg text-xs font-bold font-label-md ${authStatus === 'awaiting_approval' ? 'cursor-wait opacity-90' : 'cursor-pointer'}`}
                 >
-                  <span className={`material-symbols-outlined text-[18px] ${waitingForLogin ? 'animate-spin' : ''}`}>
-                    {waitingForLogin ? 'progress_activity' : 'lock_open'}
+                  <span className={`material-symbols-outlined text-[18px] ${authStatus === 'awaiting_approval' ? 'animate-spin' : ''}`}>
+                    {authStatus === 'awaiting_approval' ? 'sync' : 'lock_open'}
                   </span>
-                  {!sidebarCollapsed && <span>{waitingForLogin ? 'Waiting for browser...' : 'Sign In'}</span>}
+                  {!sidebarCollapsed && (
+                    <span>{authStatus === 'awaiting_approval' ? 'Awaiting approval...' : 'Sign In'}</span>
+                  )}
                 </button>
               )}
             </div>

@@ -17,12 +17,21 @@ use storage::{
 use http::execute_http_request;
 use cli::{check_cli_status, install_cli_to_path, uninstall_cli_from_path};
 
+use tauri::Manager;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     storage::install_panic_hook();
     storage::init_app_log_header();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::AppleScript, Some(vec!["--autostart"])))
         .plugin(tauri_plugin_process::init())
