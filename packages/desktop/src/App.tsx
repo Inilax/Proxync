@@ -3483,28 +3483,28 @@ export default function App() {
                   <div
                     ref={userCardRef}
                     onClick={() => setUserMenuOpen(!userMenuOpen)}
-                    className={`flex items-center justify-between gap-2.5 rounded-xl bg-[#101726]/80 border border-slate-700/50 hover:bg-[#152033] hover:border-slate-600/70 transition-all cursor-pointer select-none group shadow-sm ${
+                    className={`flex items-center justify-between gap-2.5 rounded-xl bg-surface-container/90 border border-outline-variant/60 hover:bg-surface-container-high hover:border-primary/40 transition-all cursor-pointer select-none group shadow-sm ${
                       sidebarCollapsed ? 'justify-center p-1.5' : 'px-3 py-2.5'
                     }`}
                     title={sidebarCollapsed ? `${currentUser.name} (${currentUser.role || 'PRO'})` : undefined}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-9 h-9 rounded-full bg-[#1d4ed8] text-white flex items-center justify-center text-sm font-semibold shrink-0 shadow-sm">
+                      <div className="w-9 h-9 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-sm font-bold shrink-0 shadow-sm border border-primary/30">
                         {currentUser.name.charAt(0).toUpperCase()}
                       </div>
                       {!sidebarCollapsed && (
                         <div className="flex flex-col items-start min-w-0 flex-1 ml-0.5">
-                          <span className="text-[13px] font-semibold text-slate-100 truncate leading-tight tracking-tight group-hover:text-white transition-colors">
+                          <span className="text-[13px] font-semibold text-on-surface truncate leading-tight tracking-tight group-hover:text-primary transition-colors">
                             {currentUser.name}
                           </span>
-                          <span className="mt-1 inline-flex items-center px-2 py-0.5 rounded-[4px] bg-[#0073c4] text-white text-[10px] font-bold tracking-wider uppercase leading-none shadow-xs">
+                          <span className="mt-1 inline-flex items-center px-2 py-0.5 rounded-[4px] bg-primary-container text-on-primary-container text-[10px] font-bold tracking-wider uppercase leading-none shadow-xs border border-primary/20">
                             {currentUser.role || 'PRO'}
                           </span>
                         </div>
                       )}
                     </div>
                     {!sidebarCollapsed && (
-                      <div className="w-6 h-6 rounded-md flex items-center justify-center text-slate-400 group-hover:text-slate-200 transition-colors">
+                      <div className="w-6 h-6 rounded-md flex items-center justify-center text-on-surface-variant group-hover:text-on-surface transition-colors">
                         <span className="material-symbols-outlined text-[18px]">
                           {userMenuOpen ? 'expand_less' : 'expand_more'}
                         </span>
@@ -3576,10 +3576,10 @@ export default function App() {
           {currentUser && userMenuOpen && (
             <div
               ref={userMenuRef}
-              className="absolute left-full ml-2.5 bottom-2.5 w-[215px] p-1.5 rounded-2xl bg-[#0b1324]/95 backdrop-blur-xl border border-slate-700/60 shadow-2xl shadow-black/80 z-50 animate-in fade-in zoom-in-95 duration-150 select-none"
+              className="absolute left-full ml-2.5 bottom-2.5 w-[215px] p-1.5 rounded-2xl bg-surface-container-high/95 backdrop-blur-xl border border-outline-variant/60 shadow-2xl shadow-black/80 z-50 animate-in fade-in zoom-in-95 duration-150 select-none"
             >
               {/* Left pointer arrow matching mockup */}
-              <div className="absolute -left-[6px] bottom-8 w-3 h-3 bg-[#0b1324] border-l border-b border-slate-700/60 rotate-45 pointer-events-none" />
+              <div className="absolute -left-[6px] bottom-8 w-3 h-3 bg-surface-container-high border-l border-b border-outline-variant/60 rotate-45 pointer-events-none" />
 
               <div className="relative z-10 flex flex-col gap-0.5">
                 <button
@@ -3589,9 +3589,9 @@ export default function App() {
                     setSettingsSection('account');
                     setMainView('settings');
                   }}
-                  className="flex items-center gap-3 px-3 py-2 text-xs font-medium text-slate-200 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer w-full text-left group"
+                  className="flex items-center gap-3 px-3 py-2 text-xs font-medium text-on-surface hover:text-primary hover:bg-surface-container-highest rounded-xl transition-colors cursor-pointer w-full text-left group"
                 >
-                  <span className="material-symbols-outlined text-[18px] text-slate-400 group-hover:text-white transition-colors">person</span>
+                  <span className="material-symbols-outlined text-[18px] text-on-surface-variant group-hover:text-primary transition-colors">person</span>
                   <span>Profile</span>
                 </button>
 
@@ -3603,9 +3603,9 @@ export default function App() {
                     setMainView('settings');
                     showToast('Billing & plan details', 'info');
                   }}
-                  className="flex items-center gap-3 px-3 py-2 text-xs font-medium text-slate-200 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer w-full text-left group"
+                  className="flex items-center gap-3 px-3 py-2 text-xs font-medium text-on-surface hover:text-primary hover:bg-surface-container-highest rounded-xl transition-colors cursor-pointer w-full text-left group"
                 >
-                  <span className="material-symbols-outlined text-[18px] text-slate-400 group-hover:text-white transition-colors">credit_card</span>
+                  <span className="material-symbols-outlined text-[18px] text-on-surface-variant group-hover:text-primary transition-colors">credit_card</span>
                   <span>Billing</span>
                 </button>
 
@@ -3616,9 +3616,9 @@ export default function App() {
                     setSettingsSection('general');
                     setMainView('settings');
                   }}
-                  className="flex items-center gap-3 px-3 py-2 text-xs font-medium text-slate-200 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer w-full text-left group"
+                  className="flex items-center gap-3 px-3 py-2 text-xs font-medium text-on-surface hover:text-primary hover:bg-surface-container-highest rounded-xl transition-colors cursor-pointer w-full text-left group"
                 >
-                  <span className="material-symbols-outlined text-[18px] text-slate-400 group-hover:text-white transition-colors">settings</span>
+                  <span className="material-symbols-outlined text-[18px] text-on-surface-variant group-hover:text-primary transition-colors">settings</span>
                   <span>Preferences</span>
                 </button>
 
@@ -3630,13 +3630,13 @@ export default function App() {
                     setMainView('settings');
                     setShortcutsModalOpen(true);
                   }}
-                  className="flex items-center gap-3 px-3 py-2 text-xs font-medium text-slate-200 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer w-full text-left group"
+                  className="flex items-center gap-3 px-3 py-2 text-xs font-medium text-on-surface hover:text-primary hover:bg-surface-container-highest rounded-xl transition-colors cursor-pointer w-full text-left group"
                 >
-                  <span className="material-symbols-outlined text-[18px] text-slate-400 group-hover:text-white transition-colors">keyboard</span>
+                  <span className="material-symbols-outlined text-[18px] text-on-surface-variant group-hover:text-primary transition-colors">keyboard</span>
                   <span>Keyboard Shortcuts</span>
                 </button>
 
-                <div className="h-[1px] bg-slate-700/50 my-1 mx-2" />
+                <div className="h-[1px] bg-outline-variant/40 my-1 mx-2" />
 
                 <button
                   type="button"
@@ -3646,9 +3646,9 @@ export default function App() {
                     setCurrentUser(null);
                     showToast('Logged out successfully', 'info');
                   }}
-                  className="flex items-center gap-3 px-3 py-2 text-xs font-medium text-[#f87171] hover:text-[#ef4444] hover:bg-red-500/10 rounded-xl transition-colors cursor-pointer w-full text-left group"
+                  className="flex items-center gap-3 px-3 py-2 text-xs font-medium text-error hover:text-error hover:bg-error/10 rounded-xl transition-colors cursor-pointer w-full text-left group"
                 >
-                  <span className="material-symbols-outlined text-[18px] text-[#f87171] group-hover:text-[#ef4444] transition-colors">logout</span>
+                  <span className="material-symbols-outlined text-[18px] text-error group-hover:text-error transition-colors">logout</span>
                   <span>Log out</span>
                 </button>
               </div>
