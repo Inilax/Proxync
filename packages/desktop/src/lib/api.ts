@@ -61,14 +61,68 @@ function matchVerificationToken(values: string[], expectedToken: string): { veri
   return { verified: false, token: expectedToken };
 }
 
-// Standalone mock API client for local-only desktop app
+export const BACKEND_URL = typeof window !== 'undefined' && localStorage.getItem('proxync_backend_url') 
+  ? localStorage.getItem('proxync_backend_url')! 
+  : 'http://localhost:3000';
+
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  role: 'USER' | 'PRO' | 'ADMIN';
+}
+
+export interface AuthResponse {
+  user: AuthUser;
+  accessToken: string;
+  refreshToken: string;
+}
+
+// Connected API client for Proxync desktop app
 export const api = {
   auth: {
-    config: () => Promise.resolve({ requireAuthentication: false }),
-    guest: () => Promise.resolve({ accessToken: 'local', refreshToken: 'local' }),
-    signup: () => Promise.resolve({ accessToken: 'local', refreshToken: 'local' }),
-    login: () => Promise.resolve({ accessToken: 'local', refreshToken: 'local' }),
-    me: () => Promise.resolve({ id: 'local', name: 'Local Developer', email: 'local@proxync.dev' }),
+    config: () => Promise.resolve({ requireAuthentication: true }),
+    register: async (name: string, email: string, password: string): Promise<AuthResponse> => {
+      const res = await fetch(`${BACKEND_URL}/api/v1/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, password }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Registration failed' }));
+        throw new Error(errorData.error || `Registration failed with status ${res.status}`);
+      }
+      const data: AuthResponse = await res.json();
+      saveAuthSession(data.user, data.accessToken, data.refreshToken);
+      return data;
+    },
+    login: async (email: string, password: string): Promise<AuthResponse> => {
+      const res = await fetch(`${BACKEND_URL}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Invalid credentials' }));
+        throw new Error(errorData.error || `Login failed with status ${res.status}`);
+      }
+      const data: AuthResponse = await res.json();
+      saveAuthSession(data.user, data.accessToken, data.refreshToken);
+      return data;
+    },
+    entitlements: async (): Promise<{ workbench: boolean; dashboard_sharing: boolean; admin_panel: boolean }> => {
+      const token = getToken();
+      if (!token) return { workbench: false, dashboard_sharing: false, admin_panel: false };
+      const res = await fetch(`${BACKEND_URL}/api/v1/auth/me/entitlements`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return { workbench: false, dashboard_sharing: false, admin_panel: false };
+      return res.json();
+    },
+    me: (): Promise<AuthUser | null> => {
+      const session = getAuthSession();
+      return Promise.resolve(session ? session.user : null);
+    },
   },
   workspaces: {
     list: (): Promise<{ id: string; name: string }[]> => Promise.resolve([]),
@@ -323,11 +377,64 @@ export async function ensureLocalWorkspace(): Promise<LocalWorkspaceContext> {
   };
 }
 
-export function saveTokens(_accessToken: string, _refreshToken: string) { }
-export function clearTokens() { }
-export function getToken() {
-  return 'local-token';
+const AUTH_SESSION_KEY = 'proxync_auth_session_v1';
+
+export interface StoredSession {
+  user: AuthUser;
+  accessToken: string;
+  refreshToken: string;
+  savedAt: number;
 }
-export function isLoggedIn() {
-  return true;
+
+export function saveAuthSession(user: AuthUser, accessToken: string, refreshToken: string) {
+  if (typeof window === 'undefined') return;
+  const session: StoredSession = { user, accessToken, refreshToken, savedAt: Date.now() };
+  localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+}
+
+export function getAuthSession(): StoredSession | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(AUTH_SESSION_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as StoredSession;
+  } catch {
+    return null;
+  }
+}
+
+export function clearAuthSession() {
+  if (typeof window === 'undefined') return;
+  const current = getAuthSession();
+  if (current?.refreshToken || current?.accessToken) {
+    fetch(`${BACKEND_URL}/api/v1/auth/logout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: current.accessToken ? `Bearer ${current.accessToken}` : '',
+      },
+      body: JSON.stringify({ refreshToken: current.refreshToken }),
+    }).catch(() => {});
+  }
+  localStorage.removeItem(AUTH_SESSION_KEY);
+}
+
+export function saveTokens(accessToken: string, refreshToken: string) {
+  const current = getAuthSession();
+  if (current) {
+    saveAuthSession(current.user, accessToken, refreshToken);
+  }
+}
+
+export function clearTokens() {
+  clearAuthSession();
+}
+
+export function getToken(): string | null {
+  const session = getAuthSession();
+  return session?.accessToken ?? null;
+}
+
+export function isLoggedIn(): boolean {
+  return getAuthSession() !== null;
 }

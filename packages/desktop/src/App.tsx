@@ -20,6 +20,11 @@ import {
   api,
   ensureLocalWorkspace,
   getToken,
+  getAuthSession,
+  clearAuthSession,
+  saveAuthSession,
+  BACKEND_URL,
+  type AuthUser,
   type LocalWorkspaceContext,
 } from './lib/api';
 
@@ -42,7 +47,6 @@ import {
   CompanionPanel,
   parseHeaderText,
   stripMethodPrefix,
-  useEscape,
 } from './components/views/SharedComponents';
 import { WelcomeView } from './components/views/WelcomeView';
 import { WorkspaceDashboardView } from './components/views/WorkspaceDashboardView';
@@ -178,6 +182,7 @@ export default function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchSelectedIndex, setSearchSelectedIndex] = useState(0);
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => getAuthSession()?.user ?? null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -346,7 +351,7 @@ export default function App() {
   const [swaggerPanel, setSwaggerPanel] = useState<SwaggerPanel>('preview');
   const [panelView, setPanelView] = useState<PanelView>(null);
   const [discoverOpen, setDiscoverOpen] = useState(false);
-  const [authDialogOpen, setAuthDialogOpen] = useState(false);
+  const [waitingForLogin, setWaitingForLogin] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger'>('general');
 
@@ -1221,8 +1226,6 @@ export default function App() {
       window.removeEventListener('online', handleOnline);
     };
   }, []);
-
-  useEscape(() => setAuthDialogOpen(false), authDialogOpen);
 
   useEffect(() => {
     if (workspaces.length === 0) {
@@ -3255,6 +3258,7 @@ export default function App() {
             )}
           </div>
         </div>
+
         <div className="window-controls flex items-center h-full shrink-0">
           <button
             onClick={(e) => {
@@ -3442,14 +3446,80 @@ export default function App() {
               {!sidebarCollapsed && <span>Support</span>}
             </button>
             <div className={`${sidebarCollapsed ? 'px-1.5 py-1.5' : 'px-6 py-3 mt-1'}`}>
-              <button
-                onClick={() => setAuthDialogOpen(true)}
-                title="Sign In"
-                className={`btn-primary flex items-center justify-center ${sidebarCollapsed ? 'p-1.5 w-full' : 'gap-2 px-4 py-2.5'} w-full rounded-lg text-xs font-bold font-label-md cursor-pointer`}
-              >
-                <span className="material-symbols-outlined text-[18px]">lock_open</span>
-                {!sidebarCollapsed && <span>Sign In</span>}
-              </button>
+              {currentUser ? (
+                <div className={`flex flex-col gap-2 p-2 rounded-xl bg-surface-container border border-outline-variant/60 ${sidebarCollapsed ? 'items-center' : ''}`}>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-primary/20 text-primary flex items-center justify-center text-xs font-bold border border-primary/40 shrink-0">
+                      {currentUser.name.charAt(0).toUpperCase()}
+                    </div>
+                    {!sidebarCollapsed && (
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-on-surface truncate leading-tight">{currentUser.name}</p>
+                        <span className="text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-primary/20 text-primary uppercase">
+                          {currentUser.role || 'PRO'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {!sidebarCollapsed && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearAuthSession();
+                        setCurrentUser(null);
+                        showToast('Logged out successfully', 'info');
+                      }}
+                      className="text-[11px] text-error hover:text-error/80 flex items-center gap-1.5 pt-1 border-t border-outline-variant/30 cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">logout</span>
+                      Log out
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    const code = crypto.randomUUID();
+                    setWaitingForLogin(true);
+                    const targetUrl = `${BACKEND_URL}/login?code=${encodeURIComponent(code)}`;
+                    openUrl(targetUrl).catch(() => {
+                      window.open(targetUrl, '_blank');
+                    });
+                    showToast('Opening browser to sign in on ' + BACKEND_URL + '...', 'info');
+
+                    const interval = setInterval(async () => {
+                      try {
+                        const res = await fetch(`${BACKEND_URL}/api/v1/auth/poll?code=${encodeURIComponent(code)}`);
+                        if (res.ok) {
+                          const data = await res.json();
+                          if (data && data.user && data.accessToken) {
+                            clearInterval(interval);
+                            setWaitingForLogin(false);
+                            saveAuthSession(data.user, data.accessToken, data.refreshToken);
+                            setCurrentUser(data.user);
+                            showToast(`🎉 Welcome to Proxync, ${data.user.name}! (PRO unlocked)`, 'success');
+                          }
+                        }
+                      } catch {
+                        // ignore network blips
+                      }
+                    }, 1500);
+
+                    setTimeout(() => {
+                      clearInterval(interval);
+                      setWaitingForLogin(false);
+                    }, 300000);
+                  }}
+                  disabled={waitingForLogin}
+                  title="Sign In"
+                  className={`btn-primary flex items-center justify-center ${sidebarCollapsed ? 'p-1.5 w-full' : 'gap-2 px-4 py-2.5'} w-full rounded-lg text-xs font-bold font-label-md cursor-pointer`}
+                >
+                  <span className={`material-symbols-outlined text-[18px] ${waitingForLogin ? 'animate-spin' : ''}`}>
+                    {waitingForLogin ? 'progress_activity' : 'lock_open'}
+                  </span>
+                  {!sidebarCollapsed && <span>{waitingForLogin ? 'Waiting for browser...' : 'Sign In'}</span>}
+                </button>
+              )}
             </div>
           </div>
         </aside>
@@ -3817,6 +3887,8 @@ export default function App() {
         />
       )}
 
+
+
       {sharingProcessCandidate && (
         <DomainSelectDialog
           process={sharingProcessCandidate}
@@ -3851,22 +3923,7 @@ export default function App() {
         />
       )}
 
-      {authDialogOpen && (
-        <div className="dialog-backdrop glass" onClick={() => setAuthDialogOpen(false)}>
-          <section className="workspace-settings-dialog slide-up max-w-sm text-center p-8 flex flex-col items-center gap-4" onClick={(e) => e.stopPropagation()}>
-            <div className="w-16 h-16 bg-primary/20 text-primary rounded-full flex items-center justify-center mx-auto mb-2 animate-pulse">
-              <span className="material-symbols-outlined text-[36px]">lock_person</span>
-            </div>
-            <h2 className="text-xl font-bold text-on-surface">Coming Soon</h2>
-            <p className="text-xs text-on-surface-variant leading-relaxed">
-              Sign in, team authentication, and cloud workspace syncing are currently under development. Stay tuned!
-            </p>
-            <button className="btn-primary w-full mt-2 cursor-pointer" onClick={() => setAuthDialogOpen(false)}>
-              Got it
-            </button>
-          </section>
-        </div>
-      )}
+
 
 
 

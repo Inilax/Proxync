@@ -16,7 +16,7 @@
   <a href="https://github.com/Inilax/Proxync/issues"><img src="https://img.shields.io/github/issues-raw/Inilax/Proxync?style=flat" alt="Issues" /></a>&nbsp;
   <a href="https://github.com/Inilax/Proxync/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat" alt="PRs Welcome" /></a>&nbsp;
   <a href="https://scorecard.dev/viewer/?uri=github.com/Inilax/Proxync"><img src="https://api.scorecard.dev/projects/github.com/Inilax/Proxync/badge" alt="OpenSSF Scorecard" /></a>&nbsp;
-  <a href="https://discord.gg/cu682ak5A"><img src="https://img.shields.io/badge/Community-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord" /></a>
+  <a href="https://discord.gg/KY3q2d8am"><img src="https://img.shields.io/badge/Community-Discord-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord" /></a>
 </p>
 
 ---
