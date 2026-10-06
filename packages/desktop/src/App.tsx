@@ -3517,9 +3517,10 @@ export default function App() {
                   type="button"
                   onClick={() => {
                     setUserMenuOpen(false);
-                    setSettingsSection('account');
-                    setMainView('settings');
-                    showToast('Billing & plan details', 'info');
+                    const billingUrl = 'https://proxync.dev/billing';
+                    openUrl(billingUrl).catch(() => {
+                      window.open(billingUrl, '_blank');
+                    });
                   }}
                   className="flex items-center gap-3 px-3 py-2 text-xs font-medium text-on-surface hover:text-primary hover:bg-surface-container-highest rounded-xl transition-colors cursor-pointer w-full text-left group"
                 >
