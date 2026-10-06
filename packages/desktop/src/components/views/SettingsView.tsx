@@ -4,7 +4,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import type { WorkspaceConfig, AppSettings, DomainRecord, Guardrails, Tunnel, ProcessCandidate } from './SharedComponents';
 import { showToast } from '../../lib/toast';
 import { ConfirmPurgeDialog } from './Dialogs';
-import { api, type AuthUser, type ConnectedProvider, BACKEND_URL } from '../../lib/api';
+import { api, type AuthUser, type ConnectedProvider } from '../../lib/api';
 import {
   readLogsSummary,
   openLogsFolder,
@@ -22,72 +22,6 @@ import {
 function handleOpenUrl(url: string) {
   openUrl(url).catch(() => window.open(url, '_blank'));
 }
-
-const PROVIDER_UI_META: Record<string, {
-  brandName: string;
-  icon: React.ReactNode;
-  renderAction?: (
-    provider: ConnectedProvider,
-    onConnectGoogle: () => void,
-    onScrollPassword: () => void
-  ) => React.ReactNode;
-}> = {
-  local: {
-    brandName: 'Email & Password',
-    icon: <span className="material-symbols-outlined text-[20px] text-primary">mail</span>,
-    renderAction: (provider, _, onScrollPassword) => (
-      <button
-        type="button"
-        onClick={onScrollPassword}
-        className="px-2.5 py-1 text-[11px] font-semibold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer"
-      >
-        {provider.connected ? 'Change Password' : 'Set Password'}
-      </button>
-    ),
-  },
-  google: {
-    brandName: 'Google',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" className="shrink-0">
-        <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
-        <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.27 21.41 7.36 24 12 24z"/>
-        <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.17 0 9.99 0 12s.45 3.83 1.25 5.42l4.03-3.15z"/>
-        <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.36 0 3.27 2.59 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
-      </svg>
-    ),
-    renderAction: (provider, onConnectGoogle) => {
-      if (provider.connected) {
-        return (
-          <span className="text-[11px] text-emerald-400 font-medium flex items-center gap-1">
-            <span className="material-symbols-outlined text-[13px]">check_circle</span>
-            Linked
-          </span>
-        );
-      }
-      return (
-        <button
-          type="button"
-          onClick={onConnectGoogle}
-          className="px-2.5 py-1 text-[11px] font-semibold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-        >
-          <span>Link Account</span>
-          <span className="material-symbols-outlined text-[12px]">open_in_new</span>
-        </button>
-      );
-    },
-  },
-  github: {
-    brandName: 'GitHub',
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 text-on-surface">
-        <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
-      </svg>
-    ),
-    renderAction: () => (
-      <span className="text-[11px] text-on-surface-variant font-medium">Coming Soon</span>
-    ),
-  },
-};
 
 
 export function SettingsView({
@@ -210,11 +144,8 @@ export function SettingsView({
       },
     ];
   });
-  const [loadingProviders, setLoadingProviders] = useState(false);
-
   const fetchConnectedProviders = async () => {
     if (!currentUser) return;
-    setLoadingProviders(true);
     try {
       const list = await api.auth.getProviders();
       if (Array.isArray(list) && list.length > 0) {
@@ -222,8 +153,6 @@ export function SettingsView({
       }
     } catch (err) {
       console.warn('Failed to fetch dynamic providers:', err);
-    } finally {
-      setLoadingProviders(false);
     }
   };
 
@@ -892,104 +821,108 @@ export function SettingsView({
                   </div>
 
                   {/* Connected Accounts & Authentication Providers */}
-                  <div className="p-5 bg-surface-container border border-outline-variant/30 rounded-xl space-y-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center shrink-0">
-                          <span className="material-symbols-outlined text-[24px]">vpn_key</span>
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-body-lg text-body-lg text-on-surface font-bold">
-                              Connected Authentication Providers
-                            </h3>
-                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant border border-outline-variant/30">
-                              Dynamic
-                            </span>
+                  {(() => {
+                    const isGoogleConnected = Boolean(
+                      currentUser.authProvider === 'GOOGLE' ||
+                      currentUser.googleConnected ||
+                      providers.find((p) => p.id === 'google')?.connected
+                    );
+                    const isGitHubConnected = Boolean(
+                      currentUser.authProvider === 'GITHUB' ||
+                      currentUser.githubConnected ||
+                      providers.find((p) => p.id === 'github')?.connected
+                    );
+
+                    return (
+                      <div className="p-5 bg-surface-container border border-outline-variant/30 rounded-xl space-y-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center">
+                            <span className="material-symbols-outlined text-[24px]">vpn_key</span>
                           </div>
-                          <p className="text-xs text-on-surface-variant mt-0.5">
-                            Manage identity providers and sign-in credentials linked to your Proxync account.
-                          </p>
+                          <div>
+                            <h3 className="font-body-lg text-body-lg text-on-surface font-bold">Connected Authentication Providers</h3>
+                            <p className="text-xs text-on-surface-variant mt-0.5">Manage identity providers linked to your Proxync account.</p>
+                          </div>
                         </div>
-                      </div>
 
-                      <button
-                        type="button"
-                        onClick={fetchConnectedProviders}
-                        disabled={loadingProviders}
-                        className="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container-high border border-outline-variant/30 text-on-surface-variant hover:text-primary transition-colors cursor-pointer flex items-center gap-1.5 text-xs self-start sm:self-center disabled:opacity-50"
-                        title="Re-sync connected provider status from backend"
-                      >
-                        <span className={`material-symbols-outlined text-[15px] ${loadingProviders ? 'animate-spin' : ''}`}>
-                          sync
-                        </span>
-                        <span>{loadingProviders ? 'Syncing...' : 'Sync Providers'}</span>
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-3 border-t border-outline-variant/20">
-                      {providers.map((provider) => {
-                        const meta = PROVIDER_UI_META[provider.id] || {
-                          brandName: provider.name,
-                          icon: <span className="material-symbols-outlined text-[20px] text-primary">key</span>,
-                        };
-
-                        const onConnectGoogle = () => handleOpenUrl(`${BACKEND_URL}/api/v1/auth/google`);
-                        const onScrollPassword = () => {
-                          const el = document.getElementById('security-password-section');
-                          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        };
-
-                        return (
-                          <div
-                            key={provider.id}
-                            className={`p-4 bg-surface-container-low rounded-xl border flex flex-col justify-between gap-3.5 transition-all ${
-                              provider.connected
-                                ? 'border-primary/30 shadow-xs'
-                                : 'border-outline-variant/20 hover:border-outline-variant/40'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-3 border-t border-outline-variant/20">
+                          {/* Google Auth */}
+                          <div className="p-3.5 bg-surface-container-low rounded-xl border border-outline-variant/20 flex flex-col justify-between gap-3">
+                            <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2.5">
-                                {meta.icon}
-                                <span className="font-semibold text-xs text-on-surface">{meta.brandName}</span>
+                                <svg width="20" height="20" viewBox="0 0 24 24" className="shrink-0">
+                                  <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
+                                  <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.27 21.41 7.36 24 12 24z"/>
+                                  <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.17 0 9.99 0 12s.45 3.83 1.25 5.42l4.03-3.15z"/>
+                                  <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.36 0 3.27 2.59 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                                </svg>
+                                <span className="font-semibold text-xs text-on-surface">Google</span>
                               </div>
-                              {provider.connected ? (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 text-[10px] font-bold">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                  <span>{provider.badge || 'Connected'}</span>
+                              {isGoogleConnected ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                  <span>Connected</span>
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-surface-container text-on-surface-variant text-[10px] font-medium border border-outline-variant/30">
-                                  <span>{provider.badge || 'Not Linked'}</span>
+                                <span className="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant text-[10px] font-medium border border-outline-variant/30">
+                                  Not Linked
                                 </span>
                               )}
                             </div>
-
-                            <div className="space-y-1">
-                              <p className="text-xs font-medium text-on-surface truncate">
-                                {provider.identifier || (provider.connected ? currentUser.email : meta.brandName)}
-                              </p>
-                              <p className="text-[11px] text-on-surface-variant line-clamp-2">
-                                {provider.description}
-                              </p>
-                            </div>
-
-                            <div className="pt-2.5 border-t border-outline-variant/15 flex items-center justify-between min-h-[30px]">
-                              <span className="text-[10px] text-outline uppercase font-mono tracking-wider">
-                                {provider.type === 'oauth' ? 'OAuth 2.0' : 'Credentials'}
-                              </span>
-                              <div>
-                                {meta.renderAction
-                                  ? meta.renderAction(provider, onConnectGoogle, onScrollPassword)
-                                  : null}
-                              </div>
-                            </div>
+                            <p className="text-[11px] text-on-surface-variant truncate">
+                              {isGoogleConnected
+                                ? currentUser.email
+                                : 'Sign in with your Google account'}
+                            </p>
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
+
+                          {/* GitHub Auth */}
+                          <div className="p-3.5 bg-surface-container-low rounded-xl border border-outline-variant/20 flex flex-col justify-between gap-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2.5">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 text-on-surface">
+                                  <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+                                </svg>
+                                <span className="font-semibold text-xs text-on-surface">GitHub</span>
+                              </div>
+                              {isGitHubConnected ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                  <span>Connected</span>
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant text-[10px] font-medium border border-outline-variant/30">
+                                  Available Soon
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-on-surface-variant truncate">
+                              {isGitHubConnected
+                                ? 'Linked GitHub Account'
+                                : 'Link your GitHub for code syncing'}
+                            </p>
+                          </div>
+
+                          {/* Email / Local Auth */}
+                          <div className="p-3.5 bg-surface-container-low rounded-xl border border-outline-variant/20 flex flex-col justify-between gap-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2.5">
+                                <span className="material-symbols-outlined text-[20px] text-primary">mail</span>
+                                <span className="font-semibold text-xs text-on-surface">Email & Password</span>
+                              </div>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                <span>Active</span>
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-on-surface-variant truncate">
+                              {currentUser.email}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Redesigned Security & Password Card */}
                   <div
