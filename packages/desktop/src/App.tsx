@@ -3457,7 +3457,7 @@ export default function App() {
                       </div>
                       {!sidebarCollapsed && (
                         <div className="flex flex-col items-start min-w-0 flex-1 ml-1 gap-1.5">
-                          <span className="text-sm font-semibold text-on-surface truncate leading-tight tracking-tight group-hover:text-primary transition-colors">
+                          <span className="text-sm font-semibold text-on-surface truncate leading-tight tracking-tight">
                             {currentUser.name}
                           </span>
                           {/* Subtle Blue PRO pill with Crown Icon */}
