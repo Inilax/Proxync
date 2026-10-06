@@ -795,24 +795,7 @@ export function SettingsView({
                       )}
                     </div>
 
-                    <div className="pt-3 border-t border-outline-variant/20 flex flex-wrap items-center justify-between gap-2 text-xs">
-                      <div className="flex items-center gap-2 text-on-surface-variant">
-                        <span className="text-outline">Account ID:</span>
-                        <code className="px-2 py-0.5 rounded bg-surface-container-low border border-outline-variant/30 font-mono text-[11px] text-on-surface">
-                          {currentUser.id}
-                        </code>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(currentUser.id);
-                            showToast('Account ID copied to clipboard', 'info');
-                          }}
-                          className="text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
-                          title="Copy Account ID"
-                        >
-                          <span className="material-symbols-outlined text-[15px]">content_copy</span>
-                        </button>
-                      </div>
+                    <div className="pt-3 border-t border-outline-variant/20 flex items-center justify-between gap-2 text-xs">
                       <div className="flex items-center gap-1.5 text-on-surface-variant text-[11px]">
                         <span className="material-symbols-outlined text-[14px] text-emerald-400">verified_user</span>
                         <span>Direct Cloud Tunnel Session Active</span>
@@ -939,14 +922,10 @@ export function SettingsView({
                             <h3 className="font-headline-sm text-base sm:text-lg font-bold text-on-surface leading-tight">
                               Security & Password
                             </h3>
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                              Argon2id Encrypted
-                            </span>
                           </div>
                           <p className="text-xs text-on-surface-variant mt-0.5">
                             {currentUser.hasPassword !== false
-                              ? 'Manage and update your master authentication password with cryptographic security.'
+                              ? 'Manage and update your account login password.'
                               : 'Set up an account password to enable direct email & password authentication alongside Google.'}
                           </p>
                         </div>
@@ -1183,11 +1162,6 @@ export function SettingsView({
                               Clear
                             </button>
                           )}
-                        </div>
-
-                        <div className="text-[11px] text-outline flex items-center gap-1.5">
-                          <span className="material-symbols-outlined text-[14px]">enhanced_encryption</span>
-                          <span>Argon2id zero-knowledge hashing</span>
                         </div>
                       </div>
                     </form>
