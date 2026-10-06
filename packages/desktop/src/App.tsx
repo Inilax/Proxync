@@ -2922,6 +2922,55 @@ export default function App() {
     navigator.clipboard.writeText(value).then(() => showToast(message, 'success')).catch(() => showToast('Clipboard access failed', 'error'));
   }
 
+  const handleInitiateLogin = useCallback(() => {
+    if (authPollingRef.current) clearInterval(authPollingRef.current);
+    if (authTimeoutRef.current) clearTimeout(authTimeoutRef.current);
+
+    const code = crypto.randomUUID();
+    const targetUrl = `${BACKEND_URL}/login?code=${encodeURIComponent(code)}`;
+    openUrl(targetUrl).catch(() => {
+      window.open(targetUrl, '_blank');
+    });
+    showToast('Opening browser to sign in on ' + BACKEND_URL + '...', 'info');
+
+    // Gentle background polling without locking the UI button
+    authPollingRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/v1/auth/poll?code=${encodeURIComponent(code)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.user && data.accessToken) {
+            if (authPollingRef.current) clearInterval(authPollingRef.current);
+            if (authTimeoutRef.current) clearTimeout(authTimeoutRef.current);
+
+            setAuthStatus('awaiting_approval');
+
+            setTimeout(() => {
+              saveAuthSession(data.user, data.accessToken, data.refreshToken);
+              setCurrentUser(data.user);
+              setAuthStatus('idle');
+              showToast(`🎉 Welcome to Proxync, ${data.user.name}! (PRO unlocked)`, 'success');
+            }, 1200);
+          }
+        }
+      } catch {
+        // ignore network blips
+      }
+    }, 2500);
+
+    // Automatically stop polling after 90 seconds if user abandons / never signs in
+    authTimeoutRef.current = setTimeout(() => {
+      if (authPollingRef.current) clearInterval(authPollingRef.current);
+    }, 90000);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    setUserMenuOpen(false);
+    clearAuthSession();
+    setCurrentUser(null);
+    showToast('Logged out successfully', 'info');
+  }, []);
+
   useEffect(() => {
     const handleGlobalContextMenu = (e: MouseEvent) => {
       if (!appSettings.enableDevTools) {
@@ -3433,48 +3482,7 @@ export default function App() {
               ) : (
                 <button
                   type="button"
-                  onClick={() => {
-                    if (authPollingRef.current) clearInterval(authPollingRef.current);
-                    if (authTimeoutRef.current) clearTimeout(authTimeoutRef.current);
-
-                    const code = crypto.randomUUID();
-                    const targetUrl = `${BACKEND_URL}/login?code=${encodeURIComponent(code)}`;
-                    openUrl(targetUrl).catch(() => {
-                      window.open(targetUrl, '_blank');
-                    });
-                    showToast('Opening browser to sign in on ' + BACKEND_URL + '...', 'info');
-
-                    // Gentle background polling without locking the UI button
-                    authPollingRef.current = setInterval(async () => {
-                      try {
-                        const res = await fetch(`${BACKEND_URL}/api/v1/auth/poll?code=${encodeURIComponent(code)}`);
-                        if (res.ok) {
-                          const data = await res.json();
-                          if (data && data.user && data.accessToken) {
-                            if (authPollingRef.current) clearInterval(authPollingRef.current);
-                            if (authTimeoutRef.current) clearTimeout(authTimeoutRef.current);
-
-                            // Once person signs in, show awaiting approval
-                            setAuthStatus('awaiting_approval');
-
-                            setTimeout(() => {
-                              saveAuthSession(data.user, data.accessToken, data.refreshToken);
-                              setCurrentUser(data.user);
-                              setAuthStatus('idle');
-                              showToast(`🎉 Welcome to Proxync, ${data.user.name}! (PRO unlocked)`, 'success');
-                            }, 1200);
-                          }
-                        }
-                      } catch {
-                        // ignore network blips
-                      }
-                    }, 2500);
-
-                    // Automatically stop polling after 90 seconds if user abandons / never signs in
-                    authTimeoutRef.current = setTimeout(() => {
-                      if (authPollingRef.current) clearInterval(authPollingRef.current);
-                    }, 90000);
-                  }}
+                  onClick={handleInitiateLogin}
                   disabled={authStatus === 'awaiting_approval'}
                   title={authStatus === 'awaiting_approval' ? 'Awaiting approval...' : 'Sign In'}
                   className={`btn-primary flex items-center justify-center ${sidebarCollapsed ? 'p-1.5 w-full' : 'gap-2 px-4 py-2.5'} w-full rounded-lg text-xs font-bold font-label-md ${authStatus === 'awaiting_approval' ? 'cursor-wait opacity-90' : 'cursor-pointer'}`}
@@ -3558,12 +3566,7 @@ export default function App() {
 
                 <button
                   type="button"
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    clearAuthSession();
-                    setCurrentUser(null);
-                    showToast('Logged out successfully', 'info');
-                  }}
+                  onClick={handleLogout}
                   className="flex items-center gap-3 px-3 py-2 text-xs font-medium text-error hover:text-error hover:bg-error/10 rounded-xl transition-colors cursor-pointer w-full text-left group"
                 >
                   <span className="material-symbols-outlined text-[18px] text-error group-hover:text-error transition-colors">logout</span>
@@ -3817,6 +3820,10 @@ export default function App() {
                 checkingUpdates={checkingUpdates}
                 appVersion="v0.2.4"
                 initialSection={settingsSection}
+                currentUser={currentUser}
+                onSignIn={handleInitiateLogin}
+                onSignOut={handleLogout}
+                authStatus={authStatus}
               />
             )}
             {mainView === 'process' && (

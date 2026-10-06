@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import type { WorkspaceConfig, AppSettings, DomainRecord, Guardrails, Tunnel, ProcessCandidate } from './SharedComponents';
 import { showToast } from '../../lib/toast';
 import { ConfirmPurgeDialog } from './Dialogs';
+import type { AuthUser } from '../../lib/api';
 import {
   readLogsSummary,
   openLogsFolder,
@@ -16,6 +18,10 @@ import {
   uninstallCliFromPath,
   type CliStatus,
 } from '../../lib/cliInstaller';
+
+function handleOpenUrl(url: string) {
+  openUrl(url).catch(() => window.open(url, '_blank'));
+}
 
 export function SettingsView({
   workspace,
@@ -46,6 +52,10 @@ export function SettingsView({
   checkingUpdates = false,
   appVersion = 'v0.2.4',
   initialSection = 'general',
+  currentUser = null,
+  onSignIn,
+  onSignOut,
+  authStatus = 'idle',
 }: {
   workspace: WorkspaceConfig | null;
   appSettings: AppSettings;
@@ -75,6 +85,10 @@ export function SettingsView({
   checkingUpdates?: boolean;
   appVersion?: string;
   initialSection?: 'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger';
+  currentUser?: AuthUser | null;
+  onSignIn?: () => void;
+  onSignOut?: () => void;
+  authStatus?: 'idle' | 'awaiting_approval';
 }) {
   const [activeSection, setActiveSection] = useState<'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger'>(initialSection);
   const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
@@ -525,16 +539,218 @@ export function SettingsView({
           {/* Account Settings */}
           {activeSection === 'account' && (
             <section className="space-y-6">
-              <h2 className="font-headline-md text-headline-md border-b border-outline-variant/30 pb-4">Account & Enterprise Edition</h2>
-              
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-outline-variant/30 pb-4">
+                <div>
+                  <h2 className="font-headline-md text-headline-md text-on-surface">Account</h2>
+                  <p className="text-xs text-on-surface-variant mt-0.5">Manage your personal profile, active subscription plan, and cloud connectivity.</p>
+                </div>
+                {currentUser && (
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 text-[11px] font-semibold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span>Authenticated Session</span>
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {currentUser ? (
+                <>
+                  {/* User Profile Card */}
+                  <div className="p-5 bg-surface-container border border-outline-variant/30 rounded-xl space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        {/* Circular Avatar with Online Status Dot */}
+                        <div className="w-14 h-14 rounded-full bg-[#1e293b] text-white flex items-center justify-center text-xl font-bold shrink-0 relative select-none border border-outline-variant/40 shadow-sm">
+                          <span className="leading-none">{currentUser.name.charAt(0).toUpperCase()}</span>
+                          <span
+                            className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-[#10b981] ring-2 ring-surface-container"
+                            title="Online"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2.5 flex-wrap">
+                            <h3 className="font-headline-sm text-base sm:text-lg font-bold text-on-surface leading-tight">
+                              {currentUser.name}
+                            </h3>
+                            {/* Blue PRO pill with Crown Icon */}
+                            {currentUser.role === 'PRO' ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-[5px] bg-[#0c2a4a]/80 text-[#38bdf8] text-[11px] font-bold tracking-wider uppercase leading-none border border-[#0284c7]/25 select-none">
+                                <svg width="11" height="10" viewBox="0 0 24 20" fill="currentColor" className="shrink-0 -mt-px">
+                                  <path d="M2 4l4.5 3.5L12 1.5l5.5 6L22 4v10.5H2V4zm0 13h20v2.5H2V17z" />
+                                </svg>
+                                <span>PRO</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-[5px] bg-surface-container-high text-on-surface-variant text-[11px] font-semibold border border-outline-variant/30">
+                                <span>{currentUser.role || 'FREE'}</span>
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-on-surface-variant flex items-center gap-1.5">
+                            <span className="material-symbols-outlined text-[15px] text-outline">mail</span>
+                            <span>{currentUser.email}</span>
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Log Out Button */}
+                      {onSignOut && (
+                        <button
+                          type="button"
+                          onClick={onSignOut}
+                          className="px-3.5 py-2 rounded-xl bg-error/10 hover:bg-error/20 text-error border border-error/20 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer self-start sm:self-center"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">logout</span>
+                          <span>Log Out</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="pt-3 border-t border-outline-variant/20 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-2 text-on-surface-variant">
+                        <span className="text-outline">Account ID:</span>
+                        <code className="px-2 py-0.5 rounded bg-surface-container-low border border-outline-variant/30 font-mono text-[11px] text-on-surface">
+                          {currentUser.id}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(currentUser.id);
+                            showToast('Account ID copied to clipboard', 'info');
+                          }}
+                          className="text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
+                          title="Copy Account ID"
+                        >
+                          <span className="material-symbols-outlined text-[15px]">content_copy</span>
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-on-surface-variant text-[11px]">
+                        <span className="material-symbols-outlined text-[14px] text-emerald-400">verified_user</span>
+                        <span>Direct Cloud Tunnel Session Active</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Subscription & Plan Status Card */}
+                  <div className="p-5 bg-surface-container border border-outline-variant/30 rounded-xl space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center">
+                          <span className="material-symbols-outlined text-[24px]">workspace_premium</span>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-body-lg text-body-lg text-on-surface font-bold">
+                              {currentUser.role === 'PRO' ? 'Proxync Pro Tier' : 'Proxync Community Edition'}
+                            </h3>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                              currentUser.role === 'PRO' 
+                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' 
+                                : 'bg-surface-container-high text-on-surface-variant border border-outline-variant/30'
+                            }`}>
+                              {currentUser.role === 'PRO' ? 'Active Subscription' : 'Free Tier'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-on-surface-variant mt-0.5">
+                            {currentUser.role === 'PRO' 
+                              ? 'All developer and cloud relay features unlocked on this machine.'
+                              : 'Basic local developer mode active. Upgrade to unlock full edge tunnels and custom subdomains.'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenUrl('https://proxync.dev/billing')}
+                        className="btn-primary compact text-xs flex items-center gap-1.5 cursor-pointer self-start sm:self-center"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">credit_card</span>
+                        <span>{currentUser.role === 'PRO' ? 'Manage Billing' : 'Upgrade to Pro'}</span>
+                        <span className="material-symbols-outlined text-sm">open_in_new</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-outline-variant/20 text-xs">
+                      <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/20 flex items-center gap-2.5">
+                        <span className="material-symbols-outlined text-emerald-400 text-sm">check_circle</span>
+                        <span className="text-on-surface font-medium">Unlimited Native SSH Tunnels</span>
+                      </div>
+                      <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/20 flex items-center gap-2.5">
+                        <span className="material-symbols-outlined text-emerald-400 text-sm">check_circle</span>
+                        <span className="text-on-surface font-medium">Verified Custom Domains & Subdomains</span>
+                      </div>
+                      <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/20 flex items-center gap-2.5">
+                        <span className="material-symbols-outlined text-emerald-400 text-sm">check_circle</span>
+                        <span className="text-on-surface font-medium">Low-Latency Global Edge Relays</span>
+                      </div>
+                      <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/20 flex items-center gap-2.5">
+                        <span className="material-symbols-outlined text-emerald-400 text-sm">check_circle</span>
+                        <span className="text-on-surface font-medium">360° Workbench & Traffic Inspection</span>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* Unauthenticated / Sign-in CTA Card */
+                <div className="p-6 bg-surface-container border border-outline-variant/30 rounded-xl space-y-5 text-center sm:text-left">
+                  <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center shrink-0">
+                      <span className="material-symbols-outlined text-[28px]">account_circle</span>
+                    </div>
+                    <div className="space-y-1">
+                      <h3 className="font-headline-sm text-base sm:text-lg font-bold text-on-surface">
+                        Sign In to Proxync
+                      </h3>
+                      <p className="text-xs text-on-surface-variant max-w-xl">
+                        Connect your Proxync account to activate Pro features, automatically verify custom domains, and sync tunnels across devices.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-xs">
+                    <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/20 flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-primary text-sm">workspace_premium</span>
+                      <span className="text-on-surface font-medium">Unlock Pro Features</span>
+                    </div>
+                    <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/20 flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-primary text-sm">public</span>
+                      <span className="text-on-surface font-medium">Custom Subdomains</span>
+                    </div>
+                    <div className="p-3 bg-surface-container-low rounded-lg border border-outline-variant/20 flex items-center gap-2.5">
+                      <span className="material-symbols-outlined text-primary text-sm">sync</span>
+                      <span className="text-on-surface font-medium">Cloud Workspace Sync</span>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-outline-variant/20">
+                    <span className="text-[11px] text-outline font-mono">Current Mode: Local Studio (Free / Open-Source)</span>
+                    {onSignIn && (
+                      <button
+                        type="button"
+                        onClick={onSignIn}
+                        disabled={authStatus === 'awaiting_approval'}
+                        className="btn-primary compact text-xs flex items-center gap-2 cursor-pointer disabled:opacity-80"
+                      >
+                        <span className={`material-symbols-outlined text-[16px] ${authStatus === 'awaiting_approval' ? 'animate-spin' : ''}`}>
+                          {authStatus === 'awaiting_approval' ? 'sync' : 'lock_open'}
+                        </span>
+                        <span>{authStatus === 'awaiting_approval' ? 'Awaiting browser approval...' : 'Sign In with Proxync'}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Enterprise & Team Cloud Sync Card */}
               <div className="p-5 bg-surface-container border border-outline-variant/30 rounded-xl space-y-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-xl bg-secondary/10 border border-secondary/20 text-secondary flex items-center justify-center">
                     <span className="material-symbols-outlined text-[24px]">corporate_fare</span>
                   </div>
                   <div>
                     <h3 className="font-body-lg text-body-lg text-on-surface font-bold">Proxync Enterprise & Cloud Sync</h3>
-                    <p className="text-xs text-on-surface-variant">Local-first mode active. Upgrade to Enterprise Edition for team collaboration.</p>
+                    <p className="text-xs text-on-surface-variant">Looking for organization-wide collaboration, SAML SSO, and private VPC relays?</p>
                   </div>
                 </div>
 
@@ -558,16 +774,15 @@ export function SettingsView({
                 </div>
 
                 <div className="pt-2 flex items-center justify-between">
-                  <span className="text-[11px] text-outline font-mono">Current Tier: Local Studio (Free / Open-Source)</span>
-                  <a
-                    href="https://proxync.dev/"
-                    target="_blank"
-                    rel="noreferrer"
+                  <span className="text-[11px] text-outline font-mono">Organization Add-on for Engineering Teams</span>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenUrl('https://proxync.dev')}
                     className="btn-secondary compact text-xs cursor-pointer flex items-center gap-1.5"
                   >
                     <span>Learn More at proxync.dev</span>
                     <span className="material-symbols-outlined text-sm">open_in_new</span>
-                  </a>
+                  </button>
                 </div>
               </div>
             </section>
