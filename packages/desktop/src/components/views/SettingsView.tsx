@@ -4,7 +4,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import type { WorkspaceConfig, AppSettings, DomainRecord, Guardrails, Tunnel, ProcessCandidate } from './SharedComponents';
 import { showToast } from '../../lib/toast';
 import { ConfirmPurgeDialog } from './Dialogs';
-import { api, type AuthUser } from '../../lib/api';
+import { api, type AuthUser, type ConnectedProvider, BACKEND_URL } from '../../lib/api';
 import {
   readLogsSummary,
   openLogsFolder,
@@ -22,6 +22,73 @@ import {
 function handleOpenUrl(url: string) {
   openUrl(url).catch(() => window.open(url, '_blank'));
 }
+
+const PROVIDER_UI_META: Record<string, {
+  brandName: string;
+  icon: React.ReactNode;
+  renderAction?: (
+    provider: ConnectedProvider,
+    onConnectGoogle: () => void,
+    onScrollPassword: () => void
+  ) => React.ReactNode;
+}> = {
+  local: {
+    brandName: 'Email & Password',
+    icon: <span className="material-symbols-outlined text-[20px] text-primary">mail</span>,
+    renderAction: (provider, _, onScrollPassword) => (
+      <button
+        type="button"
+        onClick={onScrollPassword}
+        className="px-2.5 py-1 text-[11px] font-semibold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer"
+      >
+        {provider.connected ? 'Change Password' : 'Set Password'}
+      </button>
+    ),
+  },
+  google: {
+    brandName: 'Google',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" className="shrink-0">
+        <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
+        <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.27 21.41 7.36 24 12 24z"/>
+        <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.17 0 9.99 0 12s.45 3.83 1.25 5.42l4.03-3.15z"/>
+        <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.36 0 3.27 2.59 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+      </svg>
+    ),
+    renderAction: (provider, onConnectGoogle) => {
+      if (provider.connected) {
+        return (
+          <span className="text-[11px] text-emerald-400 font-medium flex items-center gap-1">
+            <span className="material-symbols-outlined text-[13px]">check_circle</span>
+            Linked
+          </span>
+        );
+      }
+      return (
+        <button
+          type="button"
+          onClick={onConnectGoogle}
+          className="px-2.5 py-1 text-[11px] font-semibold text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+        >
+          <span>Link Account</span>
+          <span className="material-symbols-outlined text-[12px]">open_in_new</span>
+        </button>
+      );
+    },
+  },
+  github: {
+    brandName: 'GitHub',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 text-on-surface">
+        <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+      </svg>
+    ),
+    renderAction: () => (
+      <span className="text-[11px] text-on-surface-variant font-medium">Coming Soon</span>
+    ),
+  },
+};
+
 
 export function SettingsView({
   workspace,
@@ -106,8 +173,78 @@ export function SettingsView({
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+  const [passwordStatusMsg, setPasswordStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Dynamic connected authentication providers state
+  const [providers, setProviders] = useState<ConnectedProvider[]>(() => {
+    if (currentUser?.providers && currentUser.providers.length > 0) {
+      return currentUser.providers;
+    }
+    return [
+      {
+        id: 'local',
+        name: 'Email & Password',
+        type: 'credentials',
+        connected: Boolean(currentUser?.hasPassword !== false),
+        enabled: true,
+        identifier: currentUser?.email || null,
+        status: currentUser?.hasPassword !== false ? 'connected' : 'not_connected',
+        badge: currentUser?.hasPassword !== false ? 'Active' : 'Not Linked',
+        description: 'Primary email & password credential',
+      },
+      {
+        id: 'google',
+        name: 'Google',
+        type: 'oauth',
+        connected: Boolean(currentUser?.googleConnected || currentUser?.authProvider === 'GOOGLE'),
+        enabled: true,
+        identifier: (currentUser?.googleConnected || currentUser?.authProvider === 'GOOGLE') ? currentUser?.email || null : null,
+        status: (currentUser?.googleConnected || currentUser?.authProvider === 'GOOGLE') ? 'connected' : 'not_connected',
+        badge: (currentUser?.googleConnected || currentUser?.authProvider === 'GOOGLE') ? 'Connected' : 'Not Linked',
+        description: 'Connect your Google account for 1-click login',
+        connectUrl: '/api/v1/auth/google',
+      },
+    ];
+  });
+  const [loadingProviders, setLoadingProviders] = useState(false);
+
+  const fetchConnectedProviders = async () => {
+    if (!currentUser) return;
+    setLoadingProviders(true);
+    try {
+      const list = await api.auth.getProviders();
+      if (Array.isArray(list) && list.length > 0) {
+        setProviders(list);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch dynamic providers:', err);
+    } finally {
+      setLoadingProviders(false);
+    }
+  };
+
+  useEffect(() => {
+    if (currentUser && activeSection === 'account') {
+      fetchConnectedProviders();
+    }
+  }, [currentUser?.id, activeSection]);
+
+  // Real-time password criteria calculations
+  const hasMinLength = newPassword.length >= 6;
+  const passwordsMatch = newPassword.length > 0 && newPassword === confirmPassword;
+  const hasNumberOrSymbol = /[0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(newPassword);
+  const hasUpperAndLower = /[a-z]/.test(newPassword) && /[A-Z]/.test(newPassword);
+
+  const passwordStrength = !newPassword
+    ? 0
+    : (hasMinLength ? 1 : 0) + ((hasMinLength && (hasNumberOrSymbol || hasUpperAndLower)) ? 1 : 0) + ((newPassword.length >= 10 && hasNumberOrSymbol && hasUpperAndLower) ? 1 : 0);
+
+  const strengthLabels = ['Too short', 'Basic', 'Good', 'Strong'];
+  const strengthColors = ['bg-outline/30', 'bg-error', 'bg-amber-400', 'bg-emerald-400'];
 
   useEffect(() => {
     if (currentUser?.name) {
@@ -136,23 +273,33 @@ export function SettingsView({
 
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    setPasswordStatusMsg(null);
     if (!newPassword || newPassword.length < 6) {
-      showToast('New password must be at least 6 characters', 'error');
+      const msg = 'New password must be at least 6 characters';
+      setPasswordStatusMsg({ type: 'error', text: msg });
+      showToast(msg, 'error');
       return;
     }
     if (newPassword !== confirmPassword) {
-      showToast('Passwords do not match', 'error');
+      const msg = 'New password and confirmation do not match';
+      setPasswordStatusMsg({ type: 'error', text: msg });
+      showToast(msg, 'error');
       return;
     }
     setSavingPassword(true);
     try {
       const res = await api.auth.changePassword(currentPassword, newPassword);
-      showToast(res.message || 'Password updated successfully!', 'success');
+      const msg = res.message || 'Password updated successfully!';
+      setPasswordStatusMsg({ type: 'success', text: msg });
+      showToast(msg, 'success');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      fetchConnectedProviders();
     } catch (err: any) {
-      showToast(err?.message || 'Failed to update password', 'error');
+      const msg = err?.message || 'Failed to update password';
+      setPasswordStatusMsg({ type: 'error', text: msg });
+      showToast(msg, 'error');
     } finally {
       setSavingPassword(false);
     }
@@ -746,185 +893,369 @@ export function SettingsView({
 
                   {/* Connected Accounts & Authentication Providers */}
                   <div className="p-5 bg-surface-container border border-outline-variant/30 rounded-xl space-y-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center">
-                        <span className="material-symbols-outlined text-[24px]">vpn_key</span>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center shrink-0">
+                          <span className="material-symbols-outlined text-[24px]">vpn_key</span>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-body-lg text-body-lg text-on-surface font-bold">
+                              Connected Authentication Providers
+                            </h3>
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant border border-outline-variant/30">
+                              Dynamic
+                            </span>
+                          </div>
+                          <p className="text-xs text-on-surface-variant mt-0.5">
+                            Manage identity providers and sign-in credentials linked to your Proxync account.
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="font-body-lg text-body-lg text-on-surface font-bold">Connected Authentication Providers</h3>
-                        <p className="text-xs text-on-surface-variant mt-0.5">Manage identity providers linked to your Proxync account.</p>
-                      </div>
+
+                      <button
+                        type="button"
+                        onClick={fetchConnectedProviders}
+                        disabled={loadingProviders}
+                        className="px-3 py-1.5 rounded-xl bg-surface-container-low hover:bg-surface-container-high border border-outline-variant/30 text-on-surface-variant hover:text-primary transition-colors cursor-pointer flex items-center gap-1.5 text-xs self-start sm:self-center disabled:opacity-50"
+                        title="Re-sync connected provider status from backend"
+                      >
+                        <span className={`material-symbols-outlined text-[15px] ${loadingProviders ? 'animate-spin' : ''}`}>
+                          sync
+                        </span>
+                        <span>{loadingProviders ? 'Syncing...' : 'Sync Providers'}</span>
+                      </button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-3 border-t border-outline-variant/20">
-                      {/* Google Auth */}
-                      <div className="p-3.5 bg-surface-container-low rounded-xl border border-outline-variant/20 flex flex-col justify-between gap-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <svg width="20" height="20" viewBox="0 0 24 24" className="shrink-0">
-                              <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
-                              <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.27 21.41 7.36 24 12 24z"/>
-                              <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.17 0 9.99 0 12s.45 3.83 1.25 5.42l4.03-3.15z"/>
-                              <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.36 0 3.27 2.59 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
-                            </svg>
-                            <span className="font-semibold text-xs text-on-surface">Google</span>
-                          </div>
-                          {(currentUser.authProvider === 'GOOGLE' || currentUser.googleConnected || currentUser.email.includes('@gmail.com')) ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                              <span>Connected</span>
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant text-[10px] font-medium border border-outline-variant/30">
-                              Not Linked
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-on-surface-variant truncate">
-                          {(currentUser.authProvider === 'GOOGLE' || currentUser.googleConnected || currentUser.email.includes('@gmail.com'))
-                            ? currentUser.email
-                            : 'Sign in with your Google account'}
-                        </p>
-                      </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-3 border-t border-outline-variant/20">
+                      {providers.map((provider) => {
+                        const meta = PROVIDER_UI_META[provider.id] || {
+                          brandName: provider.name,
+                          icon: <span className="material-symbols-outlined text-[20px] text-primary">key</span>,
+                        };
 
-                      {/* GitHub Auth */}
-                      <div className="p-3.5 bg-surface-container-low rounded-xl border border-outline-variant/20 flex flex-col justify-between gap-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 text-on-surface">
-                              <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
-                            </svg>
-                            <span className="font-semibold text-xs text-on-surface">GitHub</span>
-                          </div>
-                          {(currentUser.authProvider === 'GITHUB' || currentUser.githubConnected) ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                              <span>Connected</span>
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant text-[10px] font-medium border border-outline-variant/30">
-                              Available Soon
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-on-surface-variant truncate">
-                          {(currentUser.authProvider === 'GITHUB' || currentUser.githubConnected)
-                            ? 'Linked GitHub Account'
-                            : 'Link your GitHub for code syncing'}
-                        </p>
-                      </div>
+                        const onConnectGoogle = () => handleOpenUrl(`${BACKEND_URL}/api/v1/auth/google`);
+                        const onScrollPassword = () => {
+                          const el = document.getElementById('security-password-section');
+                          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        };
 
-                      {/* Email / Local Auth */}
-                      <div className="p-3.5 bg-surface-container-low rounded-xl border border-outline-variant/20 flex flex-col justify-between gap-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <span className="material-symbols-outlined text-[20px] text-primary">mail</span>
-                            <span className="font-semibold text-xs text-on-surface">Email & Password</span>
+                        return (
+                          <div
+                            key={provider.id}
+                            className={`p-4 bg-surface-container-low rounded-xl border flex flex-col justify-between gap-3.5 transition-all ${
+                              provider.connected
+                                ? 'border-primary/30 shadow-xs'
+                                : 'border-outline-variant/20 hover:border-outline-variant/40'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2.5">
+                                {meta.icon}
+                                <span className="font-semibold text-xs text-on-surface">{meta.brandName}</span>
+                              </div>
+                              {provider.connected ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 text-[10px] font-bold">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                  <span>{provider.badge || 'Connected'}</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-surface-container text-on-surface-variant text-[10px] font-medium border border-outline-variant/30">
+                                  <span>{provider.badge || 'Not Linked'}</span>
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="space-y-1">
+                              <p className="text-xs font-medium text-on-surface truncate">
+                                {provider.identifier || (provider.connected ? currentUser.email : meta.brandName)}
+                              </p>
+                              <p className="text-[11px] text-on-surface-variant line-clamp-2">
+                                {provider.description}
+                              </p>
+                            </div>
+
+                            <div className="pt-2.5 border-t border-outline-variant/15 flex items-center justify-between min-h-[30px]">
+                              <span className="text-[10px] text-outline uppercase font-mono tracking-wider">
+                                {provider.type === 'oauth' ? 'OAuth 2.0' : 'Credentials'}
+                              </span>
+                              <div>
+                                {meta.renderAction
+                                  ? meta.renderAction(provider, onConnectGoogle, onScrollPassword)
+                                  : null}
+                              </div>
+                            </div>
                           </div>
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                            <span>Active</span>
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-on-surface-variant truncate">
-                          {currentUser.email}
-                        </p>
-                      </div>
+                        );
+                      })}
                     </div>
                   </div>
 
-                  {/* Password & Security Card */}
-                  <div className="p-5 bg-surface-container border border-outline-variant/30 rounded-xl space-y-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 text-primary flex items-center justify-center">
-                        <span className="material-symbols-outlined text-[24px]">lock_reset</span>
-                      </div>
-                      <div>
-                        <h3 className="font-body-lg text-body-lg text-on-surface font-bold">Security & Password</h3>
-                        <p className="text-xs text-on-surface-variant mt-0.5">
-                          {(currentUser.authProvider === 'GOOGLE' && !currentUser.hasPassword)
-                            ? 'You are signed in via Google. You can set a password below to also enable email login.'
-                            : 'Update your account login password.'}
-                        </p>
+                  {/* Redesigned Security & Password Card */}
+                  <div
+                    id="security-password-section"
+                    className="p-5 sm:p-6 bg-surface-container border border-outline-variant/30 rounded-xl space-y-5 shadow-sm"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-outline-variant/20">
+                      <div className="flex items-center gap-3.5">
+                        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/25 text-primary flex items-center justify-center shadow-inner shrink-0">
+                          <span className="material-symbols-outlined text-[24px]">lock_reset</span>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2.5 flex-wrap">
+                            <h3 className="font-headline-sm text-base sm:text-lg font-bold text-on-surface leading-tight">
+                              Security & Password
+                            </h3>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                              Argon2id Encrypted
+                            </span>
+                          </div>
+                          <p className="text-xs text-on-surface-variant mt-0.5">
+                            {currentUser.hasPassword !== false
+                              ? 'Manage and update your master authentication password with cryptographic security.'
+                              : 'Set up an account password to enable direct email & password authentication alongside Google.'}
+                          </p>
+                        </div>
                       </div>
                     </div>
 
-                    <form onSubmit={handleUpdatePassword} className="space-y-4 pt-3 border-t border-outline-variant/20 max-w-lg">
+                    {/* Inline Status Message */}
+                    {passwordStatusMsg && (
+                      <div
+                        className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-2 transition-all ${
+                          passwordStatusMsg.type === 'success'
+                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                            : 'bg-error/10 border-error/30 text-error'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="material-symbols-outlined text-[16px]">
+                            {passwordStatusMsg.type === 'success' ? 'check_circle' : 'error'}
+                          </span>
+                          <span className="font-medium">{passwordStatusMsg.text}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setPasswordStatusMsg(null)}
+                          className="text-on-surface-variant hover:text-on-surface cursor-pointer text-xs p-1"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">close</span>
+                        </button>
+                      </div>
+                    )}
+
+                    <form onSubmit={handleUpdatePassword} className="space-y-4 max-w-xl">
+                      {/* Current Password Field */}
                       {currentUser.hasPassword !== false && (
                         <div className="space-y-1.5">
-                          <label className="text-xs font-medium text-on-surface-variant block">Current Password</label>
-                          <input
-                            type={showPassword ? 'text' : 'password'}
-                            value={currentPassword}
-                            onChange={(e) => setCurrentPassword(e.target.value)}
-                            placeholder="Enter current password"
-                            className="w-full px-3 py-2 text-xs rounded-lg bg-surface-container-low border border-outline-variant/30 text-on-surface focus:outline-none focus:border-primary transition-colors"
-                          />
-                        </div>
-                      )}
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-medium text-on-surface-variant block">New Password</label>
+                          <div className="flex items-center justify-between text-xs">
+                            <label className="font-semibold text-on-surface flex items-center gap-1.5">
+                              <span className="material-symbols-outlined text-[15px] text-outline">key</span>
+                              Current Password
+                            </label>
+                            <span className="text-[11px] text-on-surface-variant">Required for verification</span>
+                          </div>
                           <div className="relative">
                             <input
-                              type={showPassword ? 'text' : 'password'}
-                              value={newPassword}
-                              onChange={(e) => setNewPassword(e.target.value)}
-                              placeholder="Minimum 6 characters"
-                              className="w-full px-3 py-2 text-xs rounded-lg bg-surface-container-low border border-outline-variant/30 text-on-surface focus:outline-none focus:border-primary transition-colors pr-9"
+                              type={showCurrentPassword ? 'text' : 'password'}
+                              value={currentPassword}
+                              onChange={(e) => {
+                                setCurrentPassword(e.target.value);
+                                if (passwordStatusMsg) setPasswordStatusMsg(null);
+                              }}
+                              placeholder="Enter current password"
+                              className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-surface-container-low border border-outline-variant/30 text-on-surface placeholder:text-outline/70 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all pr-10 font-mono"
+                              autoComplete="current-password"
                             />
                             <button
                               type="button"
-                              onClick={() => setShowPassword(!showPassword)}
-                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface transition-colors cursor-pointer"
+                              onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface transition-colors cursor-pointer"
                               tabIndex={-1}
+                              title={showCurrentPassword ? 'Hide password' : 'Show password'}
                             >
                               <span className="material-symbols-outlined text-[16px]">
-                                {showPassword ? 'visibility_off' : 'visibility'}
+                                {showCurrentPassword ? 'visibility_off' : 'visibility'}
+                              </span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* New Password & Confirm Password Grid */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* New Password */}
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-on-surface flex items-center gap-1.5">
+                            <span className="material-symbols-outlined text-[15px] text-outline">lock</span>
+                            New Password
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showNewPassword ? 'text' : 'password'}
+                              value={newPassword}
+                              onChange={(e) => {
+                                setNewPassword(e.target.value);
+                                if (passwordStatusMsg) setPasswordStatusMsg(null);
+                              }}
+                              placeholder="Min. 6 characters"
+                              className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-surface-container-low border border-outline-variant/30 text-on-surface placeholder:text-outline/70 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all pr-10 font-mono"
+                              autoComplete="new-password"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowNewPassword(!showNewPassword)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface transition-colors cursor-pointer"
+                              tabIndex={-1}
+                              title={showNewPassword ? 'Hide password' : 'Show password'}
+                            >
+                              <span className="material-symbols-outlined text-[16px]">
+                                {showNewPassword ? 'visibility_off' : 'visibility'}
                               </span>
                             </button>
                           </div>
                         </div>
 
+                        {/* Confirm Password */}
                         <div className="space-y-1.5">
-                          <label className="text-xs font-medium text-on-surface-variant block">Confirm Password</label>
-                          <input
-                            type={showPassword ? 'text' : 'password'}
-                            value={confirmPassword}
-                            onChange={(e) => setConfirmPassword(e.target.value)}
-                            placeholder="Confirm new password"
-                            className="w-full px-3 py-2 text-xs rounded-lg bg-surface-container-low border border-outline-variant/30 text-on-surface focus:outline-none focus:border-primary transition-colors"
-                          />
+                          <label className="text-xs font-semibold text-on-surface flex items-center gap-1.5">
+                            <span className="material-symbols-outlined text-[15px] text-outline">verified</span>
+                            Confirm Password
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showConfirmPassword ? 'text' : 'password'}
+                              value={confirmPassword}
+                              onChange={(e) => {
+                                setConfirmPassword(e.target.value);
+                                if (passwordStatusMsg) setPasswordStatusMsg(null);
+                              }}
+                              placeholder="Re-enter new password"
+                              className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-surface-container-low border border-outline-variant/30 text-on-surface placeholder:text-outline/70 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all pr-10 font-mono"
+                              autoComplete="new-password"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface transition-colors cursor-pointer"
+                              tabIndex={-1}
+                              title={showConfirmPassword ? 'Hide password' : 'Show password'}
+                            >
+                              <span className="material-symbols-outlined text-[16px]">
+                                {showConfirmPassword ? 'visibility_off' : 'visibility'}
+                              </span>
+                            </button>
+                          </div>
                         </div>
                       </div>
 
-                      <div className="pt-1 flex items-center gap-3">
-                        <button
-                          type="submit"
-                          disabled={savingPassword || !newPassword || !confirmPassword}
-                          className="btn-primary compact text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                        >
-                          {savingPassword ? (
-                            <span className="material-symbols-outlined text-[14px] animate-spin">sync</span>
-                          ) : (
-                            <span className="material-symbols-outlined text-[14px]">save</span>
-                          )}
-                          <span>{savingPassword ? 'Updating...' : 'Update Password'}</span>
-                        </button>
-                        {(currentPassword || newPassword || confirmPassword) && (
+                      {/* Dynamic Strength & Quality Checklist */}
+                      {newPassword.length > 0 && (
+                        <div className="p-3 bg-surface-container-low/70 rounded-xl border border-outline-variant/20 space-y-2">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-on-surface-variant font-medium">Password Strength:</span>
+                            <span
+                              className={`font-semibold ${
+                                passwordStrength >= 2
+                                  ? 'text-emerald-400'
+                                  : passwordStrength === 1
+                                  ? 'text-amber-400'
+                                  : 'text-error'
+                              }`}
+                            >
+                              {strengthLabels[passwordStrength]}
+                            </span>
+                          </div>
+                          {/* Strength Meter Bar */}
+                          <div className="grid grid-cols-3 gap-1.5 h-1.5">
+                            <div
+                              className={`rounded-full transition-colors ${
+                                passwordStrength >= 1 ? strengthColors[passwordStrength] : 'bg-outline-variant/30'
+                              }`}
+                            />
+                            <div
+                              className={`rounded-full transition-colors ${
+                                passwordStrength >= 2 ? strengthColors[passwordStrength] : 'bg-outline-variant/30'
+                              }`}
+                            />
+                            <div
+                              className={`rounded-full transition-colors ${
+                                passwordStrength >= 3 ? strengthColors[passwordStrength] : 'bg-outline-variant/30'
+                              }`}
+                            />
+                          </div>
+                          {/* Validation Criteria Badges */}
+                          <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px]">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border transition-colors ${
+                                hasMinLength
+                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25'
+                                  : 'bg-surface-container text-on-surface-variant border-outline-variant/30'
+                              }`}
+                            >
+                              <span className="material-symbols-outlined text-[13px]">
+                                {hasMinLength ? 'check' : 'close'}
+                              </span>
+                              At least 6 characters
+                            </span>
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border transition-colors ${
+                                passwordsMatch
+                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25'
+                                  : 'bg-surface-container text-on-surface-variant border-outline-variant/30'
+                              }`}
+                            >
+                              <span className="material-symbols-outlined text-[13px]">
+                                {passwordsMatch ? 'check' : 'close'}
+                              </span>
+                              {passwordsMatch ? 'Passwords match' : 'Passwords must match'}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Action Buttons */}
+                      <div className="pt-2 flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
                           <button
-                            type="button"
-                            onClick={() => {
-                              setCurrentPassword('');
-                              setNewPassword('');
-                              setConfirmPassword('');
-                            }}
-                            className="btn-secondary compact text-xs cursor-pointer"
+                            type="submit"
+                            disabled={
+                              savingPassword ||
+                              !hasMinLength ||
+                              !passwordsMatch ||
+                              (currentUser.hasPassword !== false && !currentPassword)
+                            }
+                            className="btn-primary px-4 py-2 text-xs font-semibold rounded-xl flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-sm shadow-primary/20 hover:shadow-primary/30 transition-all"
                           >
-                            Reset
+                            {savingPassword ? (
+                              <span className="material-symbols-outlined text-[15px] animate-spin">sync</span>
+                            ) : (
+                              <span className="material-symbols-outlined text-[15px]">lock</span>
+                            )}
+                            <span>{savingPassword ? 'Updating Password...' : 'Update Password'}</span>
                           </button>
-                        )}
+
+                          {(currentPassword || newPassword || confirmPassword) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCurrentPassword('');
+                                setNewPassword('');
+                                setConfirmPassword('');
+                                setPasswordStatusMsg(null);
+                              }}
+                              className="btn-secondary px-3.5 py-2 text-xs rounded-xl cursor-pointer"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="text-[11px] text-outline flex items-center gap-1.5">
+                          <span className="material-symbols-outlined text-[14px]">enhanced_encryption</span>
+                          <span>Argon2id zero-knowledge hashing</span>
+                        </div>
                       </div>
                     </form>
                   </div>
