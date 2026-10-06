@@ -3483,28 +3483,37 @@ export default function App() {
                   <div
                     ref={userCardRef}
                     onClick={() => setUserMenuOpen(!userMenuOpen)}
-                    className={`flex items-center justify-between gap-2.5 rounded-xl bg-surface-container/90 border border-outline-variant/60 hover:bg-surface-container-high hover:border-primary/40 transition-all cursor-pointer select-none group shadow-sm ${
+                    className={`flex items-center justify-between gap-2.5 rounded-xl bg-surface-container/70 border border-outline-variant/40 hover:bg-surface-container hover:border-outline-variant/60 transition-all cursor-pointer select-none group ${
                       sidebarCollapsed ? 'justify-center p-1.5' : 'px-3 py-2.5'
                     }`}
                     title={sidebarCollapsed ? `${currentUser.name} (${currentUser.role || 'PRO'})` : undefined}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-9 h-9 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center text-sm font-bold shrink-0 shadow-sm border border-primary/30">
-                        {currentUser.name.charAt(0).toUpperCase()}
+                      {/* Avatar with Status Dot */}
+                      <div className="w-9 h-9 rounded-full bg-[#1e293b] text-white flex items-center justify-center text-sm font-semibold shrink-0 relative select-none">
+                        <span>{currentUser.name.charAt(0).toUpperCase()}</span>
+                        <span
+                          className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-[#10b981] ring-2 ring-surface-container"
+                          title="Online"
+                        />
                       </div>
                       {!sidebarCollapsed && (
-                        <div className="flex flex-col items-start min-w-0 flex-1 ml-0.5">
+                        <div className="flex flex-col items-start min-w-0 flex-1 ml-0.5 gap-1">
                           <span className="text-[13px] font-semibold text-on-surface truncate leading-tight tracking-tight group-hover:text-primary transition-colors">
                             {currentUser.name}
                           </span>
-                          <span className="mt-1 inline-flex items-center px-2 py-0.5 rounded-[4px] bg-primary-container text-on-primary-container text-[10px] font-bold tracking-wider uppercase leading-none shadow-xs border border-primary/20">
-                            {currentUser.role || 'PRO'}
+                          {/* Subtle Blue PRO pill with Crown Icon */}
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[5px] bg-[#0c2a4a]/80 text-[#38bdf8] text-[10px] font-bold tracking-wider uppercase leading-none border border-[#0284c7]/25 select-none">
+                            <svg width="10" height="9" viewBox="0 0 24 20" fill="currentColor" className="shrink-0 -mt-px">
+                              <path d="M2 4l4.5 3.5L12 1.5l5.5 6L22 4v10.5H2V4zm0 13h20v2.5H2V17z" />
+                            </svg>
+                            <span>{currentUser.role || 'PRO'}</span>
                           </span>
                         </div>
                       )}
                     </div>
                     {!sidebarCollapsed && (
-                      <div className="w-6 h-6 rounded-md flex items-center justify-center text-on-surface-variant group-hover:text-on-surface transition-colors">
+                      <div className="w-5 h-5 flex items-center justify-center text-on-surface-variant group-hover:text-on-surface transition-colors">
                         <span className="material-symbols-outlined text-[18px]">
                           {userMenuOpen ? 'expand_less' : 'expand_more'}
                         </span>
