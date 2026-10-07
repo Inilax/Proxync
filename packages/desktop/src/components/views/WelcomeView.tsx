@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import type { Tunnel, RequestLog } from './SharedComponents';
-import { SignalBars, getTunnelMetadata } from './SharedComponents';
+import { SignalBars, getTunnelMetadata, Icons } from './SharedComponents';
 import { showToast } from '../../lib/toast';
 import { isPrimaryModifier, isKey, isInputFocused } from '../../lib/hotkeys';
 
@@ -273,9 +273,7 @@ export function WelcomeView({
                                       className="flex items-center text-amber-400 shrink-0"
                                       title={`Protected with Basic Auth (${tunnel.basicAuth.username})`}
                                     >
-                                      <svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
-                                      </svg>
+                                      {Icons.lock}
                                     </span>
                                   )}
                                   <button
@@ -344,14 +342,20 @@ export function WelcomeView({
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    const cred = `${tunnel.basicAuth?.username}:${tunnel.basicAuth?.password || ''}`;
-                                    navigator.clipboard.writeText(cred);
+                                    if (!tunnel.basicAuth) return;
+                                    if (tunnel.basicAuth.password) {
+                                      const cred = `${tunnel.basicAuth.username}:${tunnel.basicAuth.password}`;
+                                      navigator.clipboard.writeText(cred);
+                                      showToast(`Credentials copied for ${tunnel.basicAuth.username}`, 'success');
+                                    } else {
+                                      navigator.clipboard.writeText(tunnel.basicAuth.username);
+                                      showToast('Username copied. Password not retained in session memory.', 'warning');
+                                    }
                                     setActiveMenuTunnelId(null);
-                                    showToast(`Credentials copied for ${tunnel.basicAuth?.username}`, 'success');
                                   }}
                                   className="flex items-center gap-2 px-4 py-2 w-full text-left text-xs text-on-surface hover:bg-surface-container-highest transition-colors cursor-pointer"
                                 >
-                                  <span className="material-symbols-outlined text-[16px]">key</span>
+                                  {Icons.key}
                                   Copy Credentials
                                 </button>
                               )}

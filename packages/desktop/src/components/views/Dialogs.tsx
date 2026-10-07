@@ -160,8 +160,6 @@ export function DiscoverDialog({
 /* ────────────────── Domain Select Dialog ────────────────── */
 
 const LAST_AUTH_USERNAME_KEY = 'proxync_last_tunnel_username';
-// Ephemeral in-memory session cache (never stored unencrypted in localStorage to adhere to CWE-312 / CodeQL)
-let sessionLastAuthPassword = '';
 
 export function DomainSelectDialog({
   process,
@@ -180,14 +178,22 @@ export function DomainSelectDialog({
   const [authUsername, setAuthUsername] = useState<string>(() => {
     try {
       return localStorage.getItem(LAST_AUTH_USERNAME_KEY) || 'dev';
-    } catch {
+    } catch (err) {
+      console.warn('[Dialogs] localStorage operation failed:', err);
       return 'dev';
     }
   });
-  const [authPassword, setAuthPassword] = useState<string>(() => sessionLastAuthPassword);
+  const [authPassword, setAuthPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
 
-  // ponytail: clean 8-char random alphanumeric password generator
+  useEffect(() => {
+    setAuthEnabled(false);
+    setAuthPassword('');
+  }, [process.id, process.port]);
+
+  // ponytail: ephemeral in-memory password generator and dialog-scoped credentials caching.
+  // Ceiling: Passwords reset on app restart and are not persisted across desktop sessions.
+  // Upgrade path: Integrate with OS keychain / secure enclave vault when credential management is implemented.
   const generateRandomPassword = () => {
     const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
     let res = 'px-';
@@ -377,9 +383,7 @@ export function DomainSelectDialog({
                 const next = !authEnabled;
                 setAuthEnabled(next);
                 if (next && !authPassword) {
-                  const initialPass = sessionLastAuthPassword || generateRandomPassword();
-                  setAuthPassword(initialPass);
-                  sessionLastAuthPassword = initialPass;
+                  setAuthPassword(generateRandomPassword());
                 }
               }}
             >
@@ -394,27 +398,54 @@ export function DomainSelectDialog({
                   </span>
                 </div>
               </div>
-              <div style={{
-                width: '34px',
-                height: '18px',
-                borderRadius: '10px',
-                background: authEnabled ? 'var(--color-primary)' : 'var(--color-outline-variant)',
-                position: 'relative',
-                transition: 'background 0.2s',
-                cursor: 'pointer',
-                flexShrink: 0,
-              }}>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={authEnabled}
+                aria-label="Password Protect Tunnel"
+                style={{
+                  width: '34px',
+                  height: '18px',
+                  borderRadius: '10px',
+                  background: authEnabled ? 'var(--color-primary)' : 'var(--color-outline-variant)',
+                  position: 'relative',
+                  transition: 'background 0.2s',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  border: 'none',
+                  padding: 0,
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const next = !authEnabled;
+                  setAuthEnabled(next);
+                  if (next && !authPassword) {
+                    setAuthPassword(generateRandomPassword());
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === ' ' || e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const next = !authEnabled;
+                    setAuthEnabled(next);
+                    if (next && !authPassword) {
+                      setAuthPassword(generateRandomPassword());
+                    }
+                  }
+                }}
+              >
                 <div style={{
                   width: '14px',
                   height: '14px',
                   borderRadius: '50%',
-                  background: '#ffffff',
+                  background: 'var(--color-on-primary, #ffffff)',
                   position: 'absolute',
                   top: '2px',
                   left: authEnabled ? '18px' : '2px',
                   transition: 'left 0.2s',
                 }} />
-              </div>
+              </button>
             </div>
 
             {authEnabled && (
@@ -431,9 +462,13 @@ export function DomainSelectDialog({
                       onChange={(e) => {
                         const val = e.target.value.replace(/:/g, '');
                         setAuthUsername(val);
+                      }}
+                      onBlur={() => {
                         try {
-                          localStorage.setItem(LAST_AUTH_USERNAME_KEY, val);
-                        } catch {}
+                          localStorage.setItem(LAST_AUTH_USERNAME_KEY, authUsername.trim());
+                        } catch (err) {
+                          console.warn('[Dialogs] localStorage operation failed:', err);
+                        }
                       }}
                       placeholder="dev"
                       style={{ width: '100%', fontSize: '12px', padding: '6px 8px', borderRadius: '6px', background: 'var(--color-surface-container-lowest)', border: '1px solid var(--color-outline-variant)', color: 'var(--color-on-surface)' }}
@@ -450,7 +485,6 @@ export function DomainSelectDialog({
                           e.stopPropagation();
                           const newPass = generateRandomPassword();
                           setAuthPassword(newPass);
-                          sessionLastAuthPassword = newPass;
                         }}
                         style={{
                           background: 'none',
@@ -476,9 +510,7 @@ export function DomainSelectDialog({
                         className="input-field"
                         value={authPassword}
                         onChange={(e) => {
-                          const val = e.target.value;
-                          setAuthPassword(val);
-                          sessionLastAuthPassword = val;
+                          setAuthPassword(e.target.value);
                         }}
                         placeholder="Enter password..."
                         style={{ width: '100%', fontSize: '12px', padding: '6px 28px 6px 8px', borderRadius: '6px', background: 'var(--color-surface-container-lowest)', border: '1px solid var(--color-outline-variant)', color: 'var(--color-on-surface)' }}
@@ -507,7 +539,7 @@ export function DomainSelectDialog({
                   </div>
                 </div>
                 {authEnabled && (!authUsername.trim() || !authPassword.trim()) ? (
-                  <div style={{ fontSize: '10.5px', color: 'var(--color-error, #f87171)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <div style={{ fontSize: '10.5px', color: 'var(--color-error)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>error</span>
                     <span>Both username and password are required to protect this tunnel.</span>
                   </div>
@@ -537,8 +569,9 @@ export function DomainSelectDialog({
               if (authEnabled) {
                 try {
                   localStorage.setItem(LAST_AUTH_USERNAME_KEY, authUsername.trim());
-                } catch {}
-                sessionLastAuthPassword = authPassword.trim();
+                } catch (err) {
+                  console.warn('[Dialogs] localStorage operation failed:', err);
+                }
               }
               const basicAuth: BasicAuthConfig | undefined =
                 authEnabled && authUsername.trim() && authPassword.trim()

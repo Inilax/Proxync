@@ -1876,6 +1876,13 @@ export default function App() {
 
 
 
+  function formatBasicAuthHeader(auth?: BasicAuthConfig): string | undefined {
+    if (!auth?.enabled || !auth.username?.trim() || !auth.password?.trim()) {
+      return undefined;
+    }
+    return `${auth.username.trim()}:${auth.password.trim()}`;
+  }
+
   async function shareProcessCloudflare(process: ProcessCandidate, basicAuth?: BasicAuthConfig) {
     if (!activeWorkspace) return;
     const existingActive = tunnels.find((t) => t.localPort === process.port && t.status === 'ACTIVE');
@@ -1924,13 +1931,20 @@ export default function App() {
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
       const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
       const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
-      const basicAuthHeader = basicAuth?.enabled && basicAuth.username.trim() && basicAuth.password?.trim()
-        ? `${basicAuth.username.trim()}:${basicAuth.password.trim()}`
-        : undefined;
+      const basicAuthHeader = formatBasicAuthHeader(basicAuth);
+      let proxyFailed = false;
       const [, proxyPort] = await Promise.all([
         invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined),
-        invoke<number>('start_proxy', { localPort: process.port, basicAuth: basicAuthHeader }).catch(() => process.port),
+        invoke<number>('start_proxy', { localPort: process.port, basicAuth: basicAuthHeader }).catch(() => {
+          proxyFailed = true;
+          return process.port;
+        }),
       ]);
+      let effectiveBasicAuth = basicAuth;
+      if (proxyFailed && basicAuth?.enabled) {
+        showToast('Basic auth disabled: proxy binding failed. Tunnel running unauthenticated.', 'warning');
+        effectiveBasicAuth = undefined;
+      }
       logTunnelSessionStart({
         provider: 'Cloudflare Tunnel',
         localPort: process.port,
@@ -1943,7 +1957,13 @@ export default function App() {
       showToast('Starting Cloudflare Tunnel service...', 'info');
       const cfTunnelUrl = await invoke<string>('open_cloudflare_tunnel', { tunnelId: tunnel.id, localPort: proxyPort });
 
-      const cloudflareBoundTunnel: Tunnel = { ...tunnel, publicUrl: cfTunnelUrl, subdomain: cfTunnelUrl.replace('https://', '').replace('.trycloudflare.com', ''), provider: 'cloudflare', basicAuth };
+      const cloudflareBoundTunnel: Tunnel = {
+        ...tunnel,
+        publicUrl: cfTunnelUrl,
+        subdomain: cfTunnelUrl.replace('https://', '').replace('.trycloudflare.com', ''),
+        provider: 'cloudflare',
+        ...(effectiveBasicAuth ? { basicAuth: effectiveBasicAuth } : {}),
+      };
       setActiveTunnel(cloudflareBoundTunnel);
       setTunnels((current) => [cloudflareBoundTunnel, ...current.filter((item) => item.id !== tunnel.id)]);
       setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false);
@@ -2008,13 +2028,20 @@ export default function App() {
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
       const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
       const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
-      const basicAuthHeader = basicAuth?.enabled && basicAuth.username.trim() && basicAuth.password?.trim()
-        ? `${basicAuth.username.trim()}:${basicAuth.password.trim()}`
-        : undefined;
+      const basicAuthHeader = formatBasicAuthHeader(basicAuth);
+      let proxyFailed = false;
       const [, proxyPort] = await Promise.all([
         invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined),
-        invoke<number>('start_proxy', { localPort: process.port, basicAuth: basicAuthHeader }).catch(() => process.port),
+        invoke<number>('start_proxy', { localPort: process.port, basicAuth: basicAuthHeader }).catch(() => {
+          proxyFailed = true;
+          return process.port;
+        }),
       ]);
+      let effectiveBasicAuth = basicAuth;
+      if (proxyFailed && basicAuth?.enabled) {
+        showToast('Basic auth disabled: proxy binding failed. Tunnel running unauthenticated.', 'warning');
+        effectiveBasicAuth = undefined;
+      }
       logTunnelSessionStart({
         provider: 'Proxync Native SSH',
         localPort: process.port,
@@ -2027,7 +2054,13 @@ export default function App() {
       const suggestedSub = generateRandomSubdomain('px');
       showToast('Starting Proxync Native SSH tunnel...', 'info');
       const nativeTunnelUrl = await invoke<string>('open_native_tunnel', { tunnelId: tunnel.id, localPort: proxyPort, subdomain: suggestedSub });
-      const boundTunnel: Tunnel = { ...tunnel, publicUrl: nativeTunnelUrl, subdomain: suggestedSub, provider: 'native', basicAuth };
+      const boundTunnel: Tunnel = {
+        ...tunnel,
+        publicUrl: nativeTunnelUrl,
+        subdomain: suggestedSub,
+        provider: 'native',
+        ...(effectiveBasicAuth ? { basicAuth: effectiveBasicAuth } : {}),
+      };
       setActiveTunnel(boundTunnel);
       setTunnels((current) => [boundTunnel, ...current.filter((item) => item.id !== tunnel.id)]);
       setSelectedProcessId(process.id); setMainView('process'); setDiscoverOpen(false);
@@ -2105,10 +2138,17 @@ export default function App() {
         selectedProfileId: makeProfileId(process),
         languageHint: detectLanguageLabel(process),
       }));
-      const basicAuthHeader = basicAuth?.enabled && basicAuth.username.trim() && basicAuth.password?.trim()
-        ? `${basicAuth.username.trim()}:${basicAuth.password.trim()}`
-        : undefined;
-      const proxyPort = await invoke<number>('start_proxy', { localPort: process.port, basicAuth: basicAuthHeader }).catch(() => process.port);
+      const basicAuthHeader = formatBasicAuthHeader(basicAuth);
+      let proxyFailed = false;
+      const proxyPort = await invoke<number>('start_proxy', { localPort: process.port, basicAuth: basicAuthHeader }).catch(() => {
+        proxyFailed = true;
+        return process.port;
+      });
+      let effectiveBasicAuth = basicAuth;
+      if (proxyFailed && basicAuth?.enabled) {
+        showToast('Basic auth disabled: proxy binding failed. Tunnel running unauthenticated.', 'warning');
+        effectiveBasicAuth = undefined;
+      }
       logTunnelSessionStart({
         provider: customDomain ? `Custom Domain (${customDomain})` : 'Local Proxy',
         localPort: process.port,
@@ -2118,13 +2158,16 @@ export default function App() {
         workspaceName: activeWorkspace.name,
         workspaceId: targetWorkspaceId,
       });
-      const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined, customDomain);
-      tunnel.basicAuth = basicAuth;
-      if (customDomain) {
-        tunnel.publicUrl = customDomain.includes(':') ? customDomain : `http://${customDomain}:${proxyPort}`;
-        tunnel.customDomain = customDomain;
-        tunnel.provider = 'custom';
-      }
+      const createdTunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined, customDomain);
+      const tunnel: Tunnel = {
+        ...createdTunnel,
+        ...(customDomain ? {
+          publicUrl: customDomain.includes(':') ? customDomain : `http://${customDomain}:${proxyPort}`,
+          customDomain,
+          provider: 'custom',
+        } : {}),
+        ...(effectiveBasicAuth ? { basicAuth: effectiveBasicAuth } : {}),
+      };
       const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
       const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
       let relayConnected = true;

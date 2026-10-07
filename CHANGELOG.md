@@ -2,6 +2,27 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [feature/develop-tunnel-basic-auth] - 2026-10-07 (Proxy Fallback State Sync, Pre-Upstream Auth Gate, Dynamic Header Buffering & Security Hardening)
+- **Feature Summary**:
+  - **Proxy Fallback Warning Notification & State Synchronization (`packages/desktop/src/App.tsx`)**: When local proxy initialization fails, the raw tunnel fallback now triggers a warning toast notifying the user that the tunnel is unauthenticated, and strips the `basicAuth` configuration from the tunnel state to prevent deceptive yellow lock badges.
+  - **Pre-Upstream Auth Validation (`packages/core/src/proxy.rs`)**: Positioned Basic Auth credential checks strictly before upstream connection attempts, preventing offline target reconnaissance and leaking 502 Bad Gateway standby pages to unauthenticated callers.
+  - **Dynamic HTTP Header Accumulation (`packages/core/src/proxy.rs`)**: Replaced fixed 16 KB read buffer with dynamic header accumulation reading until `\r\n\r\n` with a 2 MB safety limit (returning HTTP 431 on overflow), eliminating header truncation while preventing memory exhaustion.
+  - **RFC 7617 Colon Credential Parsing (`packages/core/src/proxy.rs`)**: Refactored basic auth credential extraction to split on the first colon (`split_once(':')`) and reject usernames containing unescaped colons.
+  - **Automated Core Rust Test Coverage (`packages/core/src/proxy.rs`)**: Added end-to-end unit and integration tests verifying 401 challenge, 401 rejection, 200 pass-through, >16 KB header support, and pre-auth offline target isolation.
+  - **Immutable State Sharing (`packages/desktop/src/App.tsx`)**: Replaced in-place object mutation in `shareProcess` with pure immutable object spreading.
+  - **React Lifecycle Password Scoping (`packages/desktop/src/components/views/Dialogs.tsx`)**: Removed module-level global password storage variable; scoped credential memory to modal lifecycle and reset on process switch.
+  - **Storage Write Throttling (`packages/desktop/src/components/views/Dialogs.tsx`)**: Removed per-keystroke `localStorage.setItem` calls from `onChange`; persisted on `onBlur` and submission with proper diagnostic error logging.
+  - **UI Accessibility & Design System Conformance (`packages/desktop/src/components/views/Dialogs.tsx`, `SharedComponents.tsx`, `ProcessView.tsx`, `WelcomeView.tsx`, `WorkspaceDashboardView.tsx`)**: Converted toggle into an accessible `<button role="switch">` with keyboard navigation, mapped hardcoded colors to semantic theme variables (`var(--color-on-primary)`, `var(--color-error)`), centralized `Icons.lock` and added crisp inline SVG `Icons.key`, and provided graceful notifications when copying usernames with non-retained passwords.
+- **Modified Files**:
+  - `packages/core/src/proxy.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `CHANGELOG.md`
+
 ## [feature/develop-tunnel-basic-auth] - 2026-10-06 (HTTP Basic Authentication for Public Tunnels in Desktop GUI)
 - **Feature Summary**:
   - **HTTP Basic Authentication GUI Controls (`packages/desktop/src/components/views/Dialogs.tsx`, `packages/desktop/src/lib/types.ts`)**: Added an expandable toggle and credential inputs (`username` and `password`) to the Tunnel Launch Dialog and unified launch options.

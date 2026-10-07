@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import type { Tunnel, RequestLog } from './SharedComponents';
-import { getTunnelMetadata } from './SharedComponents';
+import { getTunnelMetadata, Icons } from './SharedComponents';
 import type { ProcessCandidate, WorkspaceConfig } from '../../lib/types';
 import { showToast } from '../../lib/toast';
 function getFrameworkSubtitle(proc: ProcessCandidate): string {
@@ -316,9 +316,7 @@ export function WorkspaceDashboardView({
                                   className="flex items-center text-amber-400 shrink-0"
                                   title={`Protected with Basic Auth (${activeT.basicAuth.username})`}
                                 >
-                                  <svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
-                                  </svg>
+                                  {Icons.lock}
                                 </span>
                               )}
                             </div>
@@ -328,14 +326,20 @@ export function WorkspaceDashboardView({
                                 {activeT.basicAuth?.enabled && (
                                   <button
                                     onClick={() => {
-                                      const cred = `${activeT.basicAuth?.username}:${activeT.basicAuth?.password || ''}`;
-                                      navigator.clipboard.writeText(cred);
-                                      showToast(`Credentials copied for ${activeT.basicAuth?.username}`, 'success');
+                                      if (!activeT.basicAuth) return;
+                                      if (activeT.basicAuth.password) {
+                                        const cred = `${activeT.basicAuth.username}:${activeT.basicAuth.password}`;
+                                        navigator.clipboard.writeText(cred);
+                                        showToast(`Credentials copied for ${activeT.basicAuth.username}`, 'success');
+                                      } else {
+                                        navigator.clipboard.writeText(activeT.basicAuth.username);
+                                        showToast('Username copied. Password not retained in session memory.', 'warning');
+                                      }
                                     }}
-                                    className="p-1 rounded text-outline hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer"
+                                    className="p-1 rounded text-outline hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer flex items-center justify-center"
                                     title={`Copy Credentials (${activeT.basicAuth.username})`}
                                   >
-                                    <span className="material-symbols-outlined text-[14px]">key</span>
+                                    {Icons.key}
                                   </button>
                                 )}
                                 <button
@@ -536,9 +540,7 @@ export function WorkspaceDashboardView({
                                       className="flex items-center text-amber-400 shrink-0"
                                       title={`Protected with Basic Auth (${tunnel.basicAuth.username})`}
                                     >
-                                      <svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
-                                      </svg>
+                                      {Icons.lock}
                                     </span>
                                   )}
                                   <button
