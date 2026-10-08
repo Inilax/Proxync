@@ -418,7 +418,7 @@ export function ProcessView({
                           className="btn-ghost compact cursor-pointer hover:bg-surface-container-high rounded text-on-surface-variant hover:text-primary transition-colors flex items-center justify-center"
                           title={`Copy Credentials (${tunnel.basicAuth.username})`}
                         >
-                          {Icons.key}
+                          <span className="material-symbols-outlined text-[16px]">key</span>
                         </button>
                       )}
                       <button

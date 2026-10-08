@@ -336,10 +336,10 @@ export function WorkspaceDashboardView({
                                         showToast('Username copied. Password not retained in session memory.', 'warning');
                                       }
                                     }}
-                                    className="p-1 rounded text-outline hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer flex items-center justify-center"
+                                    className="p-1 rounded text-outline hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer"
                                     title={`Copy Credentials (${activeT.basicAuth.username})`}
                                   >
-                                    {Icons.key}
+                                    <span className="material-symbols-outlined text-[14px]">key</span>
                                   </button>
                                 )}
                                 <button

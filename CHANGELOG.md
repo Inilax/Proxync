@@ -2,6 +2,17 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [feature/develop-tunnel-basic-auth] - 2026-10-08 (Credential Key Icon Size, Color & Styling Harmonization)
+- **Feature Summary**:
+  - **Material Symbols Key Icon Standardization (`packages/desktop/src/components/views/WorkspaceDashboardView.tsx`, `ProcessView.tsx`, `WelcomeView.tsx`, `SharedComponents.tsx`)**: Replaced non-uniform solid SVG key icon with standard `material-symbols-outlined` key glyph across all active tunnel cards and action menus.
+  - **Action Button Sizing and Palette Alignment (`packages/desktop/src/components/views/WorkspaceDashboardView.tsx`)**: Unified button wrapper styling to `p-1 rounded text-outline hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer` and 14px optical icon size, ensuring identical base color, hover color transitions, and sizing alongside sibling URL copy and browser open buttons.
+- **Modified Files**:
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `CHANGELOG.md`
+
 ## [feature/develop-tunnel-basic-auth] - 2026-10-07 (Proxy Fallback State Sync, Pre-Upstream Auth Gate, Dynamic Header Buffering & Security Hardening)
 - **Feature Summary**:
   - **Proxy Fallback Warning Notification & State Synchronization (`packages/desktop/src/App.tsx`)**: When local proxy initialization fails, the raw tunnel fallback now triggers a warning toast notifying the user that the tunnel is unauthenticated, and strips the `basicAuth` configuration from the tunnel state to prevent deceptive yellow lock badges.

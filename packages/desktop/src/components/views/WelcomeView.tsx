@@ -355,7 +355,7 @@ export function WelcomeView({
                                   }}
                                   className="flex items-center gap-2 px-4 py-2 w-full text-left text-xs text-on-surface hover:bg-surface-container-highest transition-colors cursor-pointer"
                                 >
-                                  {Icons.key}
+                                  <span className="material-symbols-outlined text-[16px]">key</span>
                                   Copy Credentials
                                 </button>
                               )}
