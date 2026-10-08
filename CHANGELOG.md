@@ -2,6 +2,32 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [feature/develop-tunnel-basic-auth] - 2026-10-09 (Android-Style Progressive Rate Limiting & Brute-Force Lockout Defense)
+- **Feature Summary**:
+  - **Progressive Lockout Escalation (`packages/core/src/proxy.rs`)**: Implemented graduated lockout tiers for failed Basic Auth attempts (Stage 1: 60s, Stage 2: 120s, Stage 3: 300s, Stage 4: 900s, Stage 5: 3600s max cap) with 15-minute inactivity decay reset and immediate reset upon successful authentication.
+  - **Constant-Time Verification & Tarpit (`packages/core/src/proxy.rs`)**: Added `constant_time_eq` credential validation to prevent timing attacks and a 1000ms tarpit delay on bad credentials to mitigate automated credential stuffing.
+  - **Dynamic 429 Lockout Page (`packages/core/src/proxy.rs`)**: Embedded branded HTTP 429 response featuring live JavaScript ticking countdown, formatted time display (`5m 00s`), visual progress bar, stage penalty badges, and auto-reload on expiry.
+  - **Comprehensive Rust Test Suite (`packages/core/src/proxy.rs`)**: Added automated unit tests for duration formatting, progressive stage escalation, idle reset decay, and end-to-end HTTP 429 lockout handling.
+- **Modified Files**:
+  - `packages/core/src/proxy.rs`
+  - `CHANGELOG.md`
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-09 (Tunnel Session Keepalive Heartbeat & 1h Expiration Hard Cap)
+- **Feature Summary**:
+  - **Client-Side 1-Hour Hard Cap Fallback (`packages/core/src/tunnel.rs`)**: Spawned background timer terminating spawned SSH tunnel child processes and dispatching `TunnelAutoClosed` event after 1 hour if unreachable or offline.
+  - **Server-Authoritative Keepalive Heartbeat (`packages/core/src/tunnel.rs`)**: Added 5-minute periodic keepalive ping to `/api/tunnel/keepalive`. If the server returns HTTP 410 (Gone), gracefully removes the tunnel from process registry and terminates the process tree.
+  - **Process Lifecycle Teardown (`packages/core/src/tunnel.rs`)**: Updated child process exit monitor to cleanly avoid duplicate events when terminated by keepalive or hard-cap timeout.
+- **Modified Files**:
+  - `packages/core/src/tunnel.rs`
+  - `CHANGELOG.md`
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-08 (Branded HTML Response for 401 Unauthorized)
+- **Feature Summary**:
+  - **Branded 401 Error Page (`packages/core/src/proxy.rs`)**: Replaced raw plain-text HTTP 401 response with a styled Proxync dark-mode access page featuring target port indicator, authentication required badge, and reload button.
+  - **Integration Tests (`packages/core/src/proxy.rs`)**: Updated core proxy test suite to validate HTML content type and branded response body.
+- **Modified Files**:
+  - `packages/core/src/proxy.rs`
+
 ## [feature/develop-tunnel-basic-auth] - 2026-10-08 (Basic Auth Council Review P2 Fixes)
 - **Feature Summary**:
   - **Silent Error Logging (`packages/desktop/src/App.tsx`)**: Added `console.warn` to all three `start_proxy` invoke catch blocks so proxy bind failures surface in DevTools instead of being silently swallowed behind a boolean flag.
