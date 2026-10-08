@@ -57,7 +57,6 @@ export function SettingsView({
   onSignIn,
   onSignOut,
   onUpdateUser,
-  authStatus = 'idle',
 }: {
   workspace: WorkspaceConfig | null;
   appSettings: AppSettings;
@@ -1264,13 +1263,12 @@ export function SettingsView({
                       <button
                         type="button"
                         onClick={onSignIn}
-                        disabled={authStatus === 'awaiting_approval'}
-                        className="btn-primary compact text-xs flex items-center gap-2 cursor-pointer disabled:opacity-80"
+                        className="btn-primary compact text-xs flex items-center gap-2 cursor-pointer"
                       >
-                        <span className={`material-symbols-outlined text-[16px] ${authStatus === 'awaiting_approval' ? 'animate-spin' : ''}`}>
-                          {authStatus === 'awaiting_approval' ? 'sync' : 'lock_open'}
+                        <span className="material-symbols-outlined text-[16px]">
+                          lock_open
                         </span>
-                        <span>{authStatus === 'awaiting_approval' ? 'Awaiting browser approval...' : 'Sign In with Proxync'}</span>
+                        <span>Sign In with Proxync</span>
                       </button>
                     )}
                   </div>

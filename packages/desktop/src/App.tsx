@@ -361,8 +361,10 @@ export default function App() {
   const [panelView, setPanelView] = useState<PanelView>(null);
   const [discoverOpen, setDiscoverOpen] = useState(false);
   const [authStatus, setAuthStatus] = useState<'idle' | 'awaiting_approval'>('idle');
-  const authPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const authPollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const authTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loginToastIdRef = useRef<string | null>(null);
+  const activeAuthCodeRef = useRef<string | null>(null);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger'>('general');
 
@@ -1235,8 +1237,19 @@ export default function App() {
     return () => {
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('online', handleOnline);
-      if (authPollingRef.current) clearInterval(authPollingRef.current);
-      if (authTimeoutRef.current) clearTimeout(authTimeoutRef.current);
+      if (authPollingRef.current) {
+        clearTimeout(authPollingRef.current);
+        authPollingRef.current = null;
+      }
+      if (authTimeoutRef.current) {
+        clearTimeout(authTimeoutRef.current);
+        authTimeoutRef.current = null;
+      }
+      if (loginToastIdRef.current) {
+        dismissToast(loginToastIdRef.current);
+        loginToastIdRef.current = null;
+      }
+      activeAuthCodeRef.current = null;
     };
   }, []);
 
@@ -2922,47 +2935,173 @@ export default function App() {
     navigator.clipboard.writeText(value).then(() => showToast(message, 'success')).catch(() => showToast('Clipboard access failed', 'error'));
   }
 
-  const handleInitiateLogin = useCallback(() => {
-    if (authPollingRef.current) clearInterval(authPollingRef.current);
-    if (authTimeoutRef.current) clearTimeout(authTimeoutRef.current);
+  const handleCancelLogin = useCallback((notify = true) => {
+    if (authPollingRef.current) {
+      clearTimeout(authPollingRef.current);
+      authPollingRef.current = null;
+    }
+    if (authTimeoutRef.current) {
+      clearTimeout(authTimeoutRef.current);
+      authTimeoutRef.current = null;
+    }
+    if (loginToastIdRef.current) {
+      dismissToast(loginToastIdRef.current);
+      loginToastIdRef.current = null;
+    }
+    const code = activeAuthCodeRef.current;
+    if (code) {
+      fetch(`${BACKEND_URL}/api/v1/auth/cancel?code=${encodeURIComponent(code)}`, {
+        method: 'POST',
+      }).catch(() => {});
+      activeAuthCodeRef.current = null;
+    }
+    setAuthStatus('idle');
+    if (notify) {
+      showToast('Sign-in cancelled', 'info');
+    }
+  }, []);
+
+  const handleInitiateLogin = useCallback(async () => {
+    // 1. Immediately clean up any previous in-flight login attempt
+    if (authPollingRef.current) {
+      clearTimeout(authPollingRef.current);
+      authPollingRef.current = null;
+    }
+    if (authTimeoutRef.current) {
+      clearTimeout(authTimeoutRef.current);
+      authTimeoutRef.current = null;
+    }
+    if (loginToastIdRef.current) {
+      dismissToast(loginToastIdRef.current);
+      loginToastIdRef.current = null;
+    }
 
     const code = crypto.randomUUID();
+    activeAuthCodeRef.current = code;
+
+    // 2. Pre-register session code on backend so /poll recognizes it immediately
+    try {
+      await fetch(`${BACKEND_URL}/api/v1/auth/initiate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+    } catch {
+      // Backend may be booting or offline; proceed to launch browser anyway
+    }
+
     const targetUrl = `${BACKEND_URL}/login?code=${encodeURIComponent(code)}`;
     openUrl(targetUrl).catch(() => {
       window.open(targetUrl, '_blank');
     });
-    showToast('Opening browser to sign in on ' + BACKEND_URL + '...', 'info');
 
-    // Gentle background polling without locking the UI button
-    authPollingRef.current = setInterval(async () => {
+    // 3. Show non-blocking dismissible toast with [Cancel] button
+    const toastId = showToast(
+      <div className="flex items-center justify-between gap-3 text-xs w-full">
+        <span className="font-medium">Signing in via browser...</span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleCancelLogin(true);
+          }}
+          className="px-2.5 py-1 text-xs font-semibold rounded bg-white/10 hover:bg-white/20 active:bg-white/30 text-inherit border border-white/20 transition-all cursor-pointer shadow-sm"
+        >
+          Cancel
+        </button>
+      </div>,
+      'info',
+      true
+    );
+    loginToastIdRef.current = toastId;
+
+    // 4. Exponential backoff polling: 2s → 3s → 5s → 8s (then capped at 8s)
+    const delays = [2000, 3000, 5000, 8000];
+    let step = 0;
+
+    const poll = async () => {
+      // Verify session code is still active and hasn't been cancelled or superseded
+      if (activeAuthCodeRef.current !== code) return;
+
       try {
         const res = await fetch(`${BACKEND_URL}/api/v1/auth/poll?code=${encodeURIComponent(code)}`);
+
+        // If code is unknown/cancelled/expired, backend returns 404 or 410 -> stop polling immediately
+        if (res.status === 404 || res.status === 410) {
+          if (authPollingRef.current) {
+            clearTimeout(authPollingRef.current);
+            authPollingRef.current = null;
+          }
+          if (authTimeoutRef.current) {
+            clearTimeout(authTimeoutRef.current);
+            authTimeoutRef.current = null;
+          }
+          if (loginToastIdRef.current) {
+            dismissToast(loginToastIdRef.current);
+            loginToastIdRef.current = null;
+          }
+          activeAuthCodeRef.current = null;
+          setAuthStatus('idle');
+          return;
+        }
+
         if (res.ok) {
           const data = await res.json();
           if (data && data.user && data.accessToken) {
-            if (authPollingRef.current) clearInterval(authPollingRef.current);
-            if (authTimeoutRef.current) clearTimeout(authTimeoutRef.current);
+            if (authPollingRef.current) {
+              clearTimeout(authPollingRef.current);
+              authPollingRef.current = null;
+            }
+            if (authTimeoutRef.current) {
+              clearTimeout(authTimeoutRef.current);
+              authTimeoutRef.current = null;
+            }
+            if (loginToastIdRef.current) {
+              dismissToast(loginToastIdRef.current);
+              loginToastIdRef.current = null;
+            }
+            activeAuthCodeRef.current = null;
 
-            setAuthStatus('awaiting_approval');
-
-            setTimeout(() => {
-              saveAuthSession(data.user, data.accessToken, data.refreshToken);
-              setCurrentUser(data.user);
-              setAuthStatus('idle');
-              showToast(`🎉 Welcome to Proxync, ${data.user.name}! (PRO unlocked)`, 'success');
-            }, 1200);
+            saveAuthSession(data.user, data.accessToken, data.refreshToken);
+            setCurrentUser(data.user);
+            setAuthStatus('idle');
+            showToast(`🎉 Welcome to Proxync, ${data.user.name}! (PRO unlocked)`, 'success');
+            return;
           }
         }
       } catch {
-        // ignore network blips
+        // Network blip, continue backoff schedule
       }
-    }, 2500);
 
-    // Automatically stop polling after 90 seconds if user abandons / never signs in
+      // If this session code is still active, schedule next poll
+      if (activeAuthCodeRef.current === code) {
+        const delay = delays[Math.min(step, delays.length - 1)];
+        step++;
+        authPollingRef.current = setTimeout(poll, delay);
+      }
+    };
+
+    // First poll after delays[0] (2000ms)
+    authPollingRef.current = setTimeout(poll, delays[0]);
+
+    // 5. Total safety timeout: 60s
     authTimeoutRef.current = setTimeout(() => {
-      if (authPollingRef.current) clearInterval(authPollingRef.current);
-    }, 90000);
-  }, []);
+      if (activeAuthCodeRef.current === code) {
+        if (authPollingRef.current) {
+          clearTimeout(authPollingRef.current);
+          authPollingRef.current = null;
+        }
+        authTimeoutRef.current = null;
+        if (loginToastIdRef.current) {
+          dismissToast(loginToastIdRef.current);
+          loginToastIdRef.current = null;
+        }
+        activeAuthCodeRef.current = null;
+        setAuthStatus('idle');
+        showToast('Sign-in request timed out. Click Sign In to try again.', 'warning');
+      }
+    }, 60000);
+  }, [handleCancelLogin]);
 
   const handleLogout = useCallback(() => {
     setUserMenuOpen(false);
@@ -3483,15 +3622,14 @@ export default function App() {
                 <button
                   type="button"
                   onClick={handleInitiateLogin}
-                  disabled={authStatus === 'awaiting_approval'}
-                  title={authStatus === 'awaiting_approval' ? 'Awaiting approval...' : 'Sign In'}
-                  className={`btn-primary flex items-center justify-center ${sidebarCollapsed ? 'p-1.5 w-full' : 'gap-2 px-4 py-2.5'} w-full rounded-lg text-xs font-bold font-label-md ${authStatus === 'awaiting_approval' ? 'cursor-wait opacity-90' : 'cursor-pointer'}`}
+                  title="Sign In"
+                  className={`btn-primary flex items-center justify-center ${sidebarCollapsed ? 'p-1.5 w-full' : 'gap-2 px-4 py-2.5'} w-full rounded-lg text-xs font-bold font-label-md cursor-pointer`}
                 >
-                  <span className={`material-symbols-outlined text-[18px] ${authStatus === 'awaiting_approval' ? 'animate-spin' : ''}`}>
-                    {authStatus === 'awaiting_approval' ? 'sync' : 'lock_open'}
+                  <span className="material-symbols-outlined text-[18px]">
+                    lock_open
                   </span>
                   {!sidebarCollapsed && (
-                    <span>{authStatus === 'awaiting_approval' ? 'Awaiting approval...' : 'Sign In'}</span>
+                    <span>Sign In</span>
                   )}
                 </button>
               )}
