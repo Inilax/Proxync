@@ -2,6 +2,14 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [feature/develop-tunnel-basic-auth] - 2026-10-08 (Basic Auth Council Review P2 Fixes)
+- **Feature Summary**:
+  - **Silent Error Logging (`packages/desktop/src/App.tsx`)**: Added `console.warn` to all three `start_proxy` invoke catch blocks so proxy bind failures surface in DevTools instead of being silently swallowed behind a boolean flag.
+  - **Dead Code Removal (`packages/desktop/src/components/views/SharedComponents.tsx`)**: Removed unused `Icons.key` entry (a redundant `material-symbols-outlined` wrapper) — all call sites use the span directly.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+
 ## [feature/develop-tunnel-basic-auth] - 2026-10-08 (Credential Key Icon Harmonization & Endpoint Badge Right-Alignment)
 - **Feature Summary**:
   - **Material Symbols Key Icon Standardization (`packages/desktop/src/components/views/WorkspaceDashboardView.tsx`, `ProcessView.tsx`, `WelcomeView.tsx`, `SharedComponents.tsx`)**: Replaced non-uniform solid SVG key icon with standard `material-symbols-outlined` key glyph across all active tunnel cards and action menus.

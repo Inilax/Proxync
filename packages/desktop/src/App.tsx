@@ -1935,7 +1935,8 @@ export default function App() {
       let proxyFailed = false;
       const [, proxyPort] = await Promise.all([
         invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined),
-        invoke<number>('start_proxy', { localPort: process.port, basicAuth: basicAuthHeader }).catch(() => {
+        invoke<number>('start_proxy', { localPort: process.port, basicAuth: basicAuthHeader }).catch((err) => {
+          console.warn('[App] start_proxy invoke failed:', err);
           proxyFailed = true;
           return process.port;
         }),
@@ -2032,7 +2033,8 @@ export default function App() {
       let proxyFailed = false;
       const [, proxyPort] = await Promise.all([
         invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined),
-        invoke<number>('start_proxy', { localPort: process.port, basicAuth: basicAuthHeader }).catch(() => {
+        invoke<number>('start_proxy', { localPort: process.port, basicAuth: basicAuthHeader }).catch((err) => {
+          console.warn('[App] start_proxy invoke failed:', err);
           proxyFailed = true;
           return process.port;
         }),
@@ -2140,7 +2142,8 @@ export default function App() {
       }));
       const basicAuthHeader = formatBasicAuthHeader(basicAuth);
       let proxyFailed = false;
-      const proxyPort = await invoke<number>('start_proxy', { localPort: process.port, basicAuth: basicAuthHeader }).catch(() => {
+      const proxyPort = await invoke<number>('start_proxy', { localPort: process.port, basicAuth: basicAuthHeader }).catch((err) => {
+        console.warn('[App] start_proxy invoke failed:', err);
         proxyFailed = true;
         return process.port;
       });
