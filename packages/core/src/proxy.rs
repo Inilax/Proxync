@@ -59,8 +59,337 @@ pub fn parse_basic_auth_credentials(cred: &str) -> Result<(String, String), Stri
     Ok((username.to_string(), password.to_string()))
 }
 
+/// Compares two byte slices in constant time to prevent side-channel timing attacks.
+pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
+/// Extracts the client IP address from proxy forwarding headers (X-Forwarded-For, CF-Connecting-IP, X-Real-IP)
+/// or falls back to the peer socket IP.
+pub fn extract_client_ip(header_str: &str, peer_ip: &str) -> String {
+    for line in header_str.lines() {
+        let trimmed = line.trim();
+        let lower = trimmed.to_ascii_lowercase();
+        if lower.starts_with("x-forwarded-for:") || lower.starts_with("cf-connecting-ip:") || lower.starts_with("x-real-ip:") {
+            if let Some((_, val)) = trimmed.split_once(':') {
+                let first_ip = val.split(',').next().unwrap_or("").trim();
+                if !first_ip.is_empty() {
+                    return first_ip.to_string();
+                }
+            }
+        }
+    }
+    peer_ip.to_string()
+}
+
+/// Checks whether an HTTP Authorization header is present in the request headers.
+pub fn has_authorization_header(header_str: &str) -> bool {
+    header_str.lines().any(|l| {
+        l.trim().to_ascii_lowercase().starts_with("authorization:")
+    })
+}
+
+#[derive(Debug, Clone)]
+pub struct FailedAttemptEntry {
+    pub attempts: u32,
+    pub window_start: std::time::Instant,
+    pub last_attempt: std::time::Instant,
+    pub locked_until: Option<std::time::Instant>,
+    pub lockout_tier: u32,
+}
+
+pub const MAX_FAILED_AUTH_ATTEMPTS: u32 = 5;
+pub const AUTH_WINDOW_SECS: u64 = 60;
+pub const AUTH_IDLE_RESET_SECS: u64 = 900; // 15 minutes of inactivity resets tier back to 0
+pub const LOCKOUT_DURATIONS: [u64; 5] = [60, 120, 300, 900, 3600]; // 1m, 2m, 5m, 15m, 1h max
+
+/// Android-style progressive lockout: returns escalation duration in seconds based on stage.
+pub fn get_lockout_duration_secs(tier: u32) -> u64 {
+    let idx = (tier.saturating_sub(1) as usize).min(LOCKOUT_DURATIONS.len() - 1);
+    LOCKOUT_DURATIONS[idx]
+}
+
+/// Formats seconds into human-readable duration string (e.g. "5m 00s", "1h 15m 00s", "45s").
+pub fn format_lockout_duration(secs: u64) -> String {
+    if secs >= 3600 {
+        let h = secs / 3600;
+        let m = (secs % 3600) / 60;
+        let s = secs % 60;
+        format!("{}h {}m {:02}s", h, m, s)
+    } else if secs >= 60 {
+        let m = secs / 60;
+        let s = secs % 60;
+        format!("{}m {:02}s", m, s)
+    } else {
+        format!("{}s", secs)
+    }
+}
+
+#[cfg(not(test))]
+pub const AUTH_FAILED_DELAY_MS: u64 = 1000;
+#[cfg(test)]
+pub const AUTH_FAILED_DELAY_MS: u64 = 5;
+
+// ponytail: sliding window in-memory rate limiter per tunnel; prunes at 1000 IPs to prevent memory exhaustion
+#[derive(Default)]
+pub struct AuthRateLimiter {
+    pub entries: HashMap<String, FailedAttemptEntry>,
+}
+
+impl AuthRateLimiter {
+    pub fn new() -> Self {
+        Self { entries: HashMap::new() }
+    }
+
+    /// Checks if a client IP is currently locked out.
+    /// Returns Some((remaining_seconds, lockout_tier)) if locked, or None if unlocked.
+    pub fn is_locked(&self, client_ip: &str, now: std::time::Instant) -> Option<(u64, u32)> {
+        if let Some(entry) = self.entries.get(client_ip) {
+            if let Some(locked_until) = entry.locked_until {
+                if now < locked_until {
+                    let remaining = locked_until.duration_since(now).as_secs().max(1);
+                    return Some((remaining, entry.lockout_tier));
+                }
+            }
+        }
+        None
+    }
+
+    /// Records a failed authentication attempt with Android-style progressive escalation.
+    /// Returns Some((lockout_seconds, lockout_tier)) if this attempt triggered/escalated a lockout, or None if still under limit.
+    pub fn record_failure(&mut self, client_ip: &str, now: std::time::Instant) -> Option<(u64, u32)> {
+        if self.entries.len() > 1000 {
+            self.entries.retain(|_, v| {
+                if let Some(l) = v.locked_until {
+                    if now < l {
+                        return true;
+                    }
+                    return now.duration_since(l).as_secs() < AUTH_IDLE_RESET_SECS;
+                }
+                if v.lockout_tier > 0 {
+                    return now.duration_since(v.last_attempt).as_secs() < AUTH_IDLE_RESET_SECS;
+                }
+                now.duration_since(v.window_start).as_secs() < AUTH_WINDOW_SECS
+            });
+        }
+
+        let entry = self.entries.entry(client_ip.to_string()).or_insert_with(|| FailedAttemptEntry {
+            attempts: 0,
+            window_start: now,
+            last_attempt: now,
+            locked_until: None,
+            lockout_tier: 0,
+        });
+
+        // Check idle reset: if client was inactive for > AUTH_IDLE_RESET_SECS since last attempt or expiry, reset tier
+        let is_idle_expired = match entry.locked_until {
+            Some(exp) if now >= exp => now.duration_since(exp).as_secs() > AUTH_IDLE_RESET_SECS,
+            None => now.duration_since(entry.last_attempt).as_secs() > AUTH_IDLE_RESET_SECS,
+            _ => false,
+        };
+
+        if is_idle_expired {
+            entry.attempts = 0;
+            entry.window_start = now;
+            entry.locked_until = None;
+            entry.lockout_tier = 0;
+        }
+
+        // If an existing lockout has finished, clear locked_until
+        if let Some(exp) = entry.locked_until {
+            if now >= exp {
+                entry.locked_until = None;
+            }
+        }
+
+        entry.last_attempt = now;
+
+        // If already in a lockout tier (tier >= 1), any subsequent wrong attempt immediately escalates tier
+        if entry.lockout_tier >= 1 {
+            entry.lockout_tier += 1;
+            let duration = get_lockout_duration_secs(entry.lockout_tier);
+            entry.locked_until = Some(now + std::time::Duration::from_secs(duration));
+            Some((duration, entry.lockout_tier))
+        } else {
+            // First tier (tier == 0): check sliding window
+            if now.duration_since(entry.window_start).as_secs() > AUTH_WINDOW_SECS {
+                entry.attempts = 0;
+                entry.window_start = now;
+            }
+            entry.attempts += 1;
+            if entry.attempts >= MAX_FAILED_AUTH_ATTEMPTS {
+                entry.lockout_tier = 1;
+                let duration = get_lockout_duration_secs(1);
+                entry.locked_until = Some(now + std::time::Duration::from_secs(duration));
+                Some((duration, 1))
+            } else {
+                None
+            }
+        }
+    }
+
+    pub fn record_success(&mut self, client_ip: &str) {
+        self.entries.remove(client_ip);
+    }
+}
+
+async fn serve_401_unauthorized(client_stream: &mut TcpStream, local_port: u16) {
+    let html_401 = format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>401 - Access Restricted | Proxync Tunnel</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #060e20; color: #dae2fd; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; box-sizing: border-box;">
+  <div style="text-align: center; max-width: 480px; width: 100%; padding: 40px 32px; background: #0b1326; border-radius: 20px; border: 1px solid #222a3d; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6); position: relative; overflow: hidden;">
+    <div style="position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, #8aebff, transparent);"></div>
+    <div style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 9999px; background: rgba(252, 211, 77, 0.1); border: 1px solid rgba(252, 211, 77, 0.25); color: #fcd34d; font-size: 12px; font-weight: 600; font-family: monospace; margin-bottom: 20px;">
+      <span style="width: 8px; height: 8px; background: #fcd34d; border-radius: 50%; box-shadow: 0 0 8px #fcd34d;"></span>
+      🔒 401 • AUTHENTICATION REQUIRED
+    </div>
+    <h2 style="color: #ffffff; margin: 0 0 10px 0; font-size: 24px; font-weight: 700; letter-spacing: -0.02em;">Access <span style="color: #8aebff;">Restricted</span></h2>
+    <p style="color: #8b96ad; font-size: 14px; line-height: 1.6; margin: 0 0 24px 0;">This Proxync tunnel is password-protected. Valid HTTP Basic Authentication credentials are required to access local service on <span style="background: #131b2e; padding: 2px 8px; border-radius: 6px; color: #8aebff; font-family: monospace; font-weight: 600;">port {}</span>.</p>
+    <button onclick="window.location.reload()" style="display: block; width: 100%; padding: 12px 20px; background: linear-gradient(135deg, #8aebff 0%, #22d3ee 100%); color: #00363e; font-weight: 700; font-size: 14px; border-radius: 12px; border: none; cursor: pointer; text-decoration: none; box-shadow: 0 8px 24px -6px rgba(34, 211, 238, 0.5);">Sign In Again</button>
+    <div style="margin-top: 24px; font-size: 12px; color: #64748b;">
+      <a href="https://proxync.dev" style="color: #8b96ad; text-decoration: none;">Proxync Tunnel</a> • Ephemeral Zero-Trust Security Gate
+    </div>
+  </div>
+</body>
+</html>"#,
+        local_port
+    );
+    let resp = format!(
+        "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"Proxync Tunnel\"\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        html_401.len(),
+        html_401
+    );
+    let _ = client_stream.write_all(resp.as_bytes()).await;
+    let _ = client_stream.shutdown().await;
+}
+
+async fn serve_429_lockout(client_stream: &mut TcpStream, remaining_secs: u64, lockout_tier: u32, local_port: u16) {
+    let badge_text = if lockout_tier > 1 {
+        format!("⛔ 429 • EXTENDED LOCKOUT (STAGE {})", lockout_tier)
+    } else {
+        "⛔ 429 • TOO MANY ATTEMPTS".to_string()
+    };
+
+    let desc_text = if lockout_tier > 1 {
+        format!(
+            "Repeated failed attempts detected for local service on <span style=\"background: #131b2e; padding: 2px 8px; border-radius: 6px; color: #8aebff; font-family: monospace; font-weight: 600;\">port {}</span>. Lockout penalty escalated to Stage {} ({}).",
+            local_port, lockout_tier, format_lockout_duration(remaining_secs)
+        )
+    } else {
+        format!(
+            "Too many failed authentication attempts for local service on <span style=\"background: #131b2e; padding: 2px 8px; border-radius: 6px; color: #8aebff; font-family: monospace; font-weight: 600;\">port {}</span>. Access is temporarily locked to prevent brute-force attacks.",
+            local_port
+        )
+    };
+
+    let formatted_remaining = format_lockout_duration(remaining_secs);
+
+    let html_429 = format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>429 - Authentication Locked | Proxync Tunnel</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #060e20; color: #dae2fd; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; box-sizing: border-box;">
+  <div style="text-align: center; max-width: 480px; width: 100%; padding: 40px 32px; background: #0b1326; border-radius: 20px; border: 1px solid #3b1d28; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6); position: relative; overflow: hidden;">
+    <div style="position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, #ff5449, transparent);"></div>
+    <div style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 9999px; background: rgba(255, 84, 73, 0.12); border: 1px solid rgba(255, 84, 73, 0.3); color: #ff897d; font-size: 12px; font-weight: 600; font-family: monospace; margin-bottom: 20px;">
+      <span style="width: 8px; height: 8px; background: #ff5449; border-radius: 50%; box-shadow: 0 0 8px #ff5449;"></span>
+      {badge_text}
+    </div>
+    <h2 style="color: #ffffff; margin: 0 0 10px 0; font-size: 24px; font-weight: 700; letter-spacing: -0.02em;">Authentication <span style="color: #ff897d;">Locked</span></h2>
+    <p style="color: #8b96ad; font-size: 14px; line-height: 1.6; margin: 0 0 24px 0;">{desc_text}</p>
+    <div style="background: #140d18; border: 1px solid #3b1d28; border-radius: 12px; padding: 16px 18px; margin-bottom: 24px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+        <span style="color: #8b96ad; font-size: 13px;">Lockout expires in:</span>
+        <span id="countdown" style="color: #ff897d; font-family: monospace; font-weight: 700; font-size: 18px;">{formatted_remaining}</span>
+      </div>
+      <div style="background: rgba(255, 84, 73, 0.15); height: 4px; border-radius: 9999px; overflow: hidden;">
+        <div id="progress" style="width: 100%; height: 100%; background: #ff5449; transition: width 1s linear;"></div>
+      </div>
+    </div>
+    <button id="retryBtn" onclick="window.location.reload()" style="display: block; width: 100%; padding: 12px 20px; background: #222a3d; color: #dae2fd; font-weight: 700; font-size: 14px; border-radius: 12px; border: 1px solid #36415a; cursor: pointer; text-decoration: none; transition: all 0.3s ease;">Retry Now</button>
+    <div style="margin-top: 24px; font-size: 12px; color: #64748b;">
+      <a href="https://proxync.dev" style="color: #8b96ad; text-decoration: none;">Proxync Tunnel</a> • Ephemeral Zero-Trust Security Gate
+    </div>
+  </div>
+  <script>
+    (function() {{
+      var remaining = {remaining_secs};
+      var initial = Math.max(remaining, 1);
+      var timerEl = document.getElementById('countdown');
+      var progressEl = document.getElementById('progress');
+      var retryBtn = document.getElementById('retryBtn');
+
+      function formatTime(s) {{
+        if (s >= 3600) {{
+          var h = Math.floor(s / 3600);
+          var m = Math.floor((s % 3600) / 60);
+          var sec = s % 60;
+          return h + 'h ' + m + 'm ' + (sec < 10 ? '0' : '') + sec + 's';
+        }} else if (s >= 60) {{
+          var m = Math.floor(s / 60);
+          var sec = s % 60;
+          return m + 'm ' + (sec < 10 ? '0' : '') + sec + 's';
+        }}
+        return s + 's';
+      }}
+
+      var interval = setInterval(function() {{
+        remaining--;
+        if (remaining <= 0) {{
+          clearInterval(interval);
+          if (timerEl) timerEl.textContent = '0s (Unlocked)';
+          if (progressEl) progressEl.style.width = '0%';
+          if (retryBtn) {{
+            retryBtn.style.background = 'linear-gradient(135deg, #8aebff 0%, #22d3ee 100%)';
+            retryBtn.style.color = '#00363e';
+            retryBtn.style.borderColor = 'transparent';
+            retryBtn.style.boxShadow = '0 8px 24px -6px rgba(34, 211, 238, 0.5)';
+            retryBtn.textContent = 'Try Again Now';
+          }}
+          setTimeout(function() {{ window.location.reload(); }}, 800);
+        }} else {{
+          if (timerEl) timerEl.textContent = formatTime(remaining);
+          if (progressEl) progressEl.style.width = ((remaining / initial) * 100) + '%';
+        }}
+      }}, 1000);
+    }})();
+  </script>
+</body>
+</html>"#,
+        remaining_secs = remaining_secs,
+        formatted_remaining = formatted_remaining,
+        badge_text = badge_text,
+        desc_text = desc_text
+    );
+    let resp = format!(
+        "HTTP/1.1 429 Too Many Requests\r\nRetry-After: {}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        remaining_secs,
+        html_429.len(),
+        html_429
+    );
+    let _ = client_stream.write_all(resp.as_bytes()).await;
+    let _ = client_stream.shutdown().await;
+}
+
 /// Extracts the HTTP Authorization header from raw header string and verifies against expected Basic Auth credentials.
-/// Handles base64 decoding, splits only on the first colon, and checks username & password.
+/// Handles base64 decoding, splits only on the first colon, and checks username & password using constant-time comparison.
 pub fn verify_basic_auth(header_str: &str, expected_user: &str, expected_pass: &str) -> bool {
     for line in header_str.lines() {
         let trimmed = line.trim();
@@ -71,7 +400,9 @@ pub fn verify_basic_auth(header_str: &str, expected_user: &str, expected_pass: &
                     if let Ok(decoded_bytes) = BASE64_STANDARD.decode(token.trim()) {
                         if let Ok(decoded_str) = String::from_utf8(decoded_bytes) {
                             if let Some((user, pass)) = decoded_str.split_once(':') {
-                                if user == expected_user && pass == expected_pass {
+                                if constant_time_eq(user.as_bytes(), expected_user.as_bytes())
+                                    && constant_time_eq(pass.as_bytes(), expected_pass.as_bytes())
+                                {
                                     return true;
                                 }
                             }
@@ -111,11 +442,15 @@ pub async fn start_proxy_with_auth(
     let listener = TcpListener::bind("127.0.0.1:0").await.map_err(|e| e.to_string())?;
     let proxy_port = listener.local_addr().map_err(|e| e.to_string())?.port();
 
+    let rate_limiter = Arc::new(Mutex::new(AuthRateLimiter::new()));
+
     let proxy_tx = tx.clone();
     let listener_handle = tokio::spawn(async move {
-        while let Ok((mut client_stream, _)) = listener.accept().await {
+        while let Ok((mut client_stream, peer_addr)) = listener.accept().await {
             let tx_clone = proxy_tx.clone();
             let auth_clone = auth_expected.clone();
+            let rate_limiter_clone = rate_limiter.clone();
+            let peer_ip = peer_addr.ip().to_string();
             tokio::spawn(async move {
                 // ponytail: dynamic header reading until \r\n\r\n delimiter; 2 MB safety cap prevents memory DoS
                 const MAX_HEADER_BYTES: usize = 2 * 1024 * 1024; // 2 MB
@@ -152,41 +487,45 @@ pub async fn start_proxy_with_auth(
 
                 // Basic Auth verification if configured (checked before probing backend service to prevent port/health leakage)
                 if let Some(ref expected) = auth_clone {
-                    if !verify_basic_auth(&header_str, &expected.0, &expected.1) {
-                        // Basic Auth credentials missing or invalid: serve branded 401 Unauthorized access page
-                        let html_401 = format!(
-                            r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>401 - Access Restricted | Proxync Tunnel</title>
-</head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #060e20; color: #dae2fd; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; box-sizing: border-box;">
-  <div style="text-align: center; max-width: 480px; width: 100%; padding: 40px 32px; background: #0b1326; border-radius: 20px; border: 1px solid #222a3d; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6); position: relative; overflow: hidden;">
-    <div style="position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, #8aebff, transparent);"></div>
-    <div style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 9999px; background: rgba(252, 211, 77, 0.1); border: 1px solid rgba(252, 211, 77, 0.25); color: #fcd34d; font-size: 12px; font-weight: 600; font-family: monospace; margin-bottom: 20px;">
-      <span style="width: 8px; height: 8px; background: #fcd34d; border-radius: 50%; box-shadow: 0 0 8px #fcd34d;"></span>
-      🔒 401 • AUTHENTICATION REQUIRED
-    </div>
-    <h2 style="color: #ffffff; margin: 0 0 10px 0; font-size: 24px; font-weight: 700; letter-spacing: -0.02em;">Access <span style="color: #8aebff;">Restricted</span></h2>
-    <p style="color: #8b96ad; font-size: 14px; line-height: 1.6; margin: 0 0 24px 0;">This Proxync tunnel is password-protected. Valid HTTP Basic Authentication credentials are required to access local service on <span style="background: #131b2e; padding: 2px 8px; border-radius: 6px; color: #8aebff; font-family: monospace; font-weight: 600;">port {}</span>.</p>
-    <button onclick="window.location.reload()" style="display: block; width: 100%; padding: 12px 20px; background: linear-gradient(135deg, #8aebff 0%, #22d3ee 100%); color: #00363e; font-weight: 700; font-size: 14px; border-radius: 12px; border: none; cursor: pointer; text-decoration: none; box-shadow: 0 8px 24px -6px rgba(34, 211, 238, 0.5);">Sign In Again</button>
-    <div style="margin-top: 24px; font-size: 12px; color: #64748b;">
-      <a href="https://proxync.dev" style="color: #8b96ad; text-decoration: none;">Proxync Tunnel</a> • Ephemeral Zero-Trust Security Gate
-    </div>
-  </div>
-</body>
-</html>"#,
-                            local_port
-                        );
-                        let resp = format!(
-                            "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"Proxync Tunnel\"\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                            html_401.len(),
-                            html_401
-                        );
-                        let _ = client_stream.write_all(resp.as_bytes()).await;
-                        let _ = client_stream.shutdown().await;
+                    let client_ip = extract_client_ip(&header_str, &peer_ip);
+                    let now = std::time::Instant::now();
+
+                    // Check if client IP is currently in active lockout
+                    let locked_status = {
+                        let lim = rate_limiter_clone.lock().await;
+                        lim.is_locked(&client_ip, now)
+                    };
+                    if let Some((remaining_secs, tier)) = locked_status {
+                        serve_429_lockout(&mut client_stream, remaining_secs, tier, local_port).await;
+                        return;
+                    }
+
+                    let has_auth = has_authorization_header(&header_str);
+                    let is_valid = verify_basic_auth(&header_str, &expected.0, &expected.1);
+
+                    if is_valid {
+                        let mut lim = rate_limiter_clone.lock().await;
+                        lim.record_success(&client_ip);
+                    } else {
+                        if has_auth {
+                            // Invalid credentials submitted -> increment failure count & tarpit delay
+                            let locked_info = {
+                                let mut lim = rate_limiter_clone.lock().await;
+                                lim.record_failure(&client_ip, now)
+                            };
+
+                            // Tarpit delay to slow down automated brute-force attempts
+                            tokio::time::sleep(std::time::Duration::from_millis(AUTH_FAILED_DELAY_MS)).await;
+
+                            if let Some((lockout_secs, tier)) = locked_info {
+                                serve_429_lockout(&mut client_stream, lockout_secs, tier, local_port).await;
+                            } else {
+                                serve_401_unauthorized(&mut client_stream, local_port).await;
+                            }
+                        } else {
+                            // Initial visit without credentials -> challenge with standard 401 (no failure count, no delay)
+                            serve_401_unauthorized(&mut client_stream, local_port).await;
+                        }
                         return;
                     }
                 }
@@ -651,6 +990,134 @@ mod tests {
         }
 
         stop_proxy(Some(offline_port)).await;
+    }
+
+    #[test]
+    fn test_constant_time_eq() {
+        assert!(constant_time_eq(b"password123", b"password123"));
+        assert!(!constant_time_eq(b"password123", b"password124"));
+        assert!(!constant_time_eq(b"password123", b"short"));
+        assert!(!constant_time_eq(b"", b"nonempty"));
+        assert!(constant_time_eq(b"", b""));
+    }
+
+    #[test]
+    fn test_lockout_duration_formatting() {
+        assert_eq!(format_lockout_duration(45), "45s");
+        assert_eq!(format_lockout_duration(60), "1m 00s");
+        assert_eq!(format_lockout_duration(120), "2m 00s");
+        assert_eq!(format_lockout_duration(300), "5m 00s");
+        assert_eq!(format_lockout_duration(900), "15m 00s");
+        assert_eq!(format_lockout_duration(3665), "1h 1m 05s");
+    }
+
+    #[test]
+    fn test_auth_rate_limiter_progressive_lockout_and_reset() {
+        let mut limiter = AuthRateLimiter::new();
+        let now = std::time::Instant::now();
+        let ip = "192.168.1.50";
+
+        // Attempts 1 to 4: no lockout
+        for _ in 1..=4 {
+            assert_eq!(limiter.record_failure(ip, now), None);
+            assert_eq!(limiter.is_locked(ip, now), None);
+        }
+
+        // 5th attempt: Stage 1 lockout (60s)
+        assert_eq!(limiter.record_failure(ip, now), Some((60, 1)));
+        assert_eq!(limiter.is_locked(ip, now), Some((60, 1)));
+
+        // Advance past Stage 1 lockout (+61s)
+        let t1_expired = now + std::time::Duration::from_secs(61);
+        assert_eq!(limiter.is_locked(ip, t1_expired), None);
+
+        // Subsequent failure immediately escalates to Stage 2 (120s)
+        assert_eq!(limiter.record_failure(ip, t1_expired), Some((120, 2)));
+        assert_eq!(limiter.is_locked(ip, t1_expired), Some((120, 2)));
+
+        // Advance past Stage 2 lockout (+121s)
+        let t2_expired = t1_expired + std::time::Duration::from_secs(121);
+        assert_eq!(limiter.is_locked(ip, t2_expired), None);
+
+        // Subsequent failure immediately escalates to Stage 3 (300s = 5m)
+        assert_eq!(limiter.record_failure(ip, t2_expired), Some((300, 3)));
+        assert_eq!(limiter.is_locked(ip, t2_expired), Some((300, 3)));
+
+        // Success clears the entire record back to initial state
+        limiter.record_success(ip);
+        assert_eq!(limiter.is_locked(ip, t2_expired), None);
+
+        // Fresh attempt after success is just attempt 1 (no lockout)
+        assert_eq!(limiter.record_failure(ip, t2_expired), None);
+    }
+
+    #[test]
+    fn test_auth_rate_limiter_idle_decay_reset() {
+        let mut limiter = AuthRateLimiter::new();
+        let now = std::time::Instant::now();
+        let ip = "10.0.0.1";
+
+        // Trigger Stage 1 lockout (5 attempts)
+        for _ in 1..=4 {
+            limiter.record_failure(ip, now);
+        }
+        assert_eq!(limiter.record_failure(ip, now), Some((60, 1)));
+
+        // Advance past lockout (60s) + idle threshold (901s) = 961s total inactivity
+        let idle_expired = now + std::time::Duration::from_secs(961);
+        assert_eq!(limiter.is_locked(ip, idle_expired), None);
+
+        // Next failure after 15m idle should reset tier to 0, counting as attempt 1 of 5
+        assert_eq!(limiter.record_failure(ip, idle_expired), None);
+    }
+
+    #[tokio::test]
+    async fn test_proxy_brute_force_lockout_429() {
+        let dummy = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = dummy.local_addr().unwrap().port();
+        drop(dummy);
+
+        let tx = test_event_sender();
+        let proxy_port = start_proxy_with_auth(tx, port, Some("user:secret".to_string()))
+            .await
+            .unwrap();
+
+        // 4 failed attempts -> 401 Unauthorized
+        for _ in 1..=4 {
+            let mut stream = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).await.unwrap();
+            stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nAuthorization: Basic dXNlcjp3cm9uZw==\r\n\r\n").await.unwrap();
+            let mut res = vec![0u8; 512];
+            let n = stream.read(&mut res).await.unwrap();
+            let res_str = String::from_utf8_lossy(&res[..n]);
+            assert!(res_str.contains("401 Unauthorized"));
+        }
+
+        // 5th failed attempt -> 429 Too Many Requests (Lockout!)
+        {
+            let mut stream = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).await.unwrap();
+            stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nAuthorization: Basic dXNlcjp3cm9uZw==\r\n\r\n").await.unwrap();
+            let mut res = Vec::new();
+            stream.read_to_end(&mut res).await.unwrap();
+            let res_str = String::from_utf8_lossy(&res);
+            assert!(res_str.contains("429 Too Many Requests"));
+            assert!(res_str.contains("Retry-After: 60"));
+            assert!(res_str.contains("Authentication"));
+            assert!(res_str.contains("Locked"));
+            assert!(res_str.contains("TOO MANY ATTEMPTS"));
+        }
+
+        // Subsequent attempt while locked out -> immediately receives 429 Too Many Requests
+        {
+            let mut stream = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).await.unwrap();
+            stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n").await.unwrap();
+            let mut res = Vec::new();
+            stream.read_to_end(&mut res).await.unwrap();
+            let res_str = String::from_utf8_lossy(&res);
+            assert!(res_str.contains("429 Too Many Requests"));
+            assert!(res_str.contains("Locked"));
+        }
+
+        stop_proxy(Some(port)).await;
     }
 }
 

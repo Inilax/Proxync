@@ -2,6 +2,16 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [feature/develop-tunnel-basic-auth] - 2026-10-09 (Android-Style Progressive Rate Limiting & Brute-Force Lockout Defense)
+- **Feature Summary**:
+  - **Progressive Lockout Escalation (`packages/core/src/proxy.rs`)**: Implemented graduated lockout tiers for failed Basic Auth attempts (Stage 1: 60s, Stage 2: 120s, Stage 3: 300s, Stage 4: 900s, Stage 5: 3600s max cap) with 15-minute inactivity decay reset and immediate reset upon successful authentication.
+  - **Constant-Time Verification & Tarpit (`packages/core/src/proxy.rs`)**: Added `constant_time_eq` credential validation to prevent timing attacks and a 1000ms tarpit delay on bad credentials to mitigate automated credential stuffing.
+  - **Dynamic 429 Lockout Page (`packages/core/src/proxy.rs`)**: Embedded branded HTTP 429 response featuring live JavaScript ticking countdown, formatted time display (`5m 00s`), visual progress bar, stage penalty badges, and auto-reload on expiry.
+  - **Comprehensive Rust Test Suite (`packages/core/src/proxy.rs`)**: Added automated unit tests for duration formatting, progressive stage escalation, idle reset decay, and end-to-end HTTP 429 lockout handling.
+- **Modified Files**:
+  - `packages/core/src/proxy.rs`
+  - `CHANGELOG.md`
+
 ## [feature/develop-tunnel-basic-auth] - 2026-10-09 (Tunnel Session Keepalive Heartbeat & 1h Expiration Hard Cap)
 - **Feature Summary**:
   - **Client-Side 1-Hour Hard Cap Fallback (`packages/core/src/tunnel.rs`)**: Spawned background timer terminating spawned SSH tunnel child processes and dispatching `TunnelAutoClosed` event after 1 hour if unreachable or offline.
