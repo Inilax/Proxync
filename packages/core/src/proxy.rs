@@ -153,7 +153,38 @@ pub async fn start_proxy_with_auth(
                 // Basic Auth verification if configured (checked before probing backend service to prevent port/health leakage)
                 if let Some(ref expected) = auth_clone {
                     if !verify_basic_auth(&header_str, &expected.0, &expected.1) {
-                        let resp = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"Proxync Tunnel\"\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 12\r\nConnection: close\r\n\r\nUnauthorized";
+                        // Basic Auth credentials missing or invalid: serve branded 401 Unauthorized access page
+                        let html_401 = format!(
+                            r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>401 - Access Restricted | Proxync Tunnel</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #060e20; color: #dae2fd; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; box-sizing: border-box;">
+  <div style="text-align: center; max-width: 480px; width: 100%; padding: 40px 32px; background: #0b1326; border-radius: 20px; border: 1px solid #222a3d; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6); position: relative; overflow: hidden;">
+    <div style="position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, #8aebff, transparent);"></div>
+    <div style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 9999px; background: rgba(252, 211, 77, 0.1); border: 1px solid rgba(252, 211, 77, 0.25); color: #fcd34d; font-size: 12px; font-weight: 600; font-family: monospace; margin-bottom: 20px;">
+      <span style="width: 8px; height: 8px; background: #fcd34d; border-radius: 50%; box-shadow: 0 0 8px #fcd34d;"></span>
+      🔒 401 • AUTHENTICATION REQUIRED
+    </div>
+    <h2 style="color: #ffffff; margin: 0 0 10px 0; font-size: 24px; font-weight: 700; letter-spacing: -0.02em;">Access <span style="color: #8aebff;">Restricted</span></h2>
+    <p style="color: #8b96ad; font-size: 14px; line-height: 1.6; margin: 0 0 24px 0;">This Proxync tunnel is password-protected. Valid HTTP Basic Authentication credentials are required to access local service on <span style="background: #131b2e; padding: 2px 8px; border-radius: 6px; color: #8aebff; font-family: monospace; font-weight: 600;">port {}</span>.</p>
+    <button onclick="window.location.reload()" style="display: block; width: 100%; padding: 12px 20px; background: linear-gradient(135deg, #8aebff 0%, #22d3ee 100%); color: #00363e; font-weight: 700; font-size: 14px; border-radius: 12px; border: none; cursor: pointer; text-decoration: none; box-shadow: 0 8px 24px -6px rgba(34, 211, 238, 0.5);">Sign In Again</button>
+    <div style="margin-top: 24px; font-size: 12px; color: #64748b;">
+      <a href="https://proxync.dev" style="color: #8b96ad; text-decoration: none;">Proxync Tunnel</a> • Ephemeral Zero-Trust Security Gate
+    </div>
+  </div>
+</body>
+</html>"#,
+                            local_port
+                        );
+                        let resp = format!(
+                            "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"Proxync Tunnel\"\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            html_401.len(),
+                            html_401
+                        );
                         let _ = client_stream.write_all(resp.as_bytes()).await;
                         let _ = client_stream.shutdown().await;
                         return;
@@ -540,6 +571,8 @@ mod tests {
             let res_str = String::from_utf8_lossy(&res[..n]);
             assert!(res_str.contains("401 Unauthorized"));
             assert!(res_str.contains("WWW-Authenticate: Basic"));
+            assert!(res_str.contains("text/html"));
+            assert!(res_str.contains("Access"));
         }
 
         // 4. Request with invalid credentials -> 401 Unauthorized
