@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import type { Tunnel, RequestLog } from './SharedComponents';
-import { getTunnelMetadata } from './SharedComponents';
+import { getTunnelMetadata, Icons } from './SharedComponents';
 import type { ProcessCandidate, WorkspaceConfig } from '../../lib/types';
 import { showToast } from '../../lib/toast';
 function getFrameworkSubtitle(proc: ProcessCandidate): string {
@@ -308,13 +308,42 @@ export function WorkspaceDashboardView({
                               <span className={`text-[10px] font-mono uppercase tracking-wider ${isStandby ? 'text-amber-400' : 'text-emerald-400'} font-bold`}>
                                 {isStandby ? 'STANDBY ENDPOINT' : 'PUBLIC ENDPOINT'}
                               </span>
-                              <span className={`px-1.5 py-0.5 ${isStandby ? 'bg-amber-500/15 text-amber-400' : 'bg-emerald-500/15 text-emerald-400'} text-[10px] font-mono rounded`}>
-                                {isStandby ? 'Standby' : 'Live'}
-                              </span>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {activeT.basicAuth?.enabled && (
+                                  <span
+                                    className="flex items-center text-amber-400 shrink-0"
+                                    title={`Protected with Basic Auth (${activeT.basicAuth.username})`}
+                                  >
+                                    {Icons.lock}
+                                  </span>
+                                )}
+                                <span className={`px-1.5 py-0.5 ${isStandby ? 'bg-amber-500/15 text-amber-400' : 'bg-emerald-500/15 text-emerald-400'} text-[10px] font-mono rounded`}>
+                                  {isStandby ? 'Standby' : 'Live'}
+                                </span>
+                              </div>
                             </div>
                             <div className="flex items-center justify-between gap-2">
                               <p className="font-mono text-xs font-bold text-on-surface truncate select-all">{activeT.publicUrl}</p>
                               <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                {activeT.basicAuth?.enabled && (
+                                  <button
+                                    onClick={() => {
+                                      if (!activeT.basicAuth) return;
+                                      if (activeT.basicAuth.password) {
+                                        const cred = `${activeT.basicAuth.username}:${activeT.basicAuth.password}`;
+                                        navigator.clipboard.writeText(cred);
+                                        showToast(`Credentials copied for ${activeT.basicAuth.username}`, 'success');
+                                      } else {
+                                        navigator.clipboard.writeText(activeT.basicAuth.username);
+                                        showToast('Username copied. Password not retained in session memory.', 'warning');
+                                      }
+                                    }}
+                                    className="p-1 rounded text-outline hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer"
+                                    title={`Copy Credentials (${activeT.basicAuth.username})`}
+                                  >
+                                    <span className="material-symbols-outlined text-[14px]">key</span>
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => {
                                     navigator.clipboard.writeText(activeT.publicUrl);
@@ -508,6 +537,14 @@ export function WorkspaceDashboardView({
                                   <h4 className="font-body-lg text-body-lg text-on-surface truncate max-w-[140px] xs:max-w-[200px] sm:max-w-[320px] md:max-w-[440px] lg:max-w-[560px]" title={hostname || tunnel.publicUrl}>
                                     {hostname || tunnel.publicUrl}
                                   </h4>
+                                  {tunnel.basicAuth?.enabled && (
+                                    <span
+                                      className="flex items-center text-amber-400 shrink-0"
+                                      title={`Protected with Basic Auth (${tunnel.basicAuth.username})`}
+                                    >
+                                      {Icons.lock}
+                                    </span>
+                                  )}
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
@@ -569,6 +606,22 @@ export function WorkspaceDashboardView({
                                 <span className="material-symbols-outlined text-[16px]">content_copy</span>
                                 Copy Public URL
                               </button>
+
+                              {tunnel.basicAuth?.enabled && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const cred = `${tunnel.basicAuth?.username}:${tunnel.basicAuth?.password || ''}`;
+                                    navigator.clipboard.writeText(cred);
+                                    setActiveMenuTunnelId(null);
+                                    showToast(`Credentials copied for ${tunnel.basicAuth?.username}`, 'success');
+                                  }}
+                                  className="flex items-center gap-2 px-4 py-2 w-full text-left text-xs text-on-surface hover:bg-surface-container-highest transition-colors cursor-pointer"
+                                >
+                                  <span className="material-symbols-outlined text-[16px]">key</span>
+                                  Copy Credentials
+                                </button>
+                              )}
 
                               {onInspectTraffic && (
                                 <button

@@ -2,6 +2,65 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [feature/develop-tunnel-basic-auth] - 2026-10-08 (Basic Auth Council Review P2 Fixes)
+- **Feature Summary**:
+  - **Silent Error Logging (`packages/desktop/src/App.tsx`)**: Added `console.warn` to all three `start_proxy` invoke catch blocks so proxy bind failures surface in DevTools instead of being silently swallowed behind a boolean flag.
+  - **Dead Code Removal (`packages/desktop/src/components/views/SharedComponents.tsx`)**: Removed unused `Icons.key` entry (a redundant `material-symbols-outlined` wrapper) — all call sites use the span directly.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-08 (Credential Key Icon Harmonization & Endpoint Badge Right-Alignment)
+- **Feature Summary**:
+  - **Material Symbols Key Icon Standardization (`packages/desktop/src/components/views/WorkspaceDashboardView.tsx`, `ProcessView.tsx`, `WelcomeView.tsx`, `SharedComponents.tsx`)**: Replaced non-uniform solid SVG key icon with standard `material-symbols-outlined` key glyph across all active tunnel cards and action menus.
+  - **Action Button Sizing and Palette Alignment (`packages/desktop/src/components/views/WorkspaceDashboardView.tsx`)**: Unified button wrapper styling to `p-1 rounded text-outline hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer` and 14px optical icon size, ensuring identical base color, hover color transitions, and sizing alongside sibling URL copy and browser open buttons.
+  - **Endpoint Header Badge Right-Alignment (`packages/desktop/src/components/views/WorkspaceDashboardView.tsx`)**: Grouped the Basic Auth lock icon and `Live` / `Standby` status pill into a dedicated right-aligned flex container, preventing `justify-between` from pushing the `Live` badge into the center of the card.
+- **Modified Files**:
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `CHANGELOG.md`
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-07 (Proxy Fallback State Sync, Pre-Upstream Auth Gate, Dynamic Header Buffering & Security Hardening)
+- **Feature Summary**:
+  - **Proxy Fallback Warning Notification & State Synchronization (`packages/desktop/src/App.tsx`)**: When local proxy initialization fails, the raw tunnel fallback now triggers a warning toast notifying the user that the tunnel is unauthenticated, and strips the `basicAuth` configuration from the tunnel state to prevent deceptive yellow lock badges.
+  - **Pre-Upstream Auth Validation (`packages/core/src/proxy.rs`)**: Positioned Basic Auth credential checks strictly before upstream connection attempts, preventing offline target reconnaissance and leaking 502 Bad Gateway standby pages to unauthenticated callers.
+  - **Dynamic HTTP Header Accumulation (`packages/core/src/proxy.rs`)**: Replaced fixed 16 KB read buffer with dynamic header accumulation reading until `\r\n\r\n` with a 2 MB safety limit (returning HTTP 431 on overflow), eliminating header truncation while preventing memory exhaustion.
+  - **RFC 7617 Colon Credential Parsing (`packages/core/src/proxy.rs`)**: Refactored basic auth credential extraction to split on the first colon (`split_once(':')`) and reject usernames containing unescaped colons.
+  - **Automated Core Rust Test Coverage (`packages/core/src/proxy.rs`)**: Added end-to-end unit and integration tests verifying 401 challenge, 401 rejection, 200 pass-through, >16 KB header support, and pre-auth offline target isolation.
+  - **Immutable State Sharing (`packages/desktop/src/App.tsx`)**: Replaced in-place object mutation in `shareProcess` with pure immutable object spreading.
+  - **React Lifecycle Password Scoping (`packages/desktop/src/components/views/Dialogs.tsx`)**: Removed module-level global password storage variable; scoped credential memory to modal lifecycle and reset on process switch.
+  - **Storage Write Throttling (`packages/desktop/src/components/views/Dialogs.tsx`)**: Removed per-keystroke `localStorage.setItem` calls from `onChange`; persisted on `onBlur` and submission with proper diagnostic error logging.
+  - **UI Accessibility & Design System Conformance (`packages/desktop/src/components/views/Dialogs.tsx`, `SharedComponents.tsx`, `ProcessView.tsx`, `WelcomeView.tsx`, `WorkspaceDashboardView.tsx`)**: Converted toggle into an accessible `<button role="switch">` with keyboard navigation, mapped hardcoded colors to semantic theme variables (`var(--color-on-primary)`, `var(--color-error)`), centralized `Icons.lock` and added crisp inline SVG `Icons.key`, and provided graceful notifications when copying usernames with non-retained passwords.
+- **Modified Files**:
+  - `packages/core/src/proxy.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `CHANGELOG.md`
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-06 (HTTP Basic Authentication for Public Tunnels in Desktop GUI)
+- **Feature Summary**:
+  - **HTTP Basic Authentication GUI Controls (`packages/desktop/src/components/views/Dialogs.tsx`, `packages/desktop/src/lib/types.ts`)**: Added an expandable toggle and credential inputs (`username` and `password`) to the Tunnel Launch Dialog and unified launch options.
+  - **Quick-Action & View Launch Integration (`packages/desktop/src/App.tsx`, `ProcessView.tsx`, `WelcomeView.tsx`, `WorkspaceDashboardView.tsx`, `PostmanView.tsx`)**: Extended process cards and launch triggers across the dashboard, process list, and welcome view to accept and pass basic authentication configurations.
+  - **Backend IPC Proxy Parameter Propagation (`packages/desktop/src-tauri/src/proxy.rs`)**: Updated Tauri `start_tunnel` IPC command invocation to serialize and map optional `basic_auth` (`user:pass`) through to the core tunnel client.
+  - **CWE-312 Sensitive Storage Guard (`packages/desktop/src/App.tsx`)**: Sanitized active tunnel persistence in `localStorage` to strip credentials and retain only non-sensitive metadata, preventing unencrypted password storage.
+  - **Session Password Cache & Compact Amber Lock UI (`packages/desktop/src/components/views/Dialogs.tsx`, `WorkspaceDashboardView.tsx`, `WelcomeView.tsx`, `ProcessView.tsx`)**: Added in-memory session password retention and username persistence across tunnel modal launches, and replaced bulky text badges with compact amber lock icons across process cards.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `packages/desktop/src/lib/types.ts`
+  - `CHANGELOG.md`
+
 ## [feat/cli-companion] - 2026-10-02 (Cross-Platform CLI Hotkeys, Unix Raw Mode, Process Group Detachment & Desktop Crate Rename)
 - **Feature Summary**:
   - **CLI Terminal Raw Mode & Hotkey Lifecycle (`packages/cli/src/ui.rs`, `commands/tunnel.rs`, `commands/inspect.rs`)**: Implemented RAII `RawModeGuard` checking `stdin().is_terminal()` and preserving Unix terminal post-processing (`libc::OPOST | libc::ONLCR`) to prevent raw-mode newline staircasing. Resolves POSIX cooked-mode stdin buffering on Linux and macOS so single-key interactive hotkeys (`o`, `c`, `q`, `s`, `t`, `l`, `h`) trigger immediately on keypress.

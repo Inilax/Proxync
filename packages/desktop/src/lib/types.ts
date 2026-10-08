@@ -29,6 +29,12 @@ export interface ProcessCandidate {
   latency?: number;
 }
 
+export interface BasicAuthConfig {
+  enabled: boolean;
+  username: string;
+  password?: string;
+}
+
 export interface Tunnel {
   id: string;
   publicUrl: string;
@@ -38,6 +44,7 @@ export interface Tunnel {
   customDomain?: string;
   createdAt?: string;
   provider?: string;
+  basicAuth?: BasicAuthConfig;
 }
 
 export interface RequestLog {

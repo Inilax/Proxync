@@ -39,6 +39,51 @@ pub async fn stop_proxy(local_port: Option<u16>) -> bool {
 // Upgrade path: make configurable via AppSettings if users request larger limits.
 const MAX_UPLOAD_BODY_BYTES: usize = 50 * 1024 * 1024; // 50 MB
 
+/// Validates and parses Basic Auth credentials in "username:password" format.
+/// In accordance with RFC 7617, the username must not contain unescaped colons.
+/// Splits strictly on the first colon (.split_once(':')) so passwords can contain colons.
+pub fn parse_basic_auth_credentials(cred: &str) -> Result<(String, String), String> {
+    let trimmed = cred.trim();
+    let (username, password) = trimmed
+        .split_once(':')
+        .ok_or_else(|| "Invalid basic auth format: missing colon separator between username and password".to_string())?;
+
+    let username = username.trim();
+    if username.is_empty() {
+        return Err("Basic auth username cannot be empty".to_string());
+    }
+    if username.contains(':') {
+        return Err("Basic auth username cannot contain colons".to_string());
+    }
+
+    Ok((username.to_string(), password.to_string()))
+}
+
+/// Extracts the HTTP Authorization header from raw header string and verifies against expected Basic Auth credentials.
+/// Handles base64 decoding, splits only on the first colon, and checks username & password.
+pub fn verify_basic_auth(header_str: &str, expected_user: &str, expected_pass: &str) -> bool {
+    for line in header_str.lines() {
+        let trimmed = line.trim();
+        if trimmed.to_ascii_lowercase().starts_with("authorization:") {
+            if let Some((_, val)) = trimmed.split_once(':') {
+                let auth_val = val.trim();
+                if let Some(token) = auth_val.strip_prefix("Basic ").or_else(|| auth_val.strip_prefix("basic ")) {
+                    if let Ok(decoded_bytes) = BASE64_STANDARD.decode(token.trim()) {
+                        if let Ok(decoded_str) = String::from_utf8(decoded_bytes) {
+                            if let Some((user, pass)) = decoded_str.split_once(':') {
+                                if user == expected_user && pass == expected_pass {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
 pub async fn start_proxy(tx: EventSender, local_port: u16) -> Result<u16, String> {
     start_proxy_with_auth(tx, local_port, None).await
 }
@@ -55,9 +100,13 @@ pub async fn start_proxy_with_auth(
         }
     }
 
-    let auth_header_expected: Option<Arc<String>> = basic_auth.map(|cred| {
-        Arc::new(format!("Basic {}", BASE64_STANDARD.encode(cred.trim())))
-    });
+    let auth_expected: Option<Arc<(String, String)>> = match basic_auth {
+        Some(cred) if !cred.trim().is_empty() => {
+            let (u, p) = parse_basic_auth_credentials(&cred)?;
+            Some(Arc::new((u, p)))
+        }
+        _ => None,
+    };
 
     let listener = TcpListener::bind("127.0.0.1:0").await.map_err(|e| e.to_string())?;
     let proxy_port = listener.local_addr().map_err(|e| e.to_string())?.port();
@@ -66,8 +115,51 @@ pub async fn start_proxy_with_auth(
     let listener_handle = tokio::spawn(async move {
         while let Ok((mut client_stream, _)) = listener.accept().await {
             let tx_clone = proxy_tx.clone();
-            let auth_clone = auth_header_expected.clone();
+            let auth_clone = auth_expected.clone();
             tokio::spawn(async move {
+                // ponytail: dynamic header reading until \r\n\r\n delimiter; 2 MB safety cap prevents memory DoS
+                const MAX_HEADER_BYTES: usize = 2 * 1024 * 1024; // 2 MB
+                let mut req_buf = Vec::with_capacity(8192);
+                let mut chunk = [0u8; 8192];
+                let mut header_end: Option<usize> = None;
+
+                loop {
+                    let n = match client_stream.read(&mut chunk).await {
+                        Ok(bytes) if bytes > 0 => bytes,
+                        _ => break,
+                    };
+                    req_buf.extend_from_slice(&chunk[..n]);
+
+                    if let Some(pos) = req_buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                        header_end = Some(pos + 4);
+                        break;
+                    }
+
+                    if req_buf.len() > MAX_HEADER_BYTES {
+                        let resp = "HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n";
+                        let _ = client_stream.write_all(resp.as_bytes()).await;
+                        let _ = client_stream.shutdown().await;
+                        return;
+                    }
+                }
+
+                let header_end_pos = match header_end {
+                    Some(pos) => pos,
+                    None => return, // Delimiter \r\n\r\n never arrived before EOF
+                };
+
+                let header_str = String::from_utf8_lossy(&req_buf[..header_end_pos]);
+
+                // Basic Auth verification if configured (checked before probing backend service to prevent port/health leakage)
+                if let Some(ref expected) = auth_clone {
+                    if !verify_basic_auth(&header_str, &expected.0, &expected.1) {
+                        let resp = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"Proxync Tunnel\"\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 12\r\nConnection: close\r\n\r\nUnauthorized";
+                        let _ = client_stream.write_all(resp.as_bytes()).await;
+                        let _ = client_stream.shutdown().await;
+                        return;
+                    }
+                }
+
                 // Connect to target service on 127.0.0.1 with fallback to [::1] (for IPv6-only servers like Vite)
                 let target_stream_res = match TcpStream::connect(format!("127.0.0.1:{}", local_port)).await {
                     Ok(s) => Ok(s),
@@ -103,54 +195,24 @@ pub async fn start_proxy_with_auth(
                     }
                 };
 
-                let mut req_buf = vec![0u8; 16384];
-                let n_req = match client_stream.read(&mut req_buf).await {
-                    Ok(bytes) if bytes > 0 => bytes,
-                    _ => return,
-                };
-
-                let req_str = String::from_utf8_lossy(&req_buf[..n_req]);
-
-                // Basic Auth verification if configured
-                if let Some(ref expected_auth) = auth_clone {
-                    let mut has_valid_auth = false;
-                    for l in req_str.lines() {
-                        let l_lower = l.to_lowercase();
-                        if l_lower.starts_with("authorization:") {
-                            if let Some((_, val)) = l.split_once(':') {
-                                if val.trim() == expected_auth.as_str() {
-                                    has_valid_auth = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    if !has_valid_auth {
-                        let resp = "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"Proxync Tunnel\"\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 12\r\nConnection: close\r\n\r\nUnauthorized";
-                        let _ = client_stream.write_all(resp.as_bytes()).await;
-                        let _ = client_stream.shutdown().await;
-                        return;
-                    }
-                }
-
                 // 1. Detect WebSocket Upgrade requests (Vite HMR, Next Turbopack, Socket.io, NestJS, etc.)
-                let is_ws_upgrade = req_str.lines().any(|l| {
+                let is_ws_upgrade = header_str.lines().any(|l| {
                     let ll = l.to_lowercase();
                     ll.starts_with("upgrade:") && ll.contains("websocket")
-                }) || req_str.lines().any(|l| {
+                }) || header_str.lines().any(|l| {
                     let ll = l.to_lowercase();
                     ll.starts_with("connection:") && ll.contains("upgrade")
                 });
 
                 // 2. Detect SSE (Server-Sent Events) streams
-                let is_sse = req_str.lines().any(|l| {
+                let is_sse = header_str.lines().any(|l| {
                     let ll = l.to_lowercase();
                     ll.starts_with("accept:") && ll.contains("text/event-stream")
                 });
 
                 // 3. Enforce upload size cap (50 MB)
                 let mut content_length: usize = 0;
-                for line in req_str.lines() {
+                for line in header_str.lines() {
                     let lower = line.to_lowercase();
                     if lower.starts_with("content-length:") {
                         if let Some((_, val)) = line.split_once(':') {
@@ -173,50 +235,47 @@ pub async fn start_proxy_with_auth(
                 }
 
                 // 4. Header normalization & forwarding headers injection
-                let parts_split: Vec<&str> = req_str.splitn(2, "\r\n\r\n").collect();
                 let mut incoming_host = String::new();
                 let mut modified_headers = Vec::new();
                 let mut safe_headers = HashMap::new();
                 let mut method = "GET".to_string();
                 let mut path = "/".to_string();
 
-                if let Some(header_part) = parts_split.get(0) {
-                    for (idx, line) in header_part.lines().enumerate() {
-                        if idx == 0 {
-                            let parts: Vec<&str> = line.split_whitespace().collect();
-                            if parts.len() >= 2 {
-                                method = parts[0].to_string();
-                                path = parts[1].to_string();
-                            }
+                for (idx, line) in header_str.lines().enumerate() {
+                    if idx == 0 {
+                        let parts: Vec<&str> = line.split_whitespace().collect();
+                        if parts.len() >= 2 {
+                            method = parts[0].to_string();
+                            path = parts[1].to_string();
+                        }
+                        modified_headers.push(line.to_string());
+                        continue;
+                    }
+                    if let Some((k, v)) = line.split_once(':') {
+                        let key = k.trim();
+                        let val = v.trim();
+                        let lower_key = key.to_lowercase();
+                        if lower_key == "host" {
+                            incoming_host = val.to_string();
+                            modified_headers.push(format!("Host: localhost:{}", local_port));
+                        } else if lower_key == "origin" {
+                            // Rewrite Origin to match local dev server host so WebSocket origin checks pass
+                            modified_headers.push(format!("Origin: http://localhost:{}", local_port));
+                        } else if is_ws_upgrade && (lower_key == "connection" || lower_key == "upgrade" || lower_key.starts_with("sec-websocket-")) {
+                            // Preserve WebSocket headers verbatim
                             modified_headers.push(line.to_string());
-                            continue;
+                        } else if !is_ws_upgrade && !is_sse && lower_key == "connection" {
+                            modified_headers.push("Connection: close".to_string());
+                        } else {
+                            modified_headers.push(line.to_string());
                         }
-                        if let Some((k, v)) = line.split_once(':') {
-                            let key = k.trim();
-                            let val = v.trim();
-                            let lower_key = key.to_lowercase();
-                            if lower_key == "host" {
-                                incoming_host = val.to_string();
-                                modified_headers.push(format!("Host: localhost:{}", local_port));
-                            } else if lower_key == "origin" {
-                                // Rewrite Origin to match local dev server host so WebSocket origin checks pass
-                                modified_headers.push(format!("Origin: http://localhost:{}", local_port));
-                            } else if is_ws_upgrade && (lower_key == "connection" || lower_key == "upgrade" || lower_key.starts_with("sec-websocket-")) {
-                                // Preserve WebSocket headers verbatim
-                                modified_headers.push(line.to_string());
-                            } else if !is_ws_upgrade && !is_sse && lower_key == "connection" {
-                                modified_headers.push("Connection: close".to_string());
-                            } else {
-                                modified_headers.push(line.to_string());
-                            }
 
-                            let display_val = if lower_key == "authorization" || lower_key == "cookie" || lower_key == "set-cookie" || lower_key == "x-api-key" || lower_key == "api-key" {
-                                "[REDACTED]".to_string()
-                            } else {
-                                val.to_string()
-                            };
-                            safe_headers.insert(key.to_string(), display_val);
-                        }
+                        let display_val = if lower_key == "authorization" || lower_key == "cookie" || lower_key == "set-cookie" || lower_key == "x-api-key" || lower_key == "api-key" {
+                            "[REDACTED]".to_string()
+                        } else {
+                            val.to_string()
+                        };
+                        safe_headers.insert(key.to_string(), display_val);
                     }
                 }
 
@@ -230,15 +289,11 @@ pub async fn start_proxy_with_auth(
                     modified_headers.push("Connection: close".to_string());
                 }
 
-                let body_suffix = if parts_split.len() > 1 { parts_split[1] } else { "" };
-                let modified_req = format!("{}\r\n\r\n{}", modified_headers.join("\r\n"), body_suffix);
+                let modified_headers_str = format!("{}\r\n\r\n", modified_headers.join("\r\n"));
+                let body_bytes = &req_buf[header_end_pos..];
 
                 let req_id = format!("req-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
-                let body_preview = if let Some(body_part) = parts_split.get(1) {
-                    body_part.trim().to_string()
-                } else {
-                    String::new()
-                };
+                let body_preview = String::from_utf8_lossy(&body_bytes[..body_bytes.len().min(4096)]).trim().to_string();
 
                 let _ = tx_clone.send(ProxyncEvent::RequestLog {
                     id: req_id.clone(),
@@ -246,15 +301,20 @@ pub async fn start_proxy_with_auth(
                     path: path.clone(),
                     port: local_port,
                     headers: serde_json::json!(safe_headers),
-                    body_preview: body_preview,
+                    body_preview,
                     tunnel_id: None,
                     timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(),
                 });
 
                 let start_instant = std::time::Instant::now();
 
-                if target_stream.write_all(modified_req.as_bytes()).await.is_err() {
+                if target_stream.write_all(modified_headers_str.as_bytes()).await.is_err() {
                     return;
+                }
+                if !body_bytes.is_empty() {
+                    if target_stream.write_all(body_bytes).await.is_err() {
+                        return;
+                    }
                 }
 
                 // Read initial response chunk to capture HTTP status code and latency duration
@@ -403,5 +463,161 @@ pub async fn start_proxy_with_auth(
 
     map.insert(local_port, (proxy_port, vec![listener_handle, liveness_handle]));
     Ok(proxy_port)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::sync::broadcast;
+
+    fn test_event_sender() -> EventSender {
+        let (tx, _rx) = broadcast::channel(16);
+        tx
+    }
+
+    #[test]
+    fn test_parse_basic_auth_credentials() {
+        // Valid username and password
+        let res = parse_basic_auth_credentials("alice:secret123");
+        assert_eq!(res.unwrap(), ("alice".to_string(), "secret123".to_string()));
+
+        // Password containing colons (split_once on first colon)
+        let res = parse_basic_auth_credentials("bob:pass:word:with:colons");
+        assert_eq!(res.unwrap(), ("bob".to_string(), "pass:word:with:colons".to_string()));
+
+        // Missing colon
+        assert!(parse_basic_auth_credentials("charlie").is_err());
+
+        // Empty username
+        assert!(parse_basic_auth_credentials(":password").is_err());
+    }
+
+    #[test]
+    fn test_verify_basic_auth_logic() {
+        let headers = "GET / HTTP/1.1\r\nHost: localhost\r\nAuthorization: Basic YWRtaW46c2VjcmV0MTIz\r\n\r\n";
+        assert!(verify_basic_auth(headers, "admin", "secret123"));
+
+        // Wrong password
+        assert!(!verify_basic_auth(headers, "admin", "wrong"));
+
+        // Wrong user
+        assert!(!verify_basic_auth(headers, "user", "secret123"));
+
+        // Missing auth header
+        let no_auth = "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n";
+        assert!(!verify_basic_auth(no_auth, "admin", "secret123"));
+    }
+
+    #[tokio::test]
+    async fn test_proxy_auth_flows() {
+        // 1. Start mock target server
+        let target_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let target_port = target_listener.local_addr().unwrap().port();
+
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = target_listener.accept().await {
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 65536];
+                    let _ = stream.read(&mut buf).await;
+                    let resp = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nHello";
+                    let _ = stream.write_all(resp.as_bytes()).await;
+                });
+            }
+        });
+
+        // 2. Start proxy with auth "admin:pass123"
+        let tx = test_event_sender();
+        let proxy_port = start_proxy_with_auth(tx, target_port, Some("admin:pass123".to_string()))
+            .await
+            .unwrap();
+
+        // 3. Request without auth -> 401 Unauthorized
+        {
+            let mut stream = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).await.unwrap();
+            stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n").await.unwrap();
+            let mut res = vec![0u8; 512];
+            let n = stream.read(&mut res).await.unwrap();
+            let res_str = String::from_utf8_lossy(&res[..n]);
+            assert!(res_str.contains("401 Unauthorized"));
+            assert!(res_str.contains("WWW-Authenticate: Basic"));
+        }
+
+        // 4. Request with invalid credentials -> 401 Unauthorized
+        {
+            let mut stream = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).await.unwrap();
+            // admin:wrong -> YWRtaW46d3Jvbmc=
+            stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nAuthorization: Basic YWRtaW46d3Jvbmc=\r\n\r\n").await.unwrap();
+            let mut res = vec![0u8; 512];
+            let n = stream.read(&mut res).await.unwrap();
+            let res_str = String::from_utf8_lossy(&res[..n]);
+            assert!(res_str.contains("401 Unauthorized"));
+        }
+
+        // 5. Request with correct credentials -> 200 OK
+        {
+            let mut stream = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).await.unwrap();
+            // admin:pass123 -> YWRtaW46cGFzczEyMw==
+            stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nAuthorization: Basic YWRtaW46cGFzczEyMw==\r\n\r\n").await.unwrap();
+            let mut res = vec![0u8; 512];
+            let n = stream.read(&mut res).await.unwrap();
+            let res_str = String::from_utf8_lossy(&res[..n]);
+            assert!(res_str.contains("200 OK"));
+            assert!(res_str.contains("Hello"));
+        }
+
+        // 6. Test large headers > 16 KB (Issue 2)
+        {
+            let mut stream = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).await.unwrap();
+            let large_cookie = "X-Large-Cookie: ".to_string() + &"a".repeat(20000) + "\r\n";
+            let req = format!(
+                "GET / HTTP/1.1\r\nHost: localhost\r\n{}Authorization: Basic YWRtaW46cGFzczEyMw==\r\n\r\n",
+                large_cookie
+            );
+            stream.write_all(req.as_bytes()).await.unwrap();
+            let mut res = vec![0u8; 512];
+            let n = stream.read(&mut res).await.unwrap();
+            let res_str = String::from_utf8_lossy(&res[..n]);
+            assert!(res_str.contains("200 OK"));
+        }
+
+        stop_proxy(Some(target_port)).await;
+    }
+
+    #[tokio::test]
+    async fn test_offline_target_does_not_leak_502_before_auth() {
+        // Bind an unused port and immediately close it so target is offline
+        let dummy = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let offline_port = dummy.local_addr().unwrap().port();
+        drop(dummy);
+
+        let tx = test_event_sender();
+        let proxy_port = start_proxy_with_auth(tx, offline_port, Some("admin:secret".to_string()))
+            .await
+            .unwrap();
+
+        // Unauthenticated client probing offline target -> must receive 401 Unauthorized, NOT 502!
+        {
+            let mut stream = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).await.unwrap();
+            stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n").await.unwrap();
+            let mut res = vec![0u8; 512];
+            let n = stream.read(&mut res).await.unwrap();
+            let res_str = String::from_utf8_lossy(&res[..n]);
+            assert!(res_str.contains("401 Unauthorized"));
+            assert!(!res_str.contains("502 Bad Gateway"));
+        }
+
+        // Authenticated client probing offline target -> gets 502 Bad Gateway
+        {
+            let mut stream = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).await.unwrap();
+            // admin:secret -> YWRtaW46c2VjcmV0
+            stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nAuthorization: Basic YWRtaW46c2VjcmV0\r\n\r\n").await.unwrap();
+            let mut res = vec![0u8; 1024];
+            let n = stream.read(&mut res).await.unwrap();
+            let res_str = String::from_utf8_lossy(&res[..n]);
+            assert!(res_str.contains("502 Bad Gateway"));
+        }
+
+        stop_proxy(Some(offline_port)).await;
+    }
 }
 
