@@ -2983,7 +2983,7 @@ export default function App() {
     <div className={`app-frame flex flex-col h-screen w-screen min-w-[700px] min-h-[500px] overflow-hidden bg-surface theme-${appSettings.theme ?? 'dark'}`}>
       {/* ── Top Header Bar (48px) ── */}
       <header
-        className="app-titlebar h-[48px] min-h-[48px] w-full flex items-center border-b border-outline-variant bg-surface pl-2 sm:pl-4 pr-0 justify-between select-none z-50 cursor-default"
+        className={`app-titlebar h-[48px] min-h-[48px] w-full flex items-center border-b border-outline-variant bg-surface pl-2 sm:pl-4 ${isMac ? 'pr-2 sm:pr-4' : 'pr-0'} justify-between select-none z-50 cursor-default`}
         onMouseDown={(e) => {
           const target = e.target as HTMLElement;
           if (
@@ -3239,57 +3239,59 @@ export default function App() {
             )}
           </div>
         </div>
-        <div className="window-controls flex items-center h-full shrink-0">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              handleMinimize();
-            }}
-            className="window-control window-control-hover text-on-surface-variant hover:text-on-surface cursor-pointer"
-            title="Minimize"
-            aria-label="Minimize"
-          >
-            <svg width="10" height="1" viewBox="0 0 10 1" fill="currentColor">
-              <rect width="10" height="1" />
-            </svg>
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              void handleToggleMaximize();
-            }}
-            className="window-control window-control-hover text-on-surface-variant hover:text-on-surface cursor-pointer"
-            title={isMaximized ? "Restore" : "Maximize"}
-            aria-label={isMaximized ? "Restore" : "Maximize"}
-          >
-            {isMaximized ? (
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M2.5 0.5H9.5V7.5" stroke="currentColor" strokeWidth="1" fill="none" />
-                <rect x="0.5" y="2.5" width="7" height="7" stroke="currentColor" strokeWidth="1" fill="none" />
+        {!isMac && (
+          <div className="window-controls flex items-center h-full shrink-0">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                handleMinimize();
+              }}
+              className="window-control window-control-hover text-on-surface-variant hover:text-on-surface cursor-pointer"
+              title="Minimize"
+              aria-label="Minimize"
+            >
+              <svg width="10" height="1" viewBox="0 0 10 1" fill="currentColor">
+                <rect width="10" height="1" />
               </svg>
-            ) : (
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                void handleToggleMaximize();
+              }}
+              className="window-control window-control-hover text-on-surface-variant hover:text-on-surface cursor-pointer"
+              title={isMaximized ? "Restore" : "Maximize"}
+              aria-label={isMaximized ? "Restore" : "Maximize"}
+            >
+              {isMaximized ? (
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M2.5 0.5H9.5V7.5" stroke="currentColor" strokeWidth="1" fill="none" />
+                  <rect x="0.5" y="2.5" width="7" height="7" stroke="currentColor" strokeWidth="1" fill="none" />
+                </svg>
+              ) : (
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="0.5" y="0.5" width="9" height="9" stroke="currentColor" strokeWidth="1" />
+                </svg>
+              )}
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                handleClose();
+              }}
+              className="window-control close-hover text-on-surface-variant cursor-pointer"
+              title="Close"
+              aria-label="Close"
+            >
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="0.5" y="0.5" width="9" height="9" stroke="currentColor" strokeWidth="1" />
+                <path d="M0.5 0.5L9.5 9.5M9.5 0.5L0.5 9.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
               </svg>
-            )}
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              handleClose();
-            }}
-            className="window-control close-hover text-on-surface-variant cursor-pointer"
-            title="Close"
-            aria-label="Close"
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M0.5 0.5L9.5 9.5M9.5 0.5L0.5 9.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
+            </button>
+          </div>
+        )}
       </header>
 
       {/* ── Body: Sidebar + Content ── */}

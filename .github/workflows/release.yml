@@ -214,6 +214,22 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Enable native window decorations for macOS
+        if: matrix.platform == 'macos-latest'
+        run: |
+          node -e '
+            const fs = require("fs");
+            const confPath = "${{ env.PKG_DIR }}/src-tauri/tauri.conf.json";
+            const conf = JSON.parse(fs.readFileSync(confPath, "utf8"));
+            if (conf.app && Array.isArray(conf.app.windows)) {
+              conf.app.windows.forEach(w => {
+                w.decorations = true;
+              });
+            }
+            fs.writeFileSync(confPath, JSON.stringify(conf, null, 2) + "\n");
+            console.log("Updated macOS tauri.conf.json window decorations to true");
+          '
+          
       - name: Build Standalone CLI Companion
         shell: bash
         run: |
