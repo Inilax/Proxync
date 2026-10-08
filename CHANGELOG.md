@@ -2,10 +2,11 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
-## [feature/develop-tunnel-basic-auth] - 2026-10-08 (Credential Key Icon Size, Color & Styling Harmonization)
+## [feature/develop-tunnel-basic-auth] - 2026-10-08 (Credential Key Icon Harmonization & Endpoint Badge Right-Alignment)
 - **Feature Summary**:
   - **Material Symbols Key Icon Standardization (`packages/desktop/src/components/views/WorkspaceDashboardView.tsx`, `ProcessView.tsx`, `WelcomeView.tsx`, `SharedComponents.tsx`)**: Replaced non-uniform solid SVG key icon with standard `material-symbols-outlined` key glyph across all active tunnel cards and action menus.
   - **Action Button Sizing and Palette Alignment (`packages/desktop/src/components/views/WorkspaceDashboardView.tsx`)**: Unified button wrapper styling to `p-1 rounded text-outline hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer` and 14px optical icon size, ensuring identical base color, hover color transitions, and sizing alongside sibling URL copy and browser open buttons.
+  - **Endpoint Header Badge Right-Alignment (`packages/desktop/src/components/views/WorkspaceDashboardView.tsx`)**: Grouped the Basic Auth lock icon and `Live` / `Standby` status pill into a dedicated right-aligned flex container, preventing `justify-between` from pushing the `Live` badge into the center of the card.
 - **Modified Files**:
   - `packages/desktop/src/components/views/ProcessView.tsx`
   - `packages/desktop/src/components/views/SharedComponents.tsx`

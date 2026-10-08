@@ -308,17 +308,19 @@ export function WorkspaceDashboardView({
                               <span className={`text-[10px] font-mono uppercase tracking-wider ${isStandby ? 'text-amber-400' : 'text-emerald-400'} font-bold`}>
                                 {isStandby ? 'STANDBY ENDPOINT' : 'PUBLIC ENDPOINT'}
                               </span>
-                              <span className={`px-1.5 py-0.5 ${isStandby ? 'bg-amber-500/15 text-amber-400' : 'bg-emerald-500/15 text-emerald-400'} text-[10px] font-mono rounded`}>
-                                {isStandby ? 'Standby' : 'Live'}
-                              </span>
-                              {activeT.basicAuth?.enabled && (
-                                <span
-                                  className="flex items-center text-amber-400 shrink-0"
-                                  title={`Protected with Basic Auth (${activeT.basicAuth.username})`}
-                                >
-                                  {Icons.lock}
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {activeT.basicAuth?.enabled && (
+                                  <span
+                                    className="flex items-center text-amber-400 shrink-0"
+                                    title={`Protected with Basic Auth (${activeT.basicAuth.username})`}
+                                  >
+                                    {Icons.lock}
+                                  </span>
+                                )}
+                                <span className={`px-1.5 py-0.5 ${isStandby ? 'bg-amber-500/15 text-amber-400' : 'bg-emerald-500/15 text-emerald-400'} text-[10px] font-mono rounded`}>
+                                  {isStandby ? 'Standby' : 'Live'}
                                 </span>
-                              )}
+                              </div>
                             </div>
                             <div className="flex items-center justify-between gap-2">
                               <p className="font-mono text-xs font-bold text-on-surface truncate select-all">{activeT.publicUrl}</p>
