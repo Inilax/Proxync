@@ -2,6 +2,22 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [feature/develop-tunnel-basic-auth] - 2026-10-09 (Tunnel Session Keepalive Heartbeat & 1h Expiration Hard Cap)
+- **Feature Summary**:
+  - **Client-Side 1-Hour Hard Cap Fallback (`packages/core/src/tunnel.rs`)**: Spawned background timer terminating spawned SSH tunnel child processes and dispatching `TunnelAutoClosed` event after 1 hour if unreachable or offline.
+  - **Server-Authoritative Keepalive Heartbeat (`packages/core/src/tunnel.rs`)**: Added 5-minute periodic keepalive ping to `/api/tunnel/keepalive`. If the server returns HTTP 410 (Gone), gracefully removes the tunnel from process registry and terminates the process tree.
+  - **Process Lifecycle Teardown (`packages/core/src/tunnel.rs`)**: Updated child process exit monitor to cleanly avoid duplicate events when terminated by keepalive or hard-cap timeout.
+- **Modified Files**:
+  - `packages/core/src/tunnel.rs`
+  - `CHANGELOG.md`
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-08 (Branded HTML Response for 401 Unauthorized)
+- **Feature Summary**:
+  - **Branded 401 Error Page (`packages/core/src/proxy.rs`)**: Replaced raw plain-text HTTP 401 response with a styled Proxync dark-mode access page featuring target port indicator, authentication required badge, and reload button.
+  - **Integration Tests (`packages/core/src/proxy.rs`)**: Updated core proxy test suite to validate HTML content type and branded response body.
+- **Modified Files**:
+  - `packages/core/src/proxy.rs`
+
 ## [feature/develop-tunnel-basic-auth] - 2026-10-08 (Basic Auth Council Review P2 Fixes)
 - **Feature Summary**:
   - **Silent Error Logging (`packages/desktop/src/App.tsx`)**: Added `console.warn` to all three `start_proxy` invoke catch blocks so proxy bind failures surface in DevTools instead of being silently swallowed behind a boolean flag.

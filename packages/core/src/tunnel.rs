@@ -695,7 +695,67 @@ pub async fn open_native_tunnel(
 
     let mut child_procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
     child_procs.insert(tunnel_id.clone(), child);
-    
+
+   
+    let tunnel_id_expire = tunnel_id.clone();
+    let event_tx_expire = event_tx.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+        let mut procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+        if let Some(mut child) = procs.remove(&tunnel_id_expire) {
+            kill_child_process_tree(&mut child).await;
+            drop(procs);
+            let _ = event_tx_expire.send(ProxyncEvent::TunnelAutoClosed {
+                tunnel_id: tunnel_id_expire,
+            });
+        }
+    });
+
+    // Server-authoritative keepalive: poll every 5 minutes.
+    // 410 Gone = server says session is expired (1h wall hit) → kill tunnel.
+    // Network failure → silently continue (the sish idle timeout is the backstop).
+    let tunnel_id_ka = tunnel_id.clone();
+    let event_tx_ka = event_tx.clone();
+    let subdomain_ka = clean_subdomain.clone();
+    tokio::spawn(async move {
+        const KEEPALIVE_INTERVAL_SECS: u64 = 300; // 5 minutes
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(KEEPALIVE_INTERVAL_SECS)).await;
+
+            // Stop pinging if tunnel already gone
+            {
+                let procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+                if !procs.contains_key(&tunnel_id_ka) { break; }
+            }
+
+            let api_url = std::env::var("PROXYNC_API_URL")
+                .unwrap_or_else(|_| "https://api.proxync.dev/api/tunnel/sign-jit-cert".to_string())
+                .replace("/api/tunnel/sign-jit-cert", "/api/tunnel/keepalive");
+            let api_secret = std::env::var("PROXYNC_API_SECRET_TOKEN").unwrap_or_default();
+
+            if let Ok(resp) = HTTP_CLIENT.post(&api_url)
+                .header("Authorization", format!("Bearer {}", api_secret))
+                .json(&serde_json::json!({ "subdomain": subdomain_ka }))
+                .timeout(std::time::Duration::from_secs(10))
+                .send().await
+            {
+                if resp.status().as_u16() == 410 {
+                    // Server says: session limit hit — kill the tunnel
+                    let mut procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+                    if let Some(mut child) = procs.remove(&tunnel_id_ka) {
+                        kill_child_process_tree(&mut child).await;
+                        drop(procs);
+                        let _ = event_tx_ka.send(ProxyncEvent::TunnelAutoClosed {
+                            tunnel_id: tunnel_id_ka,
+                        });
+                    }
+                    break;
+                }
+                // 200 = still valid, anything else (500, network err) = silently continue
+            }
+        }
+    });
+
     let tunnel_id_clone = tunnel_id.clone();
     let event_tx_clone = event_tx.clone();
 
@@ -715,11 +775,11 @@ pub async fn open_native_tunnel(
                     has_child = false;
                 }
             } else {
-                has_child = false;
+                has_child = false; // removed by 1h cap or keepalive task — exit without double event
             }
         }
     });
-    
+
     Ok(format!("https://{}.proxync.dev", clean_subdomain))
 }
 
