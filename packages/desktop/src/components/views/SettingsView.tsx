@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
 import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
-import { openUrl } from '@tauri-apps/plugin-opener';
 import type { WorkspaceConfig, AppSettings, DomainRecord, Guardrails, Tunnel, ProcessCandidate } from './SharedComponents';
 import { showToast } from '../../lib/toast';
 import { ConfirmPurgeDialog } from './Dialogs';
-import { api, type AuthUser, type ConnectedProvider } from '../../lib/api';
+import { api, openDashboard, type AuthUser, type ConnectedProvider } from '../../lib/api';
 import {
   readLogsSummary,
   openLogsFolder,
@@ -18,10 +17,6 @@ import {
   uninstallCliFromPath,
   type CliStatus,
 } from '../../lib/cliInstaller';
-
-function handleOpenUrl(url: string) {
-  openUrl(url).catch(() => window.open(url, '_blank'));
-}
 
 
 export function SettingsView({
@@ -1196,7 +1191,7 @@ export function SettingsView({
 
                       <button
                         type="button"
-                        onClick={() => handleOpenUrl('https://proxync.dev/billing')}
+                        onClick={() => openDashboard('billing')}
                         className="btn-primary compact text-xs flex items-center gap-1.5 cursor-pointer self-start sm:self-center"
                       >
                         <span className="material-symbols-outlined text-[16px]">credit_card</span>

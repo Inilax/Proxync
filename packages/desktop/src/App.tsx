@@ -23,7 +23,11 @@ import {
   getAuthSession,
   clearAuthSession,
   saveAuthSession,
+  onSessionRevoked,
+  validateSession,
+  getClientDeviceInfo,
   BACKEND_URL,
+  openDashboard,
   type AuthUser,
   type LocalWorkspaceContext,
 } from './lib/api';
@@ -365,6 +369,7 @@ export default function App() {
   const authTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loginToastIdRef = useRef<string | null>(null);
   const activeAuthCodeRef = useRef<string | null>(null);
+  const authFocusCleanupRef = useRef<(() => void) | null>(null);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<'general' | 'networking' | 'account' | 'security' | 'domains' | 'danger'>('general');
 
@@ -2936,6 +2941,8 @@ export default function App() {
   }
 
   const handleCancelLogin = useCallback((notify = true) => {
+    authFocusCleanupRef.current?.();
+    authFocusCleanupRef.current = null;
     if (authPollingRef.current) {
       clearTimeout(authPollingRef.current);
       authPollingRef.current = null;
@@ -2963,6 +2970,8 @@ export default function App() {
 
   const handleInitiateLogin = useCallback(async () => {
     // 1. Immediately clean up any previous in-flight login attempt
+    authFocusCleanupRef.current?.();
+    authFocusCleanupRef.current = null;
     if (authPollingRef.current) {
       clearTimeout(authPollingRef.current);
       authPollingRef.current = null;
@@ -2979,12 +2988,13 @@ export default function App() {
     const code = crypto.randomUUID();
     activeAuthCodeRef.current = code;
 
-    // 2. Pre-register session code on backend so /poll recognizes it immediately
+    // 2. Pre-register session code on backend with device info so /poll recognizes it immediately
     try {
+      const deviceInfo = getClientDeviceInfo();
       await fetch(`${BACKEND_URL}/api/v1/auth/initiate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ code, deviceInfo }),
       });
     } catch {
       // Backend may be booting or offline; proceed to launch browser anyway
@@ -3015,8 +3025,8 @@ export default function App() {
     );
     loginToastIdRef.current = toastId;
 
-    // 4. Exponential backoff polling: 2s → 3s → 5s → 8s (then capped at 8s)
-    const delays = [2000, 3000, 5000, 8000];
+    // 4. Exponential backoff polling: 1s → 2s → 3s → 5s → 8s (then capped at 8s)
+    const delays = [1000, 2000, 3000, 5000, 8000];
     let step = 0;
 
     const poll = async () => {
@@ -3028,6 +3038,8 @@ export default function App() {
 
         // If code is unknown/cancelled/expired, backend returns 404 or 410 -> stop polling immediately
         if (res.status === 404 || res.status === 410) {
+          authFocusCleanupRef.current?.();
+          authFocusCleanupRef.current = null;
           if (authPollingRef.current) {
             clearTimeout(authPollingRef.current);
             authPollingRef.current = null;
@@ -3048,6 +3060,8 @@ export default function App() {
         if (res.ok) {
           const data = await res.json();
           if (data && data.user && data.accessToken) {
+            authFocusCleanupRef.current?.();
+            authFocusCleanupRef.current = null;
             if (authPollingRef.current) {
               clearTimeout(authPollingRef.current);
               authPollingRef.current = null;
@@ -3062,7 +3076,7 @@ export default function App() {
             }
             activeAuthCodeRef.current = null;
 
-            saveAuthSession(data.user, data.accessToken, data.refreshToken);
+            saveAuthSession(data.user, data.accessToken, data.refreshToken, data.deviceId);
             setCurrentUser(data.user);
             setAuthStatus('idle');
             showToast(`🎉 Welcome to Proxync, ${data.user.name}! (PRO unlocked)`, 'success');
@@ -3081,12 +3095,25 @@ export default function App() {
       }
     };
 
-    // First poll after delays[0] (2000ms)
+    // Immediate poll check when returning focus to desktop window
+    const handleFocus = () => {
+      if (activeAuthCodeRef.current === code) {
+        void poll();
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    authFocusCleanupRef.current = () => {
+      window.removeEventListener('focus', handleFocus);
+    };
+
+    // First poll after delays[0] (1000ms)
     authPollingRef.current = setTimeout(poll, delays[0]);
 
     // 5. Total safety timeout: 60s
     authTimeoutRef.current = setTimeout(() => {
       if (activeAuthCodeRef.current === code) {
+        authFocusCleanupRef.current?.();
+        authFocusCleanupRef.current = null;
         if (authPollingRef.current) {
           clearTimeout(authPollingRef.current);
           authPollingRef.current = null;
@@ -3109,6 +3136,37 @@ export default function App() {
     setCurrentUser(null);
     showToast('Logged out successfully', 'info');
   }, []);
+
+  // Listen for device session revocation from Cloud Dashboard
+  useEffect(() => {
+    const unsubscribe = onSessionRevoked(() => {
+      setUserMenuOpen(false);
+      setCurrentUser(null);
+      showToast('⚠️ Your device session was revoked from the cloud dashboard. You have been signed out.', 'warning', false);
+    });
+    return unsubscribe;
+  }, []);
+
+  // Window focus & periodic heartbeat to check device session validity
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const checkSession = async () => {
+      await validateSession();
+    };
+
+    const handleFocus = () => {
+      void checkSession();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    const interval = setInterval(checkSession, 15000); // Check every 15s
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      clearInterval(interval);
+    };
+  }, [currentUser]);
 
   useEffect(() => {
     const handleGlobalContextMenu = (e: MouseEvent) => {
@@ -3574,23 +3632,25 @@ export default function App() {
               <span className="material-symbols-outlined text-[18px]">help</span>
               {!sidebarCollapsed && <span>Support</span>}
             </button>
-            <div className={`${sidebarCollapsed ? 'px-1.5 py-1.5' : 'px-4 py-2 mt-1'}`}>
+            <div className={`${sidebarCollapsed ? 'px-1.5 py-1.5 flex justify-center' : 'px-4 py-2 mt-1'}`}>
               {currentUser ? (
                 <div>
                   <div
                     ref={userCardRef}
                     onClick={() => setUserMenuOpen(!userMenuOpen)}
-                    className={`flex items-center justify-between gap-2.5 rounded-xl bg-surface-container/70 border border-outline-variant/40 hover:bg-surface-container hover:border-outline-variant/60 transition-all cursor-pointer select-none group ${
-                      sidebarCollapsed ? 'justify-center p-1.5' : 'px-3 py-2.5'
+                    className={`flex items-center rounded-xl bg-surface-container/70 border border-outline-variant/40 hover:bg-surface-container hover:border-outline-variant/60 transition-all cursor-pointer select-none group ${
+                      sidebarCollapsed
+                        ? 'w-[42px] h-[42px] justify-center p-0 mx-auto'
+                        : 'w-full justify-between gap-2.5 px-3 py-2.5'
                     }`}
                     title={sidebarCollapsed ? `${currentUser.name} (${currentUser.role || 'PRO'})` : undefined}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-2.5 min-w-0'}`}>
                       {/* Avatar with Status Dot */}
-                      <div className="w-10 h-10 rounded-full bg-[#1e293b] text-white flex items-center justify-center text-base font-bold shrink-0 relative select-none">
+                      <div className={`${sidebarCollapsed ? 'w-8 h-8 text-sm' : 'w-10 h-10 text-base'} rounded-full bg-[#1e293b] text-white flex items-center justify-center font-bold shrink-0 relative select-none`}>
                         <span className="leading-none">{currentUser.name.charAt(0).toUpperCase()}</span>
                         <span
-                          className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-[#10b981] ring-2 ring-surface-container"
+                          className={`absolute bottom-0 right-0 ${sidebarCollapsed ? 'w-2 h-2' : 'w-2.5 h-2.5'} rounded-full bg-[#10b981] ring-2 ring-surface-container`}
                           title="Online"
                         />
                       </div>
@@ -3623,7 +3683,9 @@ export default function App() {
                   type="button"
                   onClick={handleInitiateLogin}
                   title="Sign In"
-                  className={`btn-primary flex items-center justify-center ${sidebarCollapsed ? 'p-1.5 w-full' : 'gap-2 px-4 py-2.5'} w-full rounded-lg text-xs font-bold font-label-md cursor-pointer`}
+                  className={`btn-primary flex items-center justify-center ${
+                    sidebarCollapsed ? 'w-[42px] h-[42px] p-0 mx-auto rounded-xl' : 'w-full gap-2 px-4 py-2.5 rounded-lg'
+                  } text-xs font-bold font-label-md cursor-pointer`}
                 >
                   <span className="material-symbols-outlined text-[18px]">
                     lock_open
@@ -3663,10 +3725,7 @@ export default function App() {
                   type="button"
                   onClick={() => {
                     setUserMenuOpen(false);
-                    const billingUrl = 'https://proxync.dev/billing';
-                    openUrl(billingUrl).catch(() => {
-                      window.open(billingUrl, '_blank');
-                    });
+                    openDashboard('billing');
                   }}
                   className="flex items-center gap-3 px-3 py-2 text-xs font-medium text-on-surface hover:text-primary hover:bg-surface-container-highest rounded-xl transition-colors cursor-pointer w-full text-left group"
                 >

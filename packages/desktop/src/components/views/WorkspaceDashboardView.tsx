@@ -244,12 +244,12 @@ export function WorkspaceDashboardView({
                       key={proc.id}
                       onClick={() => onSelectProcess(proc.id)}
                       className={`p-4 sm:p-5 bg-surface-container border rounded-2xl flex flex-col justify-between gap-4 transition-all cursor-pointer group shadow-sm hover:shadow-md ${isLive && !isStandby
-                          ? 'border-emerald-500/60 shadow-emerald-500/10'
-                          : isStandby
-                            ? 'border-amber-500/60 shadow-amber-500/10'
-                            : isSpawning
-                              ? 'border-primary/50 ring-1 ring-primary/30'
-                              : 'border-outline-variant/60 hover:border-primary/50'
+                        ? 'border-emerald-500/60 shadow-emerald-500/10'
+                        : isStandby
+                          ? 'border-amber-500/60 shadow-amber-500/10'
+                          : isSpawning
+                            ? 'border-primary/50 ring-1 ring-primary/30'
+                            : 'border-outline-variant/60 hover:border-primary/50'
                         }`}
                     >
                       <div className="space-y-3.5">
@@ -277,10 +277,10 @@ export function WorkspaceDashboardView({
                           {/* Top Right Badges */}
                           <div className="flex items-center gap-1.5 shrink-0">
                             <span className={`px-2.5 py-1 bg-surface-container-high rounded-full border text-[11px] font-mono font-medium flex items-center gap-1.5 ${isLive && !isStandby
-                                ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10'
-                                : isStandby
-                                  ? 'border-amber-500/40 text-amber-400 bg-amber-500/10'
-                                  : 'border-outline-variant/50 text-on-surface-variant'
+                              ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10'
+                              : isStandby
+                                ? 'border-amber-500/40 text-amber-400 bg-amber-500/10'
+                                : 'border-outline-variant/50 text-on-surface-variant'
                               }`}>
                               <span className={`w-1.5 h-1.5 rounded-full ${isLive && !isStandby ? 'bg-emerald-400 animate-pulse' : isStandby ? 'bg-amber-400' : 'bg-outline'}`}></span>
                               {isLive && !isStandby ? 'ONLINE' : isStandby ? 'STANDBY' : 'LOCAL'}
