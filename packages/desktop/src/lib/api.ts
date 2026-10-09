@@ -1,100 +1,16 @@
 import type { Tunnel, RequestLog, DomainRecord } from '../components/views/SharedComponents';
 import { logApp } from './logger';
-
-// ponytail: shared DoH resolver bypassing browser HTTP caching
-async function fetchTxtRecords(host: string): Promise<string[]> {
-  const values: string[] = [];
-  const t = Date.now();
-  // 1. Google DoH
-  try {
-    const res = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(host)}&type=TXT&_t=${t}`, {
-      cache: 'no-store',
-    });
-    if (res.ok) {
-      const json = await res.json();
-      for (const ans of json.Answer || []) {
-        if (typeof ans.data === 'string') {
-          const clean = ans.data.replace(/^"|"$/g, '').trim();
-          if (!values.includes(clean)) values.push(clean);
-        }
-      }
-    }
-  } catch (err) {
-    logApp('SYSTEM', 'WARN', `Google DoH lookup failed for ${host}`, err);
-  }
-
-  // 2. Cloudflare DoH fallback (only if Google DoH returned no answers or failed)
-  if (values.length === 0) {
-    try {
-      const res = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(host)}&type=TXT&_t=${t}`, {
-        headers: { Accept: 'application/dns-json' },
-        cache: 'no-store',
-      });
-      if (res.ok) {
-        const json = await res.json();
-        for (const ans of json.Answer || []) {
-          if (typeof ans.data === 'string') {
-            const clean = ans.data.replace(/^"|"$/g, '').trim();
-            if (!values.includes(clean)) values.push(clean);
-          }
-        }
-      }
-    } catch (err) {
-      logApp('SYSTEM', 'WARN', `Cloudflare DoH lookup failed for ${host}`, err);
-    }
-  }
-
-  return values;
-}
-
-// ponytail: match either exact token or any valid proxync-verify-* hash published in DNS
-function matchVerificationToken(values: string[], expectedToken: string): { verified: boolean; token: string } {
-  if (values.some((v) => v.includes(expectedToken))) {
-    return { verified: true, token: expectedToken };
-  }
-  for (const v of values) {
-    const m = v.match(/proxync-verification=(proxync-verify-[a-f0-9-]+)/i);
-    if (m && m[1]) {
-      return { verified: true, token: m[1] };
-    }
-  }
-  return { verified: false, token: expectedToken };
-}
-
-export const BACKEND_URL = typeof window !== 'undefined' && localStorage.getItem('proxync_backend_url') 
-  ? localStorage.getItem('proxync_backend_url')! 
-  : 'http://localhost:3000';
-
-export interface ConnectedProvider {
-  id: string;
-  name: string;
-  type: 'credentials' | 'oauth';
-  connected: boolean;
-  enabled: boolean;
-  identifier: string | null;
-  status: 'connected' | 'not_connected' | 'available_soon';
-  badge: 'Active' | 'Connected' | 'Not Linked' | 'Available Soon';
-  description: string;
-  connectUrl?: string | null;
-}
-
-export interface AuthUser {
-  id: string;
-  name: string;
-  email: string;
-  role: 'USER' | 'PRO' | 'ADMIN';
-  authProvider?: string;
-  googleConnected?: boolean;
-  githubConnected?: boolean;
-  hasPassword?: boolean;
-  providers?: ConnectedProvider[];
-}
-
-export interface AuthResponse {
-  user: AuthUser;
-  accessToken: string;
-  refreshToken: string;
-}
+import { BACKEND_URL } from './config';
+import { fetchTxtRecords, matchVerificationToken } from './dns';
+import {
+  saveAuthSession,
+  getAuthSession,
+  notifySessionRevoked,
+  getToken,
+  type AuthUser,
+  type AuthResponse,
+  type ConnectedProvider,
+} from './session';
 
 // Connected API client for Proxync desktop app
 export const api = {
@@ -131,17 +47,19 @@ export const api = {
     getProfile: async (): Promise<AuthUser> => {
       const token = getToken();
       if (!token) throw new Error('Not authenticated');
-      const res = await fetch(`${BACKEND_URL}/api/v1/auth/profile`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const session = getAuthSession();
+      const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+      if (session?.deviceId) headers['x-device-id'] = session.deviceId;
+      const res = await fetch(`${BACKEND_URL}/api/v1/auth/profile`, { headers });
       if (!res.ok) {
+        if (res.status === 401) notifySessionRevoked();
         const errorData = await res.json().catch(() => ({ error: 'Failed to fetch profile' }));
         throw new Error(errorData.error || `Failed to fetch profile with status ${res.status}`);
       }
       const data = await res.json();
       const current = getAuthSession();
       if (current && data.user) {
-        saveAuthSession(data.user, current.accessToken, current.refreshToken);
+        saveAuthSession(data.user, current.accessToken, current.refreshToken, current.deviceId);
       }
       return data.user;
     },
@@ -464,64 +382,11 @@ export async function ensureLocalWorkspace(): Promise<LocalWorkspaceContext> {
   };
 }
 
-const AUTH_SESSION_KEY = 'proxync_auth_session_v1';
+// Re-export all modularized domain modules for clean architecture and 100% backward compatibility
+export * from './config';
+export * from './dns';
+export * from './device';
+export * from './session';
+export * from './dashboard';
 
-export interface StoredSession {
-  user: AuthUser;
-  accessToken: string;
-  refreshToken: string;
-  savedAt: number;
-}
 
-export function saveAuthSession(user: AuthUser, accessToken: string, refreshToken: string) {
-  if (typeof window === 'undefined') return;
-  const session: StoredSession = { user, accessToken, refreshToken, savedAt: Date.now() };
-  localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
-}
-
-export function getAuthSession(): StoredSession | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = localStorage.getItem(AUTH_SESSION_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as StoredSession;
-  } catch {
-    return null;
-  }
-}
-
-export function clearAuthSession() {
-  if (typeof window === 'undefined') return;
-  const current = getAuthSession();
-  if (current?.refreshToken || current?.accessToken) {
-    fetch(`${BACKEND_URL}/api/v1/auth/logout`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: current.accessToken ? `Bearer ${current.accessToken}` : '',
-      },
-      body: JSON.stringify({ refreshToken: current.refreshToken }),
-    }).catch(() => {});
-  }
-  localStorage.removeItem(AUTH_SESSION_KEY);
-}
-
-export function saveTokens(accessToken: string, refreshToken: string) {
-  const current = getAuthSession();
-  if (current) {
-    saveAuthSession(current.user, accessToken, refreshToken);
-  }
-}
-
-export function clearTokens() {
-  clearAuthSession();
-}
-
-export function getToken(): string | null {
-  const session = getAuthSession();
-  return session?.accessToken ?? null;
-}
-
-export function isLoggedIn(): boolean {
-  return getAuthSession() !== null;
-}
