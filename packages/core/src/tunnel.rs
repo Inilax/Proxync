@@ -636,8 +636,8 @@ pub async fn open_native_tunnel(
             return Err("Failed to register ephemeral public key with Proxync tunnel server. Please check your internet connection.".to_string());
         }
         
-        // Give sish 150ms to absorb the new pubkey into its key store
-        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        // Gateway registers keys synchronously in-memory (0.01ms); brief 25ms tick for socket readiness
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
     }
     let active_key_path = key_path;
 
