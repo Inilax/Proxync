@@ -2,6 +2,13 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [feature/develop-tunnel-basic-auth] - 2026-10-12 (In-Memory Key Registration Sleep Optimization to 25ms)
+- **Feature Summary**:
+  - **Handshake Latency Reduction (`packages/core/src/tunnel.rs`)**: Reduced pre-SSH handshake pause from 150ms to 25ms, leveraging the private gateway's sub-millisecond in-memory authentication and key absorption while providing a brief tick for socket readiness.
+- **Modified Files**:
+  - `packages/core/src/tunnel.rs`
+  - `CHANGELOG.md`
+
 ## [feature/develop-tunnel-basic-auth] - 2026-10-11 (Free 1h Max Session Cap & Admin Unlimited Tier Exemption)
 - **Feature Summary**:
   - **CLI Tier Enforcement (`packages/cli/src/commands/tunnel.rs`)**: Enforced a strict 1-hour session limit on free tier tunnels in both foreground and detached modes. Automatically clamps requested expirations exceeding 1h to 1h with user guidance, while granting unlimited session duration when `PROXYNC_API_SECRET_TOKEN` admin credentials are provided.
