@@ -3079,7 +3079,8 @@ export default function App() {
             saveAuthSession(data.user, data.accessToken, data.refreshToken, data.deviceId);
             setCurrentUser(data.user);
             setAuthStatus('idle');
-            showToast(`🎉 Welcome to Proxync, ${data.user.name}! (PRO unlocked)`, 'success');
+            const proUnlockedMsg = data.user.tier === 'PRO' ? ' (PRO unlocked)' : '';
+            showToast(`🎉 Welcome to Proxync, ${data.user.name}!${proUnlockedMsg}`, 'success');
             return;
           }
         }
