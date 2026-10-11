@@ -2,6 +2,16 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [feature/develop-tunnel-basic-auth] - 2026-10-11 (Free 1h Max Session Cap & Admin Unlimited Tier Exemption)
+- **Feature Summary**:
+  - **CLI Tier Enforcement (`packages/cli/src/commands/tunnel.rs`)**: Enforced a strict 1-hour session limit on free tier tunnels in both foreground and detached modes. Automatically clamps requested expirations exceeding 1h to 1h with user guidance, while granting unlimited session duration when `PROXYNC_API_SECRET_TOKEN` admin credentials are provided.
+  - **Tier Badging & Banner Status (`packages/cli/src/commands/tunnel.rs`)**: Added colored tier badges (`Admin (Unlimited Session)` vs `Free (1h Max Session Limit)`) and explicit auto-expiry indicators in CLI connection summaries.
+  - **Core Session Reaper Guard (`packages/core/src/tunnel.rs`)**: Wrapped the 1-hour client-side process termination fallback to only execute on free/non-admin sessions for both Cloudflare and Proxync native SSH tunnels.
+- **Modified Files**:
+  - `packages/cli/src/commands/tunnel.rs`
+  - `packages/core/src/tunnel.rs`
+  - `CHANGELOG.md`
+
 ## [feature/develop-tunnel-basic-auth] - 2026-10-09 (Android-Style Progressive Rate Limiting & Brute-Force Lockout Defense)
 - **Feature Summary**:
   - **Progressive Lockout Escalation (`packages/core/src/proxy.rs`)**: Implemented graduated lockout tiers for failed Basic Auth attempts (Stage 1: 60s, Stage 2: 120s, Stage 3: 300s, Stage 4: 900s, Stage 5: 3600s max cap) with 15-minute inactivity decay reset and immediate reset upon successful authentication.

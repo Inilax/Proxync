@@ -481,6 +481,24 @@ pub async fn open_cloudflare_tunnel(
     let mut child_procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
     child_procs.insert(tunnel_id.clone(), child);
 
+    let api_secret = std::env::var("PROXYNC_API_SECRET_TOKEN").unwrap_or_default();
+    let is_admin_cf = !api_secret.trim().is_empty();
+    if !is_admin_cf {
+        let tunnel_id_cf_expire = tunnel_id.clone();
+        let event_tx_cf_expire = event_tx.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            let mut procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+            if let Some(mut child) = procs.remove(&tunnel_id_cf_expire) {
+                kill_child_process_tree(&mut child).await;
+                drop(procs);
+                let _ = event_tx_cf_expire.send(ProxyncEvent::TunnelAutoClosed {
+                    tunnel_id: tunnel_id_cf_expire,
+                });
+            }
+        });
+    }
+
     let tunnel_id_clone = tunnel_id.clone();
     let event_tx_clone = event_tx.clone();
     tokio::spawn(async move {
@@ -696,20 +714,25 @@ pub async fn open_native_tunnel(
     let mut child_procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
     child_procs.insert(tunnel_id.clone(), child);
 
-   
-    let tunnel_id_expire = tunnel_id.clone();
-    let event_tx_expire = event_tx.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
-        let mut procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
-        if let Some(mut child) = procs.remove(&tunnel_id_expire) {
-            kill_child_process_tree(&mut child).await;
-            drop(procs);
-            let _ = event_tx_expire.send(ProxyncEvent::TunnelAutoClosed {
-                tunnel_id: tunnel_id_expire,
-            });
-        }
-    });
+    let is_admin_native = std::env::var("PROXYNC_API_SECRET_TOKEN")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .is_some();
+    if !is_admin_native {
+        let tunnel_id_expire = tunnel_id.clone();
+        let event_tx_expire = event_tx.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            let mut procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+            if let Some(mut child) = procs.remove(&tunnel_id_expire) {
+                kill_child_process_tree(&mut child).await;
+                drop(procs);
+                let _ = event_tx_expire.send(ProxyncEvent::TunnelAutoClosed {
+                    tunnel_id: tunnel_id_expire,
+                });
+            }
+        });
+    }
 
     // Server-authoritative keepalive: poll every 5 minutes.
     // 410 Gone = server says session is expired (1h wall hit) → kill tunnel.
