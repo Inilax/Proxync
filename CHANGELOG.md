@@ -2,6 +2,21 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [feature/develop-tunnel-basic-auth] - 2026-10-12 (Subdomain Deregistration, Chunk Header Safety Cap & UTF-8 Temp Path Hardening)
+- **Summary**:
+  - **Asynchronous Cloud Subdomain Deregistration (`packages/core/src/tunnel.rs`)**: Introduced `ACTIVE_TUNNEL_SUBDOMAINS` tracking map. When tunnels are stopped (`close_tunnel` / `close_all_tunnels`), the client immediately dispatches a non-blocking background `POST /api/tunnel/deregister` request to the backend. Instantly frees subdomain allocations on the server without waiting for the 1-hour TTL garbage collection, preventing 409 Conflict key generation collisions on immediate restarts.
+  - **Chunk Header Memory Safety Cap (`packages/core/src/proxy.rs`)**: Added an 8 KB cap to `ChunkedBodyParser` buffer accumulator (`self.header_buf.len() > 8192`) in both chunk size and trailer header parsing phases, protecting against memory exhaustion from pathological malformed HTTP chunk streams.
+  - **Safe Path Encoding on Windows OpenSSH Spawn (`packages/core/src/tunnel.rs`)**: Replaced direct `.to_str().unwrap()` with `.to_str().ok_or_else(...)` error propagation for `active_key_path` and `known_hosts_path`, eliminating panic crashes on Windows environments where `%TEMP%` or user profiles contain non-UTF-8 characters.
+- **Modified Files**:
+  - `packages/core/src/proxy.rs`
+  - `packages/core/src/tunnel.rs`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 39 tests with 0 failures and 0 warnings.
+  - `cargo check --manifest-path packages/cli/Cargo.toml` passed with 0 errors.
+
+---
+
 ## [feature/develop-tunnel-basic-auth] - 2026-10-12 (Tunneling Latency Optimization, Bounded Keep-Alive Streaming & Inactive Interception Elimination)
 - **Summary**:
   - **Eliminate Vestigial Relay Timeout (`packages/desktop/src/App.tsx`)**: Removed redundant `open_tunnel` WebSocket invocation and unused `token` from `shareProcessCloudflare` and `shareProcessNative`, instantly eliminating a 2,000ms delay caused by waiting for non-existent local relay connections.

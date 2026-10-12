@@ -468,6 +468,11 @@ impl ChunkedBodyParser {
                     } else {
                         self.header_buf.extend_from_slice(bytes);
                         bytes = &[];
+                        // ponytail: 8 KB safety cap against unbounded chunk header growth
+                        if self.header_buf.len() > 8192 {
+                            self.state = ChunkParserState::Done;
+                            return true;
+                        }
                     }
                 }
                 ChunkParserState::ChunkData(remaining) => {
@@ -502,6 +507,11 @@ impl ChunkedBodyParser {
                     } else {
                         self.header_buf.extend_from_slice(bytes);
                         bytes = &[];
+                        // ponytail: 8 KB safety cap against unbounded trailer header growth
+                        if self.header_buf.len() > 8192 {
+                            self.state = ChunkParserState::Done;
+                            return true;
+                        }
                     }
                 }
                 ChunkParserState::Done => {
