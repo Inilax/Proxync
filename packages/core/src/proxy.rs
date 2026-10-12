@@ -447,6 +447,7 @@ pub async fn start_proxy_with_auth(
     let proxy_tx = tx.clone();
     let listener_handle = tokio::spawn(async move {
         while let Ok((mut client_stream, peer_addr)) = listener.accept().await {
+            let _ = client_stream.set_nodelay(true);
             let tx_clone = proxy_tx.clone();
             let auth_clone = auth_expected.clone();
             let rate_limiter_clone = rate_limiter.clone();
@@ -541,23 +542,22 @@ pub async fn start_proxy_with_auth(
                 }
 
                 // Connect to target service on 127.0.0.1 with fallback to [::1] (for IPv6-only servers like Vite).
-                // ponytail: 500ms timeout prevents holding the client suspended if local server deadlocks.
+                // Single 500ms overall timeout prevents holding client suspended if local server deadlocks.
                 const LOCAL_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(500);
-                let target_stream_res = match tokio::time::timeout(
-                    LOCAL_CONNECT_TIMEOUT,
-                    TcpStream::connect(format!("127.0.0.1:{}", local_port)),
-                ).await {
-                    Ok(Ok(s)) => Ok(s),
-                    _ => match tokio::time::timeout(
-                        LOCAL_CONNECT_TIMEOUT,
-                        TcpStream::connect(format!("[::1]:{}", local_port)),
-                    ).await {
-                        Ok(Ok(s)) => Ok(s),
-                        _ => Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Target service connection timed out")),
-                    },
+                let target_stream_res = match tokio::time::timeout(LOCAL_CONNECT_TIMEOUT, async {
+                    match TcpStream::connect(format!("127.0.0.1:{}", local_port)).await {
+                        Ok(s) => Ok(s),
+                        Err(_) => TcpStream::connect(format!("[::1]:{}", local_port)).await,
+                    }
+                }).await {
+                    Ok(res) => res,
+                    Err(_) => Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Target service connection timed out")),
                 };
-                let mut target_stream = match target_stream_res {
-                    Ok(stream) => stream,
+                let target_stream = match target_stream_res {
+                    Ok(stream) => {
+                        let _ = stream.set_nodelay(true);
+                        stream
+                    }
                     Err(_) => {
                         // Target server is offline / restarting: serve branded 502 Bad Gateway standby page
                         let html_body = format!(
@@ -701,34 +701,89 @@ pub async fn start_proxy_with_auth(
 
                 let start_instant = std::time::Instant::now();
 
-                if target_stream.write_all(modified_headers_str.as_bytes()).await.is_err() {
+                let (mut client_read, mut client_write) = client_stream.into_split();
+                let (mut target_read, mut target_write) = target_stream.into_split();
+
+                if target_write.write_all(modified_headers_str.as_bytes()).await.is_err() {
                     return;
                 }
                 if !body_bytes.is_empty() {
-                    if target_stream.write_all(body_bytes).await.is_err() {
+                    if target_write.write_all(body_bytes).await.is_err() {
                         return;
                     }
                 }
 
-                // Read initial response chunk to capture HTTP status code and latency duration
-                let mut res_buf = vec![0u8; 16384];
-                let mut n_res = match target_stream.read(&mut res_buf).await {
-                    Ok(bytes) if bytes > 0 => bytes,
-                    _ => return,
+                // Stream remaining request body from client to target if needed.
+                // For WebSocket or multi-chunk uploads, stream concurrently to prevent full-duplex TCP deadlock.
+                let upload_task = if is_ws_upgrade {
+                    Some(tokio::spawn(async move {
+                        let _ = tokio::io::copy(&mut client_read, &mut target_write).await;
+                        let _ = target_write.shutdown().await;
+                    }))
+                } else if content_length > body_bytes.len() {
+                    let remaining = content_length - body_bytes.len();
+                    Some(tokio::spawn(async move {
+                        let mut limited = tokio::io::AsyncReadExt::take(client_read, remaining as u64);
+                        let _ = tokio::io::copy(&mut limited, &mut target_write).await;
+                        let _ = target_write.shutdown().await;
+                    }))
+                } else {
+                    None
                 };
 
-                // ponytail: if headers were flushed in first TCP segment (e.g. Next.js/Node chunked encoding),
-                // read the initial body segment into the buffer so responseBodyPreview is captured for schema drift.
-                // BODY_CHUNK_TIMEOUT_MS: chosen to be > a Node.js event-loop tick (~16 ms) but imperceptible to the user.
-                // Upgrade path: expose via AppSettings if users need tuning.
-                const BODY_CHUNK_TIMEOUT_MS: u64 = 150;
+                // Read initial response chunk to capture HTTP status code and latency duration
+                let mut res_buf = vec![0u8; 16384];
+                let mut n_res = match target_read.read(&mut res_buf).await {
+                    Ok(bytes) if bytes > 0 => bytes,
+                    _ => {
+                        if let Some(task) = upload_task {
+                            task.abort();
+                        }
+                        return;
+                    }
+                };
+
+                let mut status: u16 = 200;
+                let mut response_content_length: Option<usize> = None;
+                let mut no_body_expected = method == "HEAD";
                 if !is_ws_upgrade && !is_sse {
                     if let Some(pos) = res_buf[..n_res].windows(4).position(|w| w == b"\r\n\r\n") {
                         let header_end = pos + 4;
-                        if header_end == n_res && n_res < res_buf.len() {
+                        let header_section = String::from_utf8_lossy(&res_buf[..header_end]);
+                        if let Some(status_line) = header_section.lines().next() {
+                            let parts: Vec<&str> = status_line.split_whitespace().collect();
+                            if parts.len() >= 2 {
+                                if let Ok(code) = parts[1].parse::<u16>() {
+                                    status = code;
+                                }
+                            }
+                        }
+
+                        no_body_expected = method == "HEAD" || status == 204 || status == 304 || (100..=199).contains(&status);
+                        let mut is_json = false;
+                        for line in header_section.lines().skip(1) {
+                            let lower = line.to_ascii_lowercase();
+                            if lower.starts_with("content-length:") {
+                                if let Some((_, val)) = line.split_once(':') {
+                                    if let Ok(len) = val.trim().parse::<usize>() {
+                                        response_content_length = Some(len);
+                                        if len == 0 {
+                                            no_body_expected = true;
+                                        }
+                                    }
+                                }
+                            } else if lower.starts_with("content-type:") && lower.contains("json") {
+                                is_json = true;
+                            }
+                        }
+
+                        // ponytail: only wait for body chunk if response expects a body and is JSON (schema drift engine).
+                        // Non-JSON, 304, 204, HEAD, and Content-Length: 0 bypass immediately with 0ms delay.
+                        const BODY_CHUNK_TIMEOUT_MS: u64 = 15;
+                        if !no_body_expected && is_json && header_end == n_res && n_res < res_buf.len() {
                             if let Ok(Ok(extra)) = tokio::time::timeout(
                                 std::time::Duration::from_millis(BODY_CHUNK_TIMEOUT_MS),
-                                target_stream.read(&mut res_buf[n_res..]),
+                                target_read.read(&mut res_buf[n_res..]),
                             ).await {
                                 n_res += extra;
                             }
@@ -738,12 +793,13 @@ pub async fn start_proxy_with_auth(
 
                 let duration_ms = start_instant.elapsed().as_millis() as u64;
                 let res_str = String::from_utf8_lossy(&res_buf[..n_res]);
-                let mut status: u16 = 200;
-                if let Some(status_line) = res_str.lines().next() {
-                    let parts: Vec<&str> = status_line.split_whitespace().collect();
-                    if parts.len() >= 2 {
-                        if let Ok(code) = parts[1].parse::<u16>() {
-                            status = code;
+                if status == 200 {
+                    if let Some(status_line) = res_str.lines().next() {
+                        let parts: Vec<&str> = status_line.split_whitespace().collect();
+                        if parts.len() >= 2 {
+                            if let Ok(code) = parts[1].parse::<u16>() {
+                                status = code;
+                            }
                         }
                     }
                 }
@@ -805,12 +861,44 @@ pub async fn start_proxy_with_auth(
                     timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(),
                 });
 
-                if client_stream.write_all(&res_buf[..n_res]).await.is_err() {
+                if client_write.write_all(&res_buf[..n_res]).await.is_err() {
+                    if let Some(task) = upload_task {
+                        task.abort();
+                    }
                     return;
                 }
 
-                // Full-duplex bidirectional stream for remaining traffic (WebSocket HMR, HTTP/1.1 chunked, SSE, uploads)
-                let _ = tokio::io::copy_bidirectional(&mut client_stream, &mut target_stream).await;
+                // Stream remaining response traffic to client
+                if !is_ws_upgrade && !is_sse {
+                    if no_body_expected {
+                        // 0 body bytes expected: close client write half immediately with 0ms wait
+                        let _ = client_write.shutdown().await;
+                    } else if let Some(total_len) = response_content_length {
+                        let body_already_in_buf = if let Some(pos) = res_buf[..n_res].windows(4).position(|w| w == b"\r\n\r\n") {
+                            n_res.saturating_sub(pos + 4)
+                        } else {
+                            0
+                        };
+                        let remaining_body_bytes = total_len.saturating_sub(body_already_in_buf);
+                        if remaining_body_bytes > 0 {
+                            let mut limited_target_read = tokio::io::AsyncReadExt::take(target_read, remaining_body_bytes as u64);
+                            let _ = tokio::io::copy(&mut limited_target_read, &mut client_write).await;
+                        }
+                        let _ = client_write.shutdown().await;
+                    } else {
+                        // Chunked or unknown length: copy until target reaches EOF
+                        let _ = tokio::io::copy(&mut target_read, &mut client_write).await;
+                        let _ = client_write.shutdown().await;
+                    }
+                } else {
+                    // WebSocket or SSE: continuous stream until either side closes
+                    let _ = tokio::io::copy(&mut target_read, &mut client_write).await;
+                    let _ = client_write.shutdown().await;
+                }
+
+                if let Some(task) = upload_task {
+                    task.abort();
+                }
             });
         }
     });
@@ -821,7 +909,7 @@ pub async fn start_proxy_with_auth(
         tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
         let mut last_status = "ACTIVE";
         loop {
-            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
 
             let is_v4 = tokio::time::timeout(
                 tokio::time::Duration::from_millis(250),
@@ -1227,6 +1315,179 @@ mod tests {
 
         let forwarded = captured_headers.lock().await.clone();
         assert!(forwarded.contains("Authorization: Bearer my_app_jwt_token_xyz"), "App authorization header MUST be preserved when tunnel auth is disabled");
+
+        stop_proxy(Some(target_port)).await;
+    }
+
+    #[tokio::test]
+    async fn test_empty_and_cached_responses_bypass_body_chunk_delay() {
+        let target_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let target_port = target_listener.local_addr().unwrap().port();
+
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = target_listener.accept().await {
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 1024];
+                    let _ = stream.read(&mut buf).await;
+                    // Send 304 Not Modified headers only, exactly ending at \r\n\r\n
+                    let resp = "HTTP/1.1 304 Not Modified\r\nETag: \"abc123xyz\"\r\nConnection: close\r\n\r\n";
+                    let _ = stream.write_all(resp.as_bytes()).await;
+                });
+            }
+        });
+
+        let tx = test_event_sender();
+        let proxy_port = start_proxy(tx, target_port).await.unwrap();
+
+        let start = std::time::Instant::now();
+        let mut stream = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).await.unwrap();
+        stream.write_all(b"GET /style.css HTTP/1.1\r\nHost: localhost\r\nIf-None-Match: \"abc123xyz\"\r\n\r\n").await.unwrap();
+
+        let mut res = vec![0u8; 512];
+        let n = stream.read(&mut res).await.unwrap();
+        let elapsed = start.elapsed();
+        let res_str = String::from_utf8_lossy(&res[..n]);
+
+        assert!(res_str.contains("304 Not Modified"));
+        // Must complete significantly faster than the old 150ms BODY_CHUNK_TIMEOUT_MS stall!
+        assert!(elapsed < std::time::Duration::from_millis(100), "304 response took {:?}, expected < 100ms", elapsed);
+
+        stop_proxy(Some(target_port)).await;
+    }
+
+    #[tokio::test]
+    async fn test_full_duplex_post_body_does_not_deadlock() {
+        let target_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let target_port = target_listener.local_addr().unwrap().port();
+
+        // Target server: strictly waits for 10 bytes of body before sending response!
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = target_listener.accept().await {
+                tokio::spawn(async move {
+                    let mut req_buf = vec![0u8; 1024];
+                    let mut total_body = Vec::new();
+                    // Read until we have headers + 10 bytes of body
+                    while total_body.len() < 10 {
+                        let n = stream.read(&mut req_buf).await.unwrap_or(0);
+                        if n == 0 { break; }
+                        let s = String::from_utf8_lossy(&req_buf[..n]);
+                        if let Some((_, b)) = s.split_once("\r\n\r\n") {
+                            total_body.extend_from_slice(b.as_bytes());
+                        } else {
+                            total_body.extend_from_slice(&req_buf[..n]);
+                        }
+                    }
+                    let resp = "HTTP/1.1 200 OK\r\nContent-Length: 7\r\nConnection: close\r\n\r\nSUCCESS";
+                    let _ = stream.write_all(resp.as_bytes()).await;
+                });
+            }
+        });
+
+        let tx = test_event_sender();
+        let proxy_port = start_proxy(tx, target_port).await.unwrap();
+
+        let mut client = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).await.unwrap();
+        // 1. Send ONLY headers first (no body in packet 1)
+        client.write_all(b"POST /api/upload HTTP/1.1\r\nHost: localhost\r\nContent-Length: 10\r\n\r\n").await.unwrap();
+
+        // Brief sleep so headers are processed and proxy reaches response read
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+
+        // 2. Send body in packet 2
+        client.write_all(b"0123456789").await.unwrap();
+
+        // 3. Must receive response without deadlocking!
+        let mut res = vec![0u8; 512];
+        let n = tokio::time::timeout(std::time::Duration::from_secs(2), client.read(&mut res))
+            .await
+            .expect("must not deadlock")
+            .unwrap();
+        let res_str = String::from_utf8_lossy(&res[..n]);
+        assert!(res_str.contains("200 OK"));
+        assert!(res_str.contains("SUCCESS"));
+
+        stop_proxy(Some(target_port)).await;
+    }
+
+    #[tokio::test]
+    async fn test_clean_close_without_client_fin_hang() {
+        let target_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let target_port = target_listener.local_addr().unwrap().port();
+
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = target_listener.accept().await {
+                tokio::spawn(async move {
+                    let mut req_buf = vec![0u8; 1024];
+                    let _ = stream.read(&mut req_buf).await;
+                    let resp = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\nPONG";
+                    let _ = stream.write_all(resp.as_bytes()).await;
+                });
+            }
+        });
+
+        let tx = test_event_sender();
+        let proxy_port = start_proxy(tx, target_port).await.unwrap();
+
+        let start = std::time::Instant::now();
+        let mut client = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).await.unwrap();
+        // Client sends GET request and intentionally DOES NOT send TCP FIN (standard HTTP keep-alive behavior)
+        client.write_all(b"GET /ping HTTP/1.1\r\nHost: localhost\r\n\r\n").await.unwrap();
+
+        let mut res = Vec::new();
+        // Client should receive EOF on read half within 100ms because server closed and proxy shut down client_write
+        let n = tokio::time::timeout(std::time::Duration::from_millis(500), client.read_to_end(&mut res))
+            .await
+            .expect("must not hang waiting for client FIN")
+            .unwrap();
+
+        assert!(n > 0);
+        let res_str = String::from_utf8_lossy(&res);
+        assert!(res_str.contains("200 OK"));
+        assert!(res_str.contains("PONG"));
+        assert!(start.elapsed() < std::time::Duration::from_millis(200));
+
+        stop_proxy(Some(target_port)).await;
+    }
+
+    #[tokio::test]
+    async fn test_keep_alive_target_server_does_not_stall_response() {
+        let target_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let target_port = target_listener.local_addr().unwrap().port();
+
+        // Target server: sends Content-Length and KEEP-ALIVE, intentionally keeps socket OPEN indefinitely
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = target_listener.accept().await {
+                tokio::spawn(async move {
+                    let mut req_buf = vec![0u8; 1024];
+                    let _ = stream.read(&mut req_buf).await;
+                    let resp = "HTTP/1.1 200 OK\r\nContent-Length: 12\r\nConnection: keep-alive\r\n\r\nHello World!";
+                    let _ = stream.write_all(resp.as_bytes()).await;
+                    // Do NOT close stream: simulate Node.js / Vite keep-alive socket idle wait
+                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                });
+            }
+        });
+
+        let tx = test_event_sender();
+        let proxy_port = start_proxy(tx, target_port).await.unwrap();
+
+        let start = std::time::Instant::now();
+        let mut client = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).await.unwrap();
+        client.write_all(b"GET /index.html HTTP/1.1\r\nHost: localhost\r\n\r\n").await.unwrap();
+
+        let mut res = Vec::new();
+        // Proxy must detect Content-Length: 12 completion and shut down client_write immediately (< 100ms)
+        // rather than waiting 10 seconds for target server keep-alive sleep!
+        let n = tokio::time::timeout(std::time::Duration::from_millis(500), client.read_to_end(&mut res))
+            .await
+            .expect("must complete in < 500ms without waiting for target server socket close")
+            .unwrap();
+
+        assert!(n > 0);
+        let res_str = String::from_utf8_lossy(&res);
+        assert!(res_str.contains("200 OK"));
+        assert!(res_str.contains("Hello World!"));
+        assert!(start.elapsed() < std::time::Duration::from_millis(150), "Expected < 150ms, elapsed: {:?}", start.elapsed());
 
         stop_proxy(Some(target_port)).await;
     }

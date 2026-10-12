@@ -1924,23 +1924,17 @@ export default function App() {
     updateActiveWorkspace((ws) => ({ ...ws, profiles: upsertProfile(ws.profiles, process, starterScan.length), selectedProfileId: makeProfileId(process), languageHint: detectLanguageLabel(process) }));
 
     const targetWorkspaceId = activeWorkspace.remoteWorkspaceId || activeWorkspace.id;
-    const token = getToken();
 
     try {
       localStorage.setItem('proxync_workspace', targetWorkspaceId);
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
-      const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
-      const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
       const basicAuthHeader = formatBasicAuthHeader(basicAuth);
       let proxyFailed = false;
-      const [, proxyPort] = await Promise.all([
-        invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined),
-        invoke<number>('start_proxy', { localPort: process.port, basicAuth: basicAuthHeader }).catch((err) => {
-          console.warn('[App] start_proxy invoke failed:', err);
-          proxyFailed = true;
-          return process.port;
-        }),
-      ]);
+      const proxyPort = await invoke<number>('start_proxy', { localPort: process.port, basicAuth: basicAuthHeader }).catch((err) => {
+        console.warn('[App] start_proxy invoke failed:', err);
+        proxyFailed = true;
+        return process.port;
+      });
       let effectiveBasicAuth = basicAuth;
       if (proxyFailed && basicAuth?.enabled) {
         showToast('Basic auth disabled: proxy binding failed. Tunnel running unauthenticated.', 'warning');
@@ -2022,23 +2016,17 @@ export default function App() {
     updateActiveWorkspace((ws) => ({ ...ws, profiles: upsertProfile(ws.profiles, process, starterScan.length), selectedProfileId: makeProfileId(process), languageHint: detectLanguageLabel(process) }));
 
     const targetWorkspaceId = activeWorkspace.remoteWorkspaceId || activeWorkspace.id;
-    const token = getToken();
 
     try {
       localStorage.setItem('proxync_workspace', targetWorkspaceId);
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
-      const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
-      const relayUrl = `${apiBase.replace(/^http/, 'ws')}/relay`;
       const basicAuthHeader = formatBasicAuthHeader(basicAuth);
       let proxyFailed = false;
-      const [, proxyPort] = await Promise.all([
-        invoke('open_tunnel', { tunnelId: tunnel.id, localPort: process.port, token, workspaceId: targetWorkspaceId, relayUrl }).catch(() => undefined),
-        invoke<number>('start_proxy', { localPort: process.port, basicAuth: basicAuthHeader }).catch((err) => {
-          console.warn('[App] start_proxy invoke failed:', err);
-          proxyFailed = true;
-          return process.port;
-        }),
-      ]);
+      const proxyPort = await invoke<number>('start_proxy', { localPort: process.port, basicAuth: basicAuthHeader }).catch((err) => {
+        console.warn('[App] start_proxy invoke failed:', err);
+        proxyFailed = true;
+        return process.port;
+      });
       let effectiveBasicAuth = basicAuth;
       if (proxyFailed && basicAuth?.enabled) {
         showToast('Basic auth disabled: proxy binding failed. Tunnel running unauthenticated.', 'warning');

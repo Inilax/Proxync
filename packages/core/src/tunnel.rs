@@ -724,7 +724,9 @@ pub async fn open_native_tunnel(
     let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn ssh: {}", e))?;
     
     // Await SSH handshake & remote forwarding bind confirmation (~1500ms).
-    // Fails fast if OpenSSH exits with an error; ensures remote routing is fully active before returning.
+    // The gateway has a 1.0s non-exec stabilization window before binding tcpip-forward.
+    // Waiting 1500ms ensures the reverse proxy route is 100% active before returning to the UI,
+    // completely preventing the "Tunnel Session Inactive" page on immediate user click.
     let start_wait = std::time::Instant::now();
     while start_wait.elapsed() < std::time::Duration::from_millis(1500) {
         if let Ok(Some(status)) = child.try_wait() {
