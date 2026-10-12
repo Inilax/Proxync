@@ -415,6 +415,104 @@ pub fn verify_basic_auth(header_str: &str, expected_user: &str, expected_pass: &
     false
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum ChunkParserState {
+    ChunkHeader,
+    ChunkData(usize),
+    ChunkCrlf,
+    TrailerHeader,
+    Done,
+}
+
+pub struct ChunkedBodyParser {
+    state: ChunkParserState,
+    header_buf: Vec<u8>,
+}
+
+impl ChunkedBodyParser {
+    pub fn new() -> Self {
+        Self {
+            state: ChunkParserState::ChunkHeader,
+            header_buf: Vec::with_capacity(32),
+        }
+    }
+
+    pub fn is_done(&self) -> bool {
+        self.state == ChunkParserState::Done
+    }
+
+    /// Feeds incoming slice of bytes through the RFC 7230 chunked state machine.
+    /// Returns true if the terminating chunk (0\r\n\r\n) has been reached.
+    pub fn feed(&mut self, mut bytes: &[u8]) -> bool {
+        while !bytes.is_empty() && self.state != ChunkParserState::Done {
+            match self.state {
+                ChunkParserState::ChunkHeader => {
+                    if let Some(pos) = bytes.iter().position(|&b| b == b'\n') {
+                        let line_part = &bytes[..=pos];
+                        bytes = &bytes[pos + 1..];
+                        self.header_buf.extend_from_slice(line_part);
+
+                        let line_str = String::from_utf8_lossy(&self.header_buf);
+                        let hex_str = line_str.trim().split(';').next().unwrap_or("").trim();
+                        if let Ok(size) = usize::from_str_radix(hex_str, 16) {
+                            self.header_buf.clear();
+                            if size == 0 {
+                                self.state = ChunkParserState::TrailerHeader;
+                            } else {
+                                self.state = ChunkParserState::ChunkData(size);
+                            }
+                        } else {
+                            self.state = ChunkParserState::Done;
+                            return true;
+                        }
+                    } else {
+                        self.header_buf.extend_from_slice(bytes);
+                        bytes = &[];
+                    }
+                }
+                ChunkParserState::ChunkData(remaining) => {
+                    let take = bytes.len().min(remaining);
+                    bytes = &bytes[take..];
+                    let new_remaining = remaining - take;
+                    if new_remaining == 0 {
+                        self.state = ChunkParserState::ChunkCrlf;
+                    } else {
+                        self.state = ChunkParserState::ChunkData(new_remaining);
+                    }
+                }
+                ChunkParserState::ChunkCrlf => {
+                    if let Some(pos) = bytes.iter().position(|&b| b == b'\n') {
+                        bytes = &bytes[pos + 1..];
+                        self.state = ChunkParserState::ChunkHeader;
+                    } else {
+                        bytes = &[];
+                    }
+                }
+                ChunkParserState::TrailerHeader => {
+                    if let Some(pos) = bytes.iter().position(|&b| b == b'\n') {
+                        let line_part = &bytes[..=pos];
+                        bytes = &bytes[pos + 1..];
+                        self.header_buf.extend_from_slice(line_part);
+                        let is_empty_line = self.header_buf.iter().all(|&b| b == b'\r' || b == b'\n' || b == b' ' || b == b'\t');
+                        self.header_buf.clear();
+                        if is_empty_line {
+                            self.state = ChunkParserState::Done;
+                            return true;
+                        }
+                    } else {
+                        self.header_buf.extend_from_slice(bytes);
+                        bytes = &[];
+                    }
+                }
+                ChunkParserState::Done => {
+                    return true;
+                }
+            }
+        }
+        self.state == ChunkParserState::Done
+    }
+}
+
 pub async fn start_proxy(tx: EventSender, local_port: u16) -> Result<u16, String> {
     start_proxy_with_auth(tx, local_port, None).await
 }
@@ -746,6 +844,7 @@ pub async fn start_proxy_with_auth(
                 let mut status: u16 = 200;
                 let mut response_content_length: Option<usize> = None;
                 let mut no_body_expected = method == "HEAD";
+                let mut is_chunked = false;
                 if !is_ws_upgrade && !is_sse {
                     if let Some(pos) = res_buf[..n_res].windows(4).position(|w| w == b"\r\n\r\n") {
                         let header_end = pos + 4;
@@ -772,6 +871,8 @@ pub async fn start_proxy_with_auth(
                                         }
                                     }
                                 }
+                            } else if lower.starts_with("transfer-encoding:") && lower.contains("chunked") {
+                                is_chunked = true;
                             } else if lower.starts_with("content-type:") && lower.contains("json") {
                                 is_json = true;
                             }
@@ -883,6 +984,37 @@ pub async fn start_proxy_with_auth(
                         if remaining_body_bytes > 0 {
                             let mut limited_target_read = tokio::io::AsyncReadExt::take(target_read, remaining_body_bytes as u64);
                             let _ = tokio::io::copy(&mut limited_target_read, &mut client_write).await;
+                        }
+                        let _ = client_write.shutdown().await;
+                    } else if is_chunked {
+                        // Transfer-Encoding: chunked (Next.js SSR HTML, dynamic pages).
+                        // Terminate the instant the final chunk (0\r\n\r\n) is forwarded,
+                        // eliminating the 5-second hang waiting for target server keep-alive idle timeout!
+                        let mut chunk_parser = ChunkedBodyParser::new();
+                        let body_already_in_buf = if let Some(pos) = res_buf[..n_res].windows(4).position(|w| w == b"\r\n\r\n") {
+                            &res_buf[pos + 4..n_res]
+                        } else {
+                            &[]
+                        };
+
+                        if !body_already_in_buf.is_empty() {
+                            chunk_parser.feed(body_already_in_buf);
+                        }
+
+                        if !chunk_parser.is_done() {
+                            let mut chunk_buf = vec![0u8; 16384];
+                            while !chunk_parser.is_done() {
+                                let n = match target_read.read(&mut chunk_buf).await {
+                                    Ok(bytes) if bytes > 0 => bytes,
+                                    _ => break,
+                                };
+                                if client_write.write_all(&chunk_buf[..n]).await.is_err() {
+                                    break;
+                                }
+                                if chunk_parser.feed(&chunk_buf[..n]) {
+                                    break;
+                                }
+                            }
                         }
                         let _ = client_write.shutdown().await;
                     } else {
@@ -1487,6 +1619,50 @@ mod tests {
         let res_str = String::from_utf8_lossy(&res);
         assert!(res_str.contains("200 OK"));
         assert!(res_str.contains("Hello World!"));
+        assert!(start.elapsed() < std::time::Duration::from_millis(150), "Expected < 150ms, elapsed: {:?}", start.elapsed());
+
+        stop_proxy(Some(target_port)).await;
+    }
+
+    #[tokio::test]
+    async fn test_chunked_keep_alive_target_server_does_not_stall_response() {
+        let target_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let target_port = target_listener.local_addr().unwrap().port();
+
+        // Target server: simulates Next.js SSR / Vite streaming HTML with Transfer-Encoding: chunked & keep-alive
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = target_listener.accept().await {
+                tokio::spawn(async move {
+                    let mut req_buf = vec![0u8; 1024];
+                    let _ = stream.read(&mut req_buf).await;
+                    let resp = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: text/html\r\nConnection: keep-alive\r\n\r\n5\r\nHello\r\n7\r\nProxync\r\n0\r\n\r\n";
+                    let _ = stream.write_all(resp.as_bytes()).await;
+                    // Do NOT close stream: simulate Node.js / Next.js 5-second keepAliveTimeout idle wait!
+                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                });
+            }
+        });
+
+        let tx = test_event_sender();
+        let proxy_port = start_proxy(tx, target_port).await.unwrap();
+
+        let start = std::time::Instant::now();
+        let mut client = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).await.unwrap();
+        client.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n").await.unwrap();
+
+        let mut res = Vec::new();
+        // Proxy must detect chunked 0\r\n\r\n terminator and shut down client_write immediately (< 150ms)
+        // rather than hanging for 10 seconds waiting for target server keep-alive idle timeout!
+        let n = tokio::time::timeout(std::time::Duration::from_millis(500), client.read_to_end(&mut res))
+            .await
+            .expect("must complete in < 500ms without waiting for target server socket close")
+            .unwrap();
+
+        assert!(n > 0);
+        let res_str = String::from_utf8_lossy(&res);
+        assert!(res_str.contains("200 OK"));
+        assert!(res_str.contains("Hello"));
+        assert!(res_str.contains("Proxync"));
         assert!(start.elapsed() < std::time::Duration::from_millis(150), "Expected < 150ms, elapsed: {:?}", start.elapsed());
 
         stop_proxy(Some(target_port)).await;

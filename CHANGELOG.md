@@ -13,14 +13,15 @@ All notable changes to the Proxync workspace studio project are documented here.
   - **Loopback TCP_NODELAY Enablement (`packages/core/src/proxy.rs`)**: Enabled `set_nodelay(true)` on both accepted client streams and local target streams, disabling Nagle's algorithm and eliminating the 40ms delayed-ACK packet latency on local proxy forwarding.
   - **Combined Fail-Fast Target Connect (`packages/core/src/proxy.rs`)**: Replaced sequential 500ms timeout fallbacks with an immediate loopback connection attempting `127.0.0.1` and failing fast to `[::1]` (under a single combined 500ms ceiling), eliminating connection latency for IPv6-only servers like Vite and Node 18+.
   - **Reduced Liveness Background Socket Churn (`packages/core/src/proxy.rs`)**: Relaxed background TCP liveness polling from 1,000ms to 3,000ms to reduce local development server socket churn.
-  - **Comprehensive Rust Unit Test Coverage (`packages/core/src/proxy.rs`)**: Added `test_empty_and_cached_responses_bypass_body_chunk_delay`, `test_full_duplex_post_body_does_not_deadlock`, `test_clean_close_without_client_fin_hang`, and `test_keep_alive_target_server_does_not_stall_response` asserting 0ms stall on cached/empty responses, concurrent multi-packet POST delivery without deadlock, immediate shutdown without waiting for client FIN, and instantaneous keep-alive response termination.
+  - **Chunked Transfer-Encoding Fast-Path & 5-Second Hang Elimination (`packages/core/src/proxy.rs`)**: Fixed the primary root cause of initial page load delay. For dynamic HTML pages rendered by Next.js SSR, Vite, and Node.js dev servers without a `Content-Length` header (`Transfer-Encoding: chunked`), `tokio::io::copy` previously blocked waiting for TCP EOF, hanging for the full 5-second Node.js keep-alive idle timeout before finishing. Implemented an RFC 7230 compliant `ChunkedBodyParser` state machine that parses chunk lengths in real time and immediately shuts down `client_write` the millisecond the final chunk (`0\r\n\r\n`) is forwarded.
+  - **Comprehensive Rust Unit Test Coverage (`packages/core/src/proxy.rs`)**: Added `test_chunked_keep_alive_target_server_does_not_stall_response`, `test_empty_and_cached_responses_bypass_body_chunk_delay`, `test_full_duplex_post_body_does_not_deadlock`, `test_clean_close_without_client_fin_hang`, and `test_keep_alive_target_server_does_not_stall_response` asserting 0ms stall on chunked HTML responses, 0ms stall on cached/empty responses, concurrent multi-packet POST delivery without deadlock, immediate shutdown without waiting for client FIN, and instantaneous keep-alive response termination.
 - **Modified Files**:
   - `packages/core/src/proxy.rs`
   - `packages/core/src/tunnel.rs`
   - `packages/desktop/src/App.tsx`
   - `CHANGELOG.md`
 - **Verification**:
-  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 38 tests with 0 failures and 0 warnings.
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 39 tests with 0 failures and 0 warnings.
   - `cargo check --manifest-path packages/cli/Cargo.toml` passed with 0 errors.
   - `npm --prefix packages/desktop run build` passed with 0 TypeScript/Vite errors.
 
