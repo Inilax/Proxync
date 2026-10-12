@@ -2,6 +2,66 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [feature/develop-tunnel-basic-auth] - 2026-10-12 (PR #276 Core Hardening: Session Teardown, Auth Stripping, Slowloris Defense & Canonical URL Resolution)
+- **Feature Summary**:
+  - **Memory & Port Leak Prevention (`packages/core/src/tunnel.rs`)**: Ensured `stop_proxy(Some(local_port))` is reliably invoked in all automated tunnel termination paths (1-hour hard cap expiration, keepalive 410 Gone reaper, and child process exit watchers for both Cloudflare and native SSH tunnels) before dispatching `TunnelAutoClosed`. Completely terminates dangling loopback proxy listeners and 1-second liveness polling loops.
+  - **Gatekeeper Auth Stripping (`packages/core/src/proxy.rs`)**: Stripped tunnel-level `Authorization: Basic ...` credentials from forwarded request headers after successful validation, preventing credential collisions and unexpected 401 errors on local services running application-specific auth (e.g. Bearer JWTs, session tokens, or local basic auth). Preserves incoming authorization headers intact when tunnel basic auth is not configured.
+  - **Slowloris DoS Protection (`packages/core/src/proxy.rs`)**: Wrapped the dynamic HTTP header reading loop with a strict 15-second timeout (`tokio::time::timeout(HEADER_READ_TIMEOUT, ...)`), responding with standard HTTP 408 Request Timeout before socket shutdown to prevent local file descriptor exhaustion and provide clean HTTP protocol semantics.
+  - **Fail-Fast Local Target Connect Timeout (`packages/core/src/proxy.rs`)**: Wrapped loopback target service connections (`127.0.0.1` and `[::1]`) in a 500ms timeout guard, immediately serving the branded 502 Bad Gateway standby page if a local service freezes or deadlocks rather than leaving external requests suspended for the OS default 30-75s connect timeout.
+  - **Robust API Endpoint Resolution (`packages/core/src/tunnel.rs`)**: Added `resolve_api_endpoint` to canonicalize backend URLs across base origins (e.g. `https://api.proxync.dev`), trailing slashes, legacy full endpoint URLs, empty/whitespace environment variable fallbacks, and custom dev origins, fixing keepalive ping failures on standard base domain configurations.
+  - **Comprehensive Rust Unit Test Coverage (`packages/core/src/proxy.rs`, `packages/core/src/tunnel.rs`)**: Added unit tests verifying `Authorization` stripping when tunnel auth is active, `Authorization` pass-through when disabled, and multi-scenario `resolve_api_endpoint` URL parsing (including empty/whitespace variables).
+- **Modified Files**:
+  - `packages/core/src/proxy.rs`
+  - `packages/core/src/tunnel.rs`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo check --manifest-path packages/core/Cargo.toml` passed with 0 errors.
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 34 tests with 0 failures.
+  - `cargo check --manifest-path packages/cli/Cargo.toml` passed with 0 errors.
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-12 (In-Memory Key Registration Sleep Optimization to 25ms)
+- **Feature Summary**:
+  - **Handshake Latency Reduction (`packages/core/src/tunnel.rs`)**: Reduced pre-SSH handshake pause from 150ms to 25ms, leveraging the private gateway's sub-millisecond in-memory authentication and key absorption while providing a brief tick for socket readiness.
+- **Modified Files**:
+  - `packages/core/src/tunnel.rs`
+  - `CHANGELOG.md`
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-11 (Free 1h Max Session Cap & Admin Unlimited Tier Exemption)
+- **Feature Summary**:
+  - **CLI Tier Enforcement (`packages/cli/src/commands/tunnel.rs`)**: Enforced a strict 1-hour session limit on free tier tunnels in both foreground and detached modes. Automatically clamps requested expirations exceeding 1h to 1h with user guidance, while granting unlimited session duration when `PROXYNC_API_SECRET_TOKEN` admin credentials are provided.
+  - **Tier Badging & Banner Status (`packages/cli/src/commands/tunnel.rs`)**: Added colored tier badges (`Admin (Unlimited Session)` vs `Free (1h Max Session Limit)`) and explicit auto-expiry indicators in CLI connection summaries.
+  - **Core Session Reaper Guard (`packages/core/src/tunnel.rs`)**: Wrapped the 1-hour client-side process termination fallback to only execute on free/non-admin sessions for both Cloudflare and Proxync native SSH tunnels.
+- **Modified Files**:
+  - `packages/cli/src/commands/tunnel.rs`
+  - `packages/core/src/tunnel.rs`
+  - `CHANGELOG.md`
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-09 (Android-Style Progressive Rate Limiting & Brute-Force Lockout Defense)
+- **Feature Summary**:
+  - **Progressive Lockout Escalation (`packages/core/src/proxy.rs`)**: Implemented graduated lockout tiers for failed Basic Auth attempts (Stage 1: 60s, Stage 2: 120s, Stage 3: 300s, Stage 4: 900s, Stage 5: 3600s max cap) with 15-minute inactivity decay reset and immediate reset upon successful authentication.
+  - **Constant-Time Verification & Tarpit (`packages/core/src/proxy.rs`)**: Added `constant_time_eq` credential validation to prevent timing attacks and a 1000ms tarpit delay on bad credentials to mitigate automated credential stuffing.
+  - **Dynamic 429 Lockout Page (`packages/core/src/proxy.rs`)**: Embedded branded HTTP 429 response featuring live JavaScript ticking countdown, formatted time display (`5m 00s`), visual progress bar, stage penalty badges, and auto-reload on expiry.
+  - **Comprehensive Rust Test Suite (`packages/core/src/proxy.rs`)**: Added automated unit tests for duration formatting, progressive stage escalation, idle reset decay, and end-to-end HTTP 429 lockout handling.
+- **Modified Files**:
+  - `packages/core/src/proxy.rs`
+  - `CHANGELOG.md`
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-09 (Tunnel Session Keepalive Heartbeat & 1h Expiration Hard Cap)
+- **Feature Summary**:
+  - **Client-Side 1-Hour Hard Cap Fallback (`packages/core/src/tunnel.rs`)**: Spawned background timer terminating spawned SSH tunnel child processes and dispatching `TunnelAutoClosed` event after 1 hour if unreachable or offline.
+  - **Server-Authoritative Keepalive Heartbeat (`packages/core/src/tunnel.rs`)**: Added 5-minute periodic keepalive ping to `/api/tunnel/keepalive`. If the server returns HTTP 410 (Gone), gracefully removes the tunnel from process registry and terminates the process tree.
+  - **Process Lifecycle Teardown (`packages/core/src/tunnel.rs`)**: Updated child process exit monitor to cleanly avoid duplicate events when terminated by keepalive or hard-cap timeout.
+- **Modified Files**:
+  - `packages/core/src/tunnel.rs`
+  - `CHANGELOG.md`
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-08 (Branded HTML Response for 401 Unauthorized)
+- **Feature Summary**:
+  - **Branded 401 Error Page (`packages/core/src/proxy.rs`)**: Replaced raw plain-text HTTP 401 response with a styled Proxync dark-mode access page featuring target port indicator, authentication required badge, and reload button.
+  - **Integration Tests (`packages/core/src/proxy.rs`)**: Updated core proxy test suite to validate HTML content type and branded response body.
+- **Modified Files**:
+  - `packages/core/src/proxy.rs`
+
 ## [feature/develop-tunnel-basic-auth] - 2026-10-08 (Basic Auth Council Review P2 Fixes)
 - **Feature Summary**:
   - **Silent Error Logging (`packages/desktop/src/App.tsx`)**: Added `console.warn` to all three `start_proxy` invoke catch blocks so proxy bind failures surface in DevTools instead of being silently swallowed behind a boolean flag.
