@@ -368,6 +368,24 @@ fn inject_gui_toolchain_path(cmd: &mut tokio::process::Command) {
     cmd.env("PATH", gui_toolchain_path());
 }
 
+/// Derives a clean, canonical API endpoint from `PROXYNC_API_URL` or defaults.
+/// Handles base origins (e.g. `https://api.proxync.dev`), trailing slashes,
+/// legacy full paths, and custom dev origins (e.g. `http://localhost:3939`).
+pub(crate) fn resolve_api_endpoint(route: &str) -> String {
+    let raw = std::env::var("PROXYNC_API_URL")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "https://api.proxync.dev".to_string());
+    let trimmed = raw.trim();
+    let base = trimmed
+        .strip_suffix("/api/tunnel/sign-jit-cert")
+        .or_else(|| trimmed.strip_suffix("/api/tunnel/keepalive"))
+        .unwrap_or(trimmed)
+        .trim_end_matches('/');
+    let clean_route = if route.starts_with('/') { route } else { &format!("/{}", route) };
+    format!("{}{}", base, clean_route)
+}
+
 pub async fn open_cloudflare_tunnel(
     event_tx: EventSender,
     tunnel_id: String,
@@ -486,12 +504,14 @@ pub async fn open_cloudflare_tunnel(
     if !is_admin_cf {
         let tunnel_id_cf_expire = tunnel_id.clone();
         let event_tx_cf_expire = event_tx.clone();
+        let local_port_cf_expire = local_port;
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
             let mut procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
             if let Some(mut child) = procs.remove(&tunnel_id_cf_expire) {
                 kill_child_process_tree(&mut child).await;
                 drop(procs);
+                let _ = stop_proxy(Some(local_port_cf_expire)).await;
                 let _ = event_tx_cf_expire.send(ProxyncEvent::TunnelAutoClosed {
                     tunnel_id: tunnel_id_cf_expire,
                 });
@@ -501,6 +521,7 @@ pub async fn open_cloudflare_tunnel(
 
     let tunnel_id_clone = tunnel_id.clone();
     let event_tx_clone = event_tx.clone();
+    let local_port_cf_watch = local_port;
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         let mut has_child = true;
@@ -510,6 +531,8 @@ pub async fn open_cloudflare_tunnel(
             if let Some(child_proc) = procs.get_mut(&tunnel_id_clone) {
                 if let Ok(Some(_)) = child_proc.try_wait() {
                     procs.remove(&tunnel_id_clone);
+                    drop(procs);
+                    let _ = stop_proxy(Some(local_port_cf_watch)).await;
                     let _ = event_tx_clone.send(ProxyncEvent::TunnelAutoClosed {
                         tunnel_id: tunnel_id_clone.clone(),
                     });
@@ -603,8 +626,7 @@ pub async fn open_native_tunnel(
             "publicKey": pub_key.trim()
         });
 
-        let api_url = std::env::var("PROXYNC_API_URL")
-            .unwrap_or_else(|_| "https://api.proxync.dev/api/tunnel/sign-jit-cert".to_string());
+        let api_url = resolve_api_endpoint("/api/tunnel/sign-jit-cert");
 
         let api_secret = std::env::var("PROXYNC_API_SECRET_TOKEN").unwrap_or_default();
         
@@ -721,12 +743,14 @@ pub async fn open_native_tunnel(
     if !is_admin_native {
         let tunnel_id_expire = tunnel_id.clone();
         let event_tx_expire = event_tx.clone();
+        let local_port_expire = local_port;
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
             let mut procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
             if let Some(mut child) = procs.remove(&tunnel_id_expire) {
                 kill_child_process_tree(&mut child).await;
                 drop(procs);
+                let _ = stop_proxy(Some(local_port_expire)).await;
                 let _ = event_tx_expire.send(ProxyncEvent::TunnelAutoClosed {
                     tunnel_id: tunnel_id_expire,
                 });
@@ -740,6 +764,7 @@ pub async fn open_native_tunnel(
     let tunnel_id_ka = tunnel_id.clone();
     let event_tx_ka = event_tx.clone();
     let subdomain_ka = clean_subdomain.clone();
+    let local_port_ka = local_port;
     tokio::spawn(async move {
         const KEEPALIVE_INTERVAL_SECS: u64 = 300; // 5 minutes
         loop {
@@ -751,9 +776,7 @@ pub async fn open_native_tunnel(
                 if !procs.contains_key(&tunnel_id_ka) { break; }
             }
 
-            let api_url = std::env::var("PROXYNC_API_URL")
-                .unwrap_or_else(|_| "https://api.proxync.dev/api/tunnel/sign-jit-cert".to_string())
-                .replace("/api/tunnel/sign-jit-cert", "/api/tunnel/keepalive");
+            let api_url = resolve_api_endpoint("/api/tunnel/keepalive");
             let api_secret = std::env::var("PROXYNC_API_SECRET_TOKEN").unwrap_or_default();
 
             if let Ok(resp) = HTTP_CLIENT.post(&api_url)
@@ -768,6 +791,7 @@ pub async fn open_native_tunnel(
                     if let Some(mut child) = procs.remove(&tunnel_id_ka) {
                         kill_child_process_tree(&mut child).await;
                         drop(procs);
+                        let _ = stop_proxy(Some(local_port_ka)).await;
                         let _ = event_tx_ka.send(ProxyncEvent::TunnelAutoClosed {
                             tunnel_id: tunnel_id_ka,
                         });
@@ -781,6 +805,7 @@ pub async fn open_native_tunnel(
 
     let tunnel_id_clone = tunnel_id.clone();
     let event_tx_clone = event_tx.clone();
+    let local_port_watch = local_port;
 
     tokio::spawn(async move {
         let _active_guard = _guard;
@@ -792,6 +817,8 @@ pub async fn open_native_tunnel(
             if let Some(child_proc) = procs.get_mut(&tunnel_id_clone) {
                 if let Ok(Some(_)) = child_proc.try_wait() {
                     procs.remove(&tunnel_id_clone);
+                    drop(procs);
+                    let _ = stop_proxy(Some(local_port_watch)).await;
                     let _ = event_tx_clone.send(ProxyncEvent::TunnelAutoClosed {
                         tunnel_id: tunnel_id_clone.clone(),
                     });
@@ -808,8 +835,62 @@ pub async fn open_native_tunnel(
 
 #[cfg(test)]
 mod tests {
-    #[cfg(unix)]
     use super::*;
+
+    #[test]
+    fn test_resolve_api_endpoint_variations() {
+        std::env::remove_var("PROXYNC_API_URL");
+        assert_eq!(
+            resolve_api_endpoint("/api/tunnel/keepalive"),
+            "https://api.proxync.dev/api/tunnel/keepalive"
+        );
+        assert_eq!(
+            resolve_api_endpoint("/api/tunnel/sign-jit-cert"),
+            "https://api.proxync.dev/api/tunnel/sign-jit-cert"
+        );
+
+        std::env::set_var("PROXYNC_API_URL", "https://api.proxync.dev");
+        assert_eq!(
+            resolve_api_endpoint("/api/tunnel/keepalive"),
+            "https://api.proxync.dev/api/tunnel/keepalive"
+        );
+
+        std::env::set_var("PROXYNC_API_URL", "https://api.proxync.dev/");
+        assert_eq!(
+            resolve_api_endpoint("/api/tunnel/keepalive"),
+            "https://api.proxync.dev/api/tunnel/keepalive"
+        );
+
+        std::env::set_var("PROXYNC_API_URL", "https://api.proxync.dev/api/tunnel/sign-jit-cert");
+        assert_eq!(
+            resolve_api_endpoint("/api/tunnel/keepalive"),
+            "https://api.proxync.dev/api/tunnel/keepalive"
+        );
+
+        std::env::set_var("PROXYNC_API_URL", "http://127.0.0.1:3939");
+        assert_eq!(
+            resolve_api_endpoint("/api/tunnel/keepalive"),
+            "http://127.0.0.1:3939/api/tunnel/keepalive"
+        );
+        assert_eq!(
+            resolve_api_endpoint("/api/tunnel/sign-jit-cert"),
+            "http://127.0.0.1:3939/api/tunnel/sign-jit-cert"
+        );
+
+        // Empty and whitespace environment variable values fall back to default
+        std::env::set_var("PROXYNC_API_URL", "");
+        assert_eq!(
+            resolve_api_endpoint("/api/tunnel/keepalive"),
+            "https://api.proxync.dev/api/tunnel/keepalive"
+        );
+        std::env::set_var("PROXYNC_API_URL", "   ");
+        assert_eq!(
+            resolve_api_endpoint("/api/tunnel/keepalive"),
+            "https://api.proxync.dev/api/tunnel/keepalive"
+        );
+
+        std::env::remove_var("PROXYNC_API_URL");
+    }
 
     #[tokio::test]
     #[cfg(unix)]
@@ -827,4 +908,5 @@ mod tests {
         assert!(status.is_some(), "process should be terminated by kill_child_process_tree");
     }
 }
+
 

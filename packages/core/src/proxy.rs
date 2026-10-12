@@ -452,30 +452,40 @@ pub async fn start_proxy_with_auth(
             let rate_limiter_clone = rate_limiter.clone();
             let peer_ip = peer_addr.ip().to_string();
             tokio::spawn(async move {
-                // ponytail: dynamic header reading until \r\n\r\n delimiter; 2 MB safety cap prevents memory DoS
+                // ponytail: dynamic header reading until \r\n\r\n delimiter; 2 MB safety cap prevents memory DoS; 15s timeout prevents Slowloris socket exhaustion
                 const MAX_HEADER_BYTES: usize = 2 * 1024 * 1024; // 2 MB
+                const HEADER_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
                 let mut req_buf = Vec::with_capacity(8192);
                 let mut chunk = [0u8; 8192];
                 let mut header_end: Option<usize> = None;
 
-                loop {
-                    let n = match client_stream.read(&mut chunk).await {
-                        Ok(bytes) if bytes > 0 => bytes,
-                        _ => break,
-                    };
-                    req_buf.extend_from_slice(&chunk[..n]);
+                let read_future = async {
+                    loop {
+                        let n = match client_stream.read(&mut chunk).await {
+                            Ok(bytes) if bytes > 0 => bytes,
+                            _ => break,
+                        };
+                        req_buf.extend_from_slice(&chunk[..n]);
 
-                    if let Some(pos) = req_buf.windows(4).position(|w| w == b"\r\n\r\n") {
-                        header_end = Some(pos + 4);
-                        break;
-                    }
+                        if let Some(pos) = req_buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                            header_end = Some(pos + 4);
+                            break;
+                        }
 
-                    if req_buf.len() > MAX_HEADER_BYTES {
-                        let resp = "HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n";
-                        let _ = client_stream.write_all(resp.as_bytes()).await;
-                        let _ = client_stream.shutdown().await;
-                        return;
+                        if req_buf.len() > MAX_HEADER_BYTES {
+                            let resp = "HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n";
+                            let _ = client_stream.write_all(resp.as_bytes()).await;
+                            let _ = client_stream.shutdown().await;
+                            return;
+                        }
                     }
+                };
+
+                if tokio::time::timeout(HEADER_READ_TIMEOUT, read_future).await.is_err() {
+                    let resp = "HTTP/1.1 408 Request Timeout\r\nConnection: close\r\n\r\n";
+                    let _ = client_stream.write_all(resp.as_bytes()).await;
+                    let _ = client_stream.shutdown().await;
+                    return; // Slowloris defense: header read timed out after 15s; drop stream immediately
                 }
 
                 let header_end_pos = match header_end {
@@ -530,10 +540,21 @@ pub async fn start_proxy_with_auth(
                     }
                 }
 
-                // Connect to target service on 127.0.0.1 with fallback to [::1] (for IPv6-only servers like Vite)
-                let target_stream_res = match TcpStream::connect(format!("127.0.0.1:{}", local_port)).await {
-                    Ok(s) => Ok(s),
-                    Err(_) => TcpStream::connect(format!("[::1]:{}", local_port)).await,
+                // Connect to target service on 127.0.0.1 with fallback to [::1] (for IPv6-only servers like Vite).
+                // ponytail: 500ms timeout prevents holding the client suspended if local server deadlocks.
+                const LOCAL_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(500);
+                let target_stream_res = match tokio::time::timeout(
+                    LOCAL_CONNECT_TIMEOUT,
+                    TcpStream::connect(format!("127.0.0.1:{}", local_port)),
+                ).await {
+                    Ok(Ok(s)) => Ok(s),
+                    _ => match tokio::time::timeout(
+                        LOCAL_CONNECT_TIMEOUT,
+                        TcpStream::connect(format!("[::1]:{}", local_port)),
+                    ).await {
+                        Ok(Ok(s)) => Ok(s),
+                        _ => Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Target service connection timed out")),
+                    },
                 };
                 let mut target_stream = match target_stream_res {
                     Ok(stream) => stream,
@@ -636,6 +657,8 @@ pub async fn start_proxy_with_auth(
                             modified_headers.push(line.to_string());
                         } else if !is_ws_upgrade && !is_sse && lower_key == "connection" {
                             modified_headers.push("Connection: close".to_string());
+                        } else if auth_clone.is_some() && lower_key == "authorization" {
+                            // Strip gatekeeper Basic Auth credentials so they don't collide with local app auth
                         } else {
                             modified_headers.push(line.to_string());
                         }
@@ -1119,5 +1142,94 @@ mod tests {
 
         stop_proxy(Some(port)).await;
     }
+
+    #[tokio::test]
+    async fn test_authorization_header_stripped_when_tunnel_auth_active() {
+        let captured_headers = Arc::new(Mutex::new(String::new()));
+        let captured_clone = captured_headers.clone();
+
+        let target_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let target_port = target_listener.local_addr().unwrap().port();
+
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = target_listener.accept().await {
+                let captured = captured_clone.clone();
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 4096];
+                    let n = stream.read(&mut buf).await.unwrap_or(0);
+                    let raw = String::from_utf8_lossy(&buf[..n]).to_string();
+                    let mut lock = captured.lock().await;
+                    *lock = raw;
+                    let resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK";
+                    let _ = stream.write_all(resp.as_bytes()).await;
+                });
+            }
+        });
+
+        let tx = test_event_sender();
+        let proxy_port = start_proxy_with_auth(tx, target_port, Some("admin:secret123".to_string()))
+            .await
+            .unwrap();
+
+        let mut stream = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).await.unwrap();
+        // admin:secret123 -> YWRtaW46c2VjcmV0MTIz
+        stream.write_all(b"GET /api/data HTTP/1.1\r\nHost: mytunnel.proxync.dev\r\nAuthorization: Basic YWRtaW46c2VjcmV0MTIz\r\nX-Custom-Header: verified\r\n\r\n").await.unwrap();
+
+        let mut res = vec![0u8; 512];
+        let n = stream.read(&mut res).await.unwrap();
+        let res_str = String::from_utf8_lossy(&res[..n]);
+        assert!(res_str.contains("200 OK"));
+
+        let forwarded = captured_headers.lock().await.clone();
+        assert!(!forwarded.to_ascii_lowercase().contains("authorization:"), "Gatekeeper basic auth header MUST be stripped before reaching local app");
+        assert!(forwarded.contains("X-Custom-Header: verified"), "Other client headers must be forwarded");
+        assert!(forwarded.contains(&format!("Host: localhost:{}", target_port)), "Host must be normalized to target port");
+
+        stop_proxy(Some(target_port)).await;
+    }
+
+    #[tokio::test]
+    async fn test_authorization_header_preserved_when_no_tunnel_auth() {
+        let captured_headers = Arc::new(Mutex::new(String::new()));
+        let captured_clone = captured_headers.clone();
+
+        let target_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let target_port = target_listener.local_addr().unwrap().port();
+
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = target_listener.accept().await {
+                let captured = captured_clone.clone();
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 4096];
+                    let n = stream.read(&mut buf).await.unwrap_or(0);
+                    let raw = String::from_utf8_lossy(&buf[..n]).to_string();
+                    let mut lock = captured.lock().await;
+                    *lock = raw;
+                    let resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK";
+                    let _ = stream.write_all(resp.as_bytes()).await;
+                });
+            }
+        });
+
+        let tx = test_event_sender();
+        // Tunnel with NO basic auth configured
+        let proxy_port = start_proxy_with_auth(tx, target_port, None)
+            .await
+            .unwrap();
+
+        let mut stream = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).await.unwrap();
+        stream.write_all(b"GET /api/me HTTP/1.1\r\nHost: mytunnel.proxync.dev\r\nAuthorization: Bearer my_app_jwt_token_xyz\r\n\r\n").await.unwrap();
+
+        let mut res = vec![0u8; 512];
+        let n = stream.read(&mut res).await.unwrap();
+        let res_str = String::from_utf8_lossy(&res[..n]);
+        assert!(res_str.contains("200 OK"));
+
+        let forwarded = captured_headers.lock().await.clone();
+        assert!(forwarded.contains("Authorization: Bearer my_app_jwt_token_xyz"), "App authorization header MUST be preserved when tunnel auth is disabled");
+
+        stop_proxy(Some(target_port)).await;
+    }
 }
+
 

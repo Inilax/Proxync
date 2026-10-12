@@ -2,6 +2,23 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [feature/develop-tunnel-basic-auth] - 2026-10-12 (PR #276 Core Hardening: Session Teardown, Auth Stripping, Slowloris Defense & Canonical URL Resolution)
+- **Feature Summary**:
+  - **Memory & Port Leak Prevention (`packages/core/src/tunnel.rs`)**: Ensured `stop_proxy(Some(local_port))` is reliably invoked in all automated tunnel termination paths (1-hour hard cap expiration, keepalive 410 Gone reaper, and child process exit watchers for both Cloudflare and native SSH tunnels) before dispatching `TunnelAutoClosed`. Completely terminates dangling loopback proxy listeners and 1-second liveness polling loops.
+  - **Gatekeeper Auth Stripping (`packages/core/src/proxy.rs`)**: Stripped tunnel-level `Authorization: Basic ...` credentials from forwarded request headers after successful validation, preventing credential collisions and unexpected 401 errors on local services running application-specific auth (e.g. Bearer JWTs, session tokens, or local basic auth). Preserves incoming authorization headers intact when tunnel basic auth is not configured.
+  - **Slowloris DoS Protection (`packages/core/src/proxy.rs`)**: Wrapped the dynamic HTTP header reading loop with a strict 15-second timeout (`tokio::time::timeout(HEADER_READ_TIMEOUT, ...)`), responding with standard HTTP 408 Request Timeout before socket shutdown to prevent local file descriptor exhaustion and provide clean HTTP protocol semantics.
+  - **Fail-Fast Local Target Connect Timeout (`packages/core/src/proxy.rs`)**: Wrapped loopback target service connections (`127.0.0.1` and `[::1]`) in a 500ms timeout guard, immediately serving the branded 502 Bad Gateway standby page if a local service freezes or deadlocks rather than leaving external requests suspended for the OS default 30-75s connect timeout.
+  - **Robust API Endpoint Resolution (`packages/core/src/tunnel.rs`)**: Added `resolve_api_endpoint` to canonicalize backend URLs across base origins (e.g. `https://api.proxync.dev`), trailing slashes, legacy full endpoint URLs, empty/whitespace environment variable fallbacks, and custom dev origins, fixing keepalive ping failures on standard base domain configurations.
+  - **Comprehensive Rust Unit Test Coverage (`packages/core/src/proxy.rs`, `packages/core/src/tunnel.rs`)**: Added unit tests verifying `Authorization` stripping when tunnel auth is active, `Authorization` pass-through when disabled, and multi-scenario `resolve_api_endpoint` URL parsing (including empty/whitespace variables).
+- **Modified Files**:
+  - `packages/core/src/proxy.rs`
+  - `packages/core/src/tunnel.rs`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo check --manifest-path packages/core/Cargo.toml` passed with 0 errors.
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 34 tests with 0 failures.
+  - `cargo check --manifest-path packages/cli/Cargo.toml` passed with 0 errors.
+
 ## [feature/develop-tunnel-basic-auth] - 2026-10-12 (In-Memory Key Registration Sleep Optimization to 25ms)
 - **Feature Summary**:
   - **Handshake Latency Reduction (`packages/core/src/tunnel.rs`)**: Reduced pre-SSH handshake pause from 150ms to 25ms, leveraging the private gateway's sub-millisecond in-memory authentication and key absorption while providing a brief tick for socket readiness.
