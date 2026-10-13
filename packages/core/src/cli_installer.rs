@@ -116,11 +116,47 @@ fn is_desktop_binary(path: &Path, current_exe: Option<&Path>) -> bool {
             return true;
         }
     }
+
     let s = path.to_string_lossy().to_lowercase();
-    s.contains("src-tauri")
-        || s.contains("packages\\desktop")
-        || s.contains("packages/desktop")
-        || s.contains("proxync-desktop")
+    let s_norm = s.replace('\\', "/");
+    if s_norm.contains("src-tauri")
+        || s_norm.contains("packages/desktop")
+        || s_norm.contains("proxync-desktop")
+        || s_norm == "/usr/bin/proxync"
+        || s_norm == "/bin/proxync"
+        || s_norm.starts_with("/opt/proxync")
+        || s_norm.contains(".app/contents/macos")
+        || s_norm.contains("program files/proxync")
+        || s_norm.contains("program files (x86)/proxync")
+        || (s_norm.ends_with("proxync/proxync.exe") && !s_norm.contains("/bin/"))
+    {
+        return true;
+    }
+
+    // Binary content inspection: check for GUI / Tauri dependencies in the first 256 KB.
+    // Protects against cases where the desktop app was erroneously copied or symlinked into ~/.local/bin/proxync
+    if let Ok(mut f) = std::fs::File::open(path) {
+        use std::io::Read;
+        let mut buffer = [0u8; 256 * 1024];
+        if let Ok(n) = f.read(&mut buffer) {
+            let slice = &buffer[..n];
+            let gui_markers: &[&[u8]] = &[
+                b"libgtk",
+                b"webkit",
+                b"wry-",          // Tauri WebView crate dependency string; eliminates 3-byte false-positive hazard
+                b"tauri-plugin",
+                b"WebView2Loader",
+                b"com.proxync.app",
+            ];
+            for marker in gui_markers {
+                if slice.windows(marker.len()).any(|w| w.eq_ignore_ascii_case(marker)) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
 }
 
 /// Checks if the Proxync CLI binary is installed and whether it is discoverable in PATH
@@ -131,8 +167,8 @@ pub fn check_cli_status() -> CliStatus {
 
     let current_exe = std::env::current_exe().ok();
 
-    // 1. Check if it exists in the standard install directory
-    let mut binary_path = if expected_binary.is_file() {
+    // 1. Check if it exists in the standard install directory (and is NOT a copied GUI binary)
+    let mut binary_path = if expected_binary.is_file() && !is_desktop_binary(&expected_binary, current_exe.as_deref()) {
         Some(expected_binary.to_string_lossy().to_string())
     } else {
         None
@@ -162,7 +198,7 @@ pub fn check_cli_status() -> CliStatus {
     {
         // On Unix, also verify /usr/local/bin/proxync explicitly
         let usr_local = Path::new("/usr/local/bin").join(bin_name);
-        if usr_local.is_file() {
+        if usr_local.is_file() && !is_desktop_binary(&usr_local, current_exe.as_deref()) {
             in_path = true;
             if binary_path.is_none() {
                 binary_path = Some(usr_local.to_string_lossy().to_string());
@@ -170,7 +206,7 @@ pub fn check_cli_status() -> CliStatus {
         }
     }
 
-    let is_installed = expected_binary.is_file() || in_path;
+    let is_installed = binary_path.is_some();
 
     CliStatus {
         is_installed,
@@ -230,6 +266,20 @@ pub fn find_source_cli_binary() -> Option<PathBuf> {
     if let Some(ref exe_path) = current_exe {
         let mut curr: Option<&Path> = exe_path.parent();
         while let Some(parent) = curr {
+            // Never treat system root or system prefix folders as application bundle parents
+            if parent == Path::new("/") 
+                || parent == Path::new("/usr") 
+                || parent == Path::new("/usr/bin")
+                || parent == Path::new("/usr/local")
+                || parent == Path::new("/usr/local/bin")
+                || parent == Path::new("/bin")
+                || parent == Path::new("/sbin")
+                || parent.parent().is_none()
+            {
+                curr = parent.parent();
+                continue;
+            }
+
             // Check packaged app layouts:
             // Windows/Linux installed layout: <InstallDir>/bin/proxync.exe
             let sub_bin = parent.join("bin").join(bin_name);
@@ -539,7 +589,7 @@ pub async fn install_cli_to_path() -> Result<String, String> {
             std::fs::copy(&source, &destination)
                 .map_err(|e| format!("Failed to copy CLI binary to {}: {}", destination.display(), e))?;
         }
-    } else if !destination.is_file() {
+    } else if !destination.is_file() || is_desktop_binary(&destination, std::env::current_exe().ok().as_deref()) {
         // Download from GitHub Releases on demand
         let asset = get_cli_asset_name();
         let fallback_url = format!("https://github.com/Inilax/Proxync/releases/latest/download/{}", asset);
@@ -698,6 +748,15 @@ mod tests {
         assert!(is_desktop_binary(Path::new("/repo/packages/desktop/src-tauri/target/debug/proxync"), None));
         assert!(is_desktop_binary(Path::new(r"C:\bin\proxync-desktop.exe"), None));
         assert!(is_desktop_binary(Path::new("/usr/bin/proxync-desktop"), None));
+        assert!(is_desktop_binary(Path::new("/usr/bin/proxync"), None));
+        assert!(is_desktop_binary(Path::new("/bin/proxync"), None));
+        assert!(is_desktop_binary(Path::new(r"C:\Program Files\Proxync\Proxync.exe"), None));
+        assert!(is_desktop_binary(Path::new("C:/Program Files/Proxync/Proxync.exe"), None));
+        assert!(is_desktop_binary(Path::new(r"C:\Users\User\AppData\Local\Programs\Proxync\Proxync.exe"), None));
+        assert!(is_desktop_binary(Path::new("/Applications/Proxync.app/Contents/MacOS/Proxync"), None));
+        assert!(!is_desktop_binary(Path::new(r"C:\Users\User\AppData\Local\Programs\Proxync\bin\proxync.exe"), None));
+        assert!(!is_desktop_binary(Path::new("/Applications/Proxync.app/Contents/Resources/bin/proxync"), None));
+        assert!(!is_desktop_binary(Path::new("/Users/user/.local/bin/proxync"), None));
         assert!(!is_desktop_binary(Path::new(r"C:\repo\packages\cli\target\release\proxync.exe"), None));
         assert!(!is_desktop_binary(Path::new("/repo/packages/cli/target/release/proxync"), None));
     }
