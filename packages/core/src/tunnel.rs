@@ -17,6 +17,7 @@ use crate::proxy::stop_proxy;
 
 lazy_static! {
     static ref ACTIVE_TUNNELS: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>> = Arc::new(Mutex::new(HashMap::new()));
+    static ref ACTIVE_TUNNEL_SUBDOMAINS: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
     static ref SPAWNED_TUNNEL_PROCESSES: Arc<Mutex<HashMap<String, tokio::process::Child>>> = Arc::new(Mutex::new(HashMap::new()));
     static ref HTTP_CLIENT: Client = Client::builder()
         .tcp_nodelay(true)
@@ -309,6 +310,17 @@ pub async fn close_tunnel(tunnel_id: String, local_port: Option<u16>) -> Result<
         found = true;
     }
 
+    if let Some(subdomain) = ACTIVE_TUNNEL_SUBDOMAINS.lock().await.remove(&tunnel_id) {
+        tokio::spawn(async move {
+            let api_url = resolve_api_endpoint("/api/tunnel/deregister");
+            let _ = HTTP_CLIENT.post(&api_url)
+                .json(&serde_json::json!({ "subdomain": subdomain }))
+                .timeout(std::time::Duration::from_secs(3))
+                .send()
+                .await;
+        });
+    }
+
     if stop_proxy(local_port).await {
         found = true;
     }
@@ -330,6 +342,18 @@ pub async fn close_all_tunnels() -> Result<(), String> {
     for (_, mut child) in child_procs.drain() {
         //helper function Used
         kill_child_process_tree(&mut child).await;
+    }
+
+    let subs: Vec<String> = ACTIVE_TUNNEL_SUBDOMAINS.lock().await.drain().map(|(_, s)| s).collect();
+    for sub in subs {
+        tokio::spawn(async move {
+            let api_url = resolve_api_endpoint("/api/tunnel/deregister");
+            let _ = HTTP_CLIENT.post(&api_url)
+                .json(&serde_json::json!({ "subdomain": sub }))
+                .timeout(std::time::Duration::from_secs(3))
+                .send()
+                .await;
+        });
     }
 
     stop_proxy(None).await;
@@ -698,20 +722,30 @@ pub async fn open_native_tunnel(
         inject_gui_toolchain_path(&mut cmd);
     }
 
+    let key_path_str = active_key_path
+        .to_str()
+        .ok_or_else(|| "Active SSH key path contains invalid UTF-8 characters".to_string())?;
+    let known_hosts_str = known_hosts_path
+        .to_str()
+        .ok_or_else(|| "Known hosts path contains invalid UTF-8 characters".to_string())?;
+
     cmd.args(&[
-        "-i", active_key_path.to_str().unwrap(),
+        "-i", key_path_str,
         "-N",
+        "-T",
         "-o", "BatchMode=yes",
+        "-o", "ExitOnForwardFailure=yes",
         "-o", &format!("StrictHostKeyChecking={}", strict_host_checking),
-        "-o", &format!("UserKnownHostsFile={}", known_hosts_path.to_str().unwrap()),
+        "-o", &format!("UserKnownHostsFile={}", known_hosts_str),
         "-o", if cfg!(target_os = "windows") { "GlobalKnownHostsFile=NUL" } else { "GlobalKnownHostsFile=/dev/null" },
         "-o", "ServerAliveInterval=30",
         "-o", "ServerAliveCountMax=3",
         "-o", "TCPKeepAlive=yes",
+        "-o", "KexAlgorithms=curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group14-sha256",
         "-o", "Ciphers=chacha20-poly1305@openssh.com,aes128-gcm@openssh.com",
         "-o", "Compression=no",
         "-o", "ConnectTimeout=5",
-        "-o", "IPQoS=throughput",
+        "-o", "IPQoS=none",
         "-p", "2222",
         &format!("-R {}:80:127.0.0.1:{}", clean_subdomain, local_port),
         &format!("{}@{}", clean_subdomain, ssh_host),
@@ -724,7 +758,9 @@ pub async fn open_native_tunnel(
     let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn ssh: {}", e))?;
     
     // Await SSH handshake & remote forwarding bind confirmation (~1500ms).
-    // Fails fast if OpenSSH exits with an error; ensures remote routing is fully active before returning.
+    // The gateway has a 1.0s non-exec stabilization window before binding tcpip-forward.
+    // Waiting 1500ms ensures the reverse proxy route is 100% active before returning to the UI,
+    // completely preventing the "Tunnel Session Inactive" page on immediate user click.
     let start_wait = std::time::Instant::now();
     while start_wait.elapsed() < std::time::Duration::from_millis(1500) {
         if let Ok(Some(status)) = child.try_wait() {
@@ -735,6 +771,7 @@ pub async fn open_native_tunnel(
 
     let mut child_procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
     child_procs.insert(tunnel_id.clone(), child);
+    ACTIVE_TUNNEL_SUBDOMAINS.lock().await.insert(tunnel_id.clone(), clean_subdomain.clone());
 
     let is_admin_native = std::env::var("PROXYNC_API_SECRET_TOKEN")
         .ok()

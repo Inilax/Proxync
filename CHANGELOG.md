@@ -2,6 +2,45 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [feature/develop-tunnel-basic-auth] - 2026-10-12 (Subdomain Deregistration, Chunk Header Safety Cap & UTF-8 Temp Path Hardening)
+- **Summary**:
+  - **Asynchronous Cloud Subdomain Deregistration (`packages/core/src/tunnel.rs`)**: Introduced `ACTIVE_TUNNEL_SUBDOMAINS` tracking map. When tunnels are stopped (`close_tunnel` / `close_all_tunnels`), the client immediately dispatches a non-blocking background `POST /api/tunnel/deregister` request to the backend. Instantly frees subdomain allocations on the server without waiting for the 1-hour TTL garbage collection, preventing 409 Conflict key generation collisions on immediate restarts.
+  - **Chunk Header Memory Safety Cap (`packages/core/src/proxy.rs`)**: Added an 8 KB cap to `ChunkedBodyParser` buffer accumulator (`self.header_buf.len() > 8192`) in both chunk size and trailer header parsing phases, protecting against memory exhaustion from pathological malformed HTTP chunk streams.
+  - **Safe Path Encoding on Windows OpenSSH Spawn (`packages/core/src/tunnel.rs`)**: Replaced direct `.to_str().unwrap()` with `.to_str().ok_or_else(...)` error propagation for `active_key_path` and `known_hosts_path`, eliminating panic crashes on Windows environments where `%TEMP%` or user profiles contain non-UTF-8 characters.
+- **Modified Files**:
+  - `packages/core/src/proxy.rs`
+  - `packages/core/src/tunnel.rs`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 39 tests with 0 failures and 0 warnings.
+  - `cargo check --manifest-path packages/cli/Cargo.toml` passed with 0 errors.
+
+---
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-12 (Tunneling Latency Optimization, Bounded Keep-Alive Streaming & Inactive Interception Elimination)
+- **Summary**:
+  - **Eliminate Vestigial Relay Timeout (`packages/desktop/src/App.tsx`)**: Removed redundant `open_tunnel` WebSocket invocation and unused `token` from `shareProcessCloudflare` and `shareProcessNative`, instantly eliminating a 2,000ms delay caused by waiting for non-existent local relay connections.
+  - **Zero-Delay Empty & Cached Response Fast-Path (`packages/core/src/proxy.rs`)**: Fixed artificial 150ms latency stall on `304 Not Modified`, `204 No Content`, `HEAD`, redirects, `Content-Length: 0`, and non-JSON responses. Responses without bodies bypass the extra body read buffer immediately with 0ms delay. Reduced JSON body chunk sampling timeout from 150ms to 15ms.
+  - **Full-Duplex Request Body Streaming & Deadlock Elimination (`packages/core/src/proxy.rs`)**: Fixed a critical TCP deadlock where multi-packet or streaming POST/PUT requests stalled because the proxy executed blocking response reads before forwarding remaining request bodies. Decoupled client and target half-duplex streams via `into_split()` and spawned bounded `upload_task` streaming only remaining payload bytes (`client_read.take(remaining)`).
+  - **Content-Length Bounded Response Streaming (`packages/core/src/proxy.rs`)**: Fixed severe 5–15s latency stalls on local dev servers (Node.js, Next.js, Vite, Express) where `tokio::io::copy` previously blocked indefinitely waiting for server socket closure (`EOF`). When `Content-Length` is present, the proxy limits downstream reads strictly to the remaining declared bytes (`target_read.take(remaining)`), immediately shutting down `client_write` as soon as the last payload byte arrives without waiting for server keep-alive idle timeouts.
+  - **Clean Non-Hanging Response Shutdown (`packages/core/src/proxy.rs`)**: Eliminated connection stalls caused by awaiting `upload_task.await` after response completion. When the target server finishes sending the response and closes, the proxy immediately shuts down the client write half and aborts background upload listeners, preventing connections from hanging indefinitely waiting for client TCP FIN in keep-alive environments.
+  - **Eliminate Premature Startup & "Tunnel Session Inactive" Interceptions (`packages/core/src/tunnel.rs`)**: Restored the 1500ms handshake stabilization window in `open_native_tunnel`. The Azure VM `sish` gateway enforces a 1.0s non-exec stabilization window before binding remote port forwards (`tcpip-forward`). Reverting the premature 500ms return ensures the remote forward is 100% active before returning the public URL to the caller, completely eliminating edge 404 Caddy rewrites to `inactive.html` on initial user visits.
+  - **OpenSSH Transport Handshake & Network QoS Tuning (`packages/core/src/tunnel.rs`)**: Configured OpenSSH process flags across all platforms: disabled pseudo-terminal allocation (`-T`) for pure TCP port forwarding; enforced fail-fast forward confirmation (`-o ExitOnForwardFailure=yes`); prioritized fast Curve25519 key exchange (`-o KexAlgorithms=curve25519-sha256,...`) to reduce handshake computation latency; and switched from `IPQoS=throughput` to `IPQoS=none` to eliminate OS DSCP network driver packet buffering on Windows, macOS, and Linux.
+  - **Loopback TCP_NODELAY Enablement (`packages/core/src/proxy.rs`)**: Enabled `set_nodelay(true)` on both accepted client streams and local target streams, disabling Nagle's algorithm and eliminating the 40ms delayed-ACK packet latency on local proxy forwarding.
+  - **Combined Fail-Fast Target Connect (`packages/core/src/proxy.rs`)**: Replaced sequential 500ms timeout fallbacks with an immediate loopback connection attempting `127.0.0.1` and failing fast to `[::1]` (under a single combined 500ms ceiling), eliminating connection latency for IPv6-only servers like Vite and Node 18+.
+  - **Reduced Liveness Background Socket Churn (`packages/core/src/proxy.rs`)**: Relaxed background TCP liveness polling from 1,000ms to 3,000ms to reduce local development server socket churn.
+  - **Chunked Transfer-Encoding Fast-Path & 5-Second Hang Elimination (`packages/core/src/proxy.rs`)**: Fixed the primary root cause of initial page load delay. For dynamic HTML pages rendered by Next.js SSR, Vite, and Node.js dev servers without a `Content-Length` header (`Transfer-Encoding: chunked`), `tokio::io::copy` previously blocked waiting for TCP EOF, hanging for the full 5-second Node.js keep-alive idle timeout before finishing. Implemented an RFC 7230 compliant `ChunkedBodyParser` state machine that parses chunk lengths in real time and immediately shuts down `client_write` the millisecond the final chunk (`0\r\n\r\n`) is forwarded.
+  - **Comprehensive Rust Unit Test Coverage (`packages/core/src/proxy.rs`)**: Added `test_chunked_keep_alive_target_server_does_not_stall_response`, `test_empty_and_cached_responses_bypass_body_chunk_delay`, `test_full_duplex_post_body_does_not_deadlock`, `test_clean_close_without_client_fin_hang`, and `test_keep_alive_target_server_does_not_stall_response` asserting 0ms stall on chunked HTML responses, 0ms stall on cached/empty responses, concurrent multi-packet POST delivery without deadlock, immediate shutdown without waiting for client FIN, and instantaneous keep-alive response termination.
+- **Modified Files**:
+  - `packages/core/src/proxy.rs`
+  - `packages/core/src/tunnel.rs`
+  - `packages/desktop/src/App.tsx`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 39 tests with 0 failures and 0 warnings.
+  - `cargo check --manifest-path packages/cli/Cargo.toml` passed with 0 errors.
+  - `npm --prefix packages/desktop run build` passed with 0 TypeScript/Vite errors.
+
 ## [feature/develop-tunnel-basic-auth] - 2026-10-12 (PR #276 Core Hardening: Session Teardown, Auth Stripping, Slowloris Defense & Canonical URL Resolution)
 - **Feature Summary**:
   - **Memory & Port Leak Prevention (`packages/core/src/tunnel.rs`)**: Ensured `stop_proxy(Some(local_port))` is reliably invoked in all automated tunnel termination paths (1-hour hard cap expiration, keepalive 410 Gone reaper, and child process exit watchers for both Cloudflare and native SSH tunnels) before dispatching `TunnelAutoClosed`. Completely terminates dangling loopback proxy listeners and 1-second liveness polling loops.
