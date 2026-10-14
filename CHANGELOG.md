@@ -2,6 +2,21 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [fix/issue-197-eliminate-duplicate-lsof-macos] - 2026-10-14 (Eliminate Duplicate lsof Invocation on macOS via PlatformScanner Refactor)
+- **Summary**:
+  - **Eliminate Duplicate `lsof` Subprocess on macOS (`packages/core/src/recon.rs`)**: Refactored the internal `PlatformScanner::scan_processes` trait method to accept `listening_pids: Option<&[u32]>`. On macOS, `scan_processes` now reuses the listening PIDs discovered by `scan_listening_ports()` instead of spawning a redundant second `lsof -iTCP -sTCP:LISTEN` process. Preserved a safe `None` fallback to ensure standalone queries continue to function correctly (Fixes #197).
+  - **Standardized In-Place Dedup & Linear Scan Removal (`packages/core/src/recon.rs`)**: Eliminated $O(N)$ linear `.contains()` checks in `resolve_process_directory()` by collecting, sorting, and deduplicating PIDs in-place (`pids.sort_unstable(); pids.dedup();`) before querying `ps`. Standardized across `scan_ports()` and `scan_processes()` to eliminate duplicate process inspection.
+  - **Trait Contract Rustdoc & Expanded Unit Tests (`packages/core/src/recon.rs`)**: Documented the `Some(&[u32])` vs `None` contract on `PlatformScanner::scan_processes` and added cross-platform unit test coverage (`test_platform_scanner_trait_contract` and `test_macos_scanner_scan_processes_pids`).
+- **Modified Files**:
+  - `packages/core/src/recon.rs`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 40 unit tests with 0 failures.
+  - `cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml` passed with 0 errors.
+  - `cargo check --manifest-path packages/cli/Cargo.toml` passed with 0 errors.
+
+---
+
 ## [fix/develop-cli-desktop-detection] - 2026-10-14 (CLI Desktop Detection, Terminal Companion PATH Isolation & Silent Liveness Probing)
 - **Summary**:
   - **Hardened Desktop Binary Choke-Point (`packages/core/src/cli_installer.rs`)**: Resolved false-positive "In PATH" detection in Settings > Terminal Companion when only the desktop GUI is installed (`/usr/bin/proxync`, `.app/Contents/MacOS`, or `Program Files`). Added cross-platform path matching with slash normalization (`\` ➔ `/`) and binary content inspection (checking for `libgtk`, `webkit`, `wry-`, `WebView2Loader`, and `tauri-plugin`) to distinguish desktop GUI binaries from genuine terminal CLI binaries.

@@ -66,7 +66,16 @@ fn is_dev_port(port: u16) -> bool {
 
 pub trait PlatformScanner: Send + Sync {
     fn scan_listening_ports(&self) -> (HashMap<u16, u32>, HashMap<u32, Vec<u16>>);
-    fn scan_processes(&self) -> HashMap<u32, RawProcess>;
+    /// Scans processes and inspects their execution metadata.
+    ///
+    /// # Arguments
+    /// * `listening_pids` - Optional slice of already discovered listening process IDs.
+    ///   - `Some(pids)`: Used by platforms (such as macOS) to query process information
+    ///     directly via `ps`/proc APIs without re-invoking port discovery (`lsof`),
+    ///     eliminating redundant subprocess spawns (Issue #197).
+    ///   - `None`: Instructs the scanner to perform a self-contained discovery of listening
+    ///     processes (or a full proc scan on platforms like Linux).
+    fn scan_processes(&self, listening_pids: Option<&[u32]>) -> HashMap<u32, RawProcess>;
     fn get_process_cwd(&self, pid: u32) -> Option<String>;
 }
 
@@ -122,7 +131,7 @@ impl PlatformScanner for LinuxScanner {
         (port_to_pid, pid_to_ports)
     }
 
-    fn scan_processes(&self) -> HashMap<u32, RawProcess> {
+    fn scan_processes(&self, _listening_pids: Option<&[u32]>) -> HashMap<u32, RawProcess> {
         let mut map = HashMap::new();
         let entries = match std::fs::read_dir("/proc") {
             Ok(e) => e,
@@ -384,7 +393,7 @@ impl PlatformScanner for WindowsScanner {
         (port_to_pid, pid_to_ports)
     }
 
-    fn scan_processes(&self) -> HashMap<u32, RawProcess> {
+    fn scan_processes(&self, _listening_pids: Option<&[u32]>) -> HashMap<u32, RawProcess> {
         let mut map = HashMap::new();
         let ps_cmd = "$procs = Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name, ExecutablePath, CommandLine; $procs | ConvertTo-Json -Depth 2";
 
@@ -503,13 +512,15 @@ impl PlatformScanner for MacOsScanner {
         (port_to_pid, pid_to_ports)
     }
 
-    fn scan_processes(&self) -> HashMap<u32, RawProcess> {
-        // ponytail: scan_listening_ports() is called again here to build the PID list.
-        // This means callers that call both scan_listening_ports() + scan_processes()
-        // run lsof twice. A future refactor should accept &HashMap<u16,u32> as input
-        // (changing the PlatformScanner trait) to eliminate the duplicate invocation.
-        let (port_to_pid, _) = self.scan_listening_ports();
-        let mut pids: Vec<u32> = port_to_pid.values().copied().collect();
+    fn scan_processes(&self, listening_pids: Option<&[u32]>) -> HashMap<u32, RawProcess> {
+        // Issue #197: Use caller-provided listening PIDs when available to eliminate duplicate lsof invocation.
+        let mut pids: Vec<u32> = match listening_pids {
+            Some(slice) => slice.to_vec(),
+            None => {
+                let (port_to_pid, _) = self.scan_listening_ports();
+                port_to_pid.values().copied().collect()
+            }
+        };
         pids.sort_unstable();
         pids.dedup();
 
@@ -661,7 +672,7 @@ impl PlatformScanner for FallbackScanner {
         (port_to_pid, pid_to_ports)
     }
 
-    fn scan_processes(&self) -> HashMap<u32, RawProcess> {
+    fn scan_processes(&self, _listening_pids: Option<&[u32]>) -> HashMap<u32, RawProcess> {
         HashMap::new()
     }
 
@@ -673,10 +684,13 @@ impl PlatformScanner for FallbackScanner {
 pub async fn scan_ports() -> Result<Vec<u16>, String> {
     tokio::task::spawn_blocking(|| {
         let scanner = get_platform_scanner();
-        // Call scan_listening_ports once; scan_processes will use the same
-        // port snapshot internally — no duplicate lsof invocations at caller level.
+        // Call scan_listening_ports once and forward listening PIDs into scan_processes,
+        // eliminating duplicate lsof invocations on macOS (Issue #197).
         let (port_to_pid, _) = scanner.scan_listening_ports();
-        let all_procs = scanner.scan_processes();
+        let mut pids: Vec<u32> = port_to_pid.values().copied().collect();
+        pids.sort_unstable();
+        pids.dedup();
+        let all_procs = scanner.scan_processes(Some(&pids));
         let mut ports: Vec<u16> = Vec::new();
         for (port, pid) in port_to_pid {
             let proc_opt = all_procs.get(&pid);
@@ -1316,7 +1330,11 @@ pub async fn resolve_process_directory(port: u16, pid: Option<u32>) -> Result<St
         let target_pid = pid.or_else(|| port_to_pid.get(&port).copied());
 
         if let Some(pid_val) = target_pid {
-            let all_procs = scanner.scan_processes();
+            let mut pids: Vec<u32> = port_to_pid.values().copied().collect();
+            pids.push(pid_val);
+            pids.sort_unstable();
+            pids.dedup();
+            let all_procs = scanner.scan_processes(Some(&pids));
             if let Some(proc) = all_procs.get(&pid_val) {
                 let resolved = resolve_directory_in_memory(proc, &all_procs);
                 if resolved != "unknown" {
@@ -1337,7 +1355,12 @@ pub async fn resolve_process_directory(port: u16, pid: Option<u32>) -> Result<St
 pub async fn scan_processes(bypass_cache: bool) -> Result<Vec<ProcessCandidate>, String> {
     let (port_to_pid, all_procs) = tokio::task::spawn_blocking(|| {
         let scanner = get_platform_scanner();
-        (scanner.scan_listening_ports().0, scanner.scan_processes())
+        let (p2p, _) = scanner.scan_listening_ports();
+        let mut pids: Vec<u32> = p2p.values().copied().collect();
+        pids.sort_unstable();
+        pids.dedup();
+        let procs = scanner.scan_processes(Some(&pids));
+        (p2p, procs)
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -1615,7 +1638,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     fn test_linux_scanner_self_process() {
         let scanner = get_platform_scanner();
-        let procs = scanner.scan_processes();
+        let procs = scanner.scan_processes(None);
         let self_pid = std::process::id();
         assert!(procs.contains_key(&self_pid), "Scanner should find current process");
 
@@ -1836,4 +1859,49 @@ mod tests {
         assert!(is_system_process_name("Google Chrome"));
         assert!(is_system_process_name("Visual Studio Code"));
     }
+
+    struct MockScanner;
+    impl PlatformScanner for MockScanner {
+        fn scan_listening_ports(&self) -> (HashMap<u16, u32>, HashMap<u32, Vec<u16>>) {
+            (HashMap::new(), HashMap::new())
+        }
+        fn scan_processes(&self, listening_pids: Option<&[u32]>) -> HashMap<u32, RawProcess> {
+            let mut map = HashMap::new();
+            if let Some(pids) = listening_pids {
+                for &pid in pids {
+                    map.insert(pid, RawProcess {
+                        pid,
+                        parent_pid: None,
+                        name: format!("mock-{pid}"),
+                        exec_path: None,
+                        cmd_line: None,
+                    });
+                }
+            }
+            map
+        }
+        fn get_process_cwd(&self, _pid: u32) -> Option<String> {
+            None
+        }
+    }
+
+    #[test]
+    fn test_platform_scanner_trait_contract() {
+        let scanner = MockScanner;
+        assert!(scanner.scan_processes(None).is_empty());
+        let procs = scanner.scan_processes(Some(&[100, 200]));
+        assert_eq!(procs.len(), 2);
+        assert!(procs.contains_key(&100));
+        assert!(procs.contains_key(&200));
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_macos_scanner_scan_processes_pids() {
+        let scanner = MacOsScanner;
+        let self_pid = std::process::id();
+        let procs = scanner.scan_processes(Some(&[self_pid]));
+        assert!(procs.contains_key(&self_pid), "MacOsScanner should find current process when PID passed");
+    }
 }
+
