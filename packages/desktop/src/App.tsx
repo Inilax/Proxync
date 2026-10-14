@@ -2956,8 +2956,35 @@ export default function App() {
         e.preventDefault();
       }
     };
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (appSettings.enableDevTools) return;
+
+      const isF12 = e.key === 'F12' || e.code === 'F12';
+      const key = e.key?.toLowerCase();
+      const isInspectKey =
+        key === 'i' ||
+        key === 'j' ||
+        key === 'c' ||
+        e.code === 'KeyI' ||
+        e.code === 'KeyJ' ||
+        e.code === 'KeyC';
+      const isDevToolsCombo =
+        (e.ctrlKey && e.shiftKey) ||
+        (e.metaKey && (e.altKey || e.shiftKey));
+
+      if (isF12 || (isDevToolsCombo && isInspectKey)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
     window.addEventListener('contextmenu', handleGlobalContextMenu);
-    return () => window.removeEventListener('contextmenu', handleGlobalContextMenu);
+    window.addEventListener('keydown', handleGlobalKeyDown, { capture: true });
+    return () => {
+      window.removeEventListener('contextmenu', handleGlobalContextMenu);
+      window.removeEventListener('keydown', handleGlobalKeyDown, { capture: true });
+    };
   }, [appSettings.enableDevTools]);
 
   /* ══════════════════════════════════════════════

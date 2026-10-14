@@ -2,6 +2,17 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [feature/develop-devtools-keyboard-guard] - 2026-10-13 (Developer Inspect Tools Keyboard Shortcut Interception)
+- **Summary**:
+  - **DevTools Keyboard Shortcut Guard (`packages/desktop/src/App.tsx`)**: Extended `useEffect` for `appSettings.enableDevTools` with a global capturing `keydown` listener. When Developer Inspect Tools is disabled (`!appSettings.enableDevTools`), intercepts `Ctrl+Shift+I`, `Ctrl+Shift+J`, `Ctrl+Shift+C`, `F12`, and macOS equivalents (`Cmd+Option+I/J/C`, `Cmd+Shift+I/J/C`) with `e.preventDefault()` and `e.stopPropagation()`. Prevents bypassing the disabled state via keyboard shortcuts (Fixes #275).
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `npm --prefix packages/desktop run build` passed with 0 TypeScript/Vite errors.
+
+---
+
 ## [feature/develop-tunnel-basic-auth] - 2026-10-12 (Subdomain Deregistration, Chunk Header Safety Cap & UTF-8 Temp Path Hardening)
 - **Summary**:
   - **Asynchronous Cloud Subdomain Deregistration (`packages/core/src/tunnel.rs`)**: Introduced `ACTIVE_TUNNEL_SUBDOMAINS` tracking map. When tunnels are stopped (`close_tunnel` / `close_all_tunnels`), the client immediately dispatches a non-blocking background `POST /api/tunnel/deregister` request to the backend. Instantly frees subdomain allocations on the server without waiting for the 1-hour TTL garbage collection, preventing 409 Conflict key generation collisions on immediate restarts.
