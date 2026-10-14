@@ -16,6 +16,15 @@ All notable changes to the Proxync workspace studio project are documented here.
   - `cargo test --manifest-path packages/core/Cargo.toml` passed all 47 unit tests.
   - `cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml` passed with 0 errors.
   - `cargo check --manifest-path packages/cli/Cargo.toml` passed with 0 errors.
+  - 
+## [feature/develop-devtools-keyboard-guard] - 2026-10-13 (Developer Inspect Tools Keyboard Shortcut Interception)
+- **Summary**:
+  - **DevTools Keyboard Shortcut Guard (`packages/desktop/src/App.tsx`)**: Extended `useEffect` for `appSettings.enableDevTools` with a global capturing `keydown` listener. When Developer Inspect Tools is disabled (`!appSettings.enableDevTools`), intercepts `Ctrl+Shift+I`, `Ctrl+Shift+J`, `Ctrl+Shift+C`, `F12`, and macOS equivalents (`Cmd+Option+I/J/C`, `Cmd+Shift+I/J/C`) with `e.preventDefault()` and `e.stopPropagation()`. Prevents bypassing the disabled state via keyboard shortcuts (Fixes #275).
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `npm --prefix packages/desktop run build` passed with 0 TypeScript/Vite errors.
 
 ---
 
