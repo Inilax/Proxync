@@ -2,6 +2,21 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [fix/develop-cli-desktop-detection] - 2026-10-14 (CLI Desktop Detection, Terminal Companion PATH Isolation & Silent Liveness Probing)
+- **Summary**:
+  - **Hardened Desktop Binary Choke-Point (`packages/core/src/cli_installer.rs`)**: Resolved false-positive "In PATH" detection in Settings > Terminal Companion when only the desktop GUI is installed (`/usr/bin/proxync`, `.app/Contents/MacOS`, or `Program Files`). Added cross-platform path matching with slash normalization (`\` ➔ `/`) and binary content inspection (checking for `libgtk`, `webkit`, `wry-`, `WebView2Loader`, and `tauri-plugin`) to distinguish desktop GUI binaries from genuine terminal CLI binaries.
+  - **Accurate CLI Installation Status (`packages/core/src/cli_installer.rs`)**: Updated `check_cli_status()` so `is_installed` reflects whether an authentic CLI binary actually exists in standard dirs or `$PATH`, skipping desktop binaries.
+  - **Safe Traversal & Self-Healing Installer (`packages/core/src/cli_installer.rs`)**: Pruned `find_source_cli_binary()` parent directory traversal at system roots and prefix directories (`/`, `/usr`, `/usr/bin`, `/usr/local`, `/usr/local/bin`, `/bin`, `/sbin`, and drive roots). Enhanced `install_cli_to_path()` fallback to overwrite contaminated desktop binaries in `~/.local/bin/proxync` with the authentic release CLI downloaded from GitHub releases.
+  - **Silent Process Liveness Probing (`packages/core/src/registry.rs`)**: Routed `stdout` and `stderr` to `Stdio::null()` in `is_process_alive()` during Unix `kill -0` checks, eliminating cosmetic `kill: No such process` stderr noise on terminal when verifying terminated processes during `proxync stop`.
+- **Modified Files**:
+  - `packages/core/src/cli_installer.rs`
+  - `packages/core/src/registry.rs`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 47 unit tests.
+  - `cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml` passed with 0 errors.
+  - `cargo check --manifest-path packages/cli/Cargo.toml` passed with 0 errors.
+  - 
 ## [feature/develop-devtools-keyboard-guard] - 2026-10-13 (Developer Inspect Tools Keyboard Shortcut Interception)
 - **Summary**:
   - **DevTools Keyboard Shortcut Guard (`packages/desktop/src/App.tsx`)**: Extended `useEffect` for `appSettings.enableDevTools` with a global capturing `keydown` listener. When Developer Inspect Tools is disabled (`!appSettings.enableDevTools`), intercepts `Ctrl+Shift+I`, `Ctrl+Shift+J`, `Ctrl+Shift+C`, `F12`, and macOS equivalents (`Cmd+Option+I/J/C`, `Cmd+Shift+I/J/C`) with `e.preventDefault()` and `e.stopPropagation()`. Prevents bypassing the disabled state via keyboard shortcuts (Fixes #275).
