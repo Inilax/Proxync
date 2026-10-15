@@ -2,6 +2,26 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [fix/issue-291-serve-discovery] - 2026-10-16 (Resolve Proxync Serve Discovery in Scan, Port Range Expansion & Cache Invalidation)
+- **Summary**:
+  - **Proxync Serve Discovery in Recon Engine (`packages/core/src/recon.rs`)**: Added dedicated `detect_framework()` and `classify_process()` support recognizing `proxync serve` commands as `"Proxync Static Server"`. Differentiated active static servers from system tunnels (`proxync tunnel`) to ensure developer servers surface cleanly in `proxync scan`.
+  - **Dev Port Boundary Expansion (`packages/core/src/recon.rs`)**: Expanded `is_dev_port()` range from `49151` to `65535` while preserving exclusions for Windows dynamic RPC ports (`49152..=49157`), allowing modern frameworks and ephemeral serve listeners in high port ranges to be detected.
+  - **Internal Ephemeral Proxy Port Deduplication (`packages/core/src/recon.rs`)**: Filtered out secondary internal proxy ports assigned during tunnel establishment by checking `registry::read_registry()` against active tunnel PIDs, preventing dual-port ghost listings for single `proxync` processes.
+  - **Positional Command-Line Directory Resolver (`packages/core/src/recon.rs`)**: Implemented `resolve_proxync_serve_directory()` to accurately extract target directories from command-line arguments while stripping flags, normalizing paths, and stripping Windows UNC `\\?\` prefixes without fragile parent-root walk-ups.
+  - **Smart Port Fallback & Response Header Hardening (`packages/cli/src/commands/serve.rs`)**: Added intelligent dev port waterfall (`8000`, `3000`, `5000`, `8080`, `5173`, `4000`, `8888`) prior to ephemeral port binding. Injected explicit `Content-Type: text/plain; charset=utf-8` and `Cache-Control: no-store, no-cache, must-revalidate, max-age=0` headers across all responses to prevent edge CDN caching and resolve Caddy #239 passthrough interception (Fixes #291 Part 1).
+- **Modified Files**:
+  - `packages/core/src/recon.rs`
+  - `packages/cli/src/commands/serve.rs`
+  - `CHANGELOG.md`
+  - `.agents/changelog.json`
+- **Verification**:
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 41 unit tests.
+  - `cargo test --manifest-path packages/cli/Cargo.toml` passed all 34 unit tests.
+  - `cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml` passed with 0 errors.
+  - Live verified `proxync scan` and edge curl against `proxync-testing/serve-test`.
+
+---
+
 ## [fix/issue-197-eliminate-duplicate-lsof-macos] - 2026-10-14 (Eliminate Duplicate lsof Invocation on macOS via PlatformScanner Refactor)
 - **Summary**:
   - **Eliminate Duplicate `lsof` Subprocess on macOS (`packages/core/src/recon.rs`)**: Refactored the internal `PlatformScanner::scan_processes` trait method to accept `listening_pids: Option<&[u32]>`. On macOS, `scan_processes` now reuses the listening PIDs discovered by `scan_listening_ports()` instead of spawning a redundant second `lsof -iTCP -sTCP:LISTEN` process. Preserved a safe `None` fallback to ensure standalone queries continue to function correctly (Fixes #197).

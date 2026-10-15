@@ -63,12 +63,34 @@ pub async fn handle_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Err
 
     use tokio::net::TcpListener;
 
-    let addr = format!("127.0.0.1:{}", args.port);
-    let listener = match TcpListener::bind(&addr).await {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("\x1b[1;31m[!] Error: Failed to bind static server on {}: {}\x1b[0m", addr, e);
-            return Err(e.into());
+    let listener = if args.port > 0 {
+        let addr = format!("127.0.0.1:{}", args.port);
+        match TcpListener::bind(&addr).await {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("\x1b[1;31m[!] Error: Failed to bind static server on {}: {}\x1b[0m", addr, e);
+                return Err(e.into());
+            }
+        }
+    } else {
+        // Attempt standard dev ports before falling back to ephemeral port 0
+        let candidate_ports = [8000, 3000, 5000, 8080, 5173, 4000, 8888];
+        let mut bound = None;
+        for &cand in &candidate_ports {
+            if let Ok(l) = TcpListener::bind(format!("127.0.0.1:{}", cand)).await {
+                bound = Some(l);
+                break;
+            }
+        }
+        match bound {
+            Some(l) => l,
+            None => match TcpListener::bind("127.0.0.1:0").await {
+                Ok(l) => l,
+                Err(e) => {
+                    eprintln!("\x1b[1;31m[!] Error: Failed to bind static server on ephemeral port: {}\x1b[0m", e);
+                    return Err(e.into());
+                }
+            },
         }
     };
     let local_port = listener.local_addr()?.port();
@@ -100,7 +122,7 @@ pub async fn handle_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Err
                 let raw_path = parts.next().unwrap_or("/");
 
                 if method != "GET" && method != "HEAD" {
-                    let res = "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n";
+                    let res = "HTTP/1.1 405 Method Not Allowed\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 0\r\nCache-Control: no-store, no-cache, must-revalidate, max-age=0\r\nPragma: no-cache\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n";
                     let _ = socket.write_all(res.as_bytes()).await;
                     return;
                 }
@@ -118,14 +140,14 @@ pub async fn handle_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Err
                 let canon_target = match target_file.canonicalize() {
                     Ok(p) => p,
                     Err(_) => {
-                        let res = "HTTP/1.1 404 Not Found\r\nContent-Length: 13\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n404 Not Found";
+                        let res = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 13\r\nCache-Control: no-store, no-cache, must-revalidate, max-age=0\r\nPragma: no-cache\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n404 Not Found";
                         let _ = socket.write_all(res.as_bytes()).await;
                         return;
                     }
                 };
 
                 if !canon_target.starts_with(&root) {
-                    let res = "HTTP/1.1 403 Forbidden\r\nContent-Length: 13\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n403 Forbidden";
+                    let res = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 13\r\nCache-Control: no-store, no-cache, must-revalidate, max-age=0\r\nPragma: no-cache\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n403 Forbidden";
                     let _ = socket.write_all(res.as_bytes()).await;
                     return;
                 }
@@ -134,7 +156,7 @@ pub async fn handle_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Err
                 const MAX_SINGLE_FILE_SIZE: u64 = 50 * 1024 * 1024; // 50MB
                 if let Ok(meta) = canon_target.metadata() {
                     if meta.len() > MAX_SINGLE_FILE_SIZE && !allow_large {
-                        let res = "HTTP/1.1 413 Payload Too Large\r\nContent-Length: 72\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n413 Payload Too Large (File exceeds 50MB cap. Pass --allow-large to host).";
+                        let res = "HTTP/1.1 413 Payload Too Large\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 72\r\nCache-Control: no-store, no-cache, must-revalidate, max-age=0\r\nPragma: no-cache\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n413 Payload Too Large (File exceeds 50MB cap. Pass --allow-large to host).";
                         let _ = socket.write_all(res.as_bytes()).await;
                         return;
                     }
@@ -144,7 +166,7 @@ pub async fn handle_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Err
                     Ok(contents) => {
                         let mime = guess_mime_type(&canon_target);
                         let header = format!(
-                            "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n",
+                            "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\nCache-Control: no-store, no-cache, must-revalidate, max-age=0\r\nPragma: no-cache\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n",
                             mime,
                             contents.len()
                         );
@@ -154,7 +176,7 @@ pub async fn handle_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Err
                         }
                     }
                     Err(_) => {
-                        let res = "HTTP/1.1 404 Not Found\r\nContent-Length: 13\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n404 Not Found";
+                        let res = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 13\r\nCache-Control: no-store, no-cache, must-revalidate, max-age=0\r\nPragma: no-cache\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n404 Not Found";
                         let _ = socket.write_all(res.as_bytes()).await;
                     }
                 }

@@ -55,7 +55,7 @@ fn is_dev_port(port: u16) -> bool {
     // Exclude well-known system, RPC, mDNS, CUPS, and common non-dev ports
     match port {
         111 | 135 | 136 | 137 | 138 | 139 | 445 | 631 | 2869 | 5040 | 5353 | 6463 | 5357 | 49152..=49157 => false,
-        80 | 443 | 1024..=49151 => true,
+        80 | 443 | 1024..=65535 => true,
         _ => false,
     }
 }
@@ -691,11 +691,22 @@ pub async fn scan_ports() -> Result<Vec<u16>, String> {
         pids.sort_unstable();
         pids.dedup();
         let all_procs = scanner.scan_processes(Some(&pids));
+        let active_tunnels = crate::registry::read_registry();
         let mut ports: Vec<u16> = Vec::new();
         for (port, pid) in port_to_pid {
             let proc_opt = all_procs.get(&pid);
             let name = proc_opt.map(|p| p.name.as_str()).unwrap_or("");
             let cmd = proc_opt.and_then(|p| p.cmd_line.as_deref());
+
+            // If a proxync process has an active tunnel, skip its internal proxy port
+            if name.to_lowercase().contains("proxync") {
+                if let Some(t) = active_tunnels.iter().find(|t| t.pid == pid) {
+                    if port != t.port {
+                        continue;
+                    }
+                }
+            }
+
             if !is_system_process_name(name) && !is_infra_process_name(name) {
                 if let ProcessType::Dev { .. } = classify_process(name, cmd) {
                     ports.push(port);
@@ -823,6 +834,8 @@ fn detect_framework(cmd_line: &str) -> Option<String> {
         Some("Python HTTP Server".to_string())
     } else if lower.contains("spring-boot") || lower.contains("springframework") {
         Some("Spring Boot App".to_string())
+    } else if (lower.contains("proxync") || lower.contains("proxync-cli")) && lower.contains("serve") {
+        Some("Proxync Static Server".to_string())
     } else if lower.contains("express") || lower.contains("server.js") || lower.contains("app.js") || lower.contains("index.js") || lower.contains("server.ts") {
         Some("Node.js / Express".to_string())
     } else {
@@ -904,7 +917,15 @@ fn classify_process(name: &str, cmd_line: Option<&str>) -> ProcessType {
     } else if lower_name.starts_with("dotnet") {
         ".NET"
     } else if lower_name.starts_with("proxync") {
-        "Proxync"
+        if let Some(cmd) = cmd_line {
+            if cmd.to_lowercase().contains("serve") {
+                return ProcessType::Dev {
+                    runtime: "Proxync".to_string(),
+                    framework: Some("Proxync Static Server".to_string()),
+                };
+            }
+        }
+        return ProcessType::SystemOrUnknown;
     } else if let Some(cmd) = cmd_line {
         if let Some(fw) = detect_framework(cmd) {
             return ProcessType::Dev {
@@ -1226,10 +1247,107 @@ mod win_peb {
     }
 }
 
+pub(crate) fn resolve_proxync_serve_directory(
+    cmd_line: Option<&str>,
+    proc_cwd: Option<&str>,
+) -> Option<String> {
+    let cmd = cmd_line?;
+    let tokens = tokenize_cmd(cmd);
+
+    // Find "serve" subcommand
+    let serve_idx = tokens.iter().position(|t| {
+        let l = t.to_lowercase();
+        l == "serve" || l.ends_with("/serve") || l.ends_with("\\serve")
+    })?;
+
+    // Look for positional path argument after "serve"
+    let mut target_path = None;
+    let mut skip_next = false;
+
+    for token in tokens.iter().skip(serve_idx + 1) {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+
+        // Handle options with values: --port <val>, -p <val>, etc.
+        if token == "--port"
+            || token == "-p"
+            || token == "--provider"
+            || token == "--basic-auth"
+            || token == "--expires"
+            || token == "--token"
+            || token == "--workspace"
+            || token == "--relay-url"
+        {
+            skip_next = true;
+            continue;
+        }
+
+        // Handle inline flags with =
+        if token.starts_with("--port=")
+            || token.starts_with("-p=")
+            || token.starts_with("--provider=")
+            || token.starts_with("--basic-auth=")
+            || token.starts_with("--expires=")
+        {
+            continue;
+        }
+
+        // Handle boolean flags
+        if token.starts_with('-') {
+            continue;
+        }
+
+        // First non-flag argument after "serve" is the path
+        target_path = Some(token.as_str());
+        break;
+    }
+
+    let effective_path = match target_path {
+        Some(p) if p != "." && p != "./" && p != ".\\" => p,
+        _ => {
+            // Default to CWD if "." or omitted
+            return proc_cwd.map(|c| c.trim_end_matches('\\').trim_end_matches('/').to_string());
+        }
+    };
+
+    let path = std::path::Path::new(effective_path);
+    if path.is_absolute() {
+        if let Ok(canon) = std::fs::canonicalize(path) {
+            let s = canon.to_string_lossy().to_string();
+            return Some(s.trim_start_matches(r"\\?\").to_string());
+        }
+        return Some(effective_path.trim_end_matches('\\').trim_end_matches('/').to_string());
+    }
+
+    if let Some(cwd) = proc_cwd {
+        let combined = std::path::Path::new(cwd).join(path);
+        if let Ok(canon) = std::fs::canonicalize(&combined) {
+            let s = canon.to_string_lossy().to_string();
+            return Some(s.trim_start_matches(r"\\?\").to_string());
+        }
+        return Some(combined.to_string_lossy().trim_end_matches('\\').trim_end_matches('/').to_string());
+    }
+
+    Some(effective_path.trim_end_matches('\\').trim_end_matches('/').to_string())
+}
+
 fn resolve_directory_in_memory(
     proc: &RawProcess,
     all_procs: &HashMap<u32, RawProcess>,
 ) -> String {
+    // Stage -1: Dedicated high-precision resolution for Proxync Static Server instances
+    if let Some(cmd) = proc.cmd_line.as_deref() {
+        let lower = cmd.to_lowercase();
+        if lower.contains("serve") && (lower.contains("proxync") || proc.name.to_lowercase().contains("proxync")) {
+            let proc_cwd = get_platform_scanner().get_process_cwd(proc.pid);
+            if let Some(served_dir) = resolve_proxync_serve_directory(Some(cmd), proc_cwd.as_deref()) {
+                return served_dir;
+            }
+        }
+    }
+
     // Stage 0: Direct Process CWD via OS PEB / /proc inspection (primary high-precision resolver)
     if let Some(cwd) = get_platform_scanner().get_process_cwd(proc.pid) {
         let path = std::path::Path::new(&cwd);
@@ -1404,11 +1522,21 @@ pub async fn scan_processes(bypass_cache: bool) -> Result<Vec<ProcessCandidate>,
         Vec::new()
     } else {
         tokio::task::spawn_blocking(move || {
+            let active_tunnels = crate::registry::read_registry();
             let mut results = Vec::new();
             for (port, pid) in to_process {
                 let proc_opt = all_procs.get(&pid);
                 let proc_name = proc_opt.map(|p| p.name.as_str()).unwrap_or("Development server");
                 let cmd_line = proc_opt.and_then(|p| p.cmd_line.as_deref());
+
+                // If a proxync process has an active tunnel, skip its internal proxy port
+                if proc_name.to_lowercase().contains("proxync") {
+                    if let Some(t) = active_tunnels.iter().find(|t| t.pid == pid) {
+                        if port != t.port {
+                            continue;
+                        }
+                    }
+                }
 
                 let (_runtime_label, framework_label) = match classify_process(proc_name, cmd_line) {
                     ProcessType::Dev { runtime, framework } => {
@@ -1557,6 +1685,7 @@ mod tests {
         assert!(!is_dev_port(631));
         assert!(!is_dev_port(5353));
         assert!(!is_dev_port(49152));
+        assert!(!is_dev_port(49157));
 
         // Allowed dev ports
         assert!(is_dev_port(80));
@@ -1565,6 +1694,9 @@ mod tests {
         assert!(is_dev_port(5173));
         assert!(is_dev_port(8000));
         assert!(is_dev_port(8080));
+        assert!(is_dev_port(49158));
+        assert!(is_dev_port(50000));
+        assert!(is_dev_port(65535));
     }
 
     #[test]
@@ -1586,6 +1718,9 @@ mod tests {
         assert_eq!(detect_framework("python3 -m uvicorn main:app").as_deref(), Some("FastAPI App"));
         assert_eq!(detect_framework("node server.js").as_deref(), Some("Node.js / Express"));
         assert_eq!(detect_framework("next dev").as_deref(), Some("Next.js App"));
+        assert_eq!(detect_framework("proxync serve .").as_deref(), Some("Proxync Static Server"));
+        assert_eq!(detect_framework("proxync.exe serve ./public").as_deref(), Some("Proxync Static Server"));
+        assert_eq!(detect_framework("proxync serve --port 8080").as_deref(), Some("Proxync Static Server"));
         assert_eq!(detect_framework("unknown_tool").as_deref(), None);
     }
 
@@ -1623,6 +1758,32 @@ mod tests {
             _ => panic!("Expected Dev process for node"),
         }
 
+        match classify_process("proxync", Some("proxync serve .")) {
+            ProcessType::Dev { runtime, framework } => {
+                assert_eq!(runtime, "Proxync");
+                assert_eq!(framework.as_deref(), Some("Proxync Static Server"));
+            }
+            _ => panic!("Expected Dev process for proxync serve"),
+        }
+
+        match classify_process("proxync.exe", Some("proxync.exe serve --port 8080 ./dist")) {
+            ProcessType::Dev { runtime, framework } => {
+                assert_eq!(runtime, "Proxync");
+                assert_eq!(framework.as_deref(), Some("Proxync Static Server"));
+            }
+            _ => panic!("Expected Dev process for proxync.exe serve"),
+        }
+
+        match classify_process("proxync", Some("proxync tunnel 3000")) {
+            ProcessType::SystemOrUnknown => {}
+            _ => panic!("Expected SystemOrUnknown for proxync tunnel"),
+        }
+
+        match classify_process("proxync.exe", None) {
+            ProcessType::SystemOrUnknown => {}
+            _ => panic!("Expected SystemOrUnknown for bare proxync.exe"),
+        }
+
         match classify_process("cupsd", None) {
             ProcessType::SystemOrUnknown => {}
             _ => panic!("Expected SystemOrUnknown for cupsd"),
@@ -1632,6 +1793,31 @@ mod tests {
             ProcessType::Infra { name } => assert_eq!(name, "docker"),
             _ => panic!("Expected Infra for docker"),
         }
+    }
+
+    #[test]
+    fn test_resolve_proxync_serve_directory() {
+        // Case 1: Default to CWD when path is "." or omitted
+        let dir = resolve_proxync_serve_directory(Some("proxync serve ."), Some("/workspace/project"));
+        assert_eq!(dir.as_deref(), Some("/workspace/project"));
+
+        let dir_dot_slash = resolve_proxync_serve_directory(Some("proxync serve ./"), Some("/workspace/project"));
+        assert_eq!(dir_dot_slash.as_deref(), Some("/workspace/project"));
+
+        let dir_omit = resolve_proxync_serve_directory(Some("proxync serve"), Some("/workspace/project"));
+        assert_eq!(dir_omit.as_deref(), Some("/workspace/project"));
+
+        // Case 2: Positional path after flags
+        let dir_flags = resolve_proxync_serve_directory(Some("proxync serve --port 8080 ./public"), Some("/workspace/project"));
+        assert!(dir_flags.is_some());
+        let df = dir_flags.unwrap();
+        assert!(df.contains("public"));
+
+        // Case 3: Flag with equals
+        let dir_eq = resolve_proxync_serve_directory(Some("proxync serve --port=5000 dist"), Some("/workspace/project"));
+        assert!(dir_eq.is_some());
+        let de = dir_eq.unwrap();
+        assert!(de.contains("dist"));
     }
 
     #[test]
