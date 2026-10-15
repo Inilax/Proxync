@@ -1,6 +1,6 @@
 use crate::args::{ServeArgs, TunnelArgs};
 use crate::commands::tunnel::handle_tunnel;
-use crate::ui::{calculate_dir_size, get_home_dir, guess_mime_type};
+use crate::ui::{calculate_dir_size_with_cap, get_home_dir, guess_mime_type};
 use std::path::PathBuf;
 
 pub async fn handle_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>> {
@@ -49,9 +49,8 @@ pub async fn handle_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Err
 
     // Guard 3: Directory Size Cap (1GB maximum default)
     if !args.allow_large {
-        println!("Checking directory size for safe hosting...");
-        let total_bytes = calculate_dir_size(&abs_dir, 0, 8);
         const MAX_DIR_SIZE: u64 = 1024 * 1024 * 1024; // 1 GB
+        let total_bytes = calculate_dir_size_with_cap(&abs_dir, 0, 8, MAX_DIR_SIZE + 1);
         if total_bytes > MAX_DIR_SIZE {
             let size_mb = total_bytes / (1024 * 1024);
             eprintln!("\x1b[1;31m[!] Error: Directory size ({} MB) exceeds the 1 GB safety cap for static hosting.\x1b[0m", size_mb);

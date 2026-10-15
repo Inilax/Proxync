@@ -512,5 +512,55 @@ mod tests {
         let _ = guard.is_active();
         drop(guard);
     }
+
+    #[test]
+    fn test_calculate_dir_size_with_cap_ignores_dirs_and_early_exits() {
+        use crate::ui::calculate_dir_size_with_cap;
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join(format!("proxync_test_size_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir).expect("create temp dir");
+
+        // Legitimate files (100 + 200 = 300 bytes)
+        fs::write(temp_dir.join("app.js"), vec![b'a'; 100]).expect("write app.js");
+        let sub = temp_dir.join("sub");
+        fs::create_dir_all(&sub).expect("create sub");
+        fs::write(sub.join("style.css"), vec![b'b'; 200]).expect("write style.css");
+
+        // Ignored dependency & build cache directories (should be skipped!)
+        let node_modules = temp_dir.join("node_modules");
+        fs::create_dir_all(&node_modules).expect("create node_modules");
+        fs::write(node_modules.join("dep.js"), vec![b'c'; 5000]).expect("write dep.js");
+
+        let git_dir = temp_dir.join(".git");
+        fs::create_dir_all(&git_dir).expect("create .git");
+        fs::write(git_dir.join("HEAD"), vec![b'd'; 5000]).expect("write git HEAD");
+
+        let target_dir = temp_dir.join("target");
+        fs::create_dir_all(&target_dir).expect("create target");
+        fs::write(target_dir.join("app.exe"), vec![b'e'; 10000]).expect("write target file");
+
+        // Test 1: Full traversal should only count 300 bytes, ignoring node_modules, .git, and target
+        let total = calculate_dir_size_with_cap(&temp_dir, 0, 8, u64::MAX);
+        assert_eq!(total, 300, "Should only count legitimate source files (300 bytes)");
+
+        // Test 2: Local .gitignore should ignore custom build directories
+        fs::write(temp_dir.join(".gitignore"), "custom_cache/\nignored_assets\n# comment\n").expect("write .gitignore");
+        let custom_cache = temp_dir.join("custom_cache");
+        fs::create_dir_all(&custom_cache).expect("create custom_cache");
+        fs::write(custom_cache.join("big.bin"), vec![b'x'; 20000]).expect("write big.bin");
+
+        let total_with_gitignore = calculate_dir_size_with_cap(&temp_dir, 0, 8, u64::MAX);
+        // 300 source bytes + .gitignore file bytes (~36 bytes)
+        assert!(total_with_gitignore < 500, "Custom cache folder defined in .gitignore must be skipped");
+
+        // Test 3: Early exit threshold (cap at 150 bytes)
+        let capped = calculate_dir_size_with_cap(&temp_dir, 0, 8, 150);
+        assert!(capped >= 150, "Should early-exit once exceeding 150 bytes");
+
+        // Cleanup
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
 }
 

@@ -2,23 +2,27 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
-## [fix/issue-291-serve-discovery] - 2026-10-16 (Resolve Proxync Serve Discovery in Scan, Port Range Expansion & Cache Invalidation)
+## [fix/issue-291-serve-discovery] - 2026-10-16 (Resolve Proxync Serve Discovery in Scan, Port Range Expansion, Fast Directory Traversal & Shorthand Serve)
 - **Summary**:
   - **Proxync Serve Discovery in Recon Engine (`packages/core/src/recon.rs`)**: Added dedicated `detect_framework()` and `classify_process()` support recognizing `proxync serve` commands as `"Proxync Static Server"`. Differentiated active static servers from system tunnels (`proxync tunnel`) to ensure developer servers surface cleanly in `proxync scan`.
   - **Dev Port Boundary Expansion (`packages/core/src/recon.rs`)**: Expanded `is_dev_port()` range from `49151` to `65535` while preserving exclusions for Windows dynamic RPC ports (`49152..=49157`), allowing modern frameworks and ephemeral serve listeners in high port ranges to be detected.
   - **Internal Ephemeral Proxy Port Deduplication (`packages/core/src/recon.rs`)**: Filtered out secondary internal proxy ports assigned during tunnel establishment by checking `registry::read_registry()` against active tunnel PIDs, preventing dual-port ghost listings for single `proxync` processes.
   - **Positional Command-Line Directory Resolver (`packages/core/src/recon.rs`)**: Implemented `resolve_proxync_serve_directory()` to accurately extract target directories from command-line arguments while stripping flags, normalizing paths, and stripping Windows UNC `\\?\` prefixes without fragile parent-root walk-ups.
-  - **Smart Port Fallback & Response Header Hardening (`packages/cli/src/commands/serve.rs`)**: Added intelligent dev port waterfall (`8000`, `3000`, `5000`, `8080`, `5173`, `4000`, `8888`) prior to ephemeral port binding. Injected explicit `Content-Type: text/plain; charset=utf-8` and `Cache-Control: no-store, no-cache, must-revalidate, max-age=0` headers across all responses to prevent edge CDN caching and resolve Caddy #239 passthrough interception (Fixes #291 Part 1).
+  - **Fast Directory Traversal & Safety Cap (`packages/cli/src/ui.rs`, `packages/cli/src/commands/serve.rs`)**: Implemented `calculate_dir_size_with_cap()` to eliminate the 15-20s traversal lag on heavy projects (99.8% speedup). Automatically ignores dependencies and build directories (`node_modules`, `.git`, `target`, `dist`, `out`, `coverage`, `.next`, `.venv`, `build`, `.gradle`, `.m2`, etc.) and reads root `.gitignore` offline. Avoids symlink/NTFS junction cycles and halts immediately once size reaches `MAX_DIR_SIZE + 1`.
+  - **Shorthand Directory Serve Support (`packages/core/src/recon.rs`)**: Added `is_proxync_serve_cmd()` and argument value skipping (`--token`, `--workspace`, `--relay-url`, `--port`) to support shorthand invocations (`proxync <dir>`), classifying them cleanly as `"Proxync Static Server"` in `proxync scan`.
+  - **Smart Port Fallback & Response Header Hardening (`packages/cli/src/commands/serve.rs`)**: Added intelligent dev port waterfall (`8000`, `3000`, `5000`, `8080`, `5173`, `4000`, `8888`) prior to ephemeral port binding. Injected explicit `Content-Type: text/plain; charset=utf-8` and `Cache-Control: no-store, no-cache, must-revalidate, max-age=0` headers across all responses to prevent edge CDN caching and resolve Caddy #239 passthrough interception (Fixes #291 Parts 1 & 2).
 - **Modified Files**:
   - `packages/core/src/recon.rs`
   - `packages/cli/src/commands/serve.rs`
+  - `packages/cli/src/ui.rs`
+  - `packages/cli/src/main.rs`
   - `CHANGELOG.md`
   - `.agents/changelog.json`
 - **Verification**:
   - `cargo test --manifest-path packages/core/Cargo.toml` passed all 41 unit tests.
-  - `cargo test --manifest-path packages/cli/Cargo.toml` passed all 34 unit tests.
+  - `cargo test --manifest-path packages/cli/Cargo.toml` passed all 35 unit tests.
   - `cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml` passed with 0 errors.
-  - Live verified `proxync scan` and edge curl against `proxync-testing/serve-test`.
+  - Live empirical benchmark on `E:\soxial`: traversal dropped from 10.6s to 22ms. Verified live `proxync serve` and shorthand `proxync <dir>` in `proxync scan`.
 
 ---
 

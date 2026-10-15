@@ -834,13 +834,89 @@ fn detect_framework(cmd_line: &str) -> Option<String> {
         Some("Python HTTP Server".to_string())
     } else if lower.contains("spring-boot") || lower.contains("springframework") {
         Some("Spring Boot App".to_string())
-    } else if (lower.contains("proxync") || lower.contains("proxync-cli")) && lower.contains("serve") {
+    } else if (lower.contains("proxync") || lower.contains("proxync-cli"))
+        && (lower.contains("serve") || is_proxync_serve_cmd(&lower))
+    {
         Some("Proxync Static Server".to_string())
     } else if lower.contains("express") || lower.contains("server.js") || lower.contains("app.js") || lower.contains("index.js") || lower.contains("server.ts") {
         Some("Node.js / Express".to_string())
     } else {
         None
     }
+}
+
+const NON_SERVE_CMDS: &[&str] = &[
+    "tunnel", "share", "inspect", "proxy", "scan", "ls", "ps", "list", "stop", "status",
+    "open", "logs", "doctor", "diag", "providers", "provider", "gui", "install",
+    "setup-path", "upgrade", "update", "replay", "completion", "help", "-h", "--help",
+    "-v", "--version",
+];
+
+fn is_proxync_serve_cmd(cmd_lower: &str) -> bool {
+    let tokens = tokenize_cmd(cmd_lower);
+    if tokens.is_empty() {
+        return false;
+    }
+
+    let mut found_proxync = false;
+    let mut skip_next = false;
+    for token in &tokens {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+
+        let clean = token.trim_end_matches(".exe");
+        if !found_proxync {
+            if clean.ends_with("proxync") || clean == "proxync" {
+                found_proxync = true;
+            }
+            continue;
+        }
+
+        // Flags that take an argument: skip their value token
+        if token == "--port"
+            || token == "-p"
+            || token == "--provider"
+            || token == "--basic-auth"
+            || token == "--expires"
+            || token == "--token"
+            || token == "--workspace"
+            || token == "--relay-url"
+        {
+            skip_next = true;
+            continue;
+        }
+
+        // Inline flags with =
+        if token.starts_with("--port=")
+            || token.starts_with("-p=")
+            || token.starts_with("--provider=")
+            || token.starts_with("--basic-auth=")
+            || token.starts_with("--expires=")
+        {
+            continue;
+        }
+
+        // Boolean flags
+        if token.starts_with('-') {
+            continue;
+        }
+
+        if NON_SERVE_CMDS.contains(&token.as_str()) {
+            return false;
+        }
+
+        // Pure numeric port is a tunnel shortcut (e.g. `proxync 3000`)
+        if token.parse::<u16>().is_ok() {
+            return false;
+        }
+
+        // Any other non-flag positional argument is a directory to serve
+        return true;
+    }
+
+    false
 }
 
 fn classify_process(name: &str, cmd_line: Option<&str>) -> ProcessType {
@@ -918,7 +994,8 @@ fn classify_process(name: &str, cmd_line: Option<&str>) -> ProcessType {
         ".NET"
     } else if lower_name.starts_with("proxync") {
         if let Some(cmd) = cmd_line {
-            if cmd.to_lowercase().contains("serve") {
+            let cmd_lower = cmd.to_lowercase();
+            if cmd_lower.contains("serve") || is_proxync_serve_cmd(&cmd_lower) {
                 return ProcessType::Dev {
                     runtime: "Proxync".to_string(),
                     framework: Some("Proxync Static Server".to_string()),
@@ -1254,17 +1331,29 @@ pub(crate) fn resolve_proxync_serve_directory(
     let cmd = cmd_line?;
     let tokens = tokenize_cmd(cmd);
 
-    // Find "serve" subcommand
+    // Find "serve" subcommand or fallback to proxync binary for shorthand serves
     let serve_idx = tokens.iter().position(|t| {
         let l = t.to_lowercase();
         l == "serve" || l.ends_with("/serve") || l.ends_with("\\serve")
-    })?;
+    });
 
-    // Look for positional path argument after "serve"
+    let skip_count = match serve_idx {
+        Some(idx) => idx + 1,
+        None => {
+            // Check if this is a shorthand serve: e.g. `proxync test`
+            let px_idx = tokens.iter().position(|t| {
+                let clean = t.trim_end_matches(".exe").to_lowercase();
+                clean.ends_with("proxync") || clean == "proxync"
+            })?;
+            px_idx + 1
+        }
+    };
+
+    // Look for positional path argument after "serve" (or after "proxync" in shorthand)
     let mut target_path = None;
     let mut skip_next = false;
 
-    for token in tokens.iter().skip(serve_idx + 1) {
+    for token in tokens.iter().skip(skip_count) {
         if skip_next {
             skip_next = false;
             continue;
@@ -1299,7 +1388,14 @@ pub(crate) fn resolve_proxync_serve_directory(
             continue;
         }
 
-        // First non-flag argument after "serve" is the path
+        // In shorthand serve mode, subcommands or numeric ports are not directories
+        if serve_idx.is_none()
+            && (token.parse::<u16>().is_ok() || NON_SERVE_CMDS.contains(&token.as_str()))
+        {
+            return None;
+        }
+
+        // First non-flag argument after "serve" (or after "proxync" in shorthand) is the path
         target_path = Some(token.as_str());
         break;
     }
@@ -1340,7 +1436,9 @@ fn resolve_directory_in_memory(
     // Stage -1: Dedicated high-precision resolution for Proxync Static Server instances
     if let Some(cmd) = proc.cmd_line.as_deref() {
         let lower = cmd.to_lowercase();
-        if lower.contains("serve") && (lower.contains("proxync") || proc.name.to_lowercase().contains("proxync")) {
+        if (lower.contains("serve") || is_proxync_serve_cmd(&lower))
+            && (lower.contains("proxync") || proc.name.to_lowercase().contains("proxync"))
+        {
             let proc_cwd = get_platform_scanner().get_process_cwd(proc.pid);
             if let Some(served_dir) = resolve_proxync_serve_directory(Some(cmd), proc_cwd.as_deref()) {
                 return served_dir;
@@ -1784,6 +1882,22 @@ mod tests {
             _ => panic!("Expected SystemOrUnknown for bare proxync.exe"),
         }
 
+        match classify_process("proxync.exe", Some("proxync test")) {
+            ProcessType::Dev { runtime, framework } => {
+                assert_eq!(runtime, "Proxync");
+                assert_eq!(framework.as_deref(), Some("Proxync Static Server"));
+            }
+            _ => panic!("Expected Dev process for shorthand proxync test"),
+        }
+
+        match classify_process("proxync", Some("proxync .")) {
+            ProcessType::Dev { runtime, framework } => {
+                assert_eq!(runtime, "Proxync");
+                assert_eq!(framework.as_deref(), Some("Proxync Static Server"));
+            }
+            _ => panic!("Expected Dev process for shorthand proxync ."),
+        }
+
         match classify_process("cupsd", None) {
             ProcessType::SystemOrUnknown => {}
             _ => panic!("Expected SystemOrUnknown for cupsd"),
@@ -1818,6 +1932,15 @@ mod tests {
         assert!(dir_eq.is_some());
         let de = dir_eq.unwrap();
         assert!(de.contains("dist"));
+
+        // Case 4: Shorthand directory serve without the word "serve"
+        let dir_shorthand = resolve_proxync_serve_directory(Some("proxync test"), Some("/workspace/project"));
+        assert!(dir_shorthand.is_some());
+        let ds = dir_shorthand.unwrap();
+        assert!(ds.contains("test"));
+
+        let dir_shorthand_dot = resolve_proxync_serve_directory(Some("proxync ."), Some("/workspace/project"));
+        assert_eq!(dir_shorthand_dot.as_deref(), Some("/workspace/project"));
     }
 
     #[test]
