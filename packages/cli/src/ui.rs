@@ -1,5 +1,4 @@
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -142,18 +141,7 @@ pub fn copy_to_clipboard(text: &str) -> bool {
 }
 
 pub fn open_in_browser(url: &str) {
-    #[cfg(target_os = "windows")]
-    {
-        let _ = Command::new("cmd").args(["/c", "start", "", url]).spawn();
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let _ = Command::new("open").arg(url).spawn();
-    }
-    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
-    {
-        let _ = Command::new("xdg-open").arg(url).spawn();
-    }
+    let _ = proxync_core::storage::open_path_or_url(url);
 }
 
 pub fn elapsed_since(started_epoch_secs: u64) -> String {

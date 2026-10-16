@@ -2,6 +2,25 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [fix/issue-297-windows-command-injection] - 2026-10-16 [SECURITY-CVE] (Remediate Arbitrary Command Injection via ShellExecuteW Protocol/File Handler)
+- **Summary**:
+  - **Direct Win32 Shell API Replacement (`packages/core/src/storage.rs`)**: Replaced vulnerable `cmd.exe /c start "" <target>` invocations in Tier 2 (URI protocol handlers) and Tier 3 (file associations) with `ShellExecuteW` via direct Win32 API binding, preventing command separators (`&`, `|`, `^`, `%`) from executing arbitrary shell commands (Fixes #297).
+  - **Cross-Platform Safe Protocol Handler (`packages/core/src/storage.rs`)**: Introduced `open_path_or_url()` safely routing URLs and paths through native non-shell OS launchers (`ShellExecuteW` on Windows, direct `open` on macOS, direct `xdg-open` on Linux) with null-byte rejection.
+  - **Strict Control Character & Existence Guards (`packages/core/src/storage.rs`)**: Validated file existence and rejected null bytes (`\0`) and newline characters (`\r`, `\n`) before initiating editor launches.
+  - **CLI Browser Launch Hardening (`packages/cli/src/ui.rs`)**: Migrated `open_in_browser` from `cmd.exe /c start` to `proxync_core::storage::open_path_or_url()`.
+  - **Automated Security Regression Tests (`packages/core/src/storage.rs`)**: Added unit tests verifying null byte rejection, control character filtering, and command-chaining payload rejection.
+- **Modified Files**:
+  - `packages/core/src/storage.rs`
+  - `packages/cli/src/ui.rs`
+  - `CHANGELOG.md`
+  - `.agents/changelog.json`
+- **Verification**:
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 44 unit tests with 0 failures.
+  - `cargo test --manifest-path packages/cli/Cargo.toml` passed all 36 unit tests with 0 failures.
+  - `cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml` passed with 0 errors.
+
+---
+
 ## [fix/issue-296-serve-dotfiles] - 2026-10-16 (Block Access to Hidden Files and Dotfiles in Static Server)
 - **Summary**:
   - **Dotfile & Hidden Path Protection (`packages/cli/src/commands/serve.rs`)**: Implemented `is_hidden_or_dot_path()` checking path components for dot prefixes. Rejected requests attempting to access hidden files or directories (`.env`, `.git/`, `.ssh/`, `.npmrc`, etc.) with `HTTP/1.1 403 Forbidden` prior to filesystem disk hits.
