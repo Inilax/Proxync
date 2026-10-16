@@ -296,6 +296,7 @@ async fn kill_child_process_tree(child: &mut tokio::process::Child) {
 }
 
 pub async fn close_tunnel(tunnel_id: String, local_port: Option<u16>) -> Result<(), String> {
+    let tunnel_id = validate_tunnel_id(&tunnel_id)?.to_string();
     let mut found = false;
 
     let mut tunnels = ACTIVE_TUNNELS.lock().await;
@@ -415,6 +416,7 @@ pub async fn open_cloudflare_tunnel(
     tunnel_id: String,
     local_port: u16,
 ) -> Result<String, String> {
+    let tunnel_id = validate_tunnel_id(&tunnel_id)?.to_string();
     let local_target = format!("127.0.0.1:{}", local_port);
     #[cfg(target_os = "windows")]
     let mut cmd = {
@@ -571,12 +573,28 @@ pub async fn open_cloudflare_tunnel(
     Ok(url)
 }
 
+// ponytail: validate tunnel_id to prevent path traversal and arbitrary directory deletion (CWE-22)
+pub fn validate_tunnel_id(tunnel_id: &str) -> Result<&str, String> {
+    let trimmed = tunnel_id.trim();
+    if trimmed.is_empty() {
+        return Err("Invalid tunnel_id: cannot be empty".to_string());
+    }
+    if trimmed.len() > 128 {
+        return Err("Invalid tunnel_id: length cannot exceed 128 characters".to_string());
+    }
+    if !trimmed.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return Err("Invalid tunnel_id: must only contain alphanumeric characters, hyphens, and underscores".to_string());
+    }
+    Ok(trimmed)
+}
+
 pub async fn open_native_tunnel(
     event_tx: EventSender,
     tunnel_id: String,
     local_port: u16,
     subdomain: String,
 ) -> Result<String, String> {
+    let tunnel_id = validate_tunnel_id(&tunnel_id)?.to_string();
     let raw_sub = subdomain.trim();
     let clean_subdomain: String = if raw_sub.is_empty() || raw_sub == "auto" {
         let ts = std::time::SystemTime::now()
@@ -943,6 +961,37 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(150)).await;
         let status = child.try_wait().expect("try_wait failed");
         assert!(status.is_some(), "process should be terminated by kill_child_process_tree");
+    }
+
+    #[test]
+    fn test_validate_tunnel_id_valid() {
+        assert!(validate_tunnel_id("tunnel-1234").is_ok());
+        assert!(validate_tunnel_id("tun_abc_xyz").is_ok());
+        assert!(validate_tunnel_id("tunnel-7b8a44c2-42d6-44c2-82df-42d6bc676d7f").is_ok());
+        assert_eq!(validate_tunnel_id("  tunnel-123  ").unwrap(), "tunnel-123");
+    }
+
+    #[test]
+    fn test_validate_tunnel_id_rejects_path_traversal() {
+        assert!(validate_tunnel_id("../../documents").is_err());
+        assert!(validate_tunnel_id("..\\..\\windows").is_err());
+        assert!(validate_tunnel_id("/etc/passwd").is_err());
+        assert!(validate_tunnel_id("tunnel/nested").is_err());
+        assert!(validate_tunnel_id("").is_err());
+        assert!(validate_tunnel_id("   ").is_err());
+        assert!(validate_tunnel_id("tunnel id with space").is_err());
+        assert!(validate_tunnel_id("tunnel!@#$").is_err());
+        let overly_long = "a".repeat(129);
+        assert!(validate_tunnel_id(&overly_long).is_err());
+    }
+
+    #[tokio::test]
+    async fn test_open_native_tunnel_rejects_path_traversal() {
+        let (tx, _rx) = tokio::sync::broadcast::channel(16);
+        let res = open_native_tunnel(tx, "../../evil_directory".to_string(), 8080, "px-test".to_string()).await;
+        assert!(res.is_err());
+        let err = res.err().unwrap();
+        assert!(err.contains("Invalid tunnel_id"), "Error should mention Invalid tunnel_id, got: {}", err);
     }
 }
 
