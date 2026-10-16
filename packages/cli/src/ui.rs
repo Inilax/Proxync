@@ -318,20 +318,115 @@ pub fn get_home_dir() -> Option<PathBuf> {
     }
 }
 
-pub fn calculate_dir_size(path: &Path, depth: usize, max_depth: usize) -> u64 {
-    if depth >= max_depth { return 0; }
+const IGNORED_DIR_NAMES: &[&str] = &[
+    "node_modules",
+    ".git",
+    "target",         // Rust & Maven (Spring Boot)
+    "dist",
+    "out",            // Electron / Next.js static output
+    "coverage",       // Test coverage reports
+    ".next",
+    ".venv",
+    "venv",
+    ".cache",
+    "build",          // Gradle (Spring Boot) & React
+    ".gradle",        // Gradle internal cache (Spring Boot)
+    ".m2",            // Maven local repository (Spring Boot)
+    "__pycache__",    // Python bytecode
+    ".pytest_cache",  // Python test cache
+    "bin",            // .NET / Java compiled output
+    "obj",            // .NET intermediate objects
+    ".yarn",          // Yarn v2+ cache
+    ".pnpm-store",    // pnpm global/local store
+    ".turbo",
+    ".idea",
+    ".vscode",
+];
+
+fn load_local_gitignore_dirs(root: &Path) -> Vec<String> {
+    let gitignore = root.join(".gitignore");
+    let mut dirs = Vec::new();
+    if let Ok(content) = std::fs::read_to_string(gitignore) {
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('!') {
+                continue;
+            }
+            let clean = trimmed.trim_matches(|c| c == '/' || c == '\\');
+            // Collect single directory names without glob patterns or path separators
+            if !clean.is_empty()
+                && !clean.contains('*')
+                && !clean.contains('?')
+                && !clean.contains('[')
+                && !clean.contains('/')
+                && !clean.contains('\\')
+            {
+                dirs.push(clean.to_lowercase());
+            }
+        }
+    }
+    dirs
+}
+
+pub fn calculate_dir_size_with_cap(path: &Path, depth: usize, max_depth: usize, max_bytes: u64) -> u64 {
+    let custom_ignored = if depth == 0 {
+        load_local_gitignore_dirs(path)
+    } else {
+        Vec::new()
+    };
+    calculate_dir_size_internal(path, depth, max_depth, max_bytes, &custom_ignored)
+}
+
+fn calculate_dir_size_internal(
+    path: &Path,
+    depth: usize,
+    max_depth: usize,
+    max_bytes: u64,
+    custom_ignored: &[String],
+) -> u64 {
+    if depth >= max_depth || max_bytes == 0 {
+        return 0;
+    }
     let mut total = 0u64;
     if let Ok(entries) = std::fs::read_dir(path) {
         for entry in entries.flatten() {
-            let p = entry.path();
-            if p.is_file() {
-                total += p.metadata().map(|m| m.len()).unwrap_or(0);
-            } else if p.is_dir() {
-                total += calculate_dir_size(&p, depth + 1, max_depth);
+            if let Ok(file_type) = entry.file_type() {
+                // Ignore symlinks / junctions to avoid filesystem cycles or scanning foreign volumes
+                if file_type.is_symlink() {
+                    continue;
+                }
+                if file_type.is_dir() {
+                    let name = entry.file_name();
+                    let name_str = name.to_string_lossy();
+                    let lower = name_str.to_lowercase();
+                    if IGNORED_DIR_NAMES.iter().any(|&ig| ig.eq_ignore_ascii_case(&lower))
+                        || custom_ignored.iter().any(|ig| ig == &lower)
+                    {
+                        continue;
+                    }
+                    let remaining = max_bytes.saturating_sub(total);
+                    let sub_size = calculate_dir_size_internal(&entry.path(), depth + 1, max_depth, remaining, custom_ignored);
+                    total = total.saturating_add(sub_size);
+                    if total >= max_bytes {
+                        return total;
+                    }
+                } else if file_type.is_file() {
+                    if let Ok(meta) = entry.metadata() {
+                        total = total.saturating_add(meta.len());
+                        if total >= max_bytes {
+                            return total;
+                        }
+                    }
+                }
             }
         }
     }
     total
+}
+
+#[allow(dead_code)]
+pub fn calculate_dir_size(path: &Path, depth: usize, max_depth: usize) -> u64 {
+    calculate_dir_size_with_cap(path, depth, max_depth, u64::MAX)
 }
 
 pub struct RawModeGuard {
