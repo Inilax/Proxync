@@ -2,6 +2,21 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [fix/issue-296-serve-dotfiles] - 2026-10-16 (Block Access to Hidden Files and Dotfiles in Static Server)
+- **Summary**:
+  - **Dotfile & Hidden Path Protection (`packages/cli/src/commands/serve.rs`)**: Implemented `is_hidden_or_dot_path()` checking path components for dot prefixes. Rejected requests attempting to access hidden files or directories (`.env`, `.git/`, `.ssh/`, `.npmrc`, etc.) with `HTTP/1.1 403 Forbidden` prior to filesystem disk hits.
+  - **Symlink Escape Guard (`packages/cli/src/commands/serve.rs`)**: Added secondary post-canonicalization check verifying that the relative canonicalized target path within the served root contains no hidden or dot-prefixed components, preventing symlinks from bypassing the initial URL path check.
+  - **Regression Unit Tests (`packages/cli/src/commands/serve.rs`)**: Added `test_is_hidden_or_dot_path` validating that sensitive dotfiles and nested dot paths are strictly forbidden while legitimate dotted filenames (e.g., `bundle.min.js`, `style.css`, `archive.tar.gz`) continue to be served normally. (Fixes #296).
+- **Modified Files**:
+  - `packages/cli/src/commands/serve.rs`
+  - `CHANGELOG.md`
+  - `.agents/changelog.json`
+- **Verification**:
+  - `cargo test --manifest-path packages/cli/Cargo.toml` passed all 36 unit tests.
+  - `cargo check --manifest-path packages/cli/Cargo.toml` passed with 0 errors.
+
+---
+
 ## [fix/issue-291-serve-discovery] - 2026-10-16 (Resolve Proxync Serve Discovery in Scan, Port Range Expansion, Fast Directory Traversal & Shorthand Serve)
 - **Summary**:
   - **Proxync Serve Discovery in Recon Engine (`packages/core/src/recon.rs`)**: Added dedicated `detect_framework()` and `classify_process()` support recognizing `proxync serve` commands as `"Proxync Static Server"`. Differentiated active static servers from system tunnels (`proxync tunnel`) to ensure developer servers surface cleanly in `proxync scan`.

@@ -129,6 +129,14 @@ pub async fn handle_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Err
                 // Decode URL path
                 let path_clean = raw_path.split('?').next().unwrap_or("/");
                 let relative = percent_decode(path_clean.trim_start_matches('/'));
+
+                // Guard: Reject hidden dotfiles and directories (.env, .git, .ssh, etc.)
+                if is_hidden_or_dot_path(&relative) {
+                    let res = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 46\r\nCache-Control: no-store, no-cache, must-revalidate, max-age=0\r\nPragma: no-cache\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n403 Forbidden: Access to hidden files is denied";
+                    let _ = socket.write_all(res.as_bytes()).await;
+                    return;
+                }
+
                 let mut target_file = root.join(&relative);
 
                 if target_file.is_dir() {
@@ -149,6 +157,15 @@ pub async fn handle_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Err
                     let res = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 13\r\nCache-Control: no-store, no-cache, must-revalidate, max-age=0\r\nPragma: no-cache\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n403 Forbidden";
                     let _ = socket.write_all(res.as_bytes()).await;
                     return;
+                }
+
+                // Security: Prevent symlink-based escape to hidden files within root
+                if let Ok(rel_to_root) = canon_target.strip_prefix(&root) {
+                    if is_hidden_or_dot_path(&rel_to_root.to_string_lossy()) {
+                        let res = "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 46\r\nCache-Control: no-store, no-cache, must-revalidate, max-age=0\r\nPragma: no-cache\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n403 Forbidden: Access to hidden files is denied";
+                        let _ = socket.write_all(res.as_bytes()).await;
+                        return;
+                    }
                 }
 
                 // Guard 4: Per-File Size Cap (50MB maximum unless --allow-large)
@@ -225,4 +242,41 @@ pub(crate) fn percent_decode(input: &str) -> String {
         }
     }
     String::from_utf8_lossy(&bytes).to_string()
+}
+
+pub(crate) fn is_hidden_or_dot_path(relative: &str) -> bool {
+    std::path::Path::new(relative)
+        .components()
+        .any(|c| match c {
+            std::path::Component::Normal(name) => name.to_string_lossy().starts_with('.'),
+            _ => false,
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_hidden_or_dot_path() {
+        assert!(is_hidden_or_dot_path(".env"));
+        assert!(is_hidden_or_dot_path(".env.local"));
+        assert!(is_hidden_or_dot_path(".env.production"));
+        assert!(is_hidden_or_dot_path(".git/config"));
+        assert!(is_hidden_or_dot_path(".git/HEAD"));
+        assert!(is_hidden_or_dot_path("subdir/.env"));
+        assert!(is_hidden_or_dot_path("nested/sub/.secret/token.json"));
+        assert!(is_hidden_or_dot_path(".npmrc"));
+        assert!(is_hidden_or_dot_path(".ssh/id_rsa"));
+
+        // Legitimate files and paths must not be blocked
+        assert!(!is_hidden_or_dot_path(""));
+        assert!(!is_hidden_or_dot_path("index.html"));
+        assert!(!is_hidden_or_dot_path("app.js"));
+        assert!(!is_hidden_or_dot_path("assets/style.css"));
+        assert!(!is_hidden_or_dot_path("nested/deep/folder/doc.pdf"));
+        assert!(!is_hidden_or_dot_path("my.dotted.filename.txt"));
+        assert!(!is_hidden_or_dot_path("bundle.min.js"));
+        assert!(!is_hidden_or_dot_path("archive.tar.gz"));
+    }
 }
