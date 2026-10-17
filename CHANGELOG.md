@@ -2,6 +2,25 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [fix/issue-298-tunnel-id-path-traversal] - 2026-10-16 [SECURITY-CVE] (Remediate Path Traversal and Arbitrary Directory Deletion via tunnel_id)
+- **Summary**:
+  - **Strict Tunnel Identifier Validation (`packages/core/src/tunnel.rs`)**: Implemented `validate_tunnel_id()` enforcing non-empty ASCII alphanumeric, hyphen, and underscore characters (`[a-zA-Z0-9_-]`) and establishing a 128-character upper length bound to prevent Windows `MAX_PATH` path buffer exhaustion and directory traversal attacks (Fixes #298).
+  - **Path Traversal & Arbitrary Deletion Remediation (`packages/core/src/tunnel.rs`)**: Validated `tunnel_id` in `open_native_tunnel()`, `open_cloudflare_tunnel()`, and `close_tunnel()` before invoking filesystem operations, completely eliminating the vulnerability where unvalidated traversal sequences (e.g. `/../../Documents`) combined with `std::fs::remove_dir_all()` could wipe arbitrary user directories.
+  - **Deterministic Cleanup & Zero-Trace Hygiene (`packages/core/src/tunnel.rs`)**: Preserved the `proxync_ssh_<tunnel_id>` isolated temporary directory naming convention, ensuring that pre-flight cleanup and RAII `TempDirGuard` continue to purge stale SSH keys deterministically without key/hash clutter.
+  - **Automated Security Regression Unit Tests (`packages/core/src/tunnel.rs`)**: Added `test_validate_tunnel_id_valid`, `test_validate_tunnel_id_rejects_path_traversal`, and `test_open_native_tunnel_rejects_path_traversal` verifying that path traversal strings, slashes, control symbols, and oversized IDs fail closed with explicit error messages.
+- **Modified Files**:
+  - `packages/core/src/tunnel.rs`
+  - `CHANGELOG.md`
+  - `.agents/changelog.json`
+- **Verification**:
+  - `cargo test tunnel::tests --manifest-path packages/core/Cargo.toml` passed all 4 unit tests with 0 failures.
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 47 unit tests with 0 failures.
+  - `cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml` passed with 0 errors.
+  - `cargo check --manifest-path packages/cli/Cargo.toml` passed with 0 errors.
+  - Validated reproduction via `node sanity/POC/path-traversal-poc/reproduce.js`.
+
+---
+
 ## [fix/issue-297-windows-command-injection] - 2026-10-16 [SECURITY-CVE] (Remediate Arbitrary Command Injection via ShellExecuteW Protocol/File Handler)
 - **Summary**:
   - **Direct Win32 Shell API Replacement (`packages/core/src/storage.rs`)**: Replaced vulnerable `cmd.exe /c start "" <target>` invocations in Tier 2 (URI protocol handlers) and Tier 3 (file associations) with `ShellExecuteW` via direct Win32 API binding, preventing command separators (`&`, `|`, `^`, `%`) from executing arbitrary shell commands (Fixes #297).
