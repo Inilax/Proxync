@@ -526,7 +526,7 @@ pub async fn open_file_in_editor(file_path: String, line_number: Option<u32>, ed
 
         // --- TIER 2: OS URI Protocol Handler (vscode://file/... or cursor://file/...) ---
         // Avoid cmd.exe /c start to prevent shell command injection (e.g. & | ^ metacharacters).
-        let norm_uri_path = file_path.replace('\\', "/");
+        let norm_uri_path = file_path.replace('\\', "/").replace(' ', "%20");
         let uri = format!("{}://file/{}:{}", scheme, norm_uri_path, line);
         if open_path_or_url(&uri).is_ok() {
             return Ok(());
@@ -569,7 +569,8 @@ pub async fn open_file_in_editor(file_path: String, line_number: Option<u32>, ed
         }
 
         // --- TIER 2: macOS URL Scheme (`open vscode://file/...`) ---
-        let uri = format!("{}://file/{}:{}", scheme, file_path, line);
+        let norm_uri_path = file_path.replace(' ', "%20");
+        let uri = format!("{}://file/{}:{}", scheme, norm_uri_path, line);
         if open_path_or_url(&uri).is_ok() {
             return Ok(());
         }
@@ -607,7 +608,8 @@ pub async fn open_file_in_editor(file_path: String, line_number: Option<u32>, ed
         }
 
         // --- TIER 2: Linux XDG URL Scheme (`xdg-open vscode://file/...`) ---
-        let uri = format!("{}://file/{}:{}", scheme, file_path, line);
+        let norm_uri_path = file_path.replace(' ', "%20");
+        let uri = format!("{}://file/{}:{}", scheme, norm_uri_path, line);
         if open_path_or_url(&uri).is_ok() {
             return Ok(());
         }

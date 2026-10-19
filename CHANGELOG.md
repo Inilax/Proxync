@@ -2,6 +2,20 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [develop] - 2026-10-19 (Validate tunnel_id in WebSocket Relay & Percent-Encode Editor Protocol URIs)
+- **Summary**:
+  - **Relay Tunnel Identifier Validation (`packages/core/src/tunnel.rs`)**: Integrated `validate_tunnel_id()` into `open_tunnel()` ensuring comprehensive input validation across all three tunnel entry points (WebSocket relay, Cloudflare, and native SSH). Added automated unit test `test_open_tunnel_rejects_path_traversal`.
+  - **URI Space-Encoding in Editor Handlers (`packages/core/src/storage.rs`)**: Added percent-encoding for spaces (`%20`) when constructing custom protocol handler URIs (`vscode://file/...` and `cursor://file/...`) across Windows, macOS, and Linux, preventing URI space-delimiter splitting during native shell launches.
+- **Modified Files**:
+  - `packages/core/src/tunnel.rs`
+  - `packages/core/src/storage.rs`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 48 tests (0 failures).
+  - `cargo test --manifest-path packages/cli/Cargo.toml` passed all 36 tests (0 failures).
+
+---
+
 ## [fix/issue-298-tunnel-id-path-traversal] - 2026-10-16 [SECURITY-CVE] (Remediate Path Traversal and Arbitrary Directory Deletion via tunnel_id)
 - **Summary**:
   - **Strict Tunnel Identifier Validation (`packages/core/src/tunnel.rs`)**: Implemented `validate_tunnel_id()` enforcing non-empty ASCII alphanumeric, hyphen, and underscore characters (`[a-zA-Z0-9_-]`) and establishing a 128-character upper length bound to prevent Windows `MAX_PATH` path buffer exhaustion and directory traversal attacks (Fixes #298).
