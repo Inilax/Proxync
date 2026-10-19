@@ -13,6 +13,18 @@ All notable changes to the Proxync workspace studio project are documented here.
 - **Verification**:
   - `cargo test --manifest-path packages/core/Cargo.toml` passed all 48 tests (0 failures).
   - `cargo test --manifest-path packages/cli/Cargo.toml` passed all 36 tests (0 failures).
+## [fix/source-map-js-security-upgrade] - 2026-10-19 [SECURITY-CVE] (Remediate Denial of Service and CSP Crash via source-map-js 1.2.2)
+- **Summary**:
+  - **Patch Denial of Service in Indexed Source Maps (`package-lock.json`)**: Bumped `source-map-js` from 1.2.1 to 1.2.2 resolving high-severity vulnerability CVE-2026-93749 where malicious indexed source maps caused process denial of service.
+  - **Browser CSP & Unsafe-Eval Protection (`package-lock.json`)**: Resolved crash condition in browser environments when executing under strict Content Security Policies that disallow `unsafe-eval`.
+  - **Indirect Dependency Alignment (`packages/desktop`)**: Updated resolved dependency for `@tailwindcss/vite` and `postcss` in lockfile with zero breaking changes or runtime bundle impact.
+- **Modified Files**:
+  - `package-lock.json`
+  - `CHANGELOG.md`
+  - `.agents/changelog.json`
+- **Verification**:
+  - `npm ci` completed with 0 vulnerabilities detected across 93 packages.
+  - `npm run build` (`tsc && vite build`) passed with exit code 0.
 
 ---
 
