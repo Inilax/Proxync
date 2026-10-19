@@ -2,6 +2,21 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [fix/source-map-js-security-upgrade] - 2026-10-19 [SECURITY-CVE] (Remediate Denial of Service and CSP Crash via source-map-js 1.2.2)
+- **Summary**:
+  - **Patch Denial of Service in Indexed Source Maps (`package-lock.json`)**: Bumped `source-map-js` from 1.2.1 to 1.2.2 resolving high-severity vulnerability CVE-2026-93749 where malicious indexed source maps caused process denial of service.
+  - **Browser CSP & Unsafe-Eval Protection (`package-lock.json`)**: Resolved crash condition in browser environments when executing under strict Content Security Policies that disallow `unsafe-eval`.
+  - **Indirect Dependency Alignment (`packages/desktop`)**: Updated resolved dependency for `@tailwindcss/vite` and `postcss` in lockfile with zero breaking changes or runtime bundle impact.
+- **Modified Files**:
+  - `package-lock.json`
+  - `CHANGELOG.md`
+  - `.agents/changelog.json`
+- **Verification**:
+  - `npm ci` completed with 0 vulnerabilities detected across 93 packages.
+  - `npm run build` (`tsc && vite build`) passed with exit code 0.
+
+---
+
 ## [fix/issue-298-tunnel-id-path-traversal] - 2026-10-16 [SECURITY-CVE] (Remediate Path Traversal and Arbitrary Directory Deletion via tunnel_id)
 - **Summary**:
   - **Strict Tunnel Identifier Validation (`packages/core/src/tunnel.rs`)**: Implemented `validate_tunnel_id()` enforcing non-empty ASCII alphanumeric, hyphen, and underscore characters (`[a-zA-Z0-9_-]`) and establishing a 128-character upper length bound to prevent Windows `MAX_PATH` path buffer exhaustion and directory traversal attacks (Fixes #298).
