@@ -2,6 +2,17 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [develop] - 2026-10-19 (Validate tunnel_id in WebSocket Relay & Percent-Encode Editor Protocol URIs)
+- **Summary**:
+  - **Relay Tunnel Identifier Validation (`packages/core/src/tunnel.rs`)**: Integrated `validate_tunnel_id()` into `open_tunnel()` ensuring comprehensive input validation across all three tunnel entry points (WebSocket relay, Cloudflare, and native SSH). Added automated unit test `test_open_tunnel_rejects_path_traversal`.
+  - **URI Space-Encoding in Editor Handlers (`packages/core/src/storage.rs`)**: Added percent-encoding for spaces (`%20`) when constructing custom protocol handler URIs (`vscode://file/...` and `cursor://file/...`) across Windows, macOS, and Linux, preventing URI space-delimiter splitting during native shell launches.
+- **Modified Files**:
+  - `packages/core/src/tunnel.rs`
+  - `packages/core/src/storage.rs`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 48 tests (0 failures).
+  - `cargo test --manifest-path packages/cli/Cargo.toml` passed all 36 tests (0 failures).
 ## [fix/source-map-js-security-upgrade] - 2026-10-19 [SECURITY-CVE] (Remediate Denial of Service and CSP Crash via source-map-js 1.2.2)
 - **Summary**:
   - **Patch Denial of Service in Indexed Source Maps (`package-lock.json`)**: Bumped `source-map-js` from 1.2.1 to 1.2.2 resolving high-severity vulnerability CVE-2026-93749 where malicious indexed source maps caused process denial of service.

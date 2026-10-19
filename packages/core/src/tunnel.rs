@@ -77,6 +77,7 @@ impl Drop for TempDirGuard {
 }
 
 pub async fn open_tunnel(event_tx: EventSender, tunnel_id: String, local_port: u16, token: String, workspace_id: String, relay_url: Option<String>) -> Result<(), String> {
+    let tunnel_id = validate_tunnel_id(&tunnel_id)?.to_string();
     let relay_ws_url = relay_url.unwrap_or_else(|| "ws://localhost:3939/relay".to_string());
     let relay_ws_url = relay_ws_url.as_str();
     
@@ -989,6 +990,15 @@ mod tests {
     async fn test_open_native_tunnel_rejects_path_traversal() {
         let (tx, _rx) = tokio::sync::broadcast::channel(16);
         let res = open_native_tunnel(tx, "../../evil_directory".to_string(), 8080, "px-test".to_string()).await;
+        assert!(res.is_err());
+        let err = res.err().unwrap();
+        assert!(err.contains("Invalid tunnel_id"), "Error should mention Invalid tunnel_id, got: {}", err);
+    }
+
+    #[tokio::test]
+    async fn test_open_tunnel_rejects_path_traversal() {
+        let (tx, _rx) = tokio::sync::broadcast::channel(16);
+        let res = open_tunnel(tx, "../../evil_directory".to_string(), 8080, "tok".to_string(), "ws".to_string(), None).await;
         assert!(res.is_err());
         let err = res.err().unwrap();
         assert!(err.contains("Invalid tunnel_id"), "Error should mention Invalid tunnel_id, got: {}", err);
