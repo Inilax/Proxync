@@ -2,6 +2,21 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [fix/issue-300-source-map-js-dos] - 2026-10-20 [SECURITY-CVE] (Remediate High Severity Event-Loop DoS in source-map-js via GHSA-68fv-2mgg-jv7q)
+- **Summary**:
+  - **Dependency Remediation (`package-lock.json`)**: Upgraded `source-map-js` from `1.2.1` to `1.2.2` across `postcss` and `@tailwindcss/node` dependency trees to remediate GHSA-68fv-2mgg-jv7q (Fixes #300).
+  - **Security Scan Hardening (`packages/desktop`)**: Eliminated high severity event-loop denial of service advisory triggered through indexed source-map section offsets, restoring clean `npm audit` scans across workspace and CI pipelines.
+- **Modified Files**:
+  - `package-lock.json`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `npm audit` returned 0 vulnerabilities (exit code 0).
+  - `npm run build` completed successfully (`tsc && vite build`).
+  - `cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml` passed with 0 errors.
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 47 unit tests with 0 failures.
+
+---
+
 ## [fix/issue-298-tunnel-id-path-traversal] - 2026-10-16 [SECURITY-CVE] (Remediate Path Traversal and Arbitrary Directory Deletion via tunnel_id)
 - **Summary**:
   - **Strict Tunnel Identifier Validation (`packages/core/src/tunnel.rs`)**: Implemented `validate_tunnel_id()` enforcing non-empty ASCII alphanumeric, hyphen, and underscore characters (`[a-zA-Z0-9_-]`) and establishing a 128-character upper length bound to prevent Windows `MAX_PATH` path buffer exhaustion and directory traversal attacks (Fixes #298).
