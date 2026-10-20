@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
+use base64::Engine;
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CliStatus {
@@ -409,7 +411,269 @@ pub async fn check_for_cli_update(current_version: &str) -> Result<Option<CliUpd
     }
 }
 
-/// Downloads a binary from `download_url` and atomically replaces `destination` with safe rollback & cleanup
+/// Official Proxync Minisign public key (base64 of 32-byte Ed25519 public key)
+pub const PROXYNC_MINISIGN_PUBKEY_RAW: &str = "RWRs5omD9gZF9Dhkawgys4QTJG5lgVc3l3gvoUdJeV+8u4tfRt3qmW0A";
+
+/// Computes lowercase hex-encoded SHA-256 digest
+pub fn compute_sha256(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hex::encode(hasher.finalize())
+}
+
+/// Constant-time comparison between two hex strings to mitigate side-channel timing attacks
+pub fn constant_time_eq_hex(a: &str, b: &str) -> bool {
+    let a_clean = a.trim().to_ascii_lowercase();
+    let b_clean = b.trim().to_ascii_lowercase();
+    if a_clean.len() != b_clean.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a_clean.as_bytes().iter().zip(b_clean.as_bytes().iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
+/// Verifies a Minisign digital signature against the binary payload
+pub fn verify_minisign_signature(bytes: &[u8], sig_content: &str) -> Result<(), String> {
+    use minisign_verify::{PublicKey, Signature};
+
+    let pk = PublicKey::from_base64(PROXYNC_MINISIGN_PUBKEY_RAW)
+        .map_err(|e| format!("Invalid embedded Minisign public key: {}", e))?;
+
+    let trimmed = sig_content.trim();
+    let sig = if let Ok(s) = Signature::decode(trimmed) {
+        s
+    } else if let Ok(decoded_bytes) = base64::engine::general_purpose::STANDARD.decode(trimmed) {
+        let decoded_str = String::from_utf8_lossy(&decoded_bytes);
+        Signature::decode(&decoded_str)
+            .map_err(|e| format!("Failed to decode base64 Minisign signature: {}", e))?
+    } else {
+        return Err("Malformed Minisign signature format".to_string());
+    };
+
+    pk.verify(bytes, &sig, false)
+        .map_err(|e| format!("Minisign digital signature verification failed: {}", e))
+}
+
+/// Verifies file headers and minimum size sanity to prevent corrupted downloads or web error page execution
+pub fn verify_binary_magic(bytes: &[u8], is_archive: bool) -> Result<(), String> {
+    // 1. Explicit check for common text/web error payloads (HTML, JSON errors, 404 text)
+    let is_html_or_text_error = bytes.starts_with(b"<!DOCTYPE")
+        || bytes.starts_with(b"<!doctype")
+        || bytes.starts_with(b"<html")
+        || bytes.starts_with(b"<HTML")
+        || bytes.starts_with(b"404 Not Found")
+        || bytes.starts_with(b"Not Found")
+        || bytes.starts_with(b"{\"message\"")
+        || bytes.starts_with(b"{\"error\"");
+
+    if is_html_or_text_error {
+        let sample_len = bytes.len().min(80);
+        let sample = String::from_utf8_lossy(&bytes[..sample_len]);
+        return Err(format!(
+            "Downloaded payload is an HTML/HTTP error response, not an executable binary: '{}'",
+            sample.trim()
+        ));
+    }
+
+    if is_archive {
+        if bytes.len() < 2 || bytes[0] != 0x1f || bytes[1] != 0x8b {
+            return Err("Invalid archive format: expected gzip header magic (0x1F, 0x8B)".to_string());
+        }
+        return Ok(());
+    }
+
+    // Minimum size check for a standalone CLI binary (64 KB minimum threshold)
+    if bytes.len() < 64 * 1024 {
+        return Err(format!(
+            "Binary payload is abnormally small ({} bytes); possible truncation or corrupted download",
+            bytes.len()
+        ));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // Windows PE executable starts with "MZ" (0x4D, 0x5A)
+        if bytes.len() < 2 || bytes[0] != 0x4d || bytes[1] != 0x5a {
+            return Err("Invalid Windows executable: missing DOS/PE 'MZ' header magic".to_string());
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // Linux ELF executable starts with [0x7F, 'E', 'L', 'F']
+        if bytes.len() < 4 || bytes[0] != 0x7f || &bytes[1..4] != b"ELF" {
+            return Err("Invalid Linux executable: missing ELF header magic".to_string());
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // Mach-O magics: 32-bit (0xFEEDFACE), 64-bit (0xFEEDFACF), Fat/Universal (0xCAFEBABE, 0xBEBAFECA),
+        // or reverse-endian versions
+        if bytes.len() < 4 {
+            return Err("Invalid macOS executable: file too short for Mach-O header".to_string());
+        }
+        let magic = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+        let valid_magics = [
+            0xfeedface, 0xfeedfacf, 0xcefaedfe, 0xcffaedfe, 0xcafebabe, 0xbebafeca,
+        ];
+        if !valid_magics.contains(&magic) {
+            return Err("Invalid macOS executable: missing Mach-O header magic".to_string());
+        }
+    }
+
+    Ok(())
+}
+
+/// Verifies downloaded asset integrity via digital signature, SHA256SUMS, or GitHub release digest
+pub async fn verify_download_integrity(
+    client: &reqwest::Client,
+    download_url: &str,
+    asset_name: &str,
+    bytes: &[u8],
+) -> Result<String, String> {
+    let computed_hash = compute_sha256(bytes);
+
+    // 1. Primary: Check for official Minisign digital signature (${download_url}.sig)
+    let sig_url = format!("{}.sig", download_url);
+    if let Ok(resp) = client.get(&sig_url).send().await {
+        if resp.status().is_success() {
+            if let Ok(sig_text) = resp.text().await {
+                verify_minisign_signature(bytes, &sig_text)?;
+                return Ok(format!(
+                    "Verified cryptographic Minisign signature (SHA-256: {})",
+                    computed_hash
+                ));
+            }
+        }
+    }
+
+    // 2. Secondary: Check for standalone asset checksum (${download_url}.sha256)
+    let sha_url = format!("{}.sha256", download_url);
+    if let Ok(resp) = client.get(&sha_url).send().await {
+        if resp.status().is_success() {
+            if let Ok(sha_text) = resp.text().await {
+                let expected_hash = sha_text
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
+                    .trim();
+                if constant_time_eq_hex(expected_hash, &computed_hash) {
+                    return Ok(format!(
+                        "Verified SHA-256 checksum from {}.sha256: {}",
+                        asset_name, computed_hash
+                    ));
+                } else {
+                    return Err(format!(
+                        "SHA-256 checksum verification FAILED for {}: expected {}, computed {}",
+                        asset_name, expected_hash, computed_hash
+                    ));
+                }
+            }
+        }
+    }
+
+    // 3. Tertiary: Check for repository-wide SHA256SUMS file in the release folder
+    if let Some(base_url) = download_url.rsplit_once('/') {
+        let sums_url = format!("{}/SHA256SUMS", base_url.0);
+        if let Ok(resp) = client.get(&sums_url).send().await {
+            if resp.status().is_success() {
+                if let Ok(sums_text) = resp.text().await {
+                    // Check if SHA256SUMS.minisig is also present to verify the manifest
+                    let sums_sig_url = format!("{}/SHA256SUMS.minisig", base_url.0);
+                    let mut is_manifest_signed = false;
+                    if let Ok(sig_resp) = client.get(&sums_sig_url).send().await {
+                        if sig_resp.status().is_success() {
+                            if let Ok(sig_text) = sig_resp.text().await {
+                                verify_minisign_signature(sums_text.as_bytes(), &sig_text)?;
+                                is_manifest_signed = true;
+                            }
+                        }
+                    }
+
+                    for line in sums_text.lines() {
+                        let parts: Vec<&str> = line.split_whitespace().collect();
+                        if parts.len() >= 2 {
+                            let expected_hash = parts[0];
+                            let file_entry = parts[1].trim_start_matches('*');
+                            if file_entry == asset_name {
+                                if constant_time_eq_hex(expected_hash, &computed_hash) {
+                                    return Ok(format!(
+                                        "Verified SHA-256 checksum from SHA256SUMS{} (SHA-256: {})",
+                                        if is_manifest_signed { " [Minisign signature verified]" } else { "" },
+                                        computed_hash
+                                    ));
+                                } else {
+                                    return Err(format!(
+                                        "SHA-256 checksum mismatch in SHA256SUMS for {}: expected {}, computed {}",
+                                        asset_name, expected_hash, computed_hash
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 4. Quaternary fallback: Query GitHub Release API asset digest
+    let tag = if let Some(pos) = download_url.find("/releases/download/") {
+        let after = &download_url[pos + "/releases/download/".len()..];
+        after.split('/').next()
+    } else {
+        None
+    };
+
+    let gh_api_url = match tag {
+        Some(t) => format!("https://api.github.com/repos/Inilax/Proxync/releases/tags/{}", t),
+        None => "https://api.github.com/repos/Inilax/Proxync/releases/latest".to_string(),
+    };
+
+    if let Ok(resp) = client.get(&gh_api_url).send().await {
+        if resp.status().is_success() {
+            #[derive(Deserialize)]
+            struct GhAsset {
+                name: String,
+                digest: Option<String>,
+            }
+            #[derive(Deserialize)]
+            struct GhReleaseAssets {
+                assets: Vec<GhAsset>,
+            }
+            if let Ok(rel) = resp.json::<GhReleaseAssets>().await {
+                if let Some(asset) = rel.assets.iter().find(|a| a.name == asset_name) {
+                    if let Some(ref d) = asset.digest {
+                        let expected = d.strip_prefix("sha256:").unwrap_or(d.as_str());
+                        if constant_time_eq_hex(expected, &computed_hash) {
+                            return Ok(format!(
+                                "Verified SHA-256 digest from GitHub Releases manifest: {}",
+                                computed_hash
+                            ));
+                        } else {
+                            return Err(format!(
+                                "SHA-256 digest mismatch in GitHub Releases manifest: expected {}, computed {}",
+                                expected, computed_hash
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Fail closed: Reject unverified binaries
+    Err(format!(
+        "Cryptographic integrity verification failed: no valid digital signature (.sig), SHA256SUMS, or verified digest could be obtained for '{}'. Aborting update for safety.",
+        asset_name
+    ))
+}
+
+/// Downloads a binary from `download_url`, verifies cryptographic signatures and checksums,
+/// and atomically replaces `destination` with safe rollback & cleanup
 pub async fn download_and_replace_binary(destination: &Path, download_url: &str) -> Result<(), String> {
     if let Some(parent) = destination.parent() {
         std::fs::create_dir_all(parent)
@@ -438,9 +702,19 @@ pub async fn download_and_replace_binary(destination: &Path, download_url: &str)
         .await
         .map_err(|e| format!("Failed to read downloaded binary stream: {}", e))?;
 
-    if bytes.len() < 1024 {
-        return Err("Downloaded binary file is corrupt or too small.".to_string());
-    }
+    let is_tar_gz = download_url.ends_with(".tar.gz")
+        || (bytes.len() >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b);
+
+    // Stage 1: Sanity check: verify archive or executable magic bytes and minimum size
+    verify_binary_magic(&bytes, is_tar_gz)?;
+
+    // Stages 2 & 3: Cryptographic integrity check: verify Minisign signature, SHA-256 checksum, or GitHub release digest
+    let asset_name = download_url
+        .split('/')
+        .last()
+        .unwrap_or_else(|| get_cli_asset_name());
+    let integrity_info = verify_download_integrity(&client, download_url, asset_name, &bytes).await?;
+    println!("  ✓ {}", integrity_info);
 
     let temp_path = destination.with_extension(format!("tmp-{}", std::process::id()));
 
@@ -452,9 +726,6 @@ pub async fn download_and_replace_binary(destination: &Path, download_url: &str)
 
     #[cfg(not(target_os = "windows"))]
     {
-        let is_tar_gz = download_url.ends_with(".tar.gz")
-            || (bytes.len() >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b);
-
         if is_tar_gz {
             let temp_archive = destination.with_extension(format!("archive-{}.tar.gz", std::process::id()));
             std::fs::write(&temp_archive, &bytes)
@@ -463,10 +734,62 @@ pub async fn download_and_replace_binary(destination: &Path, download_url: &str)
             let extract_dir = destination.with_extension(format!("extract-{}", std::process::id()));
             let _ = std::fs::create_dir_all(&extract_dir);
 
+            // Stage 4: Safe Sandbox Extraction — inspect archive TOC for Zip-Slip / Path Traversal before extraction
+            let toc_output = std::process::Command::new("tar")
+                .args(&["-ztf", &temp_archive.to_string_lossy()])
+                .output()
+                .map_err(|e| format!("Failed to inspect CLI archive contents: {}", e))?;
+
+            if !toc_output.status.success() {
+                let _ = std::fs::remove_file(&temp_archive);
+                let _ = std::fs::remove_dir_all(&extract_dir);
+                return Err("Archive inspection failed: corrupted or invalid tar.gz".to_string());
+            }
+
+            let toc_listing = String::from_utf8_lossy(&toc_output.stdout);
+            let mut found_proxync_binary = false;
+            for line in toc_listing.lines() {
+                let entry = line.trim();
+                if entry.is_empty() {
+                    continue;
+                }
+                // Zip-Slip protection: reject entries containing parent traversal or absolute root escapes
+                if entry.contains("..") || entry.starts_with('/') || entry.starts_with('\\') {
+                    let _ = std::fs::remove_file(&temp_archive);
+                    let _ = std::fs::remove_dir_all(&extract_dir);
+                    return Err(format!(
+                        "Zip-Slip / Path Traversal security violation: malicious entry '{}' detected in archive",
+                        entry
+                    ));
+                }
+                let norm = entry.trim_start_matches("./");
+                if norm == "proxync" {
+                    found_proxync_binary = true;
+                }
+            }
+
+            if !found_proxync_binary {
+                let _ = std::fs::remove_file(&temp_archive);
+                let _ = std::fs::remove_dir_all(&extract_dir);
+                return Err("Archive validation failed: 'proxync' binary not found in archive table of contents".to_string());
+            }
+
+            // Extract only the isolated binary into sandbox directory
             let status = std::process::Command::new("tar")
-                .args(&["-xzf", &temp_archive.to_string_lossy(), "-C", &extract_dir.to_string_lossy()])
-                .status()
-                .map_err(|e| format!("Failed to run tar extraction: {}", e))?;
+                .args(&[
+                    "-xzf", &temp_archive.to_string_lossy(),
+                    "-C", &extract_dir.to_string_lossy(),
+                    "proxync",
+                ])
+                .status();
+
+            let status = match status {
+                Ok(s) if s.success() => Ok(s),
+                _ => std::process::Command::new("tar")
+                    .args(&["-xzf", &temp_archive.to_string_lossy(), "-C", &extract_dir.to_string_lossy()])
+                    .status(),
+            }
+            .map_err(|e| format!("Failed to execute safe tar extraction: {}", e))?;
 
             let _ = std::fs::remove_file(&temp_archive);
 
@@ -478,8 +801,32 @@ pub async fn download_and_replace_binary(destination: &Path, download_url: &str)
             let extracted_bin = extract_dir.join("proxync");
             if !extracted_bin.is_file() {
                 let _ = std::fs::remove_dir_all(&extract_dir);
-                return Err("CLI binary 'proxync' not found in downloaded archive".to_string());
+                return Err("CLI binary 'proxync' not found in extracted archive".to_string());
             }
+
+            // Verify extracted binary is a regular file (not a malicious symlink) and did not escape sandbox
+            if let Ok(meta) = std::fs::symlink_metadata(&extracted_bin) {
+                if meta.file_type().is_symlink() {
+                    let _ = std::fs::remove_dir_all(&extract_dir);
+                    return Err("Security violation: extracted binary is a symlink, rejecting".to_string());
+                }
+            }
+
+            if let (Ok(canon_bin), Ok(canon_dir)) = (extracted_bin.canonicalize(), extract_dir.canonicalize()) {
+                if !canon_bin.starts_with(&canon_dir) {
+                    let _ = std::fs::remove_dir_all(&extract_dir);
+                    return Err("Security violation: extracted binary escaped sandbox extraction directory".to_string());
+                }
+            }
+
+            // Verify extracted binary executable format (ELF or Mach-O)
+            let extracted_bytes = std::fs::read(&extracted_bin)
+                .map_err(|e| format!("Failed to read extracted binary for validation: {}", e))?;
+            verify_binary_magic(&extracted_bytes, false)
+                .map_err(|e| {
+                    let _ = std::fs::remove_dir_all(&extract_dir);
+                    format!("Extracted binary failed executable header validation: {}", e)
+                })?;
 
             std::fs::copy(&extracted_bin, &temp_path)
                 .map_err(|e| format!("Failed to copy extracted binary: {}", e))?;
@@ -497,7 +844,7 @@ pub async fn download_and_replace_binary(destination: &Path, download_url: &str)
         }
     }
 
-    // Replace existing binary
+    // Stage 5: Atomic Swap & Rollback
     if destination.exists() {
         #[cfg(target_os = "windows")]
         {
@@ -505,8 +852,12 @@ pub async fn download_and_replace_binary(destination: &Path, download_url: &str)
             let _ = std::fs::remove_file(&old_path);
             std::fs::rename(destination, &old_path)
                 .map_err(|e| format!("Failed to rotate running binary on Windows: {}", e))?;
-            std::fs::rename(&temp_path, destination)
-                .map_err(|e| format!("Failed to move new binary into place: {}", e))?;
+            
+            if let Err(e) = std::fs::rename(&temp_path, destination) {
+                // Rollback if renaming new binary failed
+                let _ = std::fs::rename(&old_path, destination);
+                return Err(format!("Failed to move new binary into place (safely restored previous binary): {}", e));
+            }
 
             // Try removing the old binary immediately
             if std::fs::remove_file(&old_path).is_err() {
@@ -520,8 +871,18 @@ pub async fn download_and_replace_binary(destination: &Path, download_url: &str)
         }
         #[cfg(not(target_os = "windows"))]
         {
-            std::fs::rename(&temp_path, destination)
-                .map_err(|e| format!("Failed to atomically replace binary: {}", e))?;
+            let old_path = destination.with_extension(format!("old-{}", std::process::id()));
+            let _ = std::fs::remove_file(&old_path);
+            if let Ok(_) = std::fs::copy(destination, &old_path) {
+                if let Err(e) = std::fs::rename(&temp_path, destination) {
+                    let _ = std::fs::rename(&old_path, destination);
+                    return Err(format!("Failed to atomically replace binary (safely restored previous binary): {}", e));
+                }
+                let _ = std::fs::remove_file(&old_path);
+            } else {
+                std::fs::rename(&temp_path, destination)
+                    .map_err(|e| format!("Failed to atomically replace binary: {}", e))?;
+            }
         }
     } else {
         std::fs::rename(&temp_path, destination)
@@ -544,6 +905,13 @@ pub async fn self_update_cli(force: bool, current_version: &str) -> Result<Strin
 
     match update_info {
         Some(info) => {
+            // Downgrade protection: reject rollback to older versions unless explicitly forced
+            if !force && !is_newer_version(&info.latest_version, current_version) {
+                return Err(format!(
+                    "Downgrade attack prevention: target version ({}) is not newer than current version ({}). Use --force if this rollback is intentional.",
+                    info.latest_version, current_version
+                ));
+            }
             download_and_replace_binary(&current_exe, &info.download_url).await?;
             Ok(format!(
                 "Successfully updated Proxync CLI: v{} -> {} ({})",
@@ -779,5 +1147,113 @@ mod tests {
         assert!(is_newer_version("1.0.0", "0.2.4"));
         assert!(!is_newer_version("0.2.4", "0.2.4"));
         assert!(!is_newer_version("v0.2.3", "0.2.4"));
+    }
+
+    #[test]
+    fn test_compute_sha256() {
+        assert_eq!(
+            compute_sha256(b""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        assert_eq!(
+            compute_sha256(b"hello world"),
+            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+        );
+    }
+
+    #[test]
+    fn test_constant_time_eq_hex() {
+        let hash_a = "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9";
+        let hash_b = "B94D27B9934D3E08A52E52D7DA7DABFAC484EFE37A5380EE9088F7ACE2EFCDE9";
+        let hash_diff = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+        assert!(constant_time_eq_hex(hash_a, hash_b));
+        assert!(constant_time_eq_hex(hash_a, &format!("  {}  ", hash_b)));
+        assert!(!constant_time_eq_hex(hash_a, hash_diff));
+        assert!(!constant_time_eq_hex(hash_a, "short"));
+    }
+
+    #[test]
+    fn test_verify_binary_magic() {
+        // Rejects HTML / web error responses immediately (Stage 1)
+        assert!(verify_binary_magic(b"<!DOCTYPE html><html><body>404 Not Found</body></html>", false).is_err());
+        assert!(verify_binary_magic(b"<html><head><title>502 Bad Gateway</title></head></html>", false).is_err());
+        assert!(verify_binary_magic(b"{\"message\": \"Not Found\", \"documentation_url\": \"...\"}", false).is_err());
+        assert!(verify_binary_magic(b"404 Not Found", false).is_err());
+
+        // Gzip archive checks
+        assert!(verify_binary_magic(&[0x1f, 0x8b, 0x08, 0x00], true).is_ok());
+        assert!(verify_binary_magic(&[0x00, 0x00], true).is_err());
+
+        // Abnormally small binary
+        assert!(verify_binary_magic(&[0x4d, 0x5a, 0x00], false).is_err());
+
+        #[cfg(target_os = "windows")]
+        {
+            let mut fake_exe = vec![0u8; 65 * 1024];
+            fake_exe[0] = 0x4d;
+            fake_exe[1] = 0x5a;
+            assert!(verify_binary_magic(&fake_exe, false).is_ok());
+
+            fake_exe[0] = 0x00;
+            assert!(verify_binary_magic(&fake_exe, false).is_err());
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            let mut fake_elf = vec![0u8; 65 * 1024];
+            fake_elf[0] = 0x7f;
+            fake_elf[1] = b'E';
+            fake_elf[2] = b'L';
+            fake_elf[3] = b'F';
+            assert!(verify_binary_magic(&fake_elf, false).is_ok());
+
+            fake_elf[0] = 0x00;
+            assert!(verify_binary_magic(&fake_elf, false).is_err());
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            let mut fake_macho = vec![0u8; 65 * 1024];
+            fake_macho[0] = 0xcf;
+            fake_macho[1] = 0xfa;
+            fake_macho[2] = 0xed;
+            fake_macho[3] = 0xfe;
+            assert!(verify_binary_magic(&fake_macho, false).is_ok());
+
+            fake_macho[0] = 0x00;
+            assert!(verify_binary_magic(&fake_macho, false).is_err());
+        }
+    }
+
+    #[test]
+    fn test_verify_minisign_signature_behavior() {
+        // Test with real release signature format
+        let sig_text = "untrusted comment: signature from tauri secret key\n\
+RURs5omD9gZF+I6higglcbuJmGs9fptwWduZ7OSvBVJw06r/IMGNqDlRK+Fi2EEUndE6nh5pTO+2T2eo5KGZXIWh8jCZRGJIAs=\n\
+trusted comment: timestamp:1790330898\tfile:Proxync_0.2.3_x64_en-US.msi\tversion:0.2.3\n\
+JZXsf2cKCVro/URvperLwTxJr+BvGM0f1dGshebhDh6tb70Vl6fVabDQyz1wHntewMnXtDIxlpglV7u88LgsCA==\n";
+
+        // Random payload must fail verification with this signature
+        let tampered_payload = b"malicious binary payload injected into updater";
+        let result = verify_minisign_signature(tampered_payload, sig_text);
+        assert!(result.is_err(), "Signature verification must fail on mismatched payload");
+
+        // Malformed signature string must fail
+        assert!(verify_minisign_signature(b"test", "not a valid signature").is_err());
+    }
+
+    #[test]
+    fn test_downgrade_prevention() {
+        // Newer versions pass
+        assert!(is_newer_version("v0.2.5", "0.2.4"));
+        assert!(is_newer_version("0.3.0", "v0.2.4"));
+        assert!(is_newer_version("1.0.0", "0.2.4"));
+
+        // Same or older versions fail
+        assert!(!is_newer_version("0.2.4", "0.2.4"));
+        assert!(!is_newer_version("v0.2.4", "0.2.4"));
+        assert!(!is_newer_version("0.2.3", "0.2.4"));
+        assert!(!is_newer_version("v0.1.9", "0.2.4"));
     }
 }
