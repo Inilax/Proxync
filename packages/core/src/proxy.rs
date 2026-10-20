@@ -8,6 +8,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::events::{EventSender, ProxyncEvent};
 use base64::prelude::*;
+use sha2::{Digest, Sha256};
+use subtle::ConstantTimeEq;
 
 lazy_static! {
     static ref PROXY_HANDLES: Arc<Mutex<HashMap<u16, (u16, Vec<tokio::task::JoinHandle<()>>)>>> = Arc::new(Mutex::new(HashMap::new()));
@@ -60,15 +62,14 @@ pub fn parse_basic_auth_credentials(cred: &str) -> Result<(String, String), Stri
 }
 
 /// Compares two byte slices in constant time to prevent side-channel timing attacks.
+///
+/// Computes the fixed-size SHA-256 digest of both inputs before performing an audited
+/// constant-time comparison via `subtle::ConstantTimeEq`. This completely eliminates early-return
+/// length leakage when slices have different lengths (mitigating credential length enumeration).
 pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut diff = 0u8;
-    for (x, y) in a.iter().zip(b.iter()) {
-        diff |= x ^ y;
-    }
-    diff == 0
+    let hash_a: [u8; 32] = Sha256::digest(a).into();
+    let hash_b: [u8; 32] = Sha256::digest(b).into();
+    bool::from(hash_a.ct_eq(&hash_b))
 }
 
 /// Extracts the client IP address from proxy forwarding headers (X-Forwarded-For, CF-Connecting-IP, X-Real-IP)
@@ -400,9 +401,9 @@ pub fn verify_basic_auth(header_str: &str, expected_user: &str, expected_pass: &
                     if let Ok(decoded_bytes) = BASE64_STANDARD.decode(token.trim()) {
                         if let Ok(decoded_str) = String::from_utf8(decoded_bytes) {
                             if let Some((user, pass)) = decoded_str.split_once(':') {
-                                if constant_time_eq(user.as_bytes(), expected_user.as_bytes())
-                                    && constant_time_eq(pass.as_bytes(), expected_pass.as_bytes())
-                                {
+                                let user_valid = constant_time_eq(user.as_bytes(), expected_user.as_bytes());
+                                let pass_valid = constant_time_eq(pass.as_bytes(), expected_pass.as_bytes());
+                                if user_valid & pass_valid {
                                     return true;
                                 }
                             }
@@ -1120,11 +1121,16 @@ mod tests {
         let headers = "GET / HTTP/1.1\r\nHost: localhost\r\nAuthorization: Basic YWRtaW46c2VjcmV0MTIz\r\n\r\n";
         assert!(verify_basic_auth(headers, "admin", "secret123"));
 
-        // Wrong password
+        // Wrong password (same length, different length, empty)
+        assert!(!verify_basic_auth(headers, "admin", "secret124"));
         assert!(!verify_basic_auth(headers, "admin", "wrong"));
+        assert!(!verify_basic_auth(headers, "admin", ""));
 
-        // Wrong user
+        // Wrong user (same length, different length, empty)
+        assert!(!verify_basic_auth(headers, "admix", "secret123"));
         assert!(!verify_basic_auth(headers, "user", "secret123"));
+        assert!(!verify_basic_auth(headers, "administrator", "secret123"));
+        assert!(!verify_basic_auth(headers, "", "secret123"));
 
         // Missing auth header
         let no_auth = "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n";
@@ -1252,6 +1258,9 @@ mod tests {
         assert!(!constant_time_eq(b"password123", b"short"));
         assert!(!constant_time_eq(b"", b"nonempty"));
         assert!(constant_time_eq(b"", b""));
+        assert!(!constant_time_eq(b"a", b"aa"));
+        assert!(!constant_time_eq(b"long_secret_credential_string_value", b"short"));
+        assert!(constant_time_eq(b"long_secret_credential_string_value", b"long_secret_credential_string_value"));
     }
 
     #[test]
