@@ -2,6 +2,19 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [fix/issue-311-x-forwarded-for-rate-limit-bypass] - 2026-10-20 [SECURITY] (Harden Client IP Extraction & Remediate Rate-Limit Bypass in Basic Auth Proxy)
+- **Summary**:
+  - **Hardened Client IP Extraction (`packages/core/src/proxy.rs`)**: Overhauled `extract_client_ip()` to inspect forwarding headers in strict security priority order. Prioritizes unspoofable `CF-Connecting-IP` from Cloudflare Edge, and reads the right-most (last) valid IP from `X-Forwarded-For` chains (the value appended by the trusted Proxync Gateway) rather than the client-controllable left-most value, eliminating CWE-290 IP spoofing and rate-limit bypasses (Fixes #311).
+  - **Socket & IP Parsing Validation (`packages/core/src/proxy.rs`)**: Introduced `parse_ip_or_socket()` strictly parsing standard IPv4/IPv6 addresses and socket notations, safely discarding malformed or injection strings and falling back cleanly to `peer_ip`.
+  - **Aggregate Tunnel-Wide Brute-Force Shield (`packages/core/src/proxy.rs`)**: Enhanced `AuthRateLimiter` with an aggregate tunnel-level sliding window (`GLOBAL_MAX_FAILED_AUTH_ATTEMPTS = 25` per 60s), ensuring that distributed botnets rotating real IPs cannot perform unbounded dictionary attacks against password-protected developer tunnels.
+  - **Automated Security Unit Tests (`packages/core/src/proxy.rs`)**: Added `test_extract_client_ip_variations` (covering single, multi-line, Cloudflare priority, IPv6, port-notations, and fallback cases) and `test_auth_rate_limiter_global_lockout_under_distributed_attack`.
+- **Modified Files**:
+  - `packages/core/src/proxy.rs`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo check --manifest-path packages/core/Cargo.toml` completed with 0 errors.
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 50 tests (0 failures).
+
 ## [develop] - 2026-10-19 (Validate tunnel_id in WebSocket Relay & Percent-Encode Editor Protocol URIs)
 - **Summary**:
   - **Relay Tunnel Identifier Validation (`packages/core/src/tunnel.rs`)**: Integrated `validate_tunnel_id()` into `open_tunnel()` ensuring comprehensive input validation across all three tunnel entry points (WebSocket relay, Cloudflare, and native SSH). Added automated unit test `test_open_tunnel_rejects_path_traversal`.
