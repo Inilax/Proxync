@@ -3126,11 +3126,14 @@ version = "0.2.4"
 dependencies = [
  "base64 0.23.1",
  "futures-util",
+ "hex",
  "lazy_static",
+ "minisign-verify",
  "os_info",
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tokio",
  "tokio-tungstenite",
 ]
