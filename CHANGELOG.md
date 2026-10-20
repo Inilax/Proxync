@@ -14,6 +14,29 @@ All notable changes to the Proxync workspace studio project are documented here.
 - **Verification**:
   - `cargo check --manifest-path packages/core/Cargo.toml` completed with 0 errors.
   - `cargo test --manifest-path packages/core/Cargo.toml` passed all 50 tests (0 failures).
+## [fix/issue-299-cli-updater-cryptographic-verification] - 2026-10-20 [SECURITY-CVE] (Remediate Unverified Standalone CLI Binary Downloads & Add Zip-Slip Sandbox Defense)
+- **Summary**:
+  - **Cryptographic Signature & Integrity Pipeline (`packages/core/src/cli_installer.rs`)**: Implemented a fail-closed, multi-tier integrity verification pipeline for standalone CLI self-updates (`proxync update`). Added `verify_download_integrity()` with support for official embedded Minisign Ed25519 digital signatures (`.sig`), standalone SHA-256 checksums (`.sha256`), signed `SHA256SUMS` manifests with `.minisig` validation, and GitHub Release API asset digests with constant-time hex comparison (`constant_time_eq_hex`) to eliminate side-channel timing attacks (Fixes #299).
+  - **Executable Magic & Error Response Filtering (`packages/core/src/cli_installer.rs`)**: Implemented `verify_binary_magic()` rejecting HTML/web error pages (`<!DOCTYPE`, `404 Not Found`, JSON errors) and verifying OS binary header magics (PE `MZ` on Windows, ELF `\x7fELF` on Linux, Mach-O `0xFEEDFACE`/Fat on macOS) and a 64 KB minimum file threshold to intercept corrupt streams.
+  - **Safe Sandbox Extraction & Zip-Slip Defense (`packages/core/src/cli_installer.rs`)**: Pre-inspects archive table of contents via `tar -ztf` before extracting `.tar.gz` payloads on Unix, rejecting parent traversal (`..`), leading slashes, symlinks (`symlink_metadata`), and confirming sandbox confinement (`canonicalize`).
+  - **Atomic Swap, Rollback & Downgrade Prevention (`packages/core/src/cli_installer.rs`)**: Hardened Windows file-lock rotation (`.old-<pid>`) and Unix atomic renames with automatic rollback restoring previous binaries on failure. Enforced downgrade protection blocking rollbacks to older versions unless `--force` is specified.
+  - **Release Matrix Checksum Parity (`.github/workflows/release.yml`)**: Automated `.sha256` checksum generation and publishing for all release artifacts (`proxync-windows-x86_64.exe.sha256`, `proxync-darwin-universal.tar.gz.sha256`, `proxync-linux-x86_64.tar.gz.sha256`).
+- **Modified Files**:
+  - `packages/core/src/cli_installer.rs`
+  - `packages/core/Cargo.toml`
+  - `packages/core/Cargo.lock`
+  - `packages/cli/Cargo.lock`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `.github/workflows/release.yml`
+  - `CHANGELOG.md`
+  - `.agents/changelog.json`
+- **Verification**:
+  - `cargo test --manifest-path packages/core/Cargo.toml`: 53 / 53 tests passed (0 failures).
+  - `cargo test --manifest-path packages/cli/Cargo.toml`: 36 / 36 tests passed (0 failures).
+  - `cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml`: passed with 0 errors and 0 warnings.
+  - Full cross-platform compatibility verified across Windows, Linux, and macOS.
+
+---
 
 ## [develop] - 2026-10-19 (Validate tunnel_id in WebSocket Relay & Percent-Encode Editor Protocol URIs)
 - **Summary**:
