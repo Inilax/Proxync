@@ -71,10 +71,11 @@ pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
-/// Helper to parse either an IP address (IPv4 or IPv6) or a SocketAddr (with port) into an IpAddr.
+/// Helper to parse either an IP address (IPv4, IPv6, or bracketed IPv6) or a SocketAddr (with port) into an IpAddr.
 fn parse_ip_or_socket(s: &str) -> Option<std::net::IpAddr> {
     let clean = s.trim();
-    if let Ok(ip) = clean.parse::<std::net::IpAddr>() {
+    let unbracketed = clean.trim_start_matches('[').trim_end_matches(']');
+    if let Ok(ip) = unbracketed.parse::<std::net::IpAddr>() {
         return Some(ip);
     }
     if let Ok(sock) = clean.parse::<std::net::SocketAddr>() {
@@ -85,6 +86,7 @@ fn parse_ip_or_socket(s: &str) -> Option<std::net::IpAddr> {
 
 /// Extracts the verified client IP address from proxy forwarding headers:
 /// 1. `CF-Connecting-IP`: authoritative single IP set by Cloudflare Edge (unspoofable via Cloudflare).
+///    Note: Relies on edge proxy header sanitization (Cloudflare Edge with Origin CA certs).
 /// 2. `X-Forwarded-For`: multi-proxy chain where each reverse proxy hop appends to the right.
 ///    In accordance with RFC 7230 §3.2.2 and Gateway specs, only the right-most (last) valid IP
 ///    was appended by the trusted tunnel gateway and cannot be spoofed by the client.
@@ -255,11 +257,20 @@ impl AuthRateLimiter {
         }
 
         self.global_attempts += 1;
-        let mut global_lock_triggered = None;
         if self.global_attempts >= GLOBAL_MAX_FAILED_AUTH_ATTEMPTS && self.global_locked_until.is_none() {
             self.global_locked_until = Some(now + std::time::Duration::from_secs(GLOBAL_LOCKOUT_DURATION_SECS));
-            global_lock_triggered = Some((GLOBAL_LOCKOUT_DURATION_SECS, 1));
         }
+
+        let global_lock_triggered = if let Some(exp) = self.global_locked_until {
+            if now < exp {
+                let remaining = exp.duration_since(now).as_secs().max(1);
+                Some((remaining, 1))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         if self.entries.len() > 1000 {
             self.entries.retain(|_, v| {
@@ -707,23 +718,25 @@ pub async fn start_proxy_with_auth(
                     let client_ip = extract_client_ip(&header_str, &peer_ip);
                     let now = std::time::Instant::now();
 
-                    // Check if client IP is currently in active lockout
-                    let locked_status = {
-                        let lim = rate_limiter_clone.lock().await;
-                        lim.is_locked(&client_ip, now)
-                    };
-                    if let Some((remaining_secs, tier)) = locked_status {
-                        serve_429_lockout(&mut client_stream, remaining_secs, tier, local_port).await;
-                        return;
-                    }
-
                     let has_auth = has_authorization_header(&header_str);
                     let is_valid = verify_basic_auth(&header_str, &expected.0, &expected.1);
 
                     if is_valid {
+                        // Legitimate owner with valid credentials is authenticated immediately,
+                        // bypassing lockout and clearing any prior failure entries for this IP.
                         let mut lim = rate_limiter_clone.lock().await;
                         lim.record_success(&client_ip);
                     } else {
+                        // Check lockout status (per-IP and aggregate global) only when credentials are invalid or missing
+                        let locked_status = {
+                            let lim = rate_limiter_clone.lock().await;
+                            lim.is_locked(&client_ip, now)
+                        };
+                        if let Some((remaining_secs, tier)) = locked_status {
+                            serve_429_lockout(&mut client_stream, remaining_secs, tier, local_port).await;
+                            return;
+                        }
+
                         if has_auth {
                             // Invalid credentials submitted -> increment failure count & tarpit delay
                             let locked_info = {
@@ -1798,6 +1811,14 @@ mod tests {
         let h5 = "Host: test.proxync.dev\r\nX-Forwarded-For: 1.1.1.1, 2001:db8::8a2e:370:7334\r\n\r\n";
         assert_eq!(extract_client_ip(h5, "127.0.0.1"), "2001:db8::8a2e:370:7334");
 
+        // 5b. Bracketed IPv6 without port [2001:db8::1] (RFC 7239 / proxy headers)
+        let h5b = "Host: test.proxync.dev\r\nX-Forwarded-For: [2001:db8::1]\r\n\r\n";
+        assert_eq!(extract_client_ip(h5b, "127.0.0.1"), "2001:db8::1");
+
+        // 5c. Bracketed IPv6 with socket port notation [2001:db8::1]:8080
+        let h5c = "Host: test.proxync.dev\r\nX-Forwarded-For: [2001:db8::1]:8080\r\n\r\n";
+        assert_eq!(extract_client_ip(h5c, "127.0.0.1"), "2001:db8::1");
+
         // 6. IP with socket port notation
         let h6 = "Host: test.proxync.dev\r\nX-Forwarded-For: 1.1.1.1, 203.0.113.12:44321\r\n\r\n";
         assert_eq!(extract_client_ip(h6, "127.0.0.1"), "203.0.113.12");
@@ -1835,6 +1856,61 @@ mod tests {
         // Any subsequent IP (even one that has never made a request) is locked out by global shield
         let innocent_ip = "203.0.113.88";
         assert_eq!(limiter.is_locked(innocent_ip, now), Some((60, 1)));
+        // Subsequent failed attempt from another IP during global lockout also returns lockout duration from record_failure
+        assert_eq!(limiter.record_failure(innocent_ip, now), Some((60, 1)));
+    }
+
+    #[tokio::test]
+    async fn test_valid_credentials_bypass_lockout() {
+        let target_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let target_port = target_listener.local_addr().unwrap().port();
+
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = target_listener.accept().await {
+                tokio::spawn(async move {
+                    let mut req_buf = vec![0u8; 1024];
+                    let _ = stream.read(&mut req_buf).await;
+                    let resp = "HTTP/1.1 200 OK\r\nContent-Length: 7\r\nConnection: close\r\n\r\nSUCCESS";
+                    let _ = stream.write_all(resp.as_bytes()).await;
+                });
+            }
+        });
+
+        let tx = test_event_sender();
+        let proxy_port = start_proxy_with_auth(tx, target_port, Some("admin:secret123".to_string()))
+            .await
+            .unwrap();
+
+        // 1. Lock out IP with 5 failed attempts (admin:wrong -> YWRtaW46d3Jvbmc=)
+        for _ in 1..=5 {
+            let mut stream = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).await.unwrap();
+            stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nAuthorization: Basic YWRtaW46d3Jvbmc=\r\n\r\n").await.unwrap();
+            let mut res = Vec::new();
+            let _ = stream.read_to_end(&mut res).await;
+        }
+
+        // 2. Unauthenticated request receives 429 Too Many Requests
+        {
+            let mut stream = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).await.unwrap();
+            stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n").await.unwrap();
+            let mut res = Vec::new();
+            let _ = stream.read_to_end(&mut res).await;
+            let res_str = String::from_utf8_lossy(&res);
+            assert!(res_str.contains("429 Too Many Requests"));
+        }
+
+        // 3. Legitimate user with valid credentials bypasses lockout (admin:secret123 -> YWRtaW46c2VjcmV0MTIz)
+        {
+            let mut stream = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).await.unwrap();
+            stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nAuthorization: Basic YWRtaW46c2VjcmV0MTIz\r\n\r\n").await.unwrap();
+            let mut res = Vec::new();
+            let _ = stream.read_to_end(&mut res).await;
+            let res_str = String::from_utf8_lossy(&res);
+            assert!(res_str.contains("200 OK"), "Valid credentials must bypass active lockout, got: {}", res_str);
+            assert!(res_str.contains("SUCCESS"));
+        }
+
+        stop_proxy(Some(target_port)).await;
     }
 }
 
