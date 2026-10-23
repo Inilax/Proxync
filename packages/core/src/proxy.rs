@@ -71,21 +71,72 @@ pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
-/// Extracts the client IP address from proxy forwarding headers (X-Forwarded-For, CF-Connecting-IP, X-Real-IP)
-/// or falls back to the peer socket IP.
+/// Helper to parse either an IP address (IPv4, IPv6, or bracketed IPv6) or a SocketAddr (with port) into an IpAddr.
+fn parse_ip_or_socket(s: &str) -> Option<std::net::IpAddr> {
+    let clean = s.trim();
+    let unbracketed = clean.trim_start_matches('[').trim_end_matches(']');
+    if let Ok(ip) = unbracketed.parse::<std::net::IpAddr>() {
+        return Some(ip);
+    }
+    if let Ok(sock) = clean.parse::<std::net::SocketAddr>() {
+        return Some(sock.ip());
+    }
+    None
+}
+
+/// Extracts the verified client IP address from proxy forwarding headers:
+/// 1. `CF-Connecting-IP`: authoritative single IP set by Cloudflare Edge (unspoofable via Cloudflare).
+///    Note: Relies on edge proxy header sanitization (Cloudflare Edge with Origin CA certs).
+/// 2. `X-Forwarded-For`: multi-proxy chain where each reverse proxy hop appends to the right.
+///    In accordance with RFC 7230 §3.2.2 and Gateway specs, only the right-most (last) valid IP
+///    was appended by the trusted tunnel gateway and cannot be spoofed by the client.
+/// 3. `X-Real-IP`: fallback only if valid IP and no CF-Connecting-IP or X-Forwarded-For is present.
+/// 4. Falls back to peer socket IP if no valid forwarding IP is discovered.
 pub fn extract_client_ip(header_str: &str, peer_ip: &str) -> String {
+    let mut cf_connecting_ip: Option<String> = None;
+    let mut x_forwarded_for_ips: Vec<String> = Vec::new();
+    let mut x_real_ip: Option<String> = None;
+
     for line in header_str.lines() {
         let trimmed = line.trim();
-        let lower = trimmed.to_ascii_lowercase();
-        if lower.starts_with("x-forwarded-for:") || lower.starts_with("cf-connecting-ip:") || lower.starts_with("x-real-ip:") {
-            if let Some((_, val)) = trimmed.split_once(':') {
-                let first_ip = val.split(',').next().unwrap_or("").trim();
-                if !first_ip.is_empty() {
-                    return first_ip.to_string();
+        if let Some((header_name, header_val)) = trimmed.split_once(':') {
+            let name_lower = header_name.trim().to_ascii_lowercase();
+            let val_clean = header_val.trim();
+
+            if name_lower == "cf-connecting-ip" {
+                if let Some(ip) = parse_ip_or_socket(val_clean) {
+                    cf_connecting_ip = Some(ip.to_string());
+                }
+            } else if name_lower == "x-forwarded-for" {
+                for part in val_clean.split(',') {
+                    if let Some(ip) = parse_ip_or_socket(part) {
+                        x_forwarded_for_ips.push(ip.to_string());
+                    }
+                }
+            } else if name_lower == "x-real-ip" {
+                if let Some(ip) = parse_ip_or_socket(val_clean) {
+                    x_real_ip = Some(ip.to_string());
                 }
             }
         }
     }
+
+    // Priority 1: Cloudflare's authoritative connecting IP
+    if let Some(ip) = cf_connecting_ip {
+        return ip;
+    }
+
+    // Priority 2: Right-most (last appended by gateway) valid IP in X-Forwarded-For chain
+    if let Some(ip) = x_forwarded_for_ips.last() {
+        return ip.clone();
+    }
+
+    // Priority 3: X-Real-IP fallback (if valid IP)
+    if let Some(ip) = x_real_ip {
+        return ip;
+    }
+
+    // Fallback: Peer socket address
     peer_ip.to_string()
 }
 
@@ -109,6 +160,9 @@ pub const MAX_FAILED_AUTH_ATTEMPTS: u32 = 5;
 pub const AUTH_WINDOW_SECS: u64 = 60;
 pub const AUTH_IDLE_RESET_SECS: u64 = 900; // 15 minutes of inactivity resets tier back to 0
 pub const LOCKOUT_DURATIONS: [u64; 5] = [60, 120, 300, 900, 3600]; // 1m, 2m, 5m, 15m, 1h max
+pub const GLOBAL_MAX_FAILED_AUTH_ATTEMPTS: u32 = 25;
+pub const GLOBAL_AUTH_WINDOW_SECS: u64 = 60;
+pub const GLOBAL_LOCKOUT_DURATION_SECS: u64 = 60;
 
 /// Android-style progressive lockout: returns escalation duration in seconds based on stage.
 pub fn get_lockout_duration_secs(tier: u32) -> u64 {
@@ -138,19 +192,35 @@ pub const AUTH_FAILED_DELAY_MS: u64 = 1000;
 pub const AUTH_FAILED_DELAY_MS: u64 = 5;
 
 // ponytail: sliding window in-memory rate limiter per tunnel; prunes at 1000 IPs to prevent memory exhaustion
-#[derive(Default)]
+#[derive(Debug)]
 pub struct AuthRateLimiter {
     pub entries: HashMap<String, FailedAttemptEntry>,
+    pub global_attempts: u32,
+    pub global_window_start: std::time::Instant,
+    pub global_locked_until: Option<std::time::Instant>,
+}
+
+impl Default for AuthRateLimiter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AuthRateLimiter {
     pub fn new() -> Self {
-        Self { entries: HashMap::new() }
+        let now = std::time::Instant::now();
+        Self {
+            entries: HashMap::new(),
+            global_attempts: 0,
+            global_window_start: now,
+            global_locked_until: None,
+        }
     }
 
     /// Checks if a client IP is currently locked out.
     /// Returns Some((remaining_seconds, lockout_tier)) if locked, or None if unlocked.
     pub fn is_locked(&self, client_ip: &str, now: std::time::Instant) -> Option<(u64, u32)> {
+        // 1. Check per-IP lockout
         if let Some(entry) = self.entries.get(client_ip) {
             if let Some(locked_until) = entry.locked_until {
                 if now < locked_until {
@@ -159,12 +229,49 @@ impl AuthRateLimiter {
                 }
             }
         }
+
+        // 2. Check aggregate tunnel-level lockout (defense against distributed IP attacks)
+        if let Some(global_locked) = self.global_locked_until {
+            if now < global_locked {
+                let remaining = global_locked.duration_since(now).as_secs().max(1);
+                return Some((remaining, 1));
+            }
+        }
+
         None
     }
 
     /// Records a failed authentication attempt with Android-style progressive escalation.
     /// Returns Some((lockout_seconds, lockout_tier)) if this attempt triggered/escalated a lockout, or None if still under limit.
     pub fn record_failure(&mut self, client_ip: &str, now: std::time::Instant) -> Option<(u64, u32)> {
+        // Track aggregate global failures across all IPs
+        if let Some(exp) = self.global_locked_until {
+            if now >= exp {
+                self.global_locked_until = None;
+                self.global_attempts = 0;
+                self.global_window_start = now;
+            }
+        } else if now.duration_since(self.global_window_start).as_secs() > GLOBAL_AUTH_WINDOW_SECS {
+            self.global_attempts = 0;
+            self.global_window_start = now;
+        }
+
+        self.global_attempts += 1;
+        if self.global_attempts >= GLOBAL_MAX_FAILED_AUTH_ATTEMPTS && self.global_locked_until.is_none() {
+            self.global_locked_until = Some(now + std::time::Duration::from_secs(GLOBAL_LOCKOUT_DURATION_SECS));
+        }
+
+        let global_lock_triggered = if let Some(exp) = self.global_locked_until {
+            if now < exp {
+                let remaining = exp.duration_since(now).as_secs().max(1);
+                Some((remaining, 1))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         if self.entries.len() > 1000 {
             self.entries.retain(|_, v| {
                 if let Some(l) = v.locked_until {
@@ -212,7 +319,7 @@ impl AuthRateLimiter {
         entry.last_attempt = now;
 
         // If already in a lockout tier (tier >= 1), any subsequent wrong attempt immediately escalates tier
-        if entry.lockout_tier >= 1 {
+        let ip_lock_result = if entry.lockout_tier >= 1 {
             entry.lockout_tier += 1;
             let duration = get_lockout_duration_secs(entry.lockout_tier);
             entry.locked_until = Some(now + std::time::Duration::from_secs(duration));
@@ -232,7 +339,9 @@ impl AuthRateLimiter {
             } else {
                 None
             }
-        }
+        };
+
+        ip_lock_result.or(global_lock_triggered)
     }
 
     pub fn record_success(&mut self, client_ip: &str) {
@@ -609,23 +718,25 @@ pub async fn start_proxy_with_auth(
                     let client_ip = extract_client_ip(&header_str, &peer_ip);
                     let now = std::time::Instant::now();
 
-                    // Check if client IP is currently in active lockout
-                    let locked_status = {
-                        let lim = rate_limiter_clone.lock().await;
-                        lim.is_locked(&client_ip, now)
-                    };
-                    if let Some((remaining_secs, tier)) = locked_status {
-                        serve_429_lockout(&mut client_stream, remaining_secs, tier, local_port).await;
-                        return;
-                    }
-
                     let has_auth = has_authorization_header(&header_str);
                     let is_valid = verify_basic_auth(&header_str, &expected.0, &expected.1);
 
                     if is_valid {
+                        // Legitimate owner with valid credentials is authenticated immediately,
+                        // bypassing lockout and clearing any prior failure entries for this IP.
                         let mut lim = rate_limiter_clone.lock().await;
                         lim.record_success(&client_ip);
                     } else {
+                        // Check lockout status (per-IP and aggregate global) only when credentials are invalid or missing
+                        let locked_status = {
+                            let lim = rate_limiter_clone.lock().await;
+                            lim.is_locked(&client_ip, now)
+                        };
+                        if let Some((remaining_secs, tier)) = locked_status {
+                            serve_429_lockout(&mut client_stream, remaining_secs, tier, local_port).await;
+                            return;
+                        }
+
                         if has_auth {
                             // Invalid credentials submitted -> increment failure count & tarpit delay
                             let locked_info = {
@@ -1674,6 +1785,130 @@ mod tests {
         assert!(res_str.contains("Hello"));
         assert!(res_str.contains("Proxync"));
         assert!(start.elapsed() < std::time::Duration::from_millis(150), "Expected < 150ms, elapsed: {:?}", start.elapsed());
+
+        stop_proxy(Some(target_port)).await;
+    }
+
+    #[test]
+    fn test_extract_client_ip_variations() {
+        // 1. Single valid X-Forwarded-For
+        let h1 = "Host: test.proxync.dev\r\nX-Forwarded-For: 203.0.113.12\r\n\r\n";
+        assert_eq!(extract_client_ip(h1, "127.0.0.1"), "203.0.113.12");
+
+        // 2. Attacker-spoofed X-Forwarded-For: must pick the right-most (trusted gateway appended) IP
+        let h2 = "Host: test.proxync.dev\r\nX-Forwarded-For: 1.1.1.1, 10.0.0.1, 203.0.113.12\r\n\r\n";
+        assert_eq!(extract_client_ip(h2, "127.0.0.1"), "203.0.113.12");
+
+        // 3. Multiple X-Forwarded-For header lines: right-most across all lines
+        let h3 = "Host: test.proxync.dev\r\nX-Forwarded-For: 1.1.1.1\r\nX-Forwarded-For: 203.0.113.12\r\n\r\n";
+        assert_eq!(extract_client_ip(h3, "127.0.0.1"), "203.0.113.12");
+
+        // 4. Cloudflare CF-Connecting-IP takes precedence over client-supplied X-Forwarded-For
+        let h4 = "Host: test.proxync.dev\r\nX-Forwarded-For: 1.1.1.1\r\nCF-Connecting-IP: 198.51.100.55\r\n\r\n";
+        assert_eq!(extract_client_ip(h4, "127.0.0.1"), "198.51.100.55");
+
+        // 5. Valid IPv6 address parsing
+        let h5 = "Host: test.proxync.dev\r\nX-Forwarded-For: 1.1.1.1, 2001:db8::8a2e:370:7334\r\n\r\n";
+        assert_eq!(extract_client_ip(h5, "127.0.0.1"), "2001:db8::8a2e:370:7334");
+
+        // 5b. Bracketed IPv6 without port [2001:db8::1] (RFC 7239 / proxy headers)
+        let h5b = "Host: test.proxync.dev\r\nX-Forwarded-For: [2001:db8::1]\r\n\r\n";
+        assert_eq!(extract_client_ip(h5b, "127.0.0.1"), "2001:db8::1");
+
+        // 5c. Bracketed IPv6 with socket port notation [2001:db8::1]:8080
+        let h5c = "Host: test.proxync.dev\r\nX-Forwarded-For: [2001:db8::1]:8080\r\n\r\n";
+        assert_eq!(extract_client_ip(h5c, "127.0.0.1"), "2001:db8::1");
+
+        // 6. IP with socket port notation
+        let h6 = "Host: test.proxync.dev\r\nX-Forwarded-For: 1.1.1.1, 203.0.113.12:44321\r\n\r\n";
+        assert_eq!(extract_client_ip(h6, "127.0.0.1"), "203.0.113.12");
+
+        // 7. Non-IP garbage in X-Forwarded-For falls back to peer_ip
+        let h7 = "Host: test.proxync.dev\r\nX-Forwarded-For: evil-string-not-ip\r\n\r\n";
+        assert_eq!(extract_client_ip(h7, "127.0.0.1"), "127.0.0.1");
+
+        // 8. No headers falls back to peer_ip
+        let h8 = "Host: test.proxync.dev\r\nUser-Agent: curl\r\n\r\n";
+        assert_eq!(extract_client_ip(h8, "127.0.0.1"), "127.0.0.1");
+
+        // 9. X-Real-IP fallback when X-Forwarded-For and CF-Connecting-IP are absent
+        let h9 = "Host: test.proxync.dev\r\nX-Real-IP: 198.51.100.20\r\n\r\n";
+        assert_eq!(extract_client_ip(h9, "127.0.0.1"), "198.51.100.20");
+    }
+
+    #[test]
+    fn test_auth_rate_limiter_global_lockout_under_distributed_attack() {
+        let mut limiter = AuthRateLimiter::new();
+        let now = std::time::Instant::now();
+
+        // 24 distinct IPs each fail 1 attempt (under per-IP 5 attempt threshold)
+        for i in 1..=24 {
+            let ip = format!("198.51.100.{}", i);
+            assert_eq!(limiter.record_failure(&ip, now), None);
+            assert_eq!(limiter.is_locked(&ip, now), None);
+        }
+
+        // 25th attempt from a brand new IP triggers global tunnel lockout (60s)
+        let ip25 = "198.51.100.25";
+        assert_eq!(limiter.record_failure(ip25, now), Some((60, 1)));
+        assert_eq!(limiter.is_locked(ip25, now), Some((60, 1)));
+
+        // Any subsequent IP (even one that has never made a request) is locked out by global shield
+        let innocent_ip = "203.0.113.88";
+        assert_eq!(limiter.is_locked(innocent_ip, now), Some((60, 1)));
+        // Subsequent failed attempt from another IP during global lockout also returns lockout duration from record_failure
+        assert_eq!(limiter.record_failure(innocent_ip, now), Some((60, 1)));
+    }
+
+    #[tokio::test]
+    async fn test_valid_credentials_bypass_lockout() {
+        let target_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let target_port = target_listener.local_addr().unwrap().port();
+
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = target_listener.accept().await {
+                tokio::spawn(async move {
+                    let mut req_buf = vec![0u8; 1024];
+                    let _ = stream.read(&mut req_buf).await;
+                    let resp = "HTTP/1.1 200 OK\r\nContent-Length: 7\r\nConnection: close\r\n\r\nSUCCESS";
+                    let _ = stream.write_all(resp.as_bytes()).await;
+                });
+            }
+        });
+
+        let tx = test_event_sender();
+        let proxy_port = start_proxy_with_auth(tx, target_port, Some("admin:secret123".to_string()))
+            .await
+            .unwrap();
+
+        // 1. Lock out IP with 5 failed attempts (admin:wrong -> YWRtaW46d3Jvbmc=)
+        for _ in 1..=5 {
+            let mut stream = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).await.unwrap();
+            stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nAuthorization: Basic YWRtaW46d3Jvbmc=\r\n\r\n").await.unwrap();
+            let mut res = Vec::new();
+            let _ = stream.read_to_end(&mut res).await;
+        }
+
+        // 2. Unauthenticated request receives 429 Too Many Requests
+        {
+            let mut stream = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).await.unwrap();
+            stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n").await.unwrap();
+            let mut res = Vec::new();
+            let _ = stream.read_to_end(&mut res).await;
+            let res_str = String::from_utf8_lossy(&res);
+            assert!(res_str.contains("429 Too Many Requests"));
+        }
+
+        // 3. Legitimate user with valid credentials bypasses lockout (admin:secret123 -> YWRtaW46c2VjcmV0MTIz)
+        {
+            let mut stream = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).await.unwrap();
+            stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nAuthorization: Basic YWRtaW46c2VjcmV0MTIz\r\n\r\n").await.unwrap();
+            let mut res = Vec::new();
+            let _ = stream.read_to_end(&mut res).await;
+            let res_str = String::from_utf8_lossy(&res);
+            assert!(res_str.contains("200 OK"), "Valid credentials must bypass active lockout, got: {}", res_str);
+            assert!(res_str.contains("SUCCESS"));
+        }
 
         stop_proxy(Some(target_port)).await;
     }
