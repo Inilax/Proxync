@@ -2,6 +2,18 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [fix/issue-313-known-hosts-pinning] - 2026-10-21 [SECURITY-CVE] (Enforce SSH Host Key Pinning & Prevent JIT known_hosts Overwrites)
+- **Summary**:
+  - **Enforce Host Key Pinning & Prevent known_hosts Overwrite (`packages/core/src/tunnel.rs`)**: Removed the blind unconditional overwrite of `known_hosts` during JIT certificate registration (`POST /api/tunnel/sign-jit-cert`). Implemented `verify_host_key()` with constant-time equality checks against `DEFAULT_PINNED_HOST_KEY` (or custom `PROXYNC_PINNED_HOST_KEY`), failing closed with an explicit security alert if a rogue or mismatched host key is returned by the JIT endpoint (Fixes #313).
+  - **Strict Error Handling for known_hosts Pre-seeding (`packages/core/src/tunnel.rs`)**: Replaced silent error suppression `let _ = std::fs::write(&known_hosts_path, ...)` with explicit error propagation `map_err(...)` to guarantee that SSH host key pinning files are written before starting tunnels.
+  - **Security Regression Unit Tests (`packages/core/src/tunnel.rs`)**: Added `test_verify_host_key_matches_default`, `test_verify_host_key_matches_without_comment_and_extra_spaces`, and `test_verify_host_key_rejects_rogue_keys` verifying constant-time verification, comment handling, and rejection of rogue/mismatched/malformed host keys.
+- **Modified Files**:
+  - `packages/core/src/tunnel.rs`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo check --manifest-path packages/core/Cargo.toml`: passed with 0 errors and 0 warnings.
+  - `cargo test --manifest-path packages/core/Cargo.toml`: passed all 56 unit tests (0 failures).
+
 ## [fix/issue-312-constant-time-eq-length-leak] - 2026-10-21 [SECURITY-CVE] (Remediate Basic Auth Credential Length Timing Leaks via Constant-Time Digest Equality)
 - **Summary**:
   - **Eliminate Slice Length Side-Channel in Constant-Time Equality (`packages/core/src/proxy.rs`)**: Replaced the early-returning slice length comparison and manual XOR loop in `constant_time_eq` with pre-hash SHA-256 digest computation and audited constant-time array comparison via `subtle::ConstantTimeEq`. Normalizing inputs to fixed 32-byte digests before comparison ensures identical execution time regardless of input length discrepancies, eliminating timing side-channels that leak Basic Auth username and password lengths (Fixes #312).
