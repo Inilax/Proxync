@@ -16,6 +16,19 @@ All notable changes to the Proxync workspace studio project are documented here.
 
 ---
 
+## [fix/issue-311-x-forwarded-for-rate-limit-bypass] - 2026-10-21 [SECURITY] (Remediate Global Lockout DoS Blast Radius & Harden IPv6 Bracket Parsing)
+- **Summary**:
+  - **Eliminate Global Lockout DoS Blast Radius (`packages/core/src/proxy.rs`)**: Resolved P1 blocker in `handle_connection` where valid tunnel owners were rejected with HTTP 429 when global lockout was active. Valid basic auth credentials now authenticate immediately, bypassing lockout and resetting failure counters; lockout is strictly enforced only on invalid credentials or unauthenticated probes.
+  - **Bracketed IPv6 Parsing Defense (`packages/core/src/proxy.rs`)**: Enhanced `parse_ip_or_socket()` to strip RFC 7239 bracket delimiters (`[...]`) before parsing `IpAddr`, properly recognizing bracketed IPv6 addresses without ports (`[2001:db8::1]`) and with ports (`[2001:db8::1]:8080`).
+  - **Consistent Global Lockout Return (`packages/core/src/proxy.rs`)**: Updated `record_failure()` to consistently return `Some((remaining_secs, 1))` for subsequent failed requests during active global lockout windows instead of returning `None`.
+  - **Edge Proxy Sanitization Documentation (`packages/core/src/proxy.rs`)**: Explicitly documented that Priority 1 `CF-Connecting-IP` handling relies on edge proxy header sanitization (Cloudflare Edge with Cloudflare Origin Certificates).
+  - **Automated Security Unit Tests (`packages/core/src/proxy.rs`)**: Added `test_valid_credentials_bypass_lockout` verifying legitimate credentials succeed under active lockout, added bracketed IPv6 assertions to `test_extract_client_ip_variations`, and verified subsequent failures in `test_auth_rate_limiter_global_lockout_under_distributed_attack`.
+- **Modified Files**:
+  - `packages/core/src/proxy.rs`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo check --manifest-path packages/core/Cargo.toml` completed with 0 errors.
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 56 tests (0 failures).
 ## [fix/issue-299-cli-updater-cryptographic-verification] - 2026-10-20 [SECURITY-CVE] (Remediate Unverified Standalone CLI Binary Downloads & Add Zip-Slip Sandbox Defense)
 - **Summary**:
   - **Cryptographic Signature & Integrity Pipeline (`packages/core/src/cli_installer.rs`)**: Implemented a fail-closed, multi-tier integrity verification pipeline for standalone CLI self-updates (`proxync update`). Added `verify_download_integrity()` with support for official embedded Minisign Ed25519 digital signatures (`.sig`), standalone SHA-256 checksums (`.sha256`), signed `SHA256SUMS` manifests with `.minisig` validation, and GitHub Release API asset digests with constant-time hex comparison (`constant_time_eq_hex`) to eliminate side-channel timing attacks (Fixes #299).
