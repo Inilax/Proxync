@@ -14,6 +14,23 @@ All notable changes to the Proxync workspace studio project are documented here.
   - `cargo check --manifest-path packages/core/Cargo.toml`: passed with 0 errors and 0 warnings.
   - `cargo test --manifest-path packages/core/Cargo.toml`: passed all 56 unit tests (0 failures).
 
+## [fix/issue-312-constant-time-eq-length-leak] - 2026-10-21 [SECURITY-CVE] (Remediate Basic Auth Credential Length Timing Leaks via Constant-Time Digest Equality)
+- **Summary**:
+  - **Eliminate Slice Length Side-Channel in Constant-Time Equality (`packages/core/src/proxy.rs`)**: Replaced the early-returning slice length comparison and manual XOR loop in `constant_time_eq` with pre-hash SHA-256 digest computation and audited constant-time array comparison via `subtle::ConstantTimeEq`. Normalizing inputs to fixed 32-byte digests before comparison ensures identical execution time regardless of input length discrepancies, eliminating timing side-channels that leak Basic Auth username and password lengths (Fixes #312).
+  - **Prevent Short-Circuit Evaluation on Credentials (`packages/core/src/proxy.rs`)**: Refactored `verify_basic_auth` to evaluate both username and password constant-time equality unconditionally using bitwise AND (`user_valid & pass_valid`), preventing short-circuit timing variations that disclose whether a username exists.
+  - **Audited Constant-Time Primitive Dependency (`packages/core/Cargo.toml`)**: Added `subtle = "2.6"` to `proxync-core` dependencies to provide audited constant-time cryptographic primitives.
+  - **Automated Security Unit Tests (`packages/core/src/proxy.rs`)**: Expanded `test_constant_time_eq` and `test_verify_basic_auth_logic` to test varying length mismatches, empty strings, and long credentials.
+- **Modified Files**:
+  - `packages/core/Cargo.toml`
+  - `packages/core/Cargo.lock`
+  - `packages/cli/Cargo.lock`
+  - `packages/core/src/proxy.rs`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo check --manifest-path packages/core/Cargo.toml`: passed with 0 errors and 0 warnings.
+  - `cargo test --manifest-path packages/core/Cargo.toml`: passed all 53 unit tests (0 failures).
+  - `cargo check --manifest-path packages/cli/Cargo.toml`: passed with 0 errors and 0 warnings.
+
 ---
 
 ## [fix/issue-311-x-forwarded-for-rate-limit-bypass] - 2026-10-21 [SECURITY] (Remediate Global Lockout DoS Blast Radius & Harden IPv6 Bracket Parsing)
@@ -29,6 +46,7 @@ All notable changes to the Proxync workspace studio project are documented here.
 - **Verification**:
   - `cargo check --manifest-path packages/core/Cargo.toml` completed with 0 errors.
   - `cargo test --manifest-path packages/core/Cargo.toml` passed all 56 tests (0 failures).
+
 ## [fix/issue-299-cli-updater-cryptographic-verification] - 2026-10-20 [SECURITY-CVE] (Remediate Unverified Standalone CLI Binary Downloads & Add Zip-Slip Sandbox Defense)
 - **Summary**:
   - **Cryptographic Signature & Integrity Pipeline (`packages/core/src/cli_installer.rs`)**: Implemented a fail-closed, multi-tier integrity verification pipeline for standalone CLI self-updates (`proxync update`). Added `verify_download_integrity()` with support for official embedded Minisign Ed25519 digital signatures (`.sig`), standalone SHA-256 checksums (`.sha256`), signed `SHA256SUMS` manifests with `.minisig` validation, and GitHub Release API asset digests with constant-time hex comparison (`constant_time_eq_hex`) to eliminate side-channel timing attacks (Fixes #299).
