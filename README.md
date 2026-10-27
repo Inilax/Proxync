@@ -150,12 +150,12 @@ Check out [`CHANGELOG.md`](CHANGELOG.md) for recent architectural milestones and
 
 ### Roadmap
 
-- [x] **Native High-Speed Proxync Tunneling** — Proprietary low-latency origin relay infrastructure (`relay.proxync.dev` on port 2222) with instant standby URL preservation across dev server restarts.
-- [x] **Real-Time Schema Drift & OpenAPI Synthesis** — Continuous AST diff engine detecting contract breaking changes, paired with automated OpenAPI 3.0 generation from live traffic.
-- [x] **Postman-Grade API Workbench** — Local-first REST client with synchronous restart persistence, collection grouping, and native CORS-bypassing runner.
-- [ ] **macOS & Linux Production Stabilization** — Multi-distribution hardening across Linux (Wayland/XDG desktop portal, AppImage, `.deb`) and macOS (Apple Silicon notarization, Gatekeeper compliance, and Darwin kernel syscall refinements).
-- [ ] **CLI Companion (`proxync-cli`)** — Ultra-lightweight terminal companion to launch tunnels, test endpoints, and stream traffic logs directly from the command line.
+- [x] **macOS & Linux Production Stabilization** — Multi-distribution hardening across Linux (Wayland/XDG desktop portal, AppImage, `.deb`) and macOS (Apple Silicon notarization, Gatekeeper compliance, and Darwin kernel syscall refinements).
+- [x] **CLI Companion (`proxync-cli`)** — Ultra-lightweight terminal companion to launch tunnels, test endpoints, and stream traffic logs directly from the command line.
 - [ ] **Enterprise Edition** — Team collaboration workspaces, persistent shared tunnels, organization-wide custom domains, centralized audit telemetry, and autonomous AI agent background execution.
+- [ ] **Local AI Agent & MCP Server Gateway** — Low-latency, non-buffering Server-Sent Events (SSE) and WebSocket tunnels optimized for Model Context Protocol (MCP) servers and cloud-to-local agent tool calling.
+- [ ] **Smart Webhook Replay & Tolerance Re-Signing** — 1-click webhook replay for Stripe, GitHub, Shopify, and custom hooks with automatic HMAC signature re-computation and timestamp tolerance window refreshment to eliminate signature expiration errors.
+- [ ] **Multi-Port Microservice Routing** — Route multiple local development services (e.g. frontend on `:3000` and API backend on `:8080`) through a single unified Proxync domain via path prefixing or dedicated subdomains.
 - [ ] **On-The-Fly Request & Response Mocking** — Intercept and mutate HTTP request/response headers and payloads before hitting localhost, enabling rapid frontend development against unbuilt backends.
 - [ ] **Automated Test Suite Synthesizer** — 1-click generation of end-to-end integration tests (Jest, Vitest, Pytest, Playwright) synthesized directly from live intercepted traffic.
 - [ ] **Offline-First SQLite State Engine** — High-performance indexed storage for large payload analysis, deep fuzzy search, and historical log queries.

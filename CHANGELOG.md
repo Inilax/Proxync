@@ -2,6 +2,19 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [fix/develop-readme-roadmap-refresh] - 2026-10-26 (Synchronize 0.2.4 Roadmap Milestones & Public Tunnel Capabilities)
+- **Summary**:
+  - **Roadmap Milestone Synchronization (`README.md`)**: Marked macOS & Linux production stabilization and the CLI Companion (`proxync-cli`) as completed milestones.
+  - **Upcoming Enterprise Architecture Expansion (`README.md`)**: Formalized upcoming Enterprise Edition features (team collaboration workspaces, persistent shared tunnels, organization-wide custom domains, centralized audit telemetry).
+  - **Developer-Voted Public Tunneling Capabilities (`README.md`)**: Added high-demand developer capabilities to the client roadmap, including smart webhook replay with HMAC signature re-computation/tolerance refresh, local AI agent & MCP server low-latency SSE/streaming gateways, and multi-port microservice routing.
+- **Modified Files**:
+  - `README.md`
+  - `CHANGELOG.md`
+- **Verification**:
+  - Markdown syntax and links verified; previewed against GitHub flavored markdown standards.
+
+---
+
 ## [fix/issue-313-known-hosts-pinning] - 2026-10-21 [SECURITY-CVE] (Enforce SSH Host Key Pinning & Prevent JIT known_hosts Overwrites)
 - **Summary**:
   - **Enforce Host Key Pinning & Prevent known_hosts Overwrite (`packages/core/src/tunnel.rs`)**: Removed the blind unconditional overwrite of `known_hosts` during JIT certificate registration (`POST /api/tunnel/sign-jit-cert`). Implemented `verify_host_key()` with constant-time equality checks against `DEFAULT_PINNED_HOST_KEY` (or custom `PROXYNC_PINNED_HOST_KEY`), failing closed with an explicit security alert if a rogue or mismatched host key is returned by the JIT endpoint (Fixes #313).
