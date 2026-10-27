@@ -1469,7 +1469,7 @@ export function PostmanView({
                       }
                       return (
                         <option key={t.id} value={`tunnel-${t.id}`} className="bg-surface-container-high text-primary font-mono truncate">
-                          🌐 {displayHost} (:{t.localPort})
+                          {t.basicAuth?.enabled ? '🔒' : '🌐'} {displayHost} (:{t.localPort})
                         </option>
                       );
                     })}

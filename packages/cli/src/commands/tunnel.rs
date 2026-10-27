@@ -100,9 +100,28 @@ pub async fn handle_tunnel(args: TunnelArgs) -> Result<(), Box<dyn std::error::E
         .unwrap_or_default()
         .as_secs();
 
-    let effective_expires = if args.detach && args.expires.is_none() {
-        Some("1h".to_string())
+    let is_admin = std::env::var("PROXYNC_API_SECRET_TOKEN")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .is_some();
+
+    let effective_expires = if !is_admin {
+        // Free tier: strictly limited to a maximum of 1h uptime per session
+        match args.expires.as_deref() {
+            None => Some("1h".to_string()),
+            Some(exp_str) => {
+                let requested_secs = parse_duration_to_secs(exp_str).unwrap_or(3600);
+                if requested_secs > 3600 {
+                    println!("\x1b[1;33m[!] Notice: Free tier sessions are capped at 1h uptime. Setting session expiration to 1h.\x1b[0m");
+                    println!("    Tip: Provide admin credentials (PROXYNC_API_SECRET_TOKEN) for extended or unlimited sessions.");
+                    Some("1h".to_string())
+                } else {
+                    Some(exp_str.to_string())
+                }
+            }
+        }
     } else {
+        // Admin tier: can run indefinitely or with custom duration
         args.expires.clone()
     };
 
@@ -123,8 +142,16 @@ pub async fn handle_tunnel(args: TunnelArgs) -> Result<(), Box<dyn std::error::E
     };
     let _ = proxync_core::registry::register_tunnel(&entry);
 
+    if is_admin {
+        println!("  Tier         : \x1b[1;35mAdmin (Unlimited Session)\x1b[0m");
+    } else {
+        println!("  Tier         : \x1b[1;33mFree (1h Max Session Limit)\x1b[0m");
+    }
+
     if let Some(ref exp) = effective_expires {
         println!("  Auto-Expiry  : \x1b[1;33m{}\x1b[0m", exp);
+    } else {
+        println!("  Auto-Expiry  : \x1b[90mUnlimited\x1b[0m");
     }
 
     if args.basic_auth.is_some() {
@@ -464,7 +491,21 @@ pub async fn spawn_detached_tunnel(args: &TunnelArgs) -> Result<(), Box<dyn std:
     if let Some(ref auth) = args.basic_auth {
         cmd.env("PROXYNC_BASIC_AUTH", auth);
     }
-    let effective_expires = args.expires.clone().unwrap_or_else(|| "1h".to_string());
+    let is_admin = std::env::var("PROXYNC_API_SECRET_TOKEN")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .is_some();
+    let effective_expires = if !is_admin {
+        match args.expires.as_deref() {
+            None => "1h".to_string(),
+            Some(exp_str) => {
+                let requested_secs = parse_duration_to_secs(exp_str).unwrap_or(3600);
+                if requested_secs > 3600 { "1h".to_string() } else { exp_str.to_string() }
+            }
+        }
+    } else {
+        args.expires.clone().unwrap_or_else(|| "1h".to_string())
+    };
     cmd.arg("--expires").arg(&effective_expires);
     if args.qr {
         cmd.arg("--qr");

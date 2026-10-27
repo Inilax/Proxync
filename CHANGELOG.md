@@ -2,6 +2,377 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [fix/issue-313-known-hosts-pinning] - 2026-10-21 [SECURITY-CVE] (Enforce SSH Host Key Pinning & Prevent JIT known_hosts Overwrites)
+- **Summary**:
+  - **Enforce Host Key Pinning & Prevent known_hosts Overwrite (`packages/core/src/tunnel.rs`)**: Removed the blind unconditional overwrite of `known_hosts` during JIT certificate registration (`POST /api/tunnel/sign-jit-cert`). Implemented `verify_host_key()` with constant-time equality checks against `DEFAULT_PINNED_HOST_KEY` (or custom `PROXYNC_PINNED_HOST_KEY`), failing closed with an explicit security alert if a rogue or mismatched host key is returned by the JIT endpoint (Fixes #313).
+  - **Strict Error Handling for known_hosts Pre-seeding (`packages/core/src/tunnel.rs`)**: Replaced silent error suppression `let _ = std::fs::write(&known_hosts_path, ...)` with explicit error propagation `map_err(...)` to guarantee that SSH host key pinning files are written before starting tunnels.
+  - **Security Regression Unit Tests (`packages/core/src/tunnel.rs`)**: Added `test_verify_host_key_matches_default`, `test_verify_host_key_matches_without_comment_and_extra_spaces`, and `test_verify_host_key_rejects_rogue_keys` verifying constant-time verification, comment handling, and rejection of rogue/mismatched/malformed host keys.
+- **Modified Files**:
+  - `packages/core/src/tunnel.rs`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo check --manifest-path packages/core/Cargo.toml`: passed with 0 errors and 0 warnings.
+  - `cargo test --manifest-path packages/core/Cargo.toml`: passed all 56 unit tests (0 failures).
+
+## [fix/issue-312-constant-time-eq-length-leak] - 2026-10-21 [SECURITY-CVE] (Remediate Basic Auth Credential Length Timing Leaks via Constant-Time Digest Equality)
+- **Summary**:
+  - **Eliminate Slice Length Side-Channel in Constant-Time Equality (`packages/core/src/proxy.rs`)**: Replaced the early-returning slice length comparison and manual XOR loop in `constant_time_eq` with pre-hash SHA-256 digest computation and audited constant-time array comparison via `subtle::ConstantTimeEq`. Normalizing inputs to fixed 32-byte digests before comparison ensures identical execution time regardless of input length discrepancies, eliminating timing side-channels that leak Basic Auth username and password lengths (Fixes #312).
+  - **Prevent Short-Circuit Evaluation on Credentials (`packages/core/src/proxy.rs`)**: Refactored `verify_basic_auth` to evaluate both username and password constant-time equality unconditionally using bitwise AND (`user_valid & pass_valid`), preventing short-circuit timing variations that disclose whether a username exists.
+  - **Audited Constant-Time Primitive Dependency (`packages/core/Cargo.toml`)**: Added `subtle = "2.6"` to `proxync-core` dependencies to provide audited constant-time cryptographic primitives.
+  - **Automated Security Unit Tests (`packages/core/src/proxy.rs`)**: Expanded `test_constant_time_eq` and `test_verify_basic_auth_logic` to test varying length mismatches, empty strings, and long credentials.
+- **Modified Files**:
+  - `packages/core/Cargo.toml`
+  - `packages/core/Cargo.lock`
+  - `packages/cli/Cargo.lock`
+  - `packages/core/src/proxy.rs`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo check --manifest-path packages/core/Cargo.toml`: passed with 0 errors and 0 warnings.
+  - `cargo test --manifest-path packages/core/Cargo.toml`: passed all 53 unit tests (0 failures).
+  - `cargo check --manifest-path packages/cli/Cargo.toml`: passed with 0 errors and 0 warnings.
+
+---
+
+## [fix/issue-311-x-forwarded-for-rate-limit-bypass] - 2026-10-21 [SECURITY] (Remediate Global Lockout DoS Blast Radius & Harden IPv6 Bracket Parsing)
+- **Summary**:
+  - **Eliminate Global Lockout DoS Blast Radius (`packages/core/src/proxy.rs`)**: Resolved P1 blocker in `handle_connection` where valid tunnel owners were rejected with HTTP 429 when global lockout was active. Valid basic auth credentials now authenticate immediately, bypassing lockout and resetting failure counters; lockout is strictly enforced only on invalid credentials or unauthenticated probes.
+  - **Bracketed IPv6 Parsing Defense (`packages/core/src/proxy.rs`)**: Enhanced `parse_ip_or_socket()` to strip RFC 7239 bracket delimiters (`[...]`) before parsing `IpAddr`, properly recognizing bracketed IPv6 addresses without ports (`[2001:db8::1]`) and with ports (`[2001:db8::1]:8080`).
+  - **Consistent Global Lockout Return (`packages/core/src/proxy.rs`)**: Updated `record_failure()` to consistently return `Some((remaining_secs, 1))` for subsequent failed requests during active global lockout windows instead of returning `None`.
+  - **Edge Proxy Sanitization Documentation (`packages/core/src/proxy.rs`)**: Explicitly documented that Priority 1 `CF-Connecting-IP` handling relies on edge proxy header sanitization (Cloudflare Edge with Cloudflare Origin Certificates).
+  - **Automated Security Unit Tests (`packages/core/src/proxy.rs`)**: Added `test_valid_credentials_bypass_lockout` verifying legitimate credentials succeed under active lockout, added bracketed IPv6 assertions to `test_extract_client_ip_variations`, and verified subsequent failures in `test_auth_rate_limiter_global_lockout_under_distributed_attack`.
+- **Modified Files**:
+  - `packages/core/src/proxy.rs`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo check --manifest-path packages/core/Cargo.toml` completed with 0 errors.
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 56 tests (0 failures).
+
+## [fix/issue-299-cli-updater-cryptographic-verification] - 2026-10-20 [SECURITY-CVE] (Remediate Unverified Standalone CLI Binary Downloads & Add Zip-Slip Sandbox Defense)
+- **Summary**:
+  - **Cryptographic Signature & Integrity Pipeline (`packages/core/src/cli_installer.rs`)**: Implemented a fail-closed, multi-tier integrity verification pipeline for standalone CLI self-updates (`proxync update`). Added `verify_download_integrity()` with support for official embedded Minisign Ed25519 digital signatures (`.sig`), standalone SHA-256 checksums (`.sha256`), signed `SHA256SUMS` manifests with `.minisig` validation, and GitHub Release API asset digests with constant-time hex comparison (`constant_time_eq_hex`) to eliminate side-channel timing attacks (Fixes #299).
+  - **Executable Magic & Error Response Filtering (`packages/core/src/cli_installer.rs`)**: Implemented `verify_binary_magic()` rejecting HTML/web error pages (`<!DOCTYPE`, `404 Not Found`, JSON errors) and verifying OS binary header magics (PE `MZ` on Windows, ELF `\x7fELF` on Linux, Mach-O `0xFEEDFACE`/Fat on macOS) and a 64 KB minimum file threshold to intercept corrupt streams.
+  - **Safe Sandbox Extraction & Zip-Slip Defense (`packages/core/src/cli_installer.rs`)**: Pre-inspects archive table of contents via `tar -ztf` before extracting `.tar.gz` payloads on Unix, rejecting parent traversal (`..`), leading slashes, symlinks (`symlink_metadata`), and confirming sandbox confinement (`canonicalize`).
+  - **Atomic Swap, Rollback & Downgrade Prevention (`packages/core/src/cli_installer.rs`)**: Hardened Windows file-lock rotation (`.old-<pid>`) and Unix atomic renames with automatic rollback restoring previous binaries on failure. Enforced downgrade protection blocking rollbacks to older versions unless `--force` is specified.
+  - **Release Matrix Checksum Parity (`.github/workflows/release.yml`)**: Automated `.sha256` checksum generation and publishing for all release artifacts (`proxync-windows-x86_64.exe.sha256`, `proxync-darwin-universal.tar.gz.sha256`, `proxync-linux-x86_64.tar.gz.sha256`).
+- **Modified Files**:
+  - `packages/core/src/cli_installer.rs`
+  - `packages/core/Cargo.toml`
+  - `packages/core/Cargo.lock`
+  - `packages/cli/Cargo.lock`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `.github/workflows/release.yml`
+  - `CHANGELOG.md`
+  - `.agents/changelog.json`
+- **Verification**:
+  - `cargo test --manifest-path packages/core/Cargo.toml`: 53 / 53 tests passed (0 failures).
+  - `cargo test --manifest-path packages/cli/Cargo.toml`: 36 / 36 tests passed (0 failures).
+  - `cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml`: passed with 0 errors and 0 warnings.
+  - Full cross-platform compatibility verified across Windows, Linux, and macOS.
+
+---
+
+## [develop] - 2026-10-19 (Validate tunnel_id in WebSocket Relay & Percent-Encode Editor Protocol URIs)
+- **Summary**:
+  - **Relay Tunnel Identifier Validation (`packages/core/src/tunnel.rs`)**: Integrated `validate_tunnel_id()` into `open_tunnel()` ensuring comprehensive input validation across all three tunnel entry points (WebSocket relay, Cloudflare, and native SSH). Added automated unit test `test_open_tunnel_rejects_path_traversal`.
+  - **URI Space-Encoding in Editor Handlers (`packages/core/src/storage.rs`)**: Added percent-encoding for spaces (`%20`) when constructing custom protocol handler URIs (`vscode://file/...` and `cursor://file/...`) across Windows, macOS, and Linux, preventing URI space-delimiter splitting during native shell launches.
+- **Modified Files**:
+  - `packages/core/src/tunnel.rs`
+  - `packages/core/src/storage.rs`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 48 tests (0 failures).
+  - `cargo test --manifest-path packages/cli/Cargo.toml` passed all 36 tests (0 failures).
+## [fix/source-map-js-security-upgrade] - 2026-10-19 [SECURITY-CVE] (Remediate Denial of Service and CSP Crash via source-map-js 1.2.2)
+- **Summary**:
+  - **Patch Denial of Service in Indexed Source Maps (`package-lock.json`)**: Bumped `source-map-js` from 1.2.1 to 1.2.2 resolving high-severity vulnerability CVE-2026-93749 where malicious indexed source maps caused process denial of service.
+  - **Browser CSP & Unsafe-Eval Protection (`package-lock.json`)**: Resolved crash condition in browser environments when executing under strict Content Security Policies that disallow `unsafe-eval`.
+  - **Indirect Dependency Alignment (`packages/desktop`)**: Updated resolved dependency for `@tailwindcss/vite` and `postcss` in lockfile with zero breaking changes or runtime bundle impact.
+- **Modified Files**:
+  - `package-lock.json`
+  - `CHANGELOG.md`
+  - `.agents/changelog.json`
+- **Verification**:
+  - `npm ci` completed with 0 vulnerabilities detected across 93 packages.
+  - `npm run build` (`tsc && vite build`) passed with exit code 0.
+
+---
+
+## [fix/issue-298-tunnel-id-path-traversal] - 2026-10-16 [SECURITY-CVE] (Remediate Path Traversal and Arbitrary Directory Deletion via tunnel_id)
+- **Summary**:
+  - **Strict Tunnel Identifier Validation (`packages/core/src/tunnel.rs`)**: Implemented `validate_tunnel_id()` enforcing non-empty ASCII alphanumeric, hyphen, and underscore characters (`[a-zA-Z0-9_-]`) and establishing a 128-character upper length bound to prevent Windows `MAX_PATH` path buffer exhaustion and directory traversal attacks (Fixes #298).
+  - **Path Traversal & Arbitrary Deletion Remediation (`packages/core/src/tunnel.rs`)**: Validated `tunnel_id` in `open_native_tunnel()`, `open_cloudflare_tunnel()`, and `close_tunnel()` before invoking filesystem operations, completely eliminating the vulnerability where unvalidated traversal sequences (e.g. `/../../Documents`) combined with `std::fs::remove_dir_all()` could wipe arbitrary user directories.
+  - **Deterministic Cleanup & Zero-Trace Hygiene (`packages/core/src/tunnel.rs`)**: Preserved the `proxync_ssh_<tunnel_id>` isolated temporary directory naming convention, ensuring that pre-flight cleanup and RAII `TempDirGuard` continue to purge stale SSH keys deterministically without key/hash clutter.
+  - **Automated Security Regression Unit Tests (`packages/core/src/tunnel.rs`)**: Added `test_validate_tunnel_id_valid`, `test_validate_tunnel_id_rejects_path_traversal`, and `test_open_native_tunnel_rejects_path_traversal` verifying that path traversal strings, slashes, control symbols, and oversized IDs fail closed with explicit error messages.
+- **Modified Files**:
+  - `packages/core/src/tunnel.rs`
+  - `CHANGELOG.md`
+  - `.agents/changelog.json`
+- **Verification**:
+  - `cargo test tunnel::tests --manifest-path packages/core/Cargo.toml` passed all 4 unit tests with 0 failures.
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 47 unit tests with 0 failures.
+  - `cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml` passed with 0 errors.
+  - `cargo check --manifest-path packages/cli/Cargo.toml` passed with 0 errors.
+  - Validated reproduction via `node sanity/POC/path-traversal-poc/reproduce.js`.
+
+---
+
+## [fix/issue-297-windows-command-injection] - 2026-10-16 [SECURITY-CVE] (Remediate Arbitrary Command Injection via ShellExecuteW Protocol/File Handler)
+- **Summary**:
+  - **Direct Win32 Shell API Replacement (`packages/core/src/storage.rs`)**: Replaced vulnerable `cmd.exe /c start "" <target>` invocations in Tier 2 (URI protocol handlers) and Tier 3 (file associations) with `ShellExecuteW` via direct Win32 API binding, preventing command separators (`&`, `|`, `^`, `%`) from executing arbitrary shell commands (Fixes #297).
+  - **Cross-Platform Safe Protocol Handler (`packages/core/src/storage.rs`)**: Introduced `open_path_or_url()` safely routing URLs and paths through native non-shell OS launchers (`ShellExecuteW` on Windows, direct `open` on macOS, direct `xdg-open` on Linux) with null-byte rejection.
+  - **Strict Control Character & Existence Guards (`packages/core/src/storage.rs`)**: Validated file existence and rejected null bytes (`\0`) and newline characters (`\r`, `\n`) before initiating editor launches.
+  - **CLI Browser Launch Hardening (`packages/cli/src/ui.rs`)**: Migrated `open_in_browser` from `cmd.exe /c start` to `proxync_core::storage::open_path_or_url()`.
+  - **Automated Security Regression Tests (`packages/core/src/storage.rs`)**: Added unit tests verifying null byte rejection, control character filtering, and command-chaining payload rejection.
+- **Modified Files**:
+  - `packages/core/src/storage.rs`
+  - `packages/cli/src/ui.rs`
+  - `CHANGELOG.md`
+  - `.agents/changelog.json`
+- **Verification**:
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 44 unit tests with 0 failures.
+  - `cargo test --manifest-path packages/cli/Cargo.toml` passed all 36 unit tests with 0 failures.
+  - `cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml` passed with 0 errors.
+
+---
+
+## [fix/issue-296-serve-dotfiles] - 2026-10-16 (Block Access to Hidden Files and Dotfiles in Static Server)
+- **Summary**:
+  - **Dotfile & Hidden Path Protection (`packages/cli/src/commands/serve.rs`)**: Implemented `is_hidden_or_dot_path()` checking path components for dot prefixes. Rejected requests attempting to access hidden files or directories (`.env`, `.git/`, `.ssh/`, `.npmrc`, etc.) with `HTTP/1.1 403 Forbidden` prior to filesystem disk hits.
+  - **Symlink Escape Guard (`packages/cli/src/commands/serve.rs`)**: Added secondary post-canonicalization check verifying that the relative canonicalized target path within the served root contains no hidden or dot-prefixed components, preventing symlinks from bypassing the initial URL path check.
+  - **Regression Unit Tests (`packages/cli/src/commands/serve.rs`)**: Added `test_is_hidden_or_dot_path` validating that sensitive dotfiles and nested dot paths are strictly forbidden while legitimate dotted filenames (e.g., `bundle.min.js`, `style.css`, `archive.tar.gz`) continue to be served normally. (Fixes #296).
+- **Modified Files**:
+  - `packages/cli/src/commands/serve.rs`
+  - `CHANGELOG.md`
+  - `.agents/changelog.json`
+- **Verification**:
+  - `cargo test --manifest-path packages/cli/Cargo.toml` passed all 36 unit tests.
+  - `cargo check --manifest-path packages/cli/Cargo.toml` passed with 0 errors.
+
+---
+
+## [fix/issue-291-serve-discovery] - 2026-10-16 (Resolve Proxync Serve Discovery in Scan, Port Range Expansion, Fast Directory Traversal & Shorthand Serve)
+- **Summary**:
+  - **Proxync Serve Discovery in Recon Engine (`packages/core/src/recon.rs`)**: Added dedicated `detect_framework()` and `classify_process()` support recognizing `proxync serve` commands as `"Proxync Static Server"`. Differentiated active static servers from system tunnels (`proxync tunnel`) to ensure developer servers surface cleanly in `proxync scan`.
+  - **Dev Port Boundary Expansion (`packages/core/src/recon.rs`)**: Expanded `is_dev_port()` range from `49151` to `65535` while preserving exclusions for Windows dynamic RPC ports (`49152..=49157`), allowing modern frameworks and ephemeral serve listeners in high port ranges to be detected.
+  - **Internal Ephemeral Proxy Port Deduplication (`packages/core/src/recon.rs`)**: Filtered out secondary internal proxy ports assigned during tunnel establishment by checking `registry::read_registry()` against active tunnel PIDs, preventing dual-port ghost listings for single `proxync` processes.
+  - **Positional Command-Line Directory Resolver (`packages/core/src/recon.rs`)**: Implemented `resolve_proxync_serve_directory()` to accurately extract target directories from command-line arguments while stripping flags, normalizing paths, and stripping Windows UNC `\\?\` prefixes without fragile parent-root walk-ups.
+  - **Fast Directory Traversal & Safety Cap (`packages/cli/src/ui.rs`, `packages/cli/src/commands/serve.rs`)**: Implemented `calculate_dir_size_with_cap()` to eliminate the 15-20s traversal lag on heavy projects (99.8% speedup). Automatically ignores dependencies and build directories (`node_modules`, `.git`, `target`, `dist`, `out`, `coverage`, `.next`, `.venv`, `build`, `.gradle`, `.m2`, etc.) and reads root `.gitignore` offline. Avoids symlink/NTFS junction cycles and halts immediately once size reaches `MAX_DIR_SIZE + 1`.
+  - **Shorthand Directory Serve Support (`packages/core/src/recon.rs`)**: Added `is_proxync_serve_cmd()` and argument value skipping (`--token`, `--workspace`, `--relay-url`, `--port`) to support shorthand invocations (`proxync <dir>`), classifying them cleanly as `"Proxync Static Server"` in `proxync scan`.
+  - **Smart Port Fallback & Response Header Hardening (`packages/cli/src/commands/serve.rs`)**: Added intelligent dev port waterfall (`8000`, `3000`, `5000`, `8080`, `5173`, `4000`, `8888`) prior to ephemeral port binding. Injected explicit `Content-Type: text/plain; charset=utf-8` and `Cache-Control: no-store, no-cache, must-revalidate, max-age=0` headers across all responses to prevent edge CDN caching and resolve Caddy #239 passthrough interception (Fixes #291 Parts 1 & 2).
+- **Modified Files**:
+  - `packages/core/src/recon.rs`
+  - `packages/cli/src/commands/serve.rs`
+  - `packages/cli/src/ui.rs`
+  - `packages/cli/src/main.rs`
+  - `CHANGELOG.md`
+  - `.agents/changelog.json`
+- **Verification**:
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 41 unit tests.
+  - `cargo test --manifest-path packages/cli/Cargo.toml` passed all 35 unit tests.
+  - `cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml` passed with 0 errors.
+  - Live empirical benchmark on `E:\soxial`: traversal dropped from 10.6s to 22ms. Verified live `proxync serve` and shorthand `proxync <dir>` in `proxync scan`.
+
+---
+
+## [fix/issue-197-eliminate-duplicate-lsof-macos] - 2026-10-14 (Eliminate Duplicate lsof Invocation on macOS via PlatformScanner Refactor)
+- **Summary**:
+  - **Eliminate Duplicate `lsof` Subprocess on macOS (`packages/core/src/recon.rs`)**: Refactored the internal `PlatformScanner::scan_processes` trait method to accept `listening_pids: Option<&[u32]>`. On macOS, `scan_processes` now reuses the listening PIDs discovered by `scan_listening_ports()` instead of spawning a redundant second `lsof -iTCP -sTCP:LISTEN` process. Preserved a safe `None` fallback to ensure standalone queries continue to function correctly (Fixes #197).
+  - **Standardized In-Place Dedup & Linear Scan Removal (`packages/core/src/recon.rs`)**: Eliminated $O(N)$ linear `.contains()` checks in `resolve_process_directory()` by collecting, sorting, and deduplicating PIDs in-place (`pids.sort_unstable(); pids.dedup();`) before querying `ps`. Standardized across `scan_ports()` and `scan_processes()` to eliminate duplicate process inspection.
+  - **Trait Contract Rustdoc & Expanded Unit Tests (`packages/core/src/recon.rs`)**: Documented the `Some(&[u32])` vs `None` contract on `PlatformScanner::scan_processes` and added cross-platform unit test coverage (`test_platform_scanner_trait_contract` and `test_macos_scanner_scan_processes_pids`).
+- **Modified Files**:
+  - `packages/core/src/recon.rs`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 40 unit tests with 0 failures.
+  - `cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml` passed with 0 errors.
+  - `cargo check --manifest-path packages/cli/Cargo.toml` passed with 0 errors.
+
+---
+
+## [fix/develop-cli-desktop-detection] - 2026-10-14 (CLI Desktop Detection, Terminal Companion PATH Isolation & Silent Liveness Probing)
+- **Summary**:
+  - **Hardened Desktop Binary Choke-Point (`packages/core/src/cli_installer.rs`)**: Resolved false-positive "In PATH" detection in Settings > Terminal Companion when only the desktop GUI is installed (`/usr/bin/proxync`, `.app/Contents/MacOS`, or `Program Files`). Added cross-platform path matching with slash normalization (`\` ➔ `/`) and binary content inspection (checking for `libgtk`, `webkit`, `wry-`, `WebView2Loader`, and `tauri-plugin`) to distinguish desktop GUI binaries from genuine terminal CLI binaries.
+  - **Accurate CLI Installation Status (`packages/core/src/cli_installer.rs`)**: Updated `check_cli_status()` so `is_installed` reflects whether an authentic CLI binary actually exists in standard dirs or `$PATH`, skipping desktop binaries.
+  - **Safe Traversal & Self-Healing Installer (`packages/core/src/cli_installer.rs`)**: Pruned `find_source_cli_binary()` parent directory traversal at system roots and prefix directories (`/`, `/usr`, `/usr/bin`, `/usr/local`, `/usr/local/bin`, `/bin`, `/sbin`, and drive roots). Enhanced `install_cli_to_path()` fallback to overwrite contaminated desktop binaries in `~/.local/bin/proxync` with the authentic release CLI downloaded from GitHub releases.
+  - **Silent Process Liveness Probing (`packages/core/src/registry.rs`)**: Routed `stdout` and `stderr` to `Stdio::null()` in `is_process_alive()` during Unix `kill -0` checks, eliminating cosmetic `kill: No such process` stderr noise on terminal when verifying terminated processes during `proxync stop`.
+- **Modified Files**:
+  - `packages/core/src/cli_installer.rs`
+  - `packages/core/src/registry.rs`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 47 unit tests.
+  - `cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml` passed with 0 errors.
+  - `cargo check --manifest-path packages/cli/Cargo.toml` passed with 0 errors.
+  - 
+## [feature/develop-devtools-keyboard-guard] - 2026-10-13 (Developer Inspect Tools Keyboard Shortcut Interception)
+- **Summary**:
+  - **DevTools Keyboard Shortcut Guard (`packages/desktop/src/App.tsx`)**: Extended `useEffect` for `appSettings.enableDevTools` with a global capturing `keydown` listener. When Developer Inspect Tools is disabled (`!appSettings.enableDevTools`), intercepts `Ctrl+Shift+I`, `Ctrl+Shift+J`, `Ctrl+Shift+C`, `F12`, and macOS equivalents (`Cmd+Option+I/J/C`, `Cmd+Shift+I/J/C`) with `e.preventDefault()` and `e.stopPropagation()`. Prevents bypassing the disabled state via keyboard shortcuts (Fixes #275).
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `npm --prefix packages/desktop run build` passed with 0 TypeScript/Vite errors.
+
+---
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-12 (Subdomain Deregistration, Chunk Header Safety Cap & UTF-8 Temp Path Hardening)
+- **Summary**:
+  - **Asynchronous Cloud Subdomain Deregistration (`packages/core/src/tunnel.rs`)**: Introduced `ACTIVE_TUNNEL_SUBDOMAINS` tracking map. When tunnels are stopped (`close_tunnel` / `close_all_tunnels`), the client immediately dispatches a non-blocking background `POST /api/tunnel/deregister` request to the backend. Instantly frees subdomain allocations on the server without waiting for the 1-hour TTL garbage collection, preventing 409 Conflict key generation collisions on immediate restarts.
+  - **Chunk Header Memory Safety Cap (`packages/core/src/proxy.rs`)**: Added an 8 KB cap to `ChunkedBodyParser` buffer accumulator (`self.header_buf.len() > 8192`) in both chunk size and trailer header parsing phases, protecting against memory exhaustion from pathological malformed HTTP chunk streams.
+  - **Safe Path Encoding on Windows OpenSSH Spawn (`packages/core/src/tunnel.rs`)**: Replaced direct `.to_str().unwrap()` with `.to_str().ok_or_else(...)` error propagation for `active_key_path` and `known_hosts_path`, eliminating panic crashes on Windows environments where `%TEMP%` or user profiles contain non-UTF-8 characters.
+- **Modified Files**:
+  - `packages/core/src/proxy.rs`
+  - `packages/core/src/tunnel.rs`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 39 tests with 0 failures and 0 warnings.
+  - `cargo check --manifest-path packages/cli/Cargo.toml` passed with 0 errors.
+
+---
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-12 (Tunneling Latency Optimization, Bounded Keep-Alive Streaming & Inactive Interception Elimination)
+- **Summary**:
+  - **Eliminate Vestigial Relay Timeout (`packages/desktop/src/App.tsx`)**: Removed redundant `open_tunnel` WebSocket invocation and unused `token` from `shareProcessCloudflare` and `shareProcessNative`, instantly eliminating a 2,000ms delay caused by waiting for non-existent local relay connections.
+  - **Zero-Delay Empty & Cached Response Fast-Path (`packages/core/src/proxy.rs`)**: Fixed artificial 150ms latency stall on `304 Not Modified`, `204 No Content`, `HEAD`, redirects, `Content-Length: 0`, and non-JSON responses. Responses without bodies bypass the extra body read buffer immediately with 0ms delay. Reduced JSON body chunk sampling timeout from 150ms to 15ms.
+  - **Full-Duplex Request Body Streaming & Deadlock Elimination (`packages/core/src/proxy.rs`)**: Fixed a critical TCP deadlock where multi-packet or streaming POST/PUT requests stalled because the proxy executed blocking response reads before forwarding remaining request bodies. Decoupled client and target half-duplex streams via `into_split()` and spawned bounded `upload_task` streaming only remaining payload bytes (`client_read.take(remaining)`).
+  - **Content-Length Bounded Response Streaming (`packages/core/src/proxy.rs`)**: Fixed severe 5–15s latency stalls on local dev servers (Node.js, Next.js, Vite, Express) where `tokio::io::copy` previously blocked indefinitely waiting for server socket closure (`EOF`). When `Content-Length` is present, the proxy limits downstream reads strictly to the remaining declared bytes (`target_read.take(remaining)`), immediately shutting down `client_write` as soon as the last payload byte arrives without waiting for server keep-alive idle timeouts.
+  - **Clean Non-Hanging Response Shutdown (`packages/core/src/proxy.rs`)**: Eliminated connection stalls caused by awaiting `upload_task.await` after response completion. When the target server finishes sending the response and closes, the proxy immediately shuts down the client write half and aborts background upload listeners, preventing connections from hanging indefinitely waiting for client TCP FIN in keep-alive environments.
+  - **Eliminate Premature Startup & "Tunnel Session Inactive" Interceptions (`packages/core/src/tunnel.rs`)**: Restored the 1500ms handshake stabilization window in `open_native_tunnel`. The Azure VM `sish` gateway enforces a 1.0s non-exec stabilization window before binding remote port forwards (`tcpip-forward`). Reverting the premature 500ms return ensures the remote forward is 100% active before returning the public URL to the caller, completely eliminating edge 404 Caddy rewrites to `inactive.html` on initial user visits.
+  - **OpenSSH Transport Handshake & Network QoS Tuning (`packages/core/src/tunnel.rs`)**: Configured OpenSSH process flags across all platforms: disabled pseudo-terminal allocation (`-T`) for pure TCP port forwarding; enforced fail-fast forward confirmation (`-o ExitOnForwardFailure=yes`); prioritized fast Curve25519 key exchange (`-o KexAlgorithms=curve25519-sha256,...`) to reduce handshake computation latency; and switched from `IPQoS=throughput` to `IPQoS=none` to eliminate OS DSCP network driver packet buffering on Windows, macOS, and Linux.
+  - **Loopback TCP_NODELAY Enablement (`packages/core/src/proxy.rs`)**: Enabled `set_nodelay(true)` on both accepted client streams and local target streams, disabling Nagle's algorithm and eliminating the 40ms delayed-ACK packet latency on local proxy forwarding.
+  - **Combined Fail-Fast Target Connect (`packages/core/src/proxy.rs`)**: Replaced sequential 500ms timeout fallbacks with an immediate loopback connection attempting `127.0.0.1` and failing fast to `[::1]` (under a single combined 500ms ceiling), eliminating connection latency for IPv6-only servers like Vite and Node 18+.
+  - **Reduced Liveness Background Socket Churn (`packages/core/src/proxy.rs`)**: Relaxed background TCP liveness polling from 1,000ms to 3,000ms to reduce local development server socket churn.
+  - **Chunked Transfer-Encoding Fast-Path & 5-Second Hang Elimination (`packages/core/src/proxy.rs`)**: Fixed the primary root cause of initial page load delay. For dynamic HTML pages rendered by Next.js SSR, Vite, and Node.js dev servers without a `Content-Length` header (`Transfer-Encoding: chunked`), `tokio::io::copy` previously blocked waiting for TCP EOF, hanging for the full 5-second Node.js keep-alive idle timeout before finishing. Implemented an RFC 7230 compliant `ChunkedBodyParser` state machine that parses chunk lengths in real time and immediately shuts down `client_write` the millisecond the final chunk (`0\r\n\r\n`) is forwarded.
+  - **Comprehensive Rust Unit Test Coverage (`packages/core/src/proxy.rs`)**: Added `test_chunked_keep_alive_target_server_does_not_stall_response`, `test_empty_and_cached_responses_bypass_body_chunk_delay`, `test_full_duplex_post_body_does_not_deadlock`, `test_clean_close_without_client_fin_hang`, and `test_keep_alive_target_server_does_not_stall_response` asserting 0ms stall on chunked HTML responses, 0ms stall on cached/empty responses, concurrent multi-packet POST delivery without deadlock, immediate shutdown without waiting for client FIN, and instantaneous keep-alive response termination.
+- **Modified Files**:
+  - `packages/core/src/proxy.rs`
+  - `packages/core/src/tunnel.rs`
+  - `packages/desktop/src/App.tsx`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 39 tests with 0 failures and 0 warnings.
+  - `cargo check --manifest-path packages/cli/Cargo.toml` passed with 0 errors.
+  - `npm --prefix packages/desktop run build` passed with 0 TypeScript/Vite errors.
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-12 (PR #276 Core Hardening: Session Teardown, Auth Stripping, Slowloris Defense & Canonical URL Resolution)
+- **Feature Summary**:
+  - **Memory & Port Leak Prevention (`packages/core/src/tunnel.rs`)**: Ensured `stop_proxy(Some(local_port))` is reliably invoked in all automated tunnel termination paths (1-hour hard cap expiration, keepalive 410 Gone reaper, and child process exit watchers for both Cloudflare and native SSH tunnels) before dispatching `TunnelAutoClosed`. Completely terminates dangling loopback proxy listeners and 1-second liveness polling loops.
+  - **Gatekeeper Auth Stripping (`packages/core/src/proxy.rs`)**: Stripped tunnel-level `Authorization: Basic ...` credentials from forwarded request headers after successful validation, preventing credential collisions and unexpected 401 errors on local services running application-specific auth (e.g. Bearer JWTs, session tokens, or local basic auth). Preserves incoming authorization headers intact when tunnel basic auth is not configured.
+  - **Slowloris DoS Protection (`packages/core/src/proxy.rs`)**: Wrapped the dynamic HTTP header reading loop with a strict 15-second timeout (`tokio::time::timeout(HEADER_READ_TIMEOUT, ...)`), responding with standard HTTP 408 Request Timeout before socket shutdown to prevent local file descriptor exhaustion and provide clean HTTP protocol semantics.
+  - **Fail-Fast Local Target Connect Timeout (`packages/core/src/proxy.rs`)**: Wrapped loopback target service connections (`127.0.0.1` and `[::1]`) in a 500ms timeout guard, immediately serving the branded 502 Bad Gateway standby page if a local service freezes or deadlocks rather than leaving external requests suspended for the OS default 30-75s connect timeout.
+  - **Robust API Endpoint Resolution (`packages/core/src/tunnel.rs`)**: Added `resolve_api_endpoint` to canonicalize backend URLs across base origins (e.g. `https://api.proxync.dev`), trailing slashes, legacy full endpoint URLs, empty/whitespace environment variable fallbacks, and custom dev origins, fixing keepalive ping failures on standard base domain configurations.
+  - **Comprehensive Rust Unit Test Coverage (`packages/core/src/proxy.rs`, `packages/core/src/tunnel.rs`)**: Added unit tests verifying `Authorization` stripping when tunnel auth is active, `Authorization` pass-through when disabled, and multi-scenario `resolve_api_endpoint` URL parsing (including empty/whitespace variables).
+- **Modified Files**:
+  - `packages/core/src/proxy.rs`
+  - `packages/core/src/tunnel.rs`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo check --manifest-path packages/core/Cargo.toml` passed with 0 errors.
+  - `cargo test --manifest-path packages/core/Cargo.toml` passed all 34 tests with 0 failures.
+  - `cargo check --manifest-path packages/cli/Cargo.toml` passed with 0 errors.
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-12 (In-Memory Key Registration Sleep Optimization to 25ms)
+- **Feature Summary**:
+  - **Handshake Latency Reduction (`packages/core/src/tunnel.rs`)**: Reduced pre-SSH handshake pause from 150ms to 25ms, leveraging the private gateway's sub-millisecond in-memory authentication and key absorption while providing a brief tick for socket readiness.
+- **Modified Files**:
+  - `packages/core/src/tunnel.rs`
+  - `CHANGELOG.md`
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-11 (Free 1h Max Session Cap & Admin Unlimited Tier Exemption)
+- **Feature Summary**:
+  - **CLI Tier Enforcement (`packages/cli/src/commands/tunnel.rs`)**: Enforced a strict 1-hour session limit on free tier tunnels in both foreground and detached modes. Automatically clamps requested expirations exceeding 1h to 1h with user guidance, while granting unlimited session duration when `PROXYNC_API_SECRET_TOKEN` admin credentials are provided.
+  - **Tier Badging & Banner Status (`packages/cli/src/commands/tunnel.rs`)**: Added colored tier badges (`Admin (Unlimited Session)` vs `Free (1h Max Session Limit)`) and explicit auto-expiry indicators in CLI connection summaries.
+  - **Core Session Reaper Guard (`packages/core/src/tunnel.rs`)**: Wrapped the 1-hour client-side process termination fallback to only execute on free/non-admin sessions for both Cloudflare and Proxync native SSH tunnels.
+- **Modified Files**:
+  - `packages/cli/src/commands/tunnel.rs`
+  - `packages/core/src/tunnel.rs`
+  - `CHANGELOG.md`
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-09 (Android-Style Progressive Rate Limiting & Brute-Force Lockout Defense)
+- **Feature Summary**:
+  - **Progressive Lockout Escalation (`packages/core/src/proxy.rs`)**: Implemented graduated lockout tiers for failed Basic Auth attempts (Stage 1: 60s, Stage 2: 120s, Stage 3: 300s, Stage 4: 900s, Stage 5: 3600s max cap) with 15-minute inactivity decay reset and immediate reset upon successful authentication.
+  - **Constant-Time Verification & Tarpit (`packages/core/src/proxy.rs`)**: Added `constant_time_eq` credential validation to prevent timing attacks and a 1000ms tarpit delay on bad credentials to mitigate automated credential stuffing.
+  - **Dynamic 429 Lockout Page (`packages/core/src/proxy.rs`)**: Embedded branded HTTP 429 response featuring live JavaScript ticking countdown, formatted time display (`5m 00s`), visual progress bar, stage penalty badges, and auto-reload on expiry.
+  - **Comprehensive Rust Test Suite (`packages/core/src/proxy.rs`)**: Added automated unit tests for duration formatting, progressive stage escalation, idle reset decay, and end-to-end HTTP 429 lockout handling.
+- **Modified Files**:
+  - `packages/core/src/proxy.rs`
+  - `CHANGELOG.md`
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-09 (Tunnel Session Keepalive Heartbeat & 1h Expiration Hard Cap)
+- **Feature Summary**:
+  - **Client-Side 1-Hour Hard Cap Fallback (`packages/core/src/tunnel.rs`)**: Spawned background timer terminating spawned SSH tunnel child processes and dispatching `TunnelAutoClosed` event after 1 hour if unreachable or offline.
+  - **Server-Authoritative Keepalive Heartbeat (`packages/core/src/tunnel.rs`)**: Added 5-minute periodic keepalive ping to `/api/tunnel/keepalive`. If the server returns HTTP 410 (Gone), gracefully removes the tunnel from process registry and terminates the process tree.
+  - **Process Lifecycle Teardown (`packages/core/src/tunnel.rs`)**: Updated child process exit monitor to cleanly avoid duplicate events when terminated by keepalive or hard-cap timeout.
+- **Modified Files**:
+  - `packages/core/src/tunnel.rs`
+  - `CHANGELOG.md`
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-08 (Branded HTML Response for 401 Unauthorized)
+- **Feature Summary**:
+  - **Branded 401 Error Page (`packages/core/src/proxy.rs`)**: Replaced raw plain-text HTTP 401 response with a styled Proxync dark-mode access page featuring target port indicator, authentication required badge, and reload button.
+  - **Integration Tests (`packages/core/src/proxy.rs`)**: Updated core proxy test suite to validate HTML content type and branded response body.
+- **Modified Files**:
+  - `packages/core/src/proxy.rs`
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-08 (Basic Auth Council Review P2 Fixes)
+- **Feature Summary**:
+  - **Silent Error Logging (`packages/desktop/src/App.tsx`)**: Added `console.warn` to all three `start_proxy` invoke catch blocks so proxy bind failures surface in DevTools instead of being silently swallowed behind a boolean flag.
+  - **Dead Code Removal (`packages/desktop/src/components/views/SharedComponents.tsx`)**: Removed unused `Icons.key` entry (a redundant `material-symbols-outlined` wrapper) — all call sites use the span directly.
+- **Modified Files**:
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-08 (Credential Key Icon Harmonization & Endpoint Badge Right-Alignment)
+- **Feature Summary**:
+  - **Material Symbols Key Icon Standardization (`packages/desktop/src/components/views/WorkspaceDashboardView.tsx`, `ProcessView.tsx`, `WelcomeView.tsx`, `SharedComponents.tsx`)**: Replaced non-uniform solid SVG key icon with standard `material-symbols-outlined` key glyph across all active tunnel cards and action menus.
+  - **Action Button Sizing and Palette Alignment (`packages/desktop/src/components/views/WorkspaceDashboardView.tsx`)**: Unified button wrapper styling to `p-1 rounded text-outline hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer` and 14px optical icon size, ensuring identical base color, hover color transitions, and sizing alongside sibling URL copy and browser open buttons.
+  - **Endpoint Header Badge Right-Alignment (`packages/desktop/src/components/views/WorkspaceDashboardView.tsx`)**: Grouped the Basic Auth lock icon and `Live` / `Standby` status pill into a dedicated right-aligned flex container, preventing `justify-between` from pushing the `Live` badge into the center of the card.
+- **Modified Files**:
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `CHANGELOG.md`
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-07 (Proxy Fallback State Sync, Pre-Upstream Auth Gate, Dynamic Header Buffering & Security Hardening)
+- **Feature Summary**:
+  - **Proxy Fallback Warning Notification & State Synchronization (`packages/desktop/src/App.tsx`)**: When local proxy initialization fails, the raw tunnel fallback now triggers a warning toast notifying the user that the tunnel is unauthenticated, and strips the `basicAuth` configuration from the tunnel state to prevent deceptive yellow lock badges.
+  - **Pre-Upstream Auth Validation (`packages/core/src/proxy.rs`)**: Positioned Basic Auth credential checks strictly before upstream connection attempts, preventing offline target reconnaissance and leaking 502 Bad Gateway standby pages to unauthenticated callers.
+  - **Dynamic HTTP Header Accumulation (`packages/core/src/proxy.rs`)**: Replaced fixed 16 KB read buffer with dynamic header accumulation reading until `\r\n\r\n` with a 2 MB safety limit (returning HTTP 431 on overflow), eliminating header truncation while preventing memory exhaustion.
+  - **RFC 7617 Colon Credential Parsing (`packages/core/src/proxy.rs`)**: Refactored basic auth credential extraction to split on the first colon (`split_once(':')`) and reject usernames containing unescaped colons.
+  - **Automated Core Rust Test Coverage (`packages/core/src/proxy.rs`)**: Added end-to-end unit and integration tests verifying 401 challenge, 401 rejection, 200 pass-through, >16 KB header support, and pre-auth offline target isolation.
+  - **Immutable State Sharing (`packages/desktop/src/App.tsx`)**: Replaced in-place object mutation in `shareProcess` with pure immutable object spreading.
+  - **React Lifecycle Password Scoping (`packages/desktop/src/components/views/Dialogs.tsx`)**: Removed module-level global password storage variable; scoped credential memory to modal lifecycle and reset on process switch.
+  - **Storage Write Throttling (`packages/desktop/src/components/views/Dialogs.tsx`)**: Removed per-keystroke `localStorage.setItem` calls from `onChange`; persisted on `onBlur` and submission with proper diagnostic error logging.
+  - **UI Accessibility & Design System Conformance (`packages/desktop/src/components/views/Dialogs.tsx`, `SharedComponents.tsx`, `ProcessView.tsx`, `WelcomeView.tsx`, `WorkspaceDashboardView.tsx`)**: Converted toggle into an accessible `<button role="switch">` with keyboard navigation, mapped hardcoded colors to semantic theme variables (`var(--color-on-primary)`, `var(--color-error)`), centralized `Icons.lock` and added crisp inline SVG `Icons.key`, and provided graceful notifications when copying usernames with non-retained passwords.
+- **Modified Files**:
+  - `packages/core/src/proxy.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/SharedComponents.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `CHANGELOG.md`
+
+## [feature/develop-tunnel-basic-auth] - 2026-10-06 (HTTP Basic Authentication for Public Tunnels in Desktop GUI)
+- **Feature Summary**:
+  - **HTTP Basic Authentication GUI Controls (`packages/desktop/src/components/views/Dialogs.tsx`, `packages/desktop/src/lib/types.ts`)**: Added an expandable toggle and credential inputs (`username` and `password`) to the Tunnel Launch Dialog and unified launch options.
+  - **Quick-Action & View Launch Integration (`packages/desktop/src/App.tsx`, `ProcessView.tsx`, `WelcomeView.tsx`, `WorkspaceDashboardView.tsx`, `PostmanView.tsx`)**: Extended process cards and launch triggers across the dashboard, process list, and welcome view to accept and pass basic authentication configurations.
+  - **Backend IPC Proxy Parameter Propagation (`packages/desktop/src-tauri/src/proxy.rs`)**: Updated Tauri `start_tunnel` IPC command invocation to serialize and map optional `basic_auth` (`user:pass`) through to the core tunnel client.
+  - **CWE-312 Sensitive Storage Guard (`packages/desktop/src/App.tsx`)**: Sanitized active tunnel persistence in `localStorage` to strip credentials and retain only non-sensitive metadata, preventing unencrypted password storage.
+  - **Session Password Cache & Compact Amber Lock UI (`packages/desktop/src/components/views/Dialogs.tsx`, `WorkspaceDashboardView.tsx`, `WelcomeView.tsx`, `ProcessView.tsx`)**: Added in-memory session password retention and username persistence across tunnel modal launches, and replaced bulky text badges with compact amber lock icons across process cards.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/src/proxy.rs`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/Dialogs.tsx`
+  - `packages/desktop/src/components/views/PostmanView.tsx`
+  - `packages/desktop/src/components/views/ProcessView.tsx`
+  - `packages/desktop/src/components/views/WelcomeView.tsx`
+  - `packages/desktop/src/components/views/WorkspaceDashboardView.tsx`
+  - `packages/desktop/src/lib/types.ts`
+  - `CHANGELOG.md`
+
 ## [feat/cli-companion] - 2026-10-02 (Cross-Platform CLI Hotkeys, Unix Raw Mode, Process Group Detachment & Desktop Crate Rename)
 - **Feature Summary**:
   - **CLI Terminal Raw Mode & Hotkey Lifecycle (`packages/cli/src/ui.rs`, `commands/tunnel.rs`, `commands/inspect.rs`)**: Implemented RAII `RawModeGuard` checking `stdin().is_terminal()` and preserving Unix terminal post-processing (`libc::OPOST | libc::ONLCR`) to prevent raw-mode newline staircasing. Resolves POSIX cooked-mode stdin buffering on Linux and macOS so single-key interactive hotkeys (`o`, `c`, `q`, `s`, `t`, `l`, `h`) trigger immediately on keypress.

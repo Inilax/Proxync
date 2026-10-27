@@ -414,7 +414,90 @@ pub async fn read_file_content(root_path: String, rel_path: String) -> Result<St
     std::fs::read_to_string(canonical_target).map_err(|e| e.to_string())
 }
 
+/// Safely opens a file path or URL using the OS default application/protocol handler without invoking a command shell.
+pub fn open_path_or_url(target: &str) -> Result<(), String> {
+    if target.contains('\0') {
+        return Err("Target string contains invalid null character".to_string());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::ffi::OsStr;
+        use std::os::windows::ffi::OsStrExt;
+
+        let wide_target: Vec<u16> = OsStr::new(target).encode_wide().chain(Some(0)).collect();
+        let wide_open: Vec<u16> = OsStr::new("open").encode_wide().chain(Some(0)).collect();
+
+        #[link(name = "shell32")]
+        extern "system" {
+            fn ShellExecuteW(
+                hwnd: *mut std::ffi::c_void,
+                lpOperation: *const u16,
+                lpFile: *const u16,
+                lpParameters: *const u16,
+                lpDirectory: *const u16,
+                nShowCmd: i32,
+            ) -> isize;
+        }
+
+        // SW_SHOWNORMAL = 1
+        let res = unsafe {
+            ShellExecuteW(
+                std::ptr::null_mut(),
+                wide_open.as_ptr(),
+                wide_target.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                1,
+            )
+        };
+
+        if res > 32 {
+            Ok(())
+        } else {
+            Err(format!("ShellExecuteW failed with error code: {}", res))
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let mut child = std::process::Command::new("open")
+            .arg(target)
+            .spawn()
+            .map_err(|e| format!("Failed to spawn open: {}", e))?;
+        if child.wait().map(|s| s.success()).unwrap_or(false) {
+            Ok(())
+        } else {
+            Err("open command exited with failure".to_string())
+        }
+    }
+
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    {
+        let mut child = std::process::Command::new("xdg-open")
+            .arg(target)
+            .spawn()
+            .map_err(|e| format!("Failed to spawn xdg-open: {}", e))?;
+        if child.wait().map(|s| s.success()).unwrap_or(false) {
+            Ok(())
+        } else {
+            Err("xdg-open command exited with failure".to_string())
+        }
+    }
+}
+
 pub async fn open_file_in_editor(file_path: String, line_number: Option<u32>, editor: Option<String>) -> Result<(), String> {
+    // Defense-in-depth: Reject null bytes and newline control characters
+    if file_path.contains('\0') || file_path.contains('\r') || file_path.contains('\n') {
+        return Err("Invalid file path: contains illegal control characters".to_string());
+    }
+
+    // Validate path existence first
+    let path = std::path::Path::new(&file_path);
+    if !path.exists() {
+        return Err(format!("File does not exist: {}", file_path));
+    }
+
     let ed = editor.unwrap_or_else(|| "vscode".to_string()).to_lowercase();
     let line = line_number.unwrap_or(1);
     let binary_name = if ed == "cursor" { "cursor" } else { "code" };
@@ -442,17 +525,16 @@ pub async fn open_file_in_editor(file_path: String, line_number: Option<u32>, ed
         }
 
         // --- TIER 2: OS URI Protocol Handler (vscode://file/... or cursor://file/...) ---
-        let norm_uri_path = file_path.replace('\\', "/");
+        // Avoid cmd.exe /c start to prevent shell command injection (e.g. & | ^ metacharacters).
+        let norm_uri_path = file_path.replace('\\', "/").replace(' ', "%20");
         let uri = format!("{}://file/{}:{}", scheme, norm_uri_path, line);
-        if let Ok(mut child) = std::process::Command::new("cmd").args(&["/c", "start", "", &uri]).spawn() {
-            if child.wait().map(|s| s.success()).unwrap_or(false) {
-                return Ok(());
-            }
+        if open_path_or_url(&uri).is_ok() {
+            return Ok(());
         }
 
         // --- TIER 3: OS Default Associated Application Fallback ---
-        let _ = std::process::Command::new("cmd").args(&["/c", "start", "", &normalized_path]).spawn();
-        return Ok(());
+        open_path_or_url(&normalized_path)
+            .map_err(|e| format!("Failed to open file in editor: {}", e))
     }
 
     #[cfg(target_os = "macos")]
@@ -487,16 +569,15 @@ pub async fn open_file_in_editor(file_path: String, line_number: Option<u32>, ed
         }
 
         // --- TIER 2: macOS URL Scheme (`open vscode://file/...`) ---
-        let uri = format!("{}://file/{}:{}", scheme, file_path, line);
-        if let Ok(mut child) = std::process::Command::new("open").arg(&uri).spawn() {
-            if child.wait().map(|s| s.success()).unwrap_or(false) {
-                return Ok(());
-            }
+        let norm_uri_path = file_path.replace(' ', "%20");
+        let uri = format!("{}://file/{}:{}", scheme, norm_uri_path, line);
+        if open_path_or_url(&uri).is_ok() {
+            return Ok(());
         }
 
         // --- TIER 3: macOS Default App Fallback (`open <file_path>`) ---
-        let _ = std::process::Command::new("open").arg(&file_path).spawn();
-        return Ok(());
+        open_path_or_url(&file_path)
+            .map_err(|e| format!("Failed to open file in editor: {}", e))
     }
 
     #[cfg(target_os = "linux")]
@@ -527,16 +608,15 @@ pub async fn open_file_in_editor(file_path: String, line_number: Option<u32>, ed
         }
 
         // --- TIER 2: Linux XDG URL Scheme (`xdg-open vscode://file/...`) ---
-        let uri = format!("{}://file/{}:{}", scheme, file_path, line);
-        if let Ok(mut child) = std::process::Command::new("xdg-open").arg(&uri).spawn() {
-            if child.wait().map(|s| s.success()).unwrap_or(false) {
-                return Ok(());
-            }
+        let norm_uri_path = file_path.replace(' ', "%20");
+        let uri = format!("{}://file/{}:{}", scheme, norm_uri_path, line);
+        if open_path_or_url(&uri).is_ok() {
+            return Ok(());
         }
 
         // --- TIER 3: Linux XDG Default App Fallback (`xdg-open <file_path>`) ---
-        let _ = std::process::Command::new("xdg-open").arg(&file_path).spawn();
-        return Ok(());
+        open_path_or_url(&file_path)
+            .map_err(|e| format!("Failed to open file in editor: {}", e))
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
@@ -832,6 +912,34 @@ mod logging_tests {
         assert!(new_content.contains("Log rotated: previous log exceeded"), "New log must have rotation notice");
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_open_path_or_url_rejects_null_byte() {
+        let res = open_path_or_url("https://example.com\0evil");
+        assert!(res.is_err(), "open_path_or_url must reject strings with null bytes");
+    }
+
+    #[tokio::test]
+    async fn test_open_file_in_editor_rejects_control_characters() {
+        let res_null = open_file_in_editor("file\0path.txt".to_string(), Some(1), None).await;
+        assert!(res_null.is_err(), "Must reject null bytes in file path");
+
+        let res_cr = open_file_in_editor("file\rpath.txt".to_string(), Some(1), None).await;
+        assert!(res_cr.is_err(), "Must reject carriage returns in file path");
+
+        let res_lf = open_file_in_editor("file\npath.txt".to_string(), Some(1), None).await;
+        assert!(res_lf.is_err(), "Must reject newlines in file path");
+    }
+
+    #[tokio::test]
+    async fn test_open_file_in_editor_fails_safely_on_command_chaining() {
+        // Attempting to pass a chained command payload
+        let malicious_path = "C:\\projects\\non_existent_file.txt & calc.exe".to_string();
+        let res = open_file_in_editor(malicious_path, Some(10), Some("invalid_editor_scheme".to_string())).await;
+        assert!(res.is_err(), "Command injection payload with non-existent file must fail safely");
+        let err = res.err().unwrap();
+        assert!(err.contains("File does not exist") || err.contains("failed"), "Error must report failure or non-existent file: {}", err);
     }
 }
 

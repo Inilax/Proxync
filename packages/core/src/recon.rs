@@ -55,7 +55,7 @@ fn is_dev_port(port: u16) -> bool {
     // Exclude well-known system, RPC, mDNS, CUPS, and common non-dev ports
     match port {
         111 | 135 | 136 | 137 | 138 | 139 | 445 | 631 | 2869 | 5040 | 5353 | 6463 | 5357 | 49152..=49157 => false,
-        80 | 443 | 1024..=49151 => true,
+        80 | 443 | 1024..=65535 => true,
         _ => false,
     }
 }
@@ -66,7 +66,16 @@ fn is_dev_port(port: u16) -> bool {
 
 pub trait PlatformScanner: Send + Sync {
     fn scan_listening_ports(&self) -> (HashMap<u16, u32>, HashMap<u32, Vec<u16>>);
-    fn scan_processes(&self) -> HashMap<u32, RawProcess>;
+    /// Scans processes and inspects their execution metadata.
+    ///
+    /// # Arguments
+    /// * `listening_pids` - Optional slice of already discovered listening process IDs.
+    ///   - `Some(pids)`: Used by platforms (such as macOS) to query process information
+    ///     directly via `ps`/proc APIs without re-invoking port discovery (`lsof`),
+    ///     eliminating redundant subprocess spawns (Issue #197).
+    ///   - `None`: Instructs the scanner to perform a self-contained discovery of listening
+    ///     processes (or a full proc scan on platforms like Linux).
+    fn scan_processes(&self, listening_pids: Option<&[u32]>) -> HashMap<u32, RawProcess>;
     fn get_process_cwd(&self, pid: u32) -> Option<String>;
 }
 
@@ -122,7 +131,7 @@ impl PlatformScanner for LinuxScanner {
         (port_to_pid, pid_to_ports)
     }
 
-    fn scan_processes(&self) -> HashMap<u32, RawProcess> {
+    fn scan_processes(&self, _listening_pids: Option<&[u32]>) -> HashMap<u32, RawProcess> {
         let mut map = HashMap::new();
         let entries = match std::fs::read_dir("/proc") {
             Ok(e) => e,
@@ -384,7 +393,7 @@ impl PlatformScanner for WindowsScanner {
         (port_to_pid, pid_to_ports)
     }
 
-    fn scan_processes(&self) -> HashMap<u32, RawProcess> {
+    fn scan_processes(&self, _listening_pids: Option<&[u32]>) -> HashMap<u32, RawProcess> {
         let mut map = HashMap::new();
         let ps_cmd = "$procs = Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name, ExecutablePath, CommandLine; $procs | ConvertTo-Json -Depth 2";
 
@@ -503,13 +512,15 @@ impl PlatformScanner for MacOsScanner {
         (port_to_pid, pid_to_ports)
     }
 
-    fn scan_processes(&self) -> HashMap<u32, RawProcess> {
-        // ponytail: scan_listening_ports() is called again here to build the PID list.
-        // This means callers that call both scan_listening_ports() + scan_processes()
-        // run lsof twice. A future refactor should accept &HashMap<u16,u32> as input
-        // (changing the PlatformScanner trait) to eliminate the duplicate invocation.
-        let (port_to_pid, _) = self.scan_listening_ports();
-        let mut pids: Vec<u32> = port_to_pid.values().copied().collect();
+    fn scan_processes(&self, listening_pids: Option<&[u32]>) -> HashMap<u32, RawProcess> {
+        // Issue #197: Use caller-provided listening PIDs when available to eliminate duplicate lsof invocation.
+        let mut pids: Vec<u32> = match listening_pids {
+            Some(slice) => slice.to_vec(),
+            None => {
+                let (port_to_pid, _) = self.scan_listening_ports();
+                port_to_pid.values().copied().collect()
+            }
+        };
         pids.sort_unstable();
         pids.dedup();
 
@@ -661,7 +672,7 @@ impl PlatformScanner for FallbackScanner {
         (port_to_pid, pid_to_ports)
     }
 
-    fn scan_processes(&self) -> HashMap<u32, RawProcess> {
+    fn scan_processes(&self, _listening_pids: Option<&[u32]>) -> HashMap<u32, RawProcess> {
         HashMap::new()
     }
 
@@ -673,15 +684,29 @@ impl PlatformScanner for FallbackScanner {
 pub async fn scan_ports() -> Result<Vec<u16>, String> {
     tokio::task::spawn_blocking(|| {
         let scanner = get_platform_scanner();
-        // Call scan_listening_ports once; scan_processes will use the same
-        // port snapshot internally — no duplicate lsof invocations at caller level.
+        // Call scan_listening_ports once and forward listening PIDs into scan_processes,
+        // eliminating duplicate lsof invocations on macOS (Issue #197).
         let (port_to_pid, _) = scanner.scan_listening_ports();
-        let all_procs = scanner.scan_processes();
+        let mut pids: Vec<u32> = port_to_pid.values().copied().collect();
+        pids.sort_unstable();
+        pids.dedup();
+        let all_procs = scanner.scan_processes(Some(&pids));
+        let active_tunnels = crate::registry::read_registry();
         let mut ports: Vec<u16> = Vec::new();
         for (port, pid) in port_to_pid {
             let proc_opt = all_procs.get(&pid);
             let name = proc_opt.map(|p| p.name.as_str()).unwrap_or("");
             let cmd = proc_opt.and_then(|p| p.cmd_line.as_deref());
+
+            // If a proxync process has an active tunnel, skip its internal proxy port
+            if name.to_lowercase().contains("proxync") {
+                if let Some(t) = active_tunnels.iter().find(|t| t.pid == pid) {
+                    if port != t.port {
+                        continue;
+                    }
+                }
+            }
+
             if !is_system_process_name(name) && !is_infra_process_name(name) {
                 if let ProcessType::Dev { .. } = classify_process(name, cmd) {
                     ports.push(port);
@@ -809,11 +834,89 @@ fn detect_framework(cmd_line: &str) -> Option<String> {
         Some("Python HTTP Server".to_string())
     } else if lower.contains("spring-boot") || lower.contains("springframework") {
         Some("Spring Boot App".to_string())
+    } else if (lower.contains("proxync") || lower.contains("proxync-cli"))
+        && (lower.contains("serve") || is_proxync_serve_cmd(&lower))
+    {
+        Some("Proxync Static Server".to_string())
     } else if lower.contains("express") || lower.contains("server.js") || lower.contains("app.js") || lower.contains("index.js") || lower.contains("server.ts") {
         Some("Node.js / Express".to_string())
     } else {
         None
     }
+}
+
+const NON_SERVE_CMDS: &[&str] = &[
+    "tunnel", "share", "inspect", "proxy", "scan", "ls", "ps", "list", "stop", "status",
+    "open", "logs", "doctor", "diag", "providers", "provider", "gui", "install",
+    "setup-path", "upgrade", "update", "replay", "completion", "help", "-h", "--help",
+    "-v", "--version",
+];
+
+fn is_proxync_serve_cmd(cmd_lower: &str) -> bool {
+    let tokens = tokenize_cmd(cmd_lower);
+    if tokens.is_empty() {
+        return false;
+    }
+
+    let mut found_proxync = false;
+    let mut skip_next = false;
+    for token in &tokens {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+
+        let clean = token.trim_end_matches(".exe");
+        if !found_proxync {
+            if clean.ends_with("proxync") || clean == "proxync" {
+                found_proxync = true;
+            }
+            continue;
+        }
+
+        // Flags that take an argument: skip their value token
+        if token == "--port"
+            || token == "-p"
+            || token == "--provider"
+            || token == "--basic-auth"
+            || token == "--expires"
+            || token == "--token"
+            || token == "--workspace"
+            || token == "--relay-url"
+        {
+            skip_next = true;
+            continue;
+        }
+
+        // Inline flags with =
+        if token.starts_with("--port=")
+            || token.starts_with("-p=")
+            || token.starts_with("--provider=")
+            || token.starts_with("--basic-auth=")
+            || token.starts_with("--expires=")
+        {
+            continue;
+        }
+
+        // Boolean flags
+        if token.starts_with('-') {
+            continue;
+        }
+
+        if NON_SERVE_CMDS.contains(&token.as_str()) {
+            return false;
+        }
+
+        // Pure numeric port is a tunnel shortcut (e.g. `proxync 3000`)
+        if token.parse::<u16>().is_ok() {
+            return false;
+        }
+
+        // Any other non-flag positional argument is a directory to serve
+        return true;
+    }
+
+    false
 }
 
 fn classify_process(name: &str, cmd_line: Option<&str>) -> ProcessType {
@@ -890,7 +993,16 @@ fn classify_process(name: &str, cmd_line: Option<&str>) -> ProcessType {
     } else if lower_name.starts_with("dotnet") {
         ".NET"
     } else if lower_name.starts_with("proxync") {
-        "Proxync"
+        if let Some(cmd) = cmd_line {
+            let cmd_lower = cmd.to_lowercase();
+            if cmd_lower.contains("serve") || is_proxync_serve_cmd(&cmd_lower) {
+                return ProcessType::Dev {
+                    runtime: "Proxync".to_string(),
+                    framework: Some("Proxync Static Server".to_string()),
+                };
+            }
+        }
+        return ProcessType::SystemOrUnknown;
     } else if let Some(cmd) = cmd_line {
         if let Some(fw) = detect_framework(cmd) {
             return ProcessType::Dev {
@@ -1212,10 +1324,128 @@ mod win_peb {
     }
 }
 
+pub(crate) fn resolve_proxync_serve_directory(
+    cmd_line: Option<&str>,
+    proc_cwd: Option<&str>,
+) -> Option<String> {
+    let cmd = cmd_line?;
+    let tokens = tokenize_cmd(cmd);
+
+    // Find "serve" subcommand or fallback to proxync binary for shorthand serves
+    let serve_idx = tokens.iter().position(|t| {
+        let l = t.to_lowercase();
+        l == "serve" || l.ends_with("/serve") || l.ends_with("\\serve")
+    });
+
+    let skip_count = match serve_idx {
+        Some(idx) => idx + 1,
+        None => {
+            // Check if this is a shorthand serve: e.g. `proxync test`
+            let px_idx = tokens.iter().position(|t| {
+                let clean = t.trim_end_matches(".exe").to_lowercase();
+                clean.ends_with("proxync") || clean == "proxync"
+            })?;
+            px_idx + 1
+        }
+    };
+
+    // Look for positional path argument after "serve" (or after "proxync" in shorthand)
+    let mut target_path = None;
+    let mut skip_next = false;
+
+    for token in tokens.iter().skip(skip_count) {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+
+        // Handle options with values: --port <val>, -p <val>, etc.
+        if token == "--port"
+            || token == "-p"
+            || token == "--provider"
+            || token == "--basic-auth"
+            || token == "--expires"
+            || token == "--token"
+            || token == "--workspace"
+            || token == "--relay-url"
+        {
+            skip_next = true;
+            continue;
+        }
+
+        // Handle inline flags with =
+        if token.starts_with("--port=")
+            || token.starts_with("-p=")
+            || token.starts_with("--provider=")
+            || token.starts_with("--basic-auth=")
+            || token.starts_with("--expires=")
+        {
+            continue;
+        }
+
+        // Handle boolean flags
+        if token.starts_with('-') {
+            continue;
+        }
+
+        // In shorthand serve mode, subcommands or numeric ports are not directories
+        if serve_idx.is_none()
+            && (token.parse::<u16>().is_ok() || NON_SERVE_CMDS.contains(&token.as_str()))
+        {
+            return None;
+        }
+
+        // First non-flag argument after "serve" (or after "proxync" in shorthand) is the path
+        target_path = Some(token.as_str());
+        break;
+    }
+
+    let effective_path = match target_path {
+        Some(p) if p != "." && p != "./" && p != ".\\" => p,
+        _ => {
+            // Default to CWD if "." or omitted
+            return proc_cwd.map(|c| c.trim_end_matches('\\').trim_end_matches('/').to_string());
+        }
+    };
+
+    let path = std::path::Path::new(effective_path);
+    if path.is_absolute() {
+        if let Ok(canon) = std::fs::canonicalize(path) {
+            let s = canon.to_string_lossy().to_string();
+            return Some(s.trim_start_matches(r"\\?\").to_string());
+        }
+        return Some(effective_path.trim_end_matches('\\').trim_end_matches('/').to_string());
+    }
+
+    if let Some(cwd) = proc_cwd {
+        let combined = std::path::Path::new(cwd).join(path);
+        if let Ok(canon) = std::fs::canonicalize(&combined) {
+            let s = canon.to_string_lossy().to_string();
+            return Some(s.trim_start_matches(r"\\?\").to_string());
+        }
+        return Some(combined.to_string_lossy().trim_end_matches('\\').trim_end_matches('/').to_string());
+    }
+
+    Some(effective_path.trim_end_matches('\\').trim_end_matches('/').to_string())
+}
+
 fn resolve_directory_in_memory(
     proc: &RawProcess,
     all_procs: &HashMap<u32, RawProcess>,
 ) -> String {
+    // Stage -1: Dedicated high-precision resolution for Proxync Static Server instances
+    if let Some(cmd) = proc.cmd_line.as_deref() {
+        let lower = cmd.to_lowercase();
+        if (lower.contains("serve") || is_proxync_serve_cmd(&lower))
+            && (lower.contains("proxync") || proc.name.to_lowercase().contains("proxync"))
+        {
+            let proc_cwd = get_platform_scanner().get_process_cwd(proc.pid);
+            if let Some(served_dir) = resolve_proxync_serve_directory(Some(cmd), proc_cwd.as_deref()) {
+                return served_dir;
+            }
+        }
+    }
+
     // Stage 0: Direct Process CWD via OS PEB / /proc inspection (primary high-precision resolver)
     if let Some(cwd) = get_platform_scanner().get_process_cwd(proc.pid) {
         let path = std::path::Path::new(&cwd);
@@ -1316,7 +1546,11 @@ pub async fn resolve_process_directory(port: u16, pid: Option<u32>) -> Result<St
         let target_pid = pid.or_else(|| port_to_pid.get(&port).copied());
 
         if let Some(pid_val) = target_pid {
-            let all_procs = scanner.scan_processes();
+            let mut pids: Vec<u32> = port_to_pid.values().copied().collect();
+            pids.push(pid_val);
+            pids.sort_unstable();
+            pids.dedup();
+            let all_procs = scanner.scan_processes(Some(&pids));
             if let Some(proc) = all_procs.get(&pid_val) {
                 let resolved = resolve_directory_in_memory(proc, &all_procs);
                 if resolved != "unknown" {
@@ -1337,7 +1571,12 @@ pub async fn resolve_process_directory(port: u16, pid: Option<u32>) -> Result<St
 pub async fn scan_processes(bypass_cache: bool) -> Result<Vec<ProcessCandidate>, String> {
     let (port_to_pid, all_procs) = tokio::task::spawn_blocking(|| {
         let scanner = get_platform_scanner();
-        (scanner.scan_listening_ports().0, scanner.scan_processes())
+        let (p2p, _) = scanner.scan_listening_ports();
+        let mut pids: Vec<u32> = p2p.values().copied().collect();
+        pids.sort_unstable();
+        pids.dedup();
+        let procs = scanner.scan_processes(Some(&pids));
+        (p2p, procs)
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -1381,11 +1620,21 @@ pub async fn scan_processes(bypass_cache: bool) -> Result<Vec<ProcessCandidate>,
         Vec::new()
     } else {
         tokio::task::spawn_blocking(move || {
+            let active_tunnels = crate::registry::read_registry();
             let mut results = Vec::new();
             for (port, pid) in to_process {
                 let proc_opt = all_procs.get(&pid);
                 let proc_name = proc_opt.map(|p| p.name.as_str()).unwrap_or("Development server");
                 let cmd_line = proc_opt.and_then(|p| p.cmd_line.as_deref());
+
+                // If a proxync process has an active tunnel, skip its internal proxy port
+                if proc_name.to_lowercase().contains("proxync") {
+                    if let Some(t) = active_tunnels.iter().find(|t| t.pid == pid) {
+                        if port != t.port {
+                            continue;
+                        }
+                    }
+                }
 
                 let (_runtime_label, framework_label) = match classify_process(proc_name, cmd_line) {
                     ProcessType::Dev { runtime, framework } => {
@@ -1534,6 +1783,7 @@ mod tests {
         assert!(!is_dev_port(631));
         assert!(!is_dev_port(5353));
         assert!(!is_dev_port(49152));
+        assert!(!is_dev_port(49157));
 
         // Allowed dev ports
         assert!(is_dev_port(80));
@@ -1542,6 +1792,9 @@ mod tests {
         assert!(is_dev_port(5173));
         assert!(is_dev_port(8000));
         assert!(is_dev_port(8080));
+        assert!(is_dev_port(49158));
+        assert!(is_dev_port(50000));
+        assert!(is_dev_port(65535));
     }
 
     #[test]
@@ -1563,6 +1816,9 @@ mod tests {
         assert_eq!(detect_framework("python3 -m uvicorn main:app").as_deref(), Some("FastAPI App"));
         assert_eq!(detect_framework("node server.js").as_deref(), Some("Node.js / Express"));
         assert_eq!(detect_framework("next dev").as_deref(), Some("Next.js App"));
+        assert_eq!(detect_framework("proxync serve .").as_deref(), Some("Proxync Static Server"));
+        assert_eq!(detect_framework("proxync.exe serve ./public").as_deref(), Some("Proxync Static Server"));
+        assert_eq!(detect_framework("proxync serve --port 8080").as_deref(), Some("Proxync Static Server"));
         assert_eq!(detect_framework("unknown_tool").as_deref(), None);
     }
 
@@ -1600,6 +1856,48 @@ mod tests {
             _ => panic!("Expected Dev process for node"),
         }
 
+        match classify_process("proxync", Some("proxync serve .")) {
+            ProcessType::Dev { runtime, framework } => {
+                assert_eq!(runtime, "Proxync");
+                assert_eq!(framework.as_deref(), Some("Proxync Static Server"));
+            }
+            _ => panic!("Expected Dev process for proxync serve"),
+        }
+
+        match classify_process("proxync.exe", Some("proxync.exe serve --port 8080 ./dist")) {
+            ProcessType::Dev { runtime, framework } => {
+                assert_eq!(runtime, "Proxync");
+                assert_eq!(framework.as_deref(), Some("Proxync Static Server"));
+            }
+            _ => panic!("Expected Dev process for proxync.exe serve"),
+        }
+
+        match classify_process("proxync", Some("proxync tunnel 3000")) {
+            ProcessType::SystemOrUnknown => {}
+            _ => panic!("Expected SystemOrUnknown for proxync tunnel"),
+        }
+
+        match classify_process("proxync.exe", None) {
+            ProcessType::SystemOrUnknown => {}
+            _ => panic!("Expected SystemOrUnknown for bare proxync.exe"),
+        }
+
+        match classify_process("proxync.exe", Some("proxync test")) {
+            ProcessType::Dev { runtime, framework } => {
+                assert_eq!(runtime, "Proxync");
+                assert_eq!(framework.as_deref(), Some("Proxync Static Server"));
+            }
+            _ => panic!("Expected Dev process for shorthand proxync test"),
+        }
+
+        match classify_process("proxync", Some("proxync .")) {
+            ProcessType::Dev { runtime, framework } => {
+                assert_eq!(runtime, "Proxync");
+                assert_eq!(framework.as_deref(), Some("Proxync Static Server"));
+            }
+            _ => panic!("Expected Dev process for shorthand proxync ."),
+        }
+
         match classify_process("cupsd", None) {
             ProcessType::SystemOrUnknown => {}
             _ => panic!("Expected SystemOrUnknown for cupsd"),
@@ -1612,10 +1910,44 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_proxync_serve_directory() {
+        // Case 1: Default to CWD when path is "." or omitted
+        let dir = resolve_proxync_serve_directory(Some("proxync serve ."), Some("/workspace/project"));
+        assert_eq!(dir.as_deref(), Some("/workspace/project"));
+
+        let dir_dot_slash = resolve_proxync_serve_directory(Some("proxync serve ./"), Some("/workspace/project"));
+        assert_eq!(dir_dot_slash.as_deref(), Some("/workspace/project"));
+
+        let dir_omit = resolve_proxync_serve_directory(Some("proxync serve"), Some("/workspace/project"));
+        assert_eq!(dir_omit.as_deref(), Some("/workspace/project"));
+
+        // Case 2: Positional path after flags
+        let dir_flags = resolve_proxync_serve_directory(Some("proxync serve --port 8080 ./public"), Some("/workspace/project"));
+        assert!(dir_flags.is_some());
+        let df = dir_flags.unwrap();
+        assert!(df.contains("public"));
+
+        // Case 3: Flag with equals
+        let dir_eq = resolve_proxync_serve_directory(Some("proxync serve --port=5000 dist"), Some("/workspace/project"));
+        assert!(dir_eq.is_some());
+        let de = dir_eq.unwrap();
+        assert!(de.contains("dist"));
+
+        // Case 4: Shorthand directory serve without the word "serve"
+        let dir_shorthand = resolve_proxync_serve_directory(Some("proxync test"), Some("/workspace/project"));
+        assert!(dir_shorthand.is_some());
+        let ds = dir_shorthand.unwrap();
+        assert!(ds.contains("test"));
+
+        let dir_shorthand_dot = resolve_proxync_serve_directory(Some("proxync ."), Some("/workspace/project"));
+        assert_eq!(dir_shorthand_dot.as_deref(), Some("/workspace/project"));
+    }
+
+    #[test]
     #[cfg(target_os = "linux")]
     fn test_linux_scanner_self_process() {
         let scanner = get_platform_scanner();
-        let procs = scanner.scan_processes();
+        let procs = scanner.scan_processes(None);
         let self_pid = std::process::id();
         assert!(procs.contains_key(&self_pid), "Scanner should find current process");
 
@@ -1836,4 +2168,49 @@ mod tests {
         assert!(is_system_process_name("Google Chrome"));
         assert!(is_system_process_name("Visual Studio Code"));
     }
+
+    struct MockScanner;
+    impl PlatformScanner for MockScanner {
+        fn scan_listening_ports(&self) -> (HashMap<u16, u32>, HashMap<u32, Vec<u16>>) {
+            (HashMap::new(), HashMap::new())
+        }
+        fn scan_processes(&self, listening_pids: Option<&[u32]>) -> HashMap<u32, RawProcess> {
+            let mut map = HashMap::new();
+            if let Some(pids) = listening_pids {
+                for &pid in pids {
+                    map.insert(pid, RawProcess {
+                        pid,
+                        parent_pid: None,
+                        name: format!("mock-{pid}"),
+                        exec_path: None,
+                        cmd_line: None,
+                    });
+                }
+            }
+            map
+        }
+        fn get_process_cwd(&self, _pid: u32) -> Option<String> {
+            None
+        }
+    }
+
+    #[test]
+    fn test_platform_scanner_trait_contract() {
+        let scanner = MockScanner;
+        assert!(scanner.scan_processes(None).is_empty());
+        let procs = scanner.scan_processes(Some(&[100, 200]));
+        assert_eq!(procs.len(), 2);
+        assert!(procs.contains_key(&100));
+        assert!(procs.contains_key(&200));
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_macos_scanner_scan_processes_pids() {
+        let scanner = MacOsScanner;
+        let self_pid = std::process::id();
+        let procs = scanner.scan_processes(Some(&[self_pid]));
+        assert!(procs.contains_key(&self_pid), "MacOsScanner should find current process when PID passed");
+    }
 }
+

@@ -49,7 +49,11 @@ pub fn is_process_alive(pid: u32) -> bool {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let status = std::process::Command::new("kill").args(["-0", &pid.to_string()]).status();
+        let status = std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
         status.map(|s| s.success()).unwrap_or(false)
     }
 }
