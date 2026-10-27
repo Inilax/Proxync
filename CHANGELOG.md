@@ -5,8 +5,8 @@ All notable changes to the Proxync workspace studio project are documented here.
 ## [fix/develop-readme-roadmap-refresh] - 2026-10-26 (Synchronize 0.2.4 Roadmap Milestones & Public Tunnel Capabilities)
 - **Summary**:
   - **Roadmap Milestone Synchronization (`README.md`)**: Marked macOS & Linux production stabilization and the CLI Companion (`proxync-cli`) as completed milestones.
-  - **Upcoming Enterprise & Backend Architecture Expansion (`README.md`)**: Formalized upcoming Enterprise Edition features (team collaboration, persistent shared tunnels, org custom domains, audit telemetry) alongside Proxync Backend & Distributed Gateway high-availability stabilization.
-  - **Developer-Voted Public Tunneling Capabilities (`README.md`)**: Added high-demand developer capabilities to the active roadmap, including smart webhook replay with HMAC signature re-computation/tolerance refresh, local AI agent & MCP server low-latency SSE/streaming gateways, and multi-port microservice routing.
+  - **Upcoming Enterprise Architecture Expansion (`README.md`)**: Formalized upcoming Enterprise Edition features (team collaboration workspaces, persistent shared tunnels, organization-wide custom domains, centralized audit telemetry).
+  - **Developer-Voted Public Tunneling Capabilities (`README.md`)**: Added high-demand developer capabilities to the client roadmap, including smart webhook replay with HMAC signature re-computation/tolerance refresh, local AI agent & MCP server low-latency SSE/streaming gateways, and multi-port microservice routing.
 - **Modified Files**:
   - `README.md`
   - `CHANGELOG.md`
