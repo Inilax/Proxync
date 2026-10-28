@@ -11,12 +11,35 @@ All notable changes to the Proxync workspace studio project are documented here.
   - `packages/core/Cargo.lock`
   - `packages/cli/Cargo.lock`
   - `packages/desktop/src-tauri/Cargo.lock`
+## [fix/v0.2.5-version-bump] - 2026-10-28 (Workspace & Studio Version Bump to v0.2.5 for Next Release Cycle)
+- **Feature Summary**:
+  - **Comprehensive Version Bump to v0.2.5**: Synchronized workspace and package manifests (`package.json`, `packages/desktop/package.json`, `package-lock.json`, `Cargo.toml`, `Cargo.lock`, and `tauri.conf.json`) to version `0.2.5`.
+  - **Native HTTP Network Headers & Diagnostics**: Updated Rust client diagnostic banner in `storage.rs` to `Proxync v0.2.5 (Engine: Tauri v2.11 Core)`. Synchronized frontend diagnostic logging metadata, log session directives, and support bundle fallbacks in `App.tsx` and `logger.ts` to `v0.2.5-stable`.
+  - **UI Version Presentation Alignment**: Updated `SettingsView.tsx` default prop to `v0.2.5`, `App.tsx` update toast message (`v0.2.5`), and sidebar engine indicator (`v0.2.5-stable`).
+  - **Recon & Documentation Badge Alignment**: Updated README version shield badge and `.agents/architecture.json` static recon map to reflect version `0.2.5`.
+- **Modified Files**:
+  - `README.md`
+  - `package-lock.json`
+  - `package.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/core/Cargo.lock`
+  - `packages/core/Cargo.toml`
+  - `packages/core/src/storage.rs`
+  - `packages/cli/Cargo.lock`
+  - `packages/cli/Cargo.toml`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/lib/logger.ts`
   - `CHANGELOG.md`
 - **Verification**:
   - `cargo check --manifest-path packages/core/Cargo.toml`: passed with 0 errors.
   - `cargo check --manifest-path packages/cli/Cargo.toml`: passed with 0 errors.
   - `cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml`: passed with 0 errors.
   - `cargo test --manifest-path packages/core/Cargo.toml`: passed all 59 tests (0 failures).
+  - `npm run build --workspace=packages/desktop`: TypeScript and Vite compilation verified.
 
 ---
 
