@@ -4,6 +4,7 @@ import { formatHeaders, stripMethodPrefix, DEFAULT_REQUEST, isRequestDirty } fro
 import { showToast } from '../../lib/toast';
 import { importSwaggerToSavedRequests, importPostmanToOpenApi } from '../../lib/openApiGenerator';
 import { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
+import { isPrimaryModifier, isKey, isInputFocused, isDeleteKey } from '../../lib/hotkeys';
 
 // Default draft when collection empties — mirrors DEFAULT_REQUEST in App.tsx (keep in sync)
 // ponytail: duplication ceiling; upgrade path = export DEFAULT_REQUEST from a shared constants file
@@ -502,13 +503,14 @@ export function PostmanView({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      const primaryMod = isPrimaryModifier(e);
+      if (primaryMod && (e.key === 'Enter' || e.code === 'Enter' || e.code === 'NumpadEnter')) {
         e.preventDefault();
         handleSendRequest();
-      } else if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+      } else if (primaryMod && isKey(e, 's', 'KeyS')) {
         e.preventDefault();
         onSave();
-      } else if ((e.ctrlKey || e.metaKey) && (e.key === 't' || e.key === 'T')) {
+      } else if (primaryMod && isKey(e, 't', 'KeyT')) {
         const pane = getActivePane(e);
         const isExternalInput = ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName || '') &&
           !isTargetInCollections(document.activeElement);
@@ -516,14 +518,14 @@ export function PostmanView({
           e.preventDefault();
           handleAddNewRequest();
         }
-      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'f' || e.key === 'F')) {
+      } else if (primaryMod && !e.shiftKey && isKey(e, 'f', 'KeyF')) {
         e.preventDefault();
         if (isCollectionsCollapsed) setIsCollectionsCollapsed(false);
         searchInputRef.current?.focus();
-      } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'f' || e.key === 'F')) {
+      } else if (primaryMod && e.shiftKey && isKey(e, 'f', 'KeyF')) {
         e.preventDefault();
         handleFormatJsonBody();
-      } else if ((e.ctrlKey || e.metaKey) && (e.key === '?' || e.key === '/' || e.code === 'Slash')) {
+      } else if (primaryMod && (e.key === '?' || e.key === '/' || e.code === 'Slash')) {
         e.preventDefault();
         if (onOpenShortcuts) {
           onOpenShortcuts();
@@ -531,8 +533,8 @@ export function PostmanView({
           setShowHotkeysModal((prev) => !prev);
         }
       } else if (
-        !(['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName || '') || (document.activeElement as HTMLElement)?.isContentEditable) &&
-        (e.key === 'Delete' || ((e.ctrlKey || e.metaKey) && (e.key === 'Delete' || e.key === 'Backspace')))
+        !isInputFocused(document.activeElement) &&
+        (isDeleteKey(e) || (primaryMod && (isDeleteKey(e) || e.key === 'Backspace' || e.code === 'Backspace')))
       ) {
         // Suspend background deletions when modals or method dropdowns are open
         if (importSwaggerModalOpen || showHotkeysModal || methodDropdownId || deletingFolderTarget) {
@@ -588,8 +590,8 @@ export function PostmanView({
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
   }, [onRun, onSave, isCreatingFolder, editingFolderId, editingRequestId, contextMenu, methodDropdownId, importSwaggerModalOpen, showHotkeysModal, deletingFolderTarget, draft, savedRequests, visibleFoldersList, isCollectionsCollapsed]);
 
   // Drag handlers for Collections Rail
@@ -1467,7 +1469,7 @@ export function PostmanView({
                       }
                       return (
                         <option key={t.id} value={`tunnel-${t.id}`} className="bg-surface-container-high text-primary font-mono truncate">
-                          🌐 {displayHost} (:{t.localPort})
+                          {t.basicAuth?.enabled ? '🔒' : '🌐'} {displayHost} (:{t.localPort})
                         </option>
                       );
                     })}

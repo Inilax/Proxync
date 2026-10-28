@@ -1,8 +1,10 @@
+mod bridge;
 mod recon;
 mod proxy;
 mod storage;
 mod http;
 mod tunnel;
+mod cli;
 
 use recon::{scan_ports, scan_processes, resolve_process_directory, probe_port, probe_tcp_latency};
 use tunnel::{open_tunnel, close_tunnel, close_all_tunnels, open_cloudflare_tunnel, open_native_tunnel};
@@ -13,6 +15,7 @@ use storage::{
     save_support_bundle_dialog, get_system_info
 };
 use http::execute_http_request;
+use cli::{check_cli_status, install_cli_to_path, uninstall_cli_from_path};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -25,6 +28,16 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            #[cfg(target_os = "macos")]
+            {
+                if let Ok(menu) = tauri::menu::Menu::default(app.handle()) {
+                    let _ = app.set_menu(menu);
+                }
+            }
+            let _ = app;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             scan_ports, 
             scan_processes,
@@ -49,7 +62,10 @@ pub fn run() {
             open_logs_folder,
             read_logs_summary,
             save_support_bundle_dialog,
-            get_system_info
+            get_system_info,
+            check_cli_status,
+            install_cli_to_path,
+            uninstall_cli_from_path
         ])
         .on_window_event(|_window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

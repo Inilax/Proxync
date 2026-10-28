@@ -1,0 +1,23 @@
+[package]
+name = "proxync-cli"
+version = "0.2.4"
+edition = "2021"
+description = "Proxync CLI companion — Lightweight developer tunneling & reconnaissance from the terminal"
+authors = ["Inilax"]
+
+[[bin]]
+name = "proxync"
+path = "src/main.rs"
+
+[dependencies]
+proxync-core = { path = "../core" }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive", "cargo", "env"] }
+qrcode = { version = "0.14.1", default-features = false }
+crossterm = "0.29.0"
+clap_complete = "4"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

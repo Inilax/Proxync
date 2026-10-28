@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import type { MainView } from './SharedComponents';
 import { useEscape } from './SharedComponents';
+import { isMac } from '../../lib/hotkeys';
 
 interface ShortcutItem {
   name: string;
@@ -23,15 +24,6 @@ export function KeyboardShortcutsDialog({
 }: KeyboardShortcutsDialogProps) {
   useEscape(onClose, isOpen);
   const [filterQuery, setFilterQuery] = useState('');
-
-  // Cross-platform OS key symbol detection (macOS vs Windows/Linux)
-  const isMac = useMemo(() => {
-    if (typeof navigator === 'undefined') return false;
-    return (
-      /Mac|iPod|iPhone|iPad/i.test(navigator.platform) ||
-      /Macintosh|Mac OS X/i.test(navigator.userAgent)
-    );
-  }, []);
 
   const modKey = isMac ? '⌘' : 'Ctrl';
 

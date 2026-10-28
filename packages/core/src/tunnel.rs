@@ -1,0 +1,1058 @@
+use crate::events::{EventSender, ProxyncEvent};
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use serde::{Deserialize, Serialize};
+use futures_util::{StreamExt, SinkExt};
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+use reqwest::Client;
+use lazy_static::lazy_static;
+use base64::prelude::*;
+use tokio::io::AsyncBufReadExt;
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+use crate::proxy::stop_proxy;
+
+lazy_static! {
+    static ref ACTIVE_TUNNELS: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>> = Arc::new(Mutex::new(HashMap::new()));
+    static ref ACTIVE_TUNNEL_SUBDOMAINS: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
+    static ref SPAWNED_TUNNEL_PROCESSES: Arc<Mutex<HashMap<String, tokio::process::Child>>> = Arc::new(Mutex::new(HashMap::new()));
+    static ref HTTP_CLIENT: Client = Client::builder()
+        .tcp_nodelay(true)
+        .pool_idle_timeout(std::time::Duration::from_secs(90))
+        .pool_max_idle_per_host(10)
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_else(|_| Client::new());
+}
+
+#[derive(Deserialize, Serialize)]
+struct TunnelRegisterPayload {
+    event: String,
+    data: RegisterData,
+}
+
+#[derive(Deserialize, Serialize)]
+struct RegisterData {
+    #[serde(rename = "tunnelId")]
+    tunnel_id: String,
+    token: String,
+    #[serde(rename = "workspaceId")]
+    workspace_id: String,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+struct WsMessage {
+    event: String,
+    data: serde_json::Value,
+}
+
+#[derive(Deserialize, Debug)]
+struct HttpRequestPayload {
+    #[serde(rename = "requestId")]
+    request_id: String,
+    method: String,
+    path: String,
+    headers: HashMap<String, String>,
+    body: String,
+}
+
+#[derive(Serialize, Debug)]
+struct HttpResponsePayload {
+    #[serde(rename = "requestId")]
+    request_id: String,
+    status: u16,
+    headers: HashMap<String, String>,
+    body: String,
+}
+
+struct TempDirGuard(std::path::PathBuf);
+
+impl Drop for TempDirGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+pub async fn open_tunnel(event_tx: EventSender, tunnel_id: String, local_port: u16, token: String, workspace_id: String, relay_url: Option<String>) -> Result<(), String> {
+    let tunnel_id = validate_tunnel_id(&tunnel_id)?.to_string();
+    let relay_ws_url = relay_url.unwrap_or_else(|| "ws://localhost:3939/relay".to_string());
+    let relay_ws_url = relay_ws_url.as_str();
+    
+    // ponytail: 2s timeout on relay WebSocket — fails fast when no local relay server is running
+    let (ws_stream, _) = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        connect_async(relay_ws_url.to_string()),
+    ).await.map_err(|_| "Relay connection timed out".to_string())?.map_err(|e| e.to_string())?;
+    let (mut write, mut read) = ws_stream.split();
+
+    let reg_msg = TunnelRegisterPayload {
+        event: "tunnel:register".to_string(),
+        data: RegisterData {
+            tunnel_id: tunnel_id.clone(),
+            token,
+            workspace_id,
+        }
+    };
+    
+    write.send(Message::Text(serde_json::to_string(&reg_msg).unwrap().into())).await.map_err(|e| e.to_string())?;
+
+
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+
+    tokio::spawn(async move {
+        while let Some(msg) = rx.recv().await {
+            let _ = write.send(msg).await;
+        }
+    });
+
+    let client = HTTP_CLIENT.clone();
+    let tunnel_id_clone = tunnel_id.clone();
+
+    let handle = tokio::spawn(async move {
+        while let Some(msg) = read.next().await {
+            if let Ok(Message::Text(txt)) = msg {
+                if let Ok(ws_msg) = serde_json::from_str::<WsMessage>(txt.as_str()) {
+                    if ws_msg.event == "http:request" {
+                        if let Ok(req_data) = serde_json::from_value::<HttpRequestPayload>(ws_msg.data) {
+                            let client = client.clone();
+                            let tx = tx.clone();
+                            let event_tx_clone = event_tx.clone();
+                            let tunnel_id_clone = tunnel_id.clone();
+                            
+                            tokio::spawn(async move {
+                                let mut safe_headers = HashMap::new();
+                                for (k, v) in &req_data.headers {
+                                    let lower = k.to_lowercase();
+                                    let display_val = if lower == "authorization" || lower == "cookie" || lower == "set-cookie" || lower == "x-api-key" || lower == "api-key" {
+                                        "[REDACTED]".to_string()
+                                    } else {
+                                        v.clone()
+                                    };
+                                    safe_headers.insert(k.clone(), display_val);
+                                }
+
+                                let _ = event_tx_clone.send(ProxyncEvent::RequestLog {
+                                    id: req_data.request_id.clone(),
+                                    method: req_data.method.clone(),
+                                    path: req_data.path.clone(),
+                                    port: local_port,
+                                    headers: serde_json::to_value(safe_headers).unwrap_or_default(),
+                                    body_preview: req_data.body.clone(),
+                                    tunnel_id: Some(tunnel_id_clone),
+                                    timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(),
+                                });
+
+                                // ponytail: 50 MB cap on relay body — mirror of proxy.rs upload limit.
+                                const MAX_RELAY_BODY_BYTES: usize = 50 * 1024 * 1024;
+                                if req_data.body.len() > MAX_RELAY_BODY_BYTES {
+                                    let mut res_payload = HttpResponsePayload {
+                                        request_id: req_data.request_id,
+                                        status: 413,
+                                        headers: HashMap::new(),
+                                        body: BASE64_STANDARD.encode(b"{\"error\":\"Upload limit exceeded. Proxync limits uploads to 50 MB per request.\"}"),
+                                    };
+                                    res_payload.headers.insert("content-type".to_string(), "application/json".to_string());
+
+                                    let out_msg = WsMessage {
+                                        event: "http:response".to_string(),
+                                        data: serde_json::to_value(res_payload).unwrap(),
+                                    };
+                                    let _ = tx.send(Message::Text(serde_json::to_string(&out_msg).unwrap().into()));
+                                    return;
+                                }
+
+                                let url = format!("http://localhost:{}{}", local_port, req_data.path);
+                                
+                                let mut req_builder = match req_data.method.as_str() {
+                                    "GET" => client.get(&url),
+                                    "POST" => client.post(&url),
+                                    "PUT" => client.put(&url),
+                                    "DELETE" => client.delete(&url),
+                                    "PATCH" => client.patch(&url),
+                                    "HEAD" => client.head(&url),
+                                    "OPTIONS" => client.request(reqwest::Method::OPTIONS, &url),
+                                    _ => client.get(&url),
+                                };
+
+                                for (k, v) in req_data.headers {
+                                    let lower = k.to_lowercase();
+                                    // Strip hop-by-hop, encoding, and origin headers that Vite uses for security checks.
+                                    // Referer with a tunnel URL host causes Vite to reject cross-origin module requests.
+                                    if lower != "host" && lower != "content-length" && lower != "accept-encoding" && lower != "connection" && lower != "referer" && lower != "origin" {
+                                        req_builder = req_builder.header(k, v);
+                                    }
+                                }
+
+                                req_builder = req_builder
+                                    .header("Accept-Encoding", "identity")
+                                    .header("Origin", format!("http://localhost:{}", local_port))
+                                    .header("Referer", format!("http://localhost:{}/", local_port))
+                                    .header("X-Forwarded-Proto", "https")
+                                    .header("X-Forwarded-For", "127.0.0.1")
+                                    .header("Host", format!("localhost:{}", local_port));
+
+                                if !req_data.body.is_empty() {
+                                    req_builder = req_builder.body(req_data.body);
+                                }
+
+                                let start_instant = std::time::Instant::now();
+                                let response = req_builder.send().await;
+                                let duration_ms = start_instant.elapsed().as_millis() as u64;
+                                
+                                let mut res_payload = HttpResponsePayload {
+                                    request_id: req_data.request_id,
+                                    status: 502,
+                                    headers: HashMap::new(),
+                                    body: String::new(),
+                                };
+
+                                let mut preview_str: Option<String> = None;
+
+                                if let Ok(res) = response {
+                                    res_payload.status = res.status().as_u16();
+                                    for (k, v) in res.headers() {
+                                        if let Ok(v_str) = v.to_str() {
+                                            let k_lower = k.as_str().to_lowercase();
+                                            // DO NOT forward hop-by-hop headers or content-encoding since res.bytes() is already decompressed by reqwest!
+                                            if k_lower != "content-encoding" && k_lower != "transfer-encoding" && k_lower != "connection" {
+                                                res_payload.headers.insert(k.to_string(), v_str.to_string());
+                                            }
+                                        }
+                                    }
+                                    if let Ok(bytes) = res.bytes().await {
+                                        let is_json = res_payload.headers.get("content-type")
+                                            .map(|ct| ct.to_lowercase().contains("json"))
+                                            .unwrap_or(false);
+                                        if is_json {
+                                            if let Ok(raw_s) = std::str::from_utf8(&bytes) {
+                                                let p: String = raw_s.trim().chars().take(4096).collect();
+                                                if !p.is_empty() {
+                                                    preview_str = Some(p);
+                                                }
+                                            }
+                                        }
+                                        res_payload.body = BASE64_STANDARD.encode(&bytes);
+                                        res_payload.headers.insert("content-length".to_string(), bytes.len().to_string());
+                                    }
+                                }
+
+                                let _ = event_tx_clone.send(ProxyncEvent::ResponseLog {
+                                    id: res_payload.request_id.clone(),
+                                    request_id: res_payload.request_id.clone(),
+                                    status: res_payload.status,
+                                    duration_ms,
+                                    response_headers: serde_json::to_value(&res_payload.headers).unwrap_or_default(),
+                                    response_body_preview: preview_str,
+                                    timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(),
+                                });
+
+                                let out_msg = WsMessage {
+                                    event: "http:response".to_string(),
+                                    data: serde_json::to_value(res_payload).unwrap(),
+                                };
+
+                                let _ = tx.send(Message::Text(serde_json::to_string(&out_msg).unwrap().into()));
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    let mut tunnels = ACTIVE_TUNNELS.lock().await;
+    tunnels.insert(tunnel_id_clone, handle);
+
+    Ok(())
+}
+
+// Helper Function: Unified tree teardown for cross-platform tunnel subprocesses (kills process groups and child daemons).
+async fn kill_child_process_tree(child: &mut tokio::process::Child) {
+    #[cfg(target_os = "windows")]
+    if let Some(pid) = child.id() {
+        let mut cmd = std::process::Command::new("taskkill");
+        cmd.creation_flags(0x08000000);
+        let _ = cmd.args(&["/F", "/T", "/PID", &pid.to_string()]).output();
+    } else {
+        let _ = child.kill().await;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Some(pid) = child.id() {
+            // Kill entire process group using '--' delimiter to avoid POSIX option parsing ambiguities on BSD/macOS
+            let _ = std::process::Command::new("kill")
+                .args(&["-KILL", "--", &format!("-{}", pid)])
+                .output();
+            let _ = std::process::Command::new("pkill")
+                .args(&["-KILL", "-P", &pid.to_string()])
+                .output();
+        }
+        let _ = child.kill().await;
+    }
+}
+
+pub async fn close_tunnel(tunnel_id: String, local_port: Option<u16>) -> Result<(), String> {
+    let tunnel_id = validate_tunnel_id(&tunnel_id)?.to_string();
+    let mut found = false;
+
+    let mut tunnels = ACTIVE_TUNNELS.lock().await;
+    if let Some(handle) = tunnels.remove(&tunnel_id) {
+        handle.abort();
+        found = true;
+    }
+
+    let mut child_procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+    if let Some(mut child) = child_procs.remove(&tunnel_id) {
+        kill_child_process_tree(&mut child).await;
+        found = true;
+    }
+
+    if let Some(subdomain) = ACTIVE_TUNNEL_SUBDOMAINS.lock().await.remove(&tunnel_id) {
+        tokio::spawn(async move {
+            let api_url = resolve_api_endpoint("/api/tunnel/deregister");
+            let _ = HTTP_CLIENT.post(&api_url)
+                .json(&serde_json::json!({ "subdomain": subdomain }))
+                .timeout(std::time::Duration::from_secs(3))
+                .send()
+                .await;
+        });
+    }
+
+    if stop_proxy(local_port).await {
+        found = true;
+    }
+
+    if found {
+        Ok(())
+    } else {
+        Err("Tunnel not found".to_string())
+    }
+}
+
+pub async fn close_all_tunnels() -> Result<(), String> {
+    let mut tunnels = ACTIVE_TUNNELS.lock().await;
+    for (_, handle) in tunnels.drain() {
+        handle.abort();
+    }
+
+    let mut child_procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+    for (_, mut child) in child_procs.drain() {
+        //helper function Used
+        kill_child_process_tree(&mut child).await;
+    }
+
+    let subs: Vec<String> = ACTIVE_TUNNEL_SUBDOMAINS.lock().await.drain().map(|(_, s)| s).collect();
+    for sub in subs {
+        tokio::spawn(async move {
+            let api_url = resolve_api_endpoint("/api/tunnel/deregister");
+            let _ = HTTP_CLIENT.post(&api_url)
+                .json(&serde_json::json!({ "subdomain": sub }))
+                .timeout(std::time::Duration::from_secs(3))
+                .send()
+                .await;
+        });
+    }
+
+    stop_proxy(None).await;
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn gui_toolchain_path() -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let mut paths = vec![
+        format!("{home}/.local/bin"),
+        format!("{home}/.local/share/pnpm"),
+        format!("{home}/.bun/bin"),
+        format!("{home}/.volta/bin"),
+        format!("{home}/.asdf/shims"),
+        format!("{home}/.nvm/current/bin"),
+    ];
+    if let Ok(nvm_bin) = std::env::var("NVM_BIN") {
+        paths.push(nvm_bin);
+    } else if let Ok(entries) = std::fs::read_dir(format!("{home}/.nvm/versions/node")) {
+        let mut vers: Vec<_> = entries.filter_map(|e| e.ok().map(|e| e.path().join("bin"))).collect();
+        vers.sort();
+        if let Some(latest) = vers.pop() {
+            paths.push(latest.to_string_lossy().to_string());
+        }
+    }
+    paths.extend(["/opt/homebrew/bin".into(), "/usr/local/bin".into()]);
+    if let Ok(cur) = std::env::var("PATH") {
+        paths.push(cur);
+    }
+    paths.into_iter().filter(|p| !p.is_empty()).collect::<Vec<_>>().join(":")
+}
+
+#[cfg(not(target_os = "windows"))]
+fn inject_gui_toolchain_path(cmd: &mut tokio::process::Command) {
+    cmd.env("PATH", gui_toolchain_path());
+}
+
+/// Derives a clean, canonical API endpoint from `PROXYNC_API_URL` or defaults.
+/// Handles base origins (e.g. `https://api.proxync.dev`), trailing slashes,
+/// legacy full paths, and custom dev origins (e.g. `http://localhost:3939`).
+pub(crate) fn resolve_api_endpoint(route: &str) -> String {
+    let raw = std::env::var("PROXYNC_API_URL")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "https://api.proxync.dev".to_string());
+    let trimmed = raw.trim();
+    let base = trimmed
+        .strip_suffix("/api/tunnel/sign-jit-cert")
+        .or_else(|| trimmed.strip_suffix("/api/tunnel/keepalive"))
+        .unwrap_or(trimmed)
+        .trim_end_matches('/');
+    let clean_route = if route.starts_with('/') { route } else { &format!("/{}", route) };
+    format!("{}{}", base, clean_route)
+}
+
+pub async fn open_cloudflare_tunnel(
+    event_tx: EventSender,
+    tunnel_id: String,
+    local_port: u16,
+) -> Result<String, String> {
+    let tunnel_id = validate_tunnel_id(&tunnel_id)?.to_string();
+    let local_target = format!("127.0.0.1:{}", local_port);
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = tokio::process::Command::new("cmd");
+        c.creation_flags(0x08000000);
+        c.args(&["/C", "npx"]);
+        c
+    };
+    #[cfg(not(target_os = "windows"))]
+    let mut cmd = tokio::process::Command::new("npx");
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.as_std_mut().process_group(0);
+        inject_gui_toolchain_path(&mut cmd);
+    }
+
+    cmd.args(&[
+        "-y",
+        "--package=cloudflared",
+        "cloudflared",
+        "tunnel",
+        "--protocol",
+        "http2",
+        "--metrics",
+        "localhost:0",
+        "--no-autoupdate",
+        "--url",
+        &format!("http://{}", local_target),
+        "--http-host-header",
+        &local_target,
+    ]);
+    cmd.stderr(std::process::Stdio::piped());
+
+    let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn cloudflared: {}", e))?;
+    let stderr = child.stderr.take().ok_or("Failed to open cloudflared stderr".to_string())?;
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let tx_shared = std::sync::Arc::new(tokio::sync::Mutex::new(Some(tx)));
+    let tx_timer = tx_shared.clone();
+    let tx_reader = tx_shared.clone();
+
+    tokio::spawn(async move {
+        let mut reader = tokio::io::BufReader::new(stderr).lines();
+        let mut found_url: Option<String> = None;
+
+        while let Ok(Some(line)) = reader.next_line().await {
+            if found_url.is_none() && line.contains(".trycloudflare.com") {
+                if let Some(start_idx) = line.find("https://") {
+                    let rest = &line[start_idx..];
+                    let url = rest
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or("")
+                        .trim_matches(|c| c == '|' || c == ' ' || c == '\r' || c == '\n')
+                        .to_string();
+                    if !url.is_empty() {
+                        found_url = Some(url.clone());
+                        // ponytail: 4s safety ceiling — if Cloudflare alters its "Registered tunnel connection" stdout string in a future CLI release, falls back to parsed URL to avoid stalling UI.
+                        let tx_clone = tx_timer.clone();
+                        let url_fallback = url.clone();
+                        tokio::spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_millis(4000)).await;
+                            let mut lock = tx_clone.lock().await;
+                            if let Some(sender) = lock.take() {
+                                let _ = sender.send(Ok(url_fallback));
+                            }
+                        });
+                    }
+                }
+            }
+
+            if let Some(ref url) = found_url {
+                if line.contains("Registered tunnel connection") || (line.contains("registered") && line.contains("connIndex")) {
+                    let mut lock = tx_reader.lock().await;
+                    if let Some(sender) = lock.take() {
+                        let _ = sender.send(Ok(url.clone()));
+                    }
+                }
+            }
+        }
+
+        let mut lock = tx_reader.lock().await;
+        if let Some(sender) = lock.take() {
+            if let Some(url) = found_url {
+                let _ = sender.send(Ok(url));
+            } else {
+                let _ = sender.send(Err("cloudflared process exited without returning URL".to_string()));
+            }
+        }
+    });
+
+    let timeout_duration = std::time::Duration::from_secs(25);
+    let url = match tokio::time::timeout(timeout_duration, rx).await {
+        Ok(Ok(Ok(resolved_url))) => resolved_url,
+        Ok(Ok(Err(err))) => {
+            kill_child_process_tree(&mut child).await;
+            return Err(err);
+        }
+        _ => {
+            kill_child_process_tree(&mut child).await;
+            return Err("Timed out waiting for trycloudflare URL".to_string());
+        }
+    };
+
+    let mut child_procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+    child_procs.insert(tunnel_id.clone(), child);
+
+    let api_secret = std::env::var("PROXYNC_API_SECRET_TOKEN").unwrap_or_default();
+    let is_admin_cf = !api_secret.trim().is_empty();
+    if !is_admin_cf {
+        let tunnel_id_cf_expire = tunnel_id.clone();
+        let event_tx_cf_expire = event_tx.clone();
+        let local_port_cf_expire = local_port;
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            let mut procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+            if let Some(mut child) = procs.remove(&tunnel_id_cf_expire) {
+                kill_child_process_tree(&mut child).await;
+                drop(procs);
+                let _ = stop_proxy(Some(local_port_cf_expire)).await;
+                let _ = event_tx_cf_expire.send(ProxyncEvent::TunnelAutoClosed {
+                    tunnel_id: tunnel_id_cf_expire,
+                });
+            }
+        });
+    }
+
+    let tunnel_id_clone = tunnel_id.clone();
+    let event_tx_clone = event_tx.clone();
+    let local_port_cf_watch = local_port;
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let mut has_child = true;
+        while has_child {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            let mut procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+            if let Some(child_proc) = procs.get_mut(&tunnel_id_clone) {
+                if let Ok(Some(_)) = child_proc.try_wait() {
+                    procs.remove(&tunnel_id_clone);
+                    drop(procs);
+                    let _ = stop_proxy(Some(local_port_cf_watch)).await;
+                    let _ = event_tx_clone.send(ProxyncEvent::TunnelAutoClosed {
+                        tunnel_id: tunnel_id_clone.clone(),
+                    });
+                    has_child = false;
+                }
+            } else {
+                has_child = false;
+            }
+        }
+    });
+
+    Ok(url)
+}
+
+// ponytail: validate tunnel_id to prevent path traversal and arbitrary directory deletion (CWE-22)
+pub fn validate_tunnel_id(tunnel_id: &str) -> Result<&str, String> {
+    let trimmed = tunnel_id.trim();
+    if trimmed.is_empty() {
+        return Err("Invalid tunnel_id: cannot be empty".to_string());
+    }
+    if trimmed.len() > 128 {
+        return Err("Invalid tunnel_id: length cannot exceed 128 characters".to_string());
+    }
+    if !trimmed.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return Err("Invalid tunnel_id: must only contain alphanumeric characters, hyphens, and underscores".to_string());
+    }
+    Ok(trimmed)
+}
+
+pub const DEFAULT_PINNED_HOST_KEY: &str = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDyV3ZNPsHhwJaW6akzFMg/KAE7F1K4WamVtMaeP/vi9 root@Proxync-tunnel";
+
+/// Verifies that a reported host key matches the expected pinned host key.
+///
+/// Compares the SSH key algorithm and public key bytes in constant time to prevent
+/// timing side-channels, ignoring optional trailing comments or surrounding whitespace.
+pub fn verify_host_key(reported_key: &str, pinned_key: &str) -> bool {
+    let rep_parts: Vec<&str> = reported_key.split_whitespace().collect();
+    let pin_parts: Vec<&str> = pinned_key.split_whitespace().collect();
+    if rep_parts.len() < 2 || pin_parts.len() < 2 {
+        return false;
+    }
+    crate::proxy::constant_time_eq(rep_parts[0].as_bytes(), pin_parts[0].as_bytes())
+        & crate::proxy::constant_time_eq(rep_parts[1].as_bytes(), pin_parts[1].as_bytes())
+}
+
+pub async fn open_native_tunnel(
+    event_tx: EventSender,
+    tunnel_id: String,
+    local_port: u16,
+    subdomain: String,
+) -> Result<String, String> {
+    let tunnel_id = validate_tunnel_id(&tunnel_id)?.to_string();
+    let raw_sub = subdomain.trim();
+    let clean_subdomain: String = if raw_sub.is_empty() || raw_sub == "auto" {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(12345678);
+        format!("px-{:x}", ts % 0xffffffff)
+    } else {
+        let filtered: String = raw_sub
+            .to_lowercase()
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+            .collect();
+        filtered.trim_matches('-').to_string()
+    };
+
+    if clean_subdomain.is_empty() {
+        return Err("Invalid subdomain format".to_string());
+    }
+
+    let temp_dir = std::env::temp_dir().join(format!("proxync_ssh_{}", tunnel_id));
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    let _ = std::fs::create_dir_all(&temp_dir);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&temp_dir, std::fs::Permissions::from_mode(0o700));
+    }
+    let _guard = TempDirGuard(temp_dir.clone());
+    
+    let key_path = temp_dir.join("id_ed25519");
+    let pub_path = temp_dir.join("id_ed25519.pub");
+    
+    let key_path_for_keygen = key_path.clone();
+    let key_gen_success = tokio::task::spawn_blocking(move || {
+        let mut keygen_cmd = std::process::Command::new("ssh-keygen");
+        #[cfg(target_os = "windows")]
+        keygen_cmd.creation_flags(0x08000000);
+        #[cfg(unix)]
+        keygen_cmd.env("PATH", gui_toolchain_path());
+        keygen_cmd
+            .args(&["-t", "ed25519", "-f", key_path_for_keygen.to_str().unwrap_or(""), "-q", "-N", ""])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }).await.unwrap_or(false);
+
+    if !key_gen_success || !key_path.exists() || !pub_path.exists() {
+        return Err("Failed to generate ephemeral SSH keypair. Ensure ssh-keygen is available.".to_string());
+    }
+
+    let known_hosts_path = temp_dir.join("known_hosts");
+    let ssh_host = std::env::var("PROXYNC_SSH_HOST")
+        .unwrap_or_else(|_| crate::recon::DEFAULT_PROXYNC_SSH_HOST.to_string());
+    let strict_host_checking = "yes";
+
+    // Pre-seed known_hosts with official Proxync SSH host key to enforce StrictHostKeyChecking=yes
+    let pinned_host_key = std::env::var("PROXYNC_PINNED_HOST_KEY")
+        .unwrap_or_else(|_| DEFAULT_PINNED_HOST_KEY.to_string());
+    let seed_entry = format!(
+        "[{}]:2222 {}\n[relay.proxync.dev]:2222 {}\n[api.proxync.dev]:2222 {}\n",
+        ssh_host, pinned_host_key, pinned_host_key, pinned_host_key
+    );
+    std::fs::write(&known_hosts_path, seed_entry)
+        .map_err(|e| format!("Failed to pre-seed known_hosts: {}", e))?;
+
+    if let Ok(pub_key) = std::fs::read_to_string(&pub_path) {
+        let body_json = serde_json::json!({
+            "subdomain": clean_subdomain,
+            "publicKey": pub_key.trim()
+        });
+
+        let api_url = resolve_api_endpoint("/api/tunnel/sign-jit-cert");
+
+        let api_secret = std::env::var("PROXYNC_API_SECRET_TOKEN").unwrap_or_default();
+        
+        let mut jit_registered = false;
+        
+        // Enforce strict HTTPS for JIT key registration and host key exchange
+        if let Ok(resp) = HTTP_CLIENT.post(&api_url)
+            .header("Content-Type", "application/json")
+            .header("Authorization", format!("Bearer {}", api_secret))
+            .json(&body_json)
+            .timeout(std::time::Duration::from_secs(5))
+            .send()
+            .await
+        {
+            if let Ok(parsed) = resp.json::<serde_json::Value>().await {
+                if parsed.get("success").and_then(|v| v.as_bool()).unwrap_or(false) || parsed.get("hostKey").is_some() {
+                    jit_registered = true;
+                    if let Some(host_key) = parsed.get("hostKey").and_then(|v| v.as_str()) {
+                        let trimmed_key = host_key.trim();
+                        if !trimmed_key.is_empty() {
+                            if !verify_host_key(trimmed_key, &pinned_host_key) {
+                                return Err("SSH host key returned by JIT endpoint does not match pinned Proxync host key. Potential MITM attack detected.".to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if !jit_registered {
+            return Err("Failed to register ephemeral public key with Proxync tunnel server. Please check your internet connection.".to_string());
+        }
+        
+        // Gateway registers keys synchronously in-memory (0.01ms); brief 25ms tick for socket readiness
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    let active_key_path = key_path;
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(username) = std::env::var("USERNAME") {
+            let trimmed = username.trim();
+            if !trimmed.is_empty() {
+                let key_str = active_key_path.to_str().unwrap_or("").to_string();
+                let user_arg = format!("{}:(R)", trimmed);
+                let _ = tokio::task::spawn_blocking(move || {
+                    std::process::Command::new("icacls")
+                        .args(&[key_str.as_str(), "/inheritance:r", "/grant:r", user_arg.as_str()])
+                        .creation_flags(0x08000000)
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .output()
+                }).await;
+            }
+        }
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&active_key_path, std::fs::Permissions::from_mode(0o600));
+    }
+
+    let mut cmd = tokio::process::Command::new("ssh");
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x08000000);
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.as_std_mut().process_group(0);
+        inject_gui_toolchain_path(&mut cmd);
+    }
+
+    let key_path_str = active_key_path
+        .to_str()
+        .ok_or_else(|| "Active SSH key path contains invalid UTF-8 characters".to_string())?;
+    let known_hosts_str = known_hosts_path
+        .to_str()
+        .ok_or_else(|| "Known hosts path contains invalid UTF-8 characters".to_string())?;
+
+    cmd.args(&[
+        "-i", key_path_str,
+        "-N",
+        "-T",
+        "-o", "BatchMode=yes",
+        "-o", "ExitOnForwardFailure=yes",
+        "-o", &format!("StrictHostKeyChecking={}", strict_host_checking),
+        "-o", &format!("UserKnownHostsFile={}", known_hosts_str),
+        "-o", if cfg!(target_os = "windows") { "GlobalKnownHostsFile=NUL" } else { "GlobalKnownHostsFile=/dev/null" },
+        "-o", "ServerAliveInterval=30",
+        "-o", "ServerAliveCountMax=3",
+        "-o", "TCPKeepAlive=yes",
+        "-o", "KexAlgorithms=curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group14-sha256",
+        "-o", "Ciphers=chacha20-poly1305@openssh.com,aes128-gcm@openssh.com",
+        "-o", "Compression=no",
+        "-o", "ConnectTimeout=5",
+        "-o", "IPQoS=none",
+        "-p", "2222",
+        &format!("-R {}:80:127.0.0.1:{}", clean_subdomain, local_port),
+        &format!("{}@{}", clean_subdomain, ssh_host),
+    ]);
+    
+    cmd.stdin(std::process::Stdio::null());
+    cmd.stdout(std::process::Stdio::null());
+    cmd.stderr(std::process::Stdio::null());
+    
+    let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn ssh: {}", e))?;
+    
+    // Await SSH handshake & remote forwarding bind confirmation (~1500ms).
+    // The gateway has a 1.0s non-exec stabilization window before binding tcpip-forward.
+    // Waiting 1500ms ensures the reverse proxy route is 100% active before returning to the UI,
+    // completely preventing the "Tunnel Session Inactive" page on immediate user click.
+    let start_wait = std::time::Instant::now();
+    while start_wait.elapsed() < std::time::Duration::from_millis(1500) {
+        if let Ok(Some(status)) = child.try_wait() {
+            return Err(format!("SSH tunnel process exited prematurely with status: {}", status));
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+
+    let mut child_procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+    child_procs.insert(tunnel_id.clone(), child);
+    ACTIVE_TUNNEL_SUBDOMAINS.lock().await.insert(tunnel_id.clone(), clean_subdomain.clone());
+
+    let is_admin_native = std::env::var("PROXYNC_API_SECRET_TOKEN")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .is_some();
+    if !is_admin_native {
+        let tunnel_id_expire = tunnel_id.clone();
+        let event_tx_expire = event_tx.clone();
+        let local_port_expire = local_port;
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            let mut procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+            if let Some(mut child) = procs.remove(&tunnel_id_expire) {
+                kill_child_process_tree(&mut child).await;
+                drop(procs);
+                let _ = stop_proxy(Some(local_port_expire)).await;
+                let _ = event_tx_expire.send(ProxyncEvent::TunnelAutoClosed {
+                    tunnel_id: tunnel_id_expire,
+                });
+            }
+        });
+    }
+
+    // Server-authoritative keepalive: poll every 5 minutes.
+    // 410 Gone = server says session is expired (1h wall hit) → kill tunnel.
+    // Network failure → silently continue (the sish idle timeout is the backstop).
+    let tunnel_id_ka = tunnel_id.clone();
+    let event_tx_ka = event_tx.clone();
+    let subdomain_ka = clean_subdomain.clone();
+    let local_port_ka = local_port;
+    tokio::spawn(async move {
+        const KEEPALIVE_INTERVAL_SECS: u64 = 300; // 5 minutes
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(KEEPALIVE_INTERVAL_SECS)).await;
+
+            // Stop pinging if tunnel already gone
+            {
+                let procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+                if !procs.contains_key(&tunnel_id_ka) { break; }
+            }
+
+            let api_url = resolve_api_endpoint("/api/tunnel/keepalive");
+            let api_secret = std::env::var("PROXYNC_API_SECRET_TOKEN").unwrap_or_default();
+
+            if let Ok(resp) = HTTP_CLIENT.post(&api_url)
+                .header("Authorization", format!("Bearer {}", api_secret))
+                .json(&serde_json::json!({ "subdomain": subdomain_ka }))
+                .timeout(std::time::Duration::from_secs(10))
+                .send().await
+            {
+                if resp.status().as_u16() == 410 {
+                    // Server says: session limit hit — kill the tunnel
+                    let mut procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+                    if let Some(mut child) = procs.remove(&tunnel_id_ka) {
+                        kill_child_process_tree(&mut child).await;
+                        drop(procs);
+                        let _ = stop_proxy(Some(local_port_ka)).await;
+                        let _ = event_tx_ka.send(ProxyncEvent::TunnelAutoClosed {
+                            tunnel_id: tunnel_id_ka,
+                        });
+                    }
+                    break;
+                }
+                // 200 = still valid, anything else (500, network err) = silently continue
+            }
+        }
+    });
+
+    let tunnel_id_clone = tunnel_id.clone();
+    let event_tx_clone = event_tx.clone();
+    let local_port_watch = local_port;
+
+    tokio::spawn(async move {
+        let _active_guard = _guard;
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        let mut has_child = true;
+        while has_child {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            let mut procs = SPAWNED_TUNNEL_PROCESSES.lock().await;
+            if let Some(child_proc) = procs.get_mut(&tunnel_id_clone) {
+                if let Ok(Some(_)) = child_proc.try_wait() {
+                    procs.remove(&tunnel_id_clone);
+                    drop(procs);
+                    let _ = stop_proxy(Some(local_port_watch)).await;
+                    let _ = event_tx_clone.send(ProxyncEvent::TunnelAutoClosed {
+                        tunnel_id: tunnel_id_clone.clone(),
+                    });
+                    has_child = false;
+                }
+            } else {
+                has_child = false; // removed by 1h cap or keepalive task — exit without double event
+            }
+        }
+    });
+
+    Ok(format!("https://{}.proxync.dev", clean_subdomain))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_api_endpoint_variations() {
+        std::env::remove_var("PROXYNC_API_URL");
+        assert_eq!(
+            resolve_api_endpoint("/api/tunnel/keepalive"),
+            "https://api.proxync.dev/api/tunnel/keepalive"
+        );
+        assert_eq!(
+            resolve_api_endpoint("/api/tunnel/sign-jit-cert"),
+            "https://api.proxync.dev/api/tunnel/sign-jit-cert"
+        );
+
+        std::env::set_var("PROXYNC_API_URL", "https://api.proxync.dev");
+        assert_eq!(
+            resolve_api_endpoint("/api/tunnel/keepalive"),
+            "https://api.proxync.dev/api/tunnel/keepalive"
+        );
+
+        std::env::set_var("PROXYNC_API_URL", "https://api.proxync.dev/");
+        assert_eq!(
+            resolve_api_endpoint("/api/tunnel/keepalive"),
+            "https://api.proxync.dev/api/tunnel/keepalive"
+        );
+
+        std::env::set_var("PROXYNC_API_URL", "https://api.proxync.dev/api/tunnel/sign-jit-cert");
+        assert_eq!(
+            resolve_api_endpoint("/api/tunnel/keepalive"),
+            "https://api.proxync.dev/api/tunnel/keepalive"
+        );
+
+        std::env::set_var("PROXYNC_API_URL", "http://127.0.0.1:3939");
+        assert_eq!(
+            resolve_api_endpoint("/api/tunnel/keepalive"),
+            "http://127.0.0.1:3939/api/tunnel/keepalive"
+        );
+        assert_eq!(
+            resolve_api_endpoint("/api/tunnel/sign-jit-cert"),
+            "http://127.0.0.1:3939/api/tunnel/sign-jit-cert"
+        );
+
+        // Empty and whitespace environment variable values fall back to default
+        std::env::set_var("PROXYNC_API_URL", "");
+        assert_eq!(
+            resolve_api_endpoint("/api/tunnel/keepalive"),
+            "https://api.proxync.dev/api/tunnel/keepalive"
+        );
+        std::env::set_var("PROXYNC_API_URL", "   ");
+        assert_eq!(
+            resolve_api_endpoint("/api/tunnel/keepalive"),
+            "https://api.proxync.dev/api/tunnel/keepalive"
+        );
+
+        std::env::remove_var("PROXYNC_API_URL");
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn test_kill_child_process_tree_with_process_group() {
+        use std::os::unix::process::CommandExt;
+        let mut cmd = tokio::process::Command::new("sleep");
+        cmd.arg("60");
+        cmd.as_std_mut().process_group(0);
+        let mut child = cmd.spawn().expect("failed to spawn sleep");
+
+        kill_child_process_tree(&mut child).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        let status = child.try_wait().expect("try_wait failed");
+        assert!(status.is_some(), "process should be terminated by kill_child_process_tree");
+    }
+
+    #[test]
+    fn test_validate_tunnel_id_valid() {
+        assert!(validate_tunnel_id("tunnel-1234").is_ok());
+        assert!(validate_tunnel_id("tun_abc_xyz").is_ok());
+        assert!(validate_tunnel_id("tunnel-7b8a44c2-42d6-44c2-82df-42d6bc676d7f").is_ok());
+        assert_eq!(validate_tunnel_id("  tunnel-123  ").unwrap(), "tunnel-123");
+    }
+
+    #[test]
+    fn test_validate_tunnel_id_rejects_path_traversal() {
+        assert!(validate_tunnel_id("../../documents").is_err());
+        assert!(validate_tunnel_id("..\\..\\windows").is_err());
+        assert!(validate_tunnel_id("/etc/passwd").is_err());
+        assert!(validate_tunnel_id("tunnel/nested").is_err());
+        assert!(validate_tunnel_id("").is_err());
+        assert!(validate_tunnel_id("   ").is_err());
+        assert!(validate_tunnel_id("tunnel id with space").is_err());
+        assert!(validate_tunnel_id("tunnel!@#$").is_err());
+        let overly_long = "a".repeat(129);
+        assert!(validate_tunnel_id(&overly_long).is_err());
+    }
+
+    #[tokio::test]
+    async fn test_open_native_tunnel_rejects_path_traversal() {
+        let (tx, _rx) = tokio::sync::broadcast::channel(16);
+        let res = open_native_tunnel(tx, "../../evil_directory".to_string(), 8080, "px-test".to_string()).await;
+        assert!(res.is_err());
+        let err = res.err().unwrap();
+        assert!(err.contains("Invalid tunnel_id"), "Error should mention Invalid tunnel_id, got: {}", err);
+    }
+
+    #[tokio::test]
+    async fn test_open_tunnel_rejects_path_traversal() {
+        let (tx, _rx) = tokio::sync::broadcast::channel(16);
+        let res = open_tunnel(tx, "../../evil_directory".to_string(), 8080, "tok".to_string(), "ws".to_string(), None).await;
+        assert!(res.is_err());
+        let err = res.err().unwrap();
+        assert!(err.contains("Invalid tunnel_id"), "Error should mention Invalid tunnel_id, got: {}", err);
+    }
+
+    #[test]
+    fn test_verify_host_key_matches_default() {
+        assert!(verify_host_key(DEFAULT_PINNED_HOST_KEY, DEFAULT_PINNED_HOST_KEY));
+    }
+
+    #[test]
+    fn test_verify_host_key_matches_without_comment_and_extra_spaces() {
+        let key_without_comment = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDyV3ZNPsHhwJaW6akzFMg/KAE7F1K4WamVtMaeP/vi9";
+        assert!(verify_host_key(key_without_comment, DEFAULT_PINNED_HOST_KEY));
+
+        let key_with_spaces_and_custom_comment = "  ssh-ed25519   AAAAC3NzaC1lZDI1NTE5AAAAIDyV3ZNPsHhwJaW6akzFMg/KAE7F1K4WamVtMaeP/vi9   custom-node-host  ";
+        assert!(verify_host_key(key_with_spaces_and_custom_comment, DEFAULT_PINNED_HOST_KEY));
+    }
+
+    #[test]
+    fn test_verify_host_key_rejects_rogue_keys() {
+        // Rogue key payload
+        let rogue_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGattackerRogueKeyInjectedPayload1234567890 root@evil";
+        assert!(!verify_host_key(rogue_key, DEFAULT_PINNED_HOST_KEY));
+
+        // Mismatched key algorithm
+        let rsa_key = "ssh-rsa AAAAC3NzaC1lZDI1NTE5AAAAIDyV3ZNPsHhwJaW6akzFMg/KAE7F1K4WamVtMaeP/vi9 root@Proxync-tunnel";
+        assert!(!verify_host_key(rsa_key, DEFAULT_PINNED_HOST_KEY));
+
+        // Malformed / incomplete keys
+        assert!(!verify_host_key("", DEFAULT_PINNED_HOST_KEY));
+        assert!(!verify_host_key("ssh-ed25519", DEFAULT_PINNED_HOST_KEY));
+        assert!(!verify_host_key("malformed_single_token", DEFAULT_PINNED_HOST_KEY));
+    }
+}
+
+

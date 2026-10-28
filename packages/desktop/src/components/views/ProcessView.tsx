@@ -1,6 +1,6 @@
 import { openUrl } from '@tauri-apps/plugin-opener';
 import type { WorkspaceConfig, ProcessCandidate, ProcessProfile, Tunnel, SavedRequest } from './SharedComponents';
-import { InfoTile, formatDate, getTunnelMetadata } from './SharedComponents';
+import { InfoTile, formatDate, getTunnelMetadata, Icons } from './SharedComponents';
 
 function handleOpenUrl(url: string) {
   openUrl(url).catch(() => window.open(url, '_blank'));
@@ -386,6 +386,14 @@ export function ProcessView({
                         <span className={`px-1.5 py-0.2 ${isStandby ? 'bg-amber-500/15 text-amber-400' : 'bg-emerald-500/15 text-emerald-400'} text-[9.5px] font-mono rounded font-semibold shrink-0`}>
                           {isStandby ? 'Standby' : 'Live'}
                         </span>
+                        {tunnel.basicAuth?.enabled && (
+                          <span
+                            className="flex items-center text-amber-400 shrink-0"
+                            title={`Protected with Basic Auth (${tunnel.basicAuth.username})`}
+                          >
+                            {Icons.lock}
+                          </span>
+                        )}
                       </div>
                       <code
                         onClick={() => handleOpenUrl(tunnel.publicUrl)}
@@ -396,6 +404,23 @@ export function ProcessView({
                       </code>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
+                      {tunnel.basicAuth?.enabled && (
+                        <button
+                          onClick={() => {
+                            if (!tunnel.basicAuth) return;
+                            if (tunnel.basicAuth.password) {
+                              const cred = `${tunnel.basicAuth.username}:${tunnel.basicAuth.password}`;
+                              onCopy(cred, `Credentials copied for ${tunnel.basicAuth.username}`);
+                            } else {
+                              onCopy(tunnel.basicAuth.username, 'Username copied. Password not retained in session memory.');
+                            }
+                          }}
+                          className="btn-ghost compact cursor-pointer hover:bg-surface-container-high rounded text-on-surface-variant hover:text-primary transition-colors flex items-center justify-center"
+                          title={`Copy Credentials (${tunnel.basicAuth.username})`}
+                        >
+                          <span className="material-symbols-outlined text-[16px]">key</span>
+                        </button>
+                      )}
                       <button
                         onClick={() => handleOpenUrl(tunnel.publicUrl)}
                         className="btn-ghost compact cursor-pointer hover:bg-surface-container-high rounded text-primary hover:text-primary/80 transition-colors"

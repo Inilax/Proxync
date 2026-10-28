@@ -58,12 +58,29 @@ export function useToasts() {
 export function ToastContainer() {
   const toasts = useToasts();
   return (
-    <div className="toast-container">
-      {toasts.map((t) => (
-        <div key={t.id} className={`toast ${t.type}`}>
-          {t.message}
-        </div>
-      ))}
+    <div className="toast-container" role="region" aria-label="Notifications">
+      {toasts.map((t) => {
+        const iconName =
+          t.type === 'success'
+            ? 'check_circle'
+            : t.type === 'error'
+            ? 'error'
+            : t.type === 'warning'
+            ? 'warning'
+            : 'info';
+
+        return (
+          <div key={t.id} className={`toast ${t.type} flex items-center gap-2.5`}>
+            <span
+              className="material-symbols-outlined toast-icon"
+              style={{ fontVariationSettings: "'FILL' 1" }}
+            >
+              {iconName}
+            </span>
+            <div className="flex-1 min-w-0">{t.message}</div>
+          </div>
+        );
+      })}
     </div>
   );
 }

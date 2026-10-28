@@ -1,6 +1,6 @@
 [package]
-name = "proxync"
-version = "0.2.3"
+name = "proxync-desktop"
+version = "0.2.4"
 description = "Developer Tunneling Workspace Studio"
 authors = ["Inilax"]
 edition = "2021"
@@ -18,6 +18,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+proxync-core = { path = "../../core" }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"

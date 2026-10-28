@@ -173,10 +173,13 @@ jobs:
         include:
           - platform: 'windows-latest'
             args: ''
+            targets: ''
           - platform: 'ubuntu-22.04'
             args: ''
+            targets: ''
           - platform: 'macos-latest'
             args: '--target universal-apple-darwin'
+            targets: 'aarch64-apple-darwin,x86_64-apple-darwin'
     runs-on: ${{ matrix.platform }}
     permissions:
       contents: write
@@ -186,7 +189,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: "npm"
@@ -198,18 +201,44 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libglib2.0-dev libgtk-3-dev
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@d1031067263f94b142dd6c0ce24c5eb9d02d52a0 # master
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.targets }}
 
       - name: Rust cache
-        uses: swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7 # v2.9.2
+        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: "${{ env.PKG_DIR }}/src-tauri -> target"
 
       - name: Install frontend dependencies
         run: npm ci
+
+      - name: Build Standalone CLI Companion
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform }}" = "windows-latest" ]; then
+            cargo build --release --manifest-path=packages/cli/Cargo.toml
+            cp packages/cli/target/release/proxync.exe proxync-windows-x86_64.exe
+            sha256sum proxync-windows-x86_64.exe > proxync-windows-x86_64.exe.sha256
+          elif [ "${{ matrix.platform }}" = "macos-latest" ]; then
+            cargo build --release --manifest-path=packages/cli/Cargo.toml --target aarch64-apple-darwin
+            cargo build --release --manifest-path=packages/cli/Cargo.toml --target x86_64-apple-darwin
+            rm -rf dist-cli && mkdir -p dist-cli
+            lipo -create -output dist-cli/proxync \
+              packages/cli/target/aarch64-apple-darwin/release/proxync \
+              packages/cli/target/x86_64-apple-darwin/release/proxync
+            chmod +x dist-cli/proxync
+            tar -czf proxync-darwin-universal.tar.gz -C dist-cli proxync
+            shasum -a 256 proxync-darwin-universal.tar.gz > proxync-darwin-universal.tar.gz.sha256
+          else
+            cargo build --release --manifest-path=packages/cli/Cargo.toml
+            rm -rf dist-cli && mkdir -p dist-cli
+            cp packages/cli/target/release/proxync dist-cli/proxync
+            chmod +x dist-cli/proxync
+            tar -czf proxync-linux-x86_64.tar.gz -C dist-cli proxync
+            sha256sum proxync-linux-x86_64.tar.gz > proxync-linux-x86_64.tar.gz.sha256
+          fi
 
       - name: Build app and publish GitHub Release
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
@@ -227,3 +256,18 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
           args: ${{ matrix.args }}
+
+      - name: Upload Standalone CLI Artifact to GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.prepare-tag.outputs.tag }}"
+          if [ "${{ matrix.platform }}" = "windows-latest" ]; then
+            gh release upload "$TAG" proxync-windows-x86_64.exe proxync-windows-x86_64.exe.sha256 --clobber
+          elif [ "${{ matrix.platform }}" = "macos-latest" ]; then
+            gh release upload "$TAG" proxync-darwin-universal.tar.gz proxync-darwin-universal.tar.gz.sha256 --clobber
+          else
+            gh release upload "$TAG" proxync-linux-x86_64.tar.gz proxync-linux-x86_64.tar.gz.sha256 --clobber
+          fi

@@ -1,14 +1,20 @@
 {
   "name": "proxync",
   "private": true,
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Proxync — instant tunnel + collaboration workspace",
   "workspaces": [
     "packages/desktop"
   ],
   "scripts": {
     "dev": "npm run dev --workspace=packages/desktop",
-    "build": "npm run build --workspace=packages/desktop"
+    "build": "npm run build --workspace=packages/desktop",
+    "build:cli": "cargo build --release --manifest-path=packages/cli/Cargo.toml",
+    "build:all": "npm run build && npm run build:cli",
+    "test:core": "cargo test --manifest-path=packages/core/Cargo.toml",
+    "test:cli": "cargo test --manifest-path=packages/cli/Cargo.toml",
+    "test:desktop": "cargo test --manifest-path=packages/desktop/src-tauri/Cargo.toml",
+    "test:all": "npm run test:core && npm run test:cli && npm run test:desktop"
   },
   "engines": {
     "node": ">=20.0.0",

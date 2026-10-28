@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { ProcessCandidate, RequestLog, Tunnel } from './SharedComponents';
+import type { BasicAuthConfig } from '../../lib/types';
 import { Icons, SignalBars, useEscape } from './SharedComponents';
 
 /* ────────────────── Discover Dialog ────────────────── */
@@ -158,6 +159,8 @@ export function DiscoverDialog({
 
 /* ────────────────── Domain Select Dialog ────────────────── */
 
+const LAST_AUTH_USERNAME_KEY = 'proxync_last_tunnel_username';
+
 export function DomainSelectDialog({
   process,
   domains,
@@ -167,10 +170,38 @@ export function DomainSelectDialog({
   process: ProcessCandidate;
   domains: any[];
   onClose: () => void;
-  onConfirm: (customDomainOrOption: string) => void;
+  onConfirm: (customDomainOrOption: string, basicAuth?: BasicAuthConfig) => void;
 }) {
   useEscape(onClose);
   const [selectedDomain, setSelectedDomain] = useState<string>('proxync_native');
+  const [authEnabled, setAuthEnabled] = useState<boolean>(false);
+  const [authUsername, setAuthUsername] = useState<string>(() => {
+    try {
+      return localStorage.getItem(LAST_AUTH_USERNAME_KEY) || 'dev';
+    } catch (err) {
+      console.warn('[Dialogs] localStorage operation failed:', err);
+      return 'dev';
+    }
+  });
+  const [authPassword, setAuthPassword] = useState<string>('');
+  const [showPassword, setShowPassword] = useState<boolean>(false);
+
+  useEffect(() => {
+    setAuthEnabled(false);
+    setAuthPassword('');
+  }, [process.id, process.port]);
+
+  // ponytail: ephemeral in-memory password generator and dialog-scoped credentials caching.
+  // Ceiling: Passwords reset on app restart and are not persisted across desktop sessions.
+  // Upgrade path: Integrate with OS keychain / secure enclave vault when credential management is implemented.
+  const generateRandomPassword = () => {
+    const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
+    let res = 'px-';
+    for (let i = 0; i < 6; i++) {
+      res += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return res;
+  };
 
   // 3-state probe: 'pinging' | 'online' | 'offline'
   // ponytail: no abstraction layer — 3 fire-and-forget closures, each updates a single key
@@ -330,6 +361,198 @@ export function DomainSelectDialog({
             })}
           </div>
 
+          {/* HTTP Basic Auth Protection Accordion */}
+          <div style={{
+            marginTop: '10px',
+            marginBottom: '4px',
+            background: authEnabled ? 'color-mix(in srgb, var(--color-primary) 8%, var(--color-surface-container-high))' : 'var(--color-surface-container-high)',
+            border: authEnabled ? '1px solid color-mix(in srgb, var(--color-primary) 35%, transparent)' : '1px solid var(--color-outline-variant)',
+            borderRadius: '8px',
+            padding: '10px 14px',
+            transition: 'all var(--dur-fast) var(--ease)',
+          }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer',
+                userSelect: 'none',
+              }}
+              onClick={() => {
+                const next = !authEnabled;
+                setAuthEnabled(next);
+                if (next && !authPassword) {
+                  setAuthPassword(generateRandomPassword());
+                }
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '16px' }}>🛡️</span>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <strong style={{ fontSize: '12px', color: authEnabled ? 'var(--color-primary)' : 'var(--color-on-surface)' }}>
+                    Password Protect Tunnel
+                  </strong>
+                  <span style={{ fontSize: '10px', color: 'var(--color-on-surface-variant)' }}>
+                    HTTP Basic Auth challenge for incoming web visitors
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={authEnabled}
+                aria-label="Password Protect Tunnel"
+                style={{
+                  width: '34px',
+                  height: '18px',
+                  borderRadius: '10px',
+                  background: authEnabled ? 'var(--color-primary)' : 'var(--color-outline-variant)',
+                  position: 'relative',
+                  transition: 'background 0.2s',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  border: 'none',
+                  padding: 0,
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const next = !authEnabled;
+                  setAuthEnabled(next);
+                  if (next && !authPassword) {
+                    setAuthPassword(generateRandomPassword());
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === ' ' || e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const next = !authEnabled;
+                    setAuthEnabled(next);
+                    if (next && !authPassword) {
+                      setAuthPassword(generateRandomPassword());
+                    }
+                  }
+                }}
+              >
+                <div style={{
+                  width: '14px',
+                  height: '14px',
+                  borderRadius: '50%',
+                  background: 'var(--color-on-primary, #ffffff)',
+                  position: 'absolute',
+                  top: '2px',
+                  left: authEnabled ? '18px' : '2px',
+                  transition: 'left 0.2s',
+                }} />
+              </button>
+            </div>
+
+            {authEnabled && (
+              <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, color: 'var(--color-on-surface-variant)', marginBottom: '4px', textTransform: 'uppercase' }}>
+                      Username
+                    </label>
+                    <input
+                      type="text"
+                      className="input-field"
+                      value={authUsername}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/:/g, '');
+                        setAuthUsername(val);
+                      }}
+                      onBlur={() => {
+                        try {
+                          localStorage.setItem(LAST_AUTH_USERNAME_KEY, authUsername.trim());
+                        } catch (err) {
+                          console.warn('[Dialogs] localStorage operation failed:', err);
+                        }
+                      }}
+                      placeholder="dev"
+                      style={{ width: '100%', fontSize: '12px', padding: '6px 8px', borderRadius: '6px', background: 'var(--color-surface-container-lowest)', border: '1px solid var(--color-outline-variant)', color: 'var(--color-on-surface)' }}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                      <label style={{ fontSize: '10px', fontWeight: 600, color: 'var(--color-on-surface-variant)', textTransform: 'uppercase' }}>
+                        Password
+                      </label>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const newPass = generateRandomPassword();
+                          setAuthPassword(newPass);
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--color-primary)',
+                          fontSize: '10px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          padding: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '2px',
+                        }}
+                        title="Generate random password"
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: '11px' }}>autorenew</span>
+                        <span>Random</span>
+                      </button>
+                    </div>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        className="input-field"
+                        value={authPassword}
+                        onChange={(e) => {
+                          setAuthPassword(e.target.value);
+                        }}
+                        placeholder="Enter password..."
+                        style={{ width: '100%', fontSize: '12px', padding: '6px 28px 6px 8px', borderRadius: '6px', background: 'var(--color-surface-container-lowest)', border: '1px solid var(--color-outline-variant)', color: 'var(--color-on-surface)' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        style={{
+                          position: 'absolute',
+                          right: '6px',
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--color-on-surface-variant)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          padding: '2px',
+                        }}
+                        title={showPassword ? 'Hide password' : 'Show password'}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>
+                          {showPassword ? 'visibility_off' : 'visibility'}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                {authEnabled && (!authUsername.trim() || !authPassword.trim()) ? (
+                  <div style={{ fontSize: '10.5px', color: 'var(--color-error)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>error</span>
+                    <span>Both username and password are required to protect this tunnel.</span>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '10px', color: 'var(--color-on-surface-variant)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: '12px', color: 'var(--color-primary)' }}>verified_user</span>
+                    <span>Credentials verified locally on your machine before reaching port {process.port}.</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="domain-desc-box">
             {getDescription()}
           </div>
@@ -339,7 +562,23 @@ export function DomainSelectDialog({
           <button className="btn-ghost" onClick={onClose}>Cancel</button>
           <button
             className="btn-primary"
-            onClick={() => onConfirm(selectedDomain)}
+            disabled={authEnabled && (!authUsername.trim() || !authPassword.trim())}
+            style={authEnabled && (!authUsername.trim() || !authPassword.trim()) ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+            onClick={() => {
+              if (authEnabled && (!authUsername.trim() || !authPassword.trim())) return;
+              if (authEnabled) {
+                try {
+                  localStorage.setItem(LAST_AUTH_USERNAME_KEY, authUsername.trim());
+                } catch (err) {
+                  console.warn('[Dialogs] localStorage operation failed:', err);
+                }
+              }
+              const basicAuth: BasicAuthConfig | undefined =
+                authEnabled && authUsername.trim() && authPassword.trim()
+                  ? { enabled: true, username: authUsername.trim(), password: authPassword.trim() }
+                  : undefined;
+              onConfirm(selectedDomain, basicAuth);
+            }}
           >
             {selectedDomain === 'custom_subdomain_unconnected' ? 'Connect Subdomain' : 'Go Live'}
           </button>
