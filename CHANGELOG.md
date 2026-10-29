@@ -2,6 +2,15 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [fix/rustls-upgrade-and-dependabot-target] - 2026-10-28 (Unified rustls 0.23.46 Security Upgrade & Dependabot Branch Target Alignment)
+- **Summary**:
+  - **Unified rustls 0.23.46 Security Upgrade (`Cargo.lock`)**: Synchronized `rustls` from `0.23.45` to `0.23.46` atomically across all Cargo workspaces (`packages/core`, `packages/cli`, and `packages/desktop/src-tauri`). Eliminates TLS session secrets in debug formatting, hardens TLS 1.3 traffic key rotation during fragmented writes, and establishes stream backpressure.
+  - **Dependabot Target Branch Configuration (`.github/dependabot.yml`)**: Added explicit `target-branch: "develop"` for `cargo` package ecosystems across all workspaces (`/packages/core`, `/packages/cli`, and `/packages/desktop/src-tauri`), guaranteeing future automated dependency alerts open PRs against `develop` instead of `main`.
+- **Modified Files**:
+  - `.github/dependabot.yml`
+  - `packages/core/Cargo.lock`
+  - `packages/cli/Cargo.lock`
+  - `packages/desktop/src-tauri/Cargo.lock`
 ## [fix/v0.2.5-version-bump] - 2026-10-28 (Workspace & Studio Version Bump to v0.2.5 for Next Release Cycle)
 - **Feature Summary**:
   - **Comprehensive Version Bump to v0.2.5**: Synchronized workspace and package manifests (`package.json`, `packages/desktop/package.json`, `package-lock.json`, `Cargo.toml`, `Cargo.lock`, and `tauri.conf.json`) to version `0.2.5`.
@@ -29,6 +38,7 @@ All notable changes to the Proxync workspace studio project are documented here.
   - `cargo check --manifest-path packages/core/Cargo.toml`: passed with 0 errors.
   - `cargo check --manifest-path packages/cli/Cargo.toml`: passed with 0 errors.
   - `cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml`: passed with 0 errors.
+  - `cargo test --manifest-path packages/core/Cargo.toml`: passed all 59 tests (0 failures).
   - `npm run build --workspace=packages/desktop`: TypeScript and Vite compilation verified.
 
 ---

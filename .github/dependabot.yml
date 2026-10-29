@@ -52,3 +52,36 @@ updates:
         patterns:
           - "*"
 
+  # Maintain dependencies for Rust Core engine
+  - package-ecosystem: "cargo"
+    directory: "/packages/core"
+    target-branch: "develop"
+    schedule:
+      interval: "cron"
+      cronjob: "0 6 */3 * *"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      cargo-dependencies:
+        patterns:
+          - "*"
+
+  # Maintain dependencies for Rust CLI companion
+  - package-ecosystem: "cargo"
+    directory: "/packages/cli"
+    target-branch: "develop"
+    schedule:
+      interval: "cron"
+      cronjob: "0 6 */3 * *"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      cargo-dependencies:
+        patterns:
+          - "*"
+
+
