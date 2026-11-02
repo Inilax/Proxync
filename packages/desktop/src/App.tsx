@@ -1994,27 +1994,6 @@ export default function App() {
     finally { removeSpawningPort(process.port); }
   }
 
-  async function launchStackIndividual(selected: ProcessCandidate[]) {
-    if (!activeWorkspace) {
-      showToast('Select or create a workspace first', 'info');
-      return;
-    }
-    showToast(Launching stack of ${selected.length} services..., 'info');
-    for (const proc of selected) {
-      await shareProcessNative(proc);
-    }
-    showToast(Stack online! ${selected.length} service tunnels active., 'success');
-  }
-
-  async function launchStackUnified(primary: ProcessCandidate, routes: string[]) {
-    if (!activeWorkspace) {
-      showToast('Select or create a workspace first', 'info');
-      return;
-    }
-    showToast(Launching unified path router stack on :${primary.port}..., 'info');
-    await shareProcessNative(primary, undefined, routes);
-  }
-
   function generateRandomSubdomain(prefix = 'px'): string {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
     let rand = '';
@@ -2108,11 +2087,11 @@ export default function App() {
       showToast('Select or create a workspace first', 'info');
       return;
     }
-    showToast(Launching stack of ${selected.length} services..., 'info');
+    showToast(`Launching stack of ${selected.length} services...`, 'info');
     for (const proc of selected) {
       await shareProcessNative(proc);
     }
-    showToast(Stack online! ${selected.length} service tunnels active., 'success');
+    showToast(`Stack online! ${selected.length} service tunnels active.`, 'success');
   }
 
   async function launchStackUnified(primary: ProcessCandidate, routes: string[]) {
@@ -2120,7 +2099,7 @@ export default function App() {
       showToast('Select or create a workspace first', 'info');
       return;
     }
-    showToast(Launching unified path router stack on :${primary.port}..., 'info');
+    showToast(`Launching unified path router stack on :${primary.port}...`, 'info');
     await shareProcessNative(primary, undefined, routes);
   }
 
@@ -2241,27 +2220,6 @@ export default function App() {
       showToast(error instanceof Error ? error.message : 'Unable to share process', 'error');
     }
     finally { removeSpawningPort(process.port); }
-  }
-
-  async function launchStackIndividual(selected: ProcessCandidate[]) {
-    if (!activeWorkspace) {
-      showToast('Select or create a workspace first', 'info');
-      return;
-    }
-    showToast(Launching stack of ${selected.length} services..., 'info');
-    for (const proc of selected) {
-      await shareProcessNative(proc);
-    }
-    showToast(Stack online! ${selected.length} service tunnels active., 'success');
-  }
-
-  async function launchStackUnified(primary: ProcessCandidate, routes: string[]) {
-    if (!activeWorkspace) {
-      showToast('Select or create a workspace first', 'info');
-      return;
-    }
-    showToast(Launching unified path router stack on :${primary.port}..., 'info');
-    await shareProcessNative(primary, undefined, routes);
   }
 
   function shareProcessLocal(process: ProcessCandidate) {

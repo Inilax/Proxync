@@ -678,7 +678,7 @@ export function DomainSelectDialog({
                     </span>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                       {otherProcesses.map((p) => {
-                        const defaultPrefix = p.name.toLowerCase().includes('api') ? '/api' : /;
+                        const defaultPrefix = p.name.toLowerCase().includes('api') ? '/api' : `/${p.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
                         const isAdded = extraRoutes.some((r) => Number(r.port) === p.port);
                         return (
                           <button
@@ -763,9 +763,9 @@ export function DomainSelectDialog({
               const validExtra = routingEnabled
                 ? extraRoutes
                     .filter((r) => r.prefix.trim() && Number(r.port) > 0)
-                    .map((r) => ${r.prefix.trim().startsWith('/') ? r.prefix.trim() : /}:)
+                    .map((r) => `${r.prefix.trim().startsWith('/') ? r.prefix.trim() : `/${r.prefix.trim()}`}:${r.port}`)
                 : [];
-              const routes = validExtra.length > 0 ? [/:, ...validExtra] : undefined;
+              const routes = validExtra.length > 0 ? [`/:${process.port}`, ...validExtra] : undefined;
               onConfirm(selectedDomain, basicAuth, routes);
             }}
           >
@@ -951,7 +951,7 @@ export function LaunchStackDialog({
       } else if (p.name.toLowerCase().includes('api') || p.port === 8080 || p.port === 8000) {
         init[p.port] = '/api';
       } else {
-        init[p.port] = /;
+        init[p.port] = `/${p.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
       }
     }
     return init;
@@ -1114,12 +1114,12 @@ export function LaunchStackDialog({
                 onLaunchIndividual(selectedProcesses);
               } else {
                 const primary = selectedProcesses.find((p) => p.port === primaryPort) || selectedProcesses[0];
-                const routes: string[] = [/:];
+                const routes: string[] = [`/:${primary.port}`];
                 for (const p of selectedProcesses) {
                   if (p.port !== primary.port) {
-                    const pfx = customPrefixes[p.port] || /;
-                    const cleanPfx = pfx.startsWith('/') ? pfx : /;
-                    routes.push(${cleanPfx}:);
+                    const pfx = customPrefixes[p.port] || `/${p.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+                    const cleanPfx = pfx.startsWith('/') ? pfx : `/${pfx}`;
+                    routes.push(`${cleanPfx}:${p.port}`);
                   }
                 }
                 onLaunchUnified(primary, routes);

@@ -40,6 +40,8 @@ All notable changes to the Proxync workspace studio project are documented here.
   - cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml: passed with 0 errors.
   - cargo test --manifest-path packages/core/Cargo.toml --lib -- test_match_route: passed (1/1).
   - cargo test --manifest-path packages/core/Cargo.toml --lib -- test_parse_route: passed (1/1).
+  - tsc --project packages/desktop/tsconfig.json --noEmit: passed with 0 errors.
+  - vite build packages/desktop: passed with 0 errors (67 modules transformed).
 ## [fix/rustls-upgrade-and-dependabot-target] - 2026-10-28 (Unified rustls 0.23.46 Security Upgrade & Dependabot Branch Target Alignment)
 - **Summary**:
   - **Unified rustls 0.23.46 Security Upgrade (`Cargo.lock`)**: Synchronized `rustls` from `0.23.45` to `0.23.46` atomically across all Cargo workspaces (`packages/core`, `packages/cli`, and `packages/desktop/src-tauri`). Eliminates TLS session secrets in debug formatting, hardens TLS 1.3 traffic key rotation during fragmented writes, and establishes stream backpressure.
