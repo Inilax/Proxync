@@ -1,4 +1,4 @@
-use crate::args::{ServeArgs, TunnelArgs};
+﻿use crate::args::{ServeArgs, TunnelArgs};
 use crate::commands::tunnel::handle_tunnel;
 use crate::ui::{calculate_dir_size_with_cap, get_home_dir, guess_mime_type};
 use std::path::PathBuf;
@@ -213,6 +213,7 @@ pub async fn handle_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Err
         relay_url: None,
         no_log: args.no_log,
         daemon_worker: false,
+        routes: None,
     }).await
 }
 

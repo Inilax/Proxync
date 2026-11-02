@@ -164,17 +164,22 @@ const LAST_AUTH_USERNAME_KEY = 'proxync_last_tunnel_username';
 export function DomainSelectDialog({
   process,
   domains,
+  processes = [],
   onClose,
   onConfirm,
 }: {
   process: ProcessCandidate;
   domains: any[];
+  processes?: ProcessCandidate[];
   onClose: () => void;
-  onConfirm: (customDomainOrOption: string, basicAuth?: BasicAuthConfig) => void;
+  onConfirm: (customDomainOrOption: string, basicAuth?: BasicAuthConfig, routes?: string[]) => void;
 }) {
   useEscape(onClose);
+  const otherProcesses = (processes || []).filter((p) => p.port !== process.port);
   const [selectedDomain, setSelectedDomain] = useState<string>('proxync_native');
   const [authEnabled, setAuthEnabled] = useState<boolean>(false);
+  const [routingEnabled, setRoutingEnabled] = useState<boolean>(false);
+  const [extraRoutes, setExtraRoutes] = useState<Array<{ prefix: string; port: number | string }>>([]);
   const [authUsername, setAuthUsername] = useState<string>(() => {
     try {
       return localStorage.getItem(LAST_AUTH_USERNAME_KEY) || 'dev';
@@ -553,6 +558,184 @@ export function DomainSelectDialog({
             )}
           </div>
 
+          {/* Path-Based Multi-Port Routing (Microservices) Accordion */}
+          <div style={{
+            marginTop: '10px',
+            marginBottom: '4px',
+            background: routingEnabled ? 'color-mix(in srgb, var(--color-primary) 8%, var(--color-surface-container-high))' : 'var(--color-surface-container-high)',
+            border: routingEnabled ? '1px solid color-mix(in srgb, var(--color-primary) 35%, transparent)' : '1px solid var(--color-outline-variant)',
+            borderRadius: '8px',
+            padding: '10px 14px',
+            transition: 'all var(--dur-fast) var(--ease)',
+          }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer',
+                userSelect: 'none',
+              }}
+              onClick={() => setRoutingEnabled(!routingEnabled)}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '16px' }}>?</span>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <strong style={{ fontSize: '12px', color: routingEnabled ? 'var(--color-primary)' : 'var(--color-on-surface)' }}>
+                    Multi-Port Path Routing (Microservices)
+                  </strong>
+                  <span style={{ fontSize: '10px', color: 'var(--color-on-surface-variant)' }}>
+                    Multiplex backend API or extra ports through this single URL (no CORS)
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={routingEnabled}
+                aria-label="Toggle Path Routing"
+                style={{
+                  width: '34px',
+                  height: '18px',
+                  borderRadius: '10px',
+                  background: routingEnabled ? 'var(--color-primary)' : 'var(--color-outline-variant)',
+                  position: 'relative',
+                  transition: 'background 0.2s',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  border: 'none',
+                  padding: 0,
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setRoutingEnabled(!routingEnabled);
+                }}
+              >
+                <div style={{
+                  width: '14px',
+                  height: '14px',
+                  borderRadius: '50%',
+                  background: 'var(--color-on-primary, #ffffff)',
+                  position: 'absolute',
+                  top: '2px',
+                  left: routingEnabled ? '18px' : '2px',
+                  transition: 'left 0.2s',
+                }} />
+              </button>
+            </div>
+            {routingEnabled && (
+              <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', background: 'var(--color-surface-container-lowest)', borderRadius: '6px', fontSize: '11px', border: '1px solid var(--color-outline-variant)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span className="font-mono text-primary font-bold">/</span>
+                    <span className="text-on-surface-variant text-[10px]">?</span>
+                    <span className="font-mono font-bold text-on-surface">:{process.port}</span>
+                    <span className="text-[10px] text-on-surface-variant">({process.name})</span>
+                  </div>
+                  <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-primary/10 text-primary font-bold">
+                    Primary Root
+                  </span>
+                </div>
+                {extraRoutes.map((rt, idx) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="/api"
+                      value={rt.prefix}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setExtraRoutes((curr) => curr.map((r, i) => i === idx ? { ...r, prefix: val } : r));
+                      }}
+                      style={{ flex: 1, fontSize: '11px', padding: '5px 8px', borderRadius: '6px', background: 'var(--color-surface-container-lowest)', border: '1px solid var(--color-outline-variant)', color: 'var(--color-on-surface)' }}
+                    />
+                    <span style={{ fontSize: '11px', color: 'var(--color-on-surface-variant)' }}>?</span>
+                    <input
+                      type="number"
+                      className="input-field"
+                      placeholder="8080"
+                      value={rt.port}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setExtraRoutes((curr) => curr.map((r, i) => i === idx ? { ...r, port: val } : r));
+                      }}
+                      style={{ width: '80px', fontSize: '11px', padding: '5px 8px', borderRadius: '6px', background: 'var(--color-surface-container-lowest)', border: '1px solid var(--color-outline-variant)', color: 'var(--color-on-surface)' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setExtraRoutes((curr) => curr.filter((_, i) => i !== idx))}
+                      style={{ background: 'none', border: 'none', color: 'var(--color-error)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
+                      title="Remove route"
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>close</span>
+                    </button>
+                  </div>
+                ))}
+                {otherProcesses.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '2px' }}>
+                    <span style={{ fontSize: '10px', color: 'var(--color-on-surface-variant)', fontWeight: 600 }}>
+                      Quick Add Other Running Servers:
+                    </span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                      {otherProcesses.map((p) => {
+                        const defaultPrefix = p.name.toLowerCase().includes('api') ? '/api' : /;
+                        const isAdded = extraRoutes.some((r) => Number(r.port) === p.port);
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            disabled={isAdded}
+                            onClick={() => {
+                              if (!isAdded) {
+                                setExtraRoutes((curr) => [...curr, { prefix: defaultPrefix, port: p.port }]);
+                              }
+                            }}
+                            style={{
+                              fontSize: '10px',
+                              fontFamily: 'monospace',
+                              padding: '3px 8px',
+                              borderRadius: '4px',
+                              background: isAdded ? 'var(--color-surface-container-lowest)' : 'var(--color-surface-container-highest)',
+                              border: '1px solid var(--color-outline-variant)',
+                              color: isAdded ? 'var(--color-on-surface-variant)' : 'var(--color-primary)',
+                              cursor: isAdded ? 'default' : 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <span>{isAdded ? '?' : '+'}</span>
+                            <span>{p.name} (:{p.port}) as {defaultPrefix}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setExtraRoutes((curr) => [...curr, { prefix: '/api', port: '' }])}
+                  style={{
+                    background: 'none',
+                    border: '1px dashed var(--color-outline-variant)',
+                    borderRadius: '6px',
+                    padding: '4px 8px',
+                    color: 'var(--color-primary)',
+                    fontSize: '11px',
+                    cursor: 'pointer',
+                    marginTop: '2px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
+                  <span>Add Route Prefix</span>
+                </button>
+              </div>
+            )}
+          </div>
           <div className="domain-desc-box">
             {getDescription()}
           </div>
@@ -577,7 +760,13 @@ export function DomainSelectDialog({
                 authEnabled && authUsername.trim() && authPassword.trim()
                   ? { enabled: true, username: authUsername.trim(), password: authPassword.trim() }
                   : undefined;
-              onConfirm(selectedDomain, basicAuth);
+              const validExtra = routingEnabled
+                ? extraRoutes
+                    .filter((r) => r.prefix.trim() && Number(r.port) > 0)
+                    .map((r) => ${r.prefix.trim().startsWith('/') ? r.prefix.trim() : /}:)
+                : [];
+              const routes = validExtra.length > 0 ? [/:, ...validExtra] : undefined;
+              onConfirm(selectedDomain, basicAuth, routes);
             }}
           >
             {selectedDomain === 'custom_subdomain_unconnected' ? 'Connect Subdomain' : 'Go Live'}
@@ -735,3 +924,213 @@ export function ConfirmPurgeDialog({
   );
 }
 
+/* ?????????????????? Launch Stack Dialog ?????????????????? */
+export function LaunchStackDialog({
+  processes,
+  onClose,
+  onLaunchIndividual,
+  onLaunchUnified,
+}: {
+  processes: ProcessCandidate[];
+  onClose: () => void;
+  onLaunchIndividual: (selected: ProcessCandidate[]) => void;
+  onLaunchUnified: (primary: ProcessCandidate, routes: string[]) => void;
+}) {
+  useEscape(onClose);
+  const [mode, setMode] = useState<'unified' | 'individual'>('unified');
+  const [selectedIds, setSelectedIds] = useState<string[]>(() => processes.map((p) => p.id));
+  const [primaryPort, setPrimaryPort] = useState<number>(() => {
+    const web = processes.find((p) => [3000, 5173, 8080, 8000].includes(p.port));
+    return web ? web.port : (processes[0]?.port ?? 3000);
+  });
+  const [customPrefixes, setCustomPrefixes] = useState<Record<number, string>>(() => {
+    const init: Record<number, string> = {};
+    for (const p of processes) {
+      if (p.port === primaryPort) {
+        init[p.port] = '/';
+      } else if (p.name.toLowerCase().includes('api') || p.port === 8080 || p.port === 8000) {
+        init[p.port] = '/api';
+      } else {
+        init[p.port] = /;
+      }
+    }
+    return init;
+  });
+  const toggleSelect = (id: string) => {
+    setSelectedIds((curr) => curr.includes(id) ? curr.filter((i) => i !== id) : [...curr, id]);
+  };
+  const selectedProcesses = processes.filter((p) => selectedIds.includes(p.id));
+  return (
+    <div className="dialog-backdrop glass" onClick={onClose}>
+      <section className="discover-dialog domain-select-dialog slide-up" onClick={(e) => e.stopPropagation()}>
+        <header>
+          <div>
+            <h2>Launch Microservices Stack</h2>
+            <p>Orchestrate <strong>{processes.length} detected servers</strong> into live cloud tunnels.</p>
+          </div>
+          <button className="icon-btn" onClick={onClose}>{Icons.x}</button>
+        </header>
+        <div className="dialog-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div>
+            <label className="field-label">Stack Orchestration Mode</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <div
+                onClick={() => setMode('unified')}
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: mode === 'unified' ? '1px solid var(--color-primary)' : '1px solid var(--color-outline-variant)',
+                  background: mode === 'unified' ? 'color-mix(in srgb, var(--color-primary) 12%, transparent)' : 'var(--color-surface-container-high)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '16px' }}>?</span>
+                  <strong style={{ fontSize: '12px', color: mode === 'unified' ? 'var(--color-primary)' : 'var(--color-on-surface)' }}>Unified URL</strong>
+                </div>
+                <p style={{ fontSize: '10px', color: 'var(--color-on-surface-variant)', lineHeight: 1.3 }}>
+                  1 public URL with path routing (e.g. <code>/</code> and <code>/api</code>). Zero CORS issues.
+                </p>
+              </div>
+              <div
+                onClick={() => setMode('individual')}
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  border: mode === 'individual' ? '1px solid var(--color-primary)' : '1px solid var(--color-outline-variant)',
+                  background: mode === 'individual' ? 'color-mix(in srgb, var(--color-primary) 12%, transparent)' : 'var(--color-surface-container-high)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '16px' }}>??</span>
+                  <strong style={{ fontSize: '12px', color: mode === 'individual' ? 'var(--color-primary)' : 'var(--color-on-surface)' }}>Separate Subdomains</strong>
+                </div>
+                <p style={{ fontSize: '10px', color: 'var(--color-on-surface-variant)', lineHeight: 1.3 }}>
+                  Each service gets its own independent public subdomain. Like <code>proxync stack</code>.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div>
+            <label className="field-label">Select Services to Include</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {processes.map((proc) => {
+                const isSelected = selectedIds.includes(proc.id);
+                const isPrimary = proc.port === primaryPort;
+                return (
+                  <div
+                    key={proc.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      background: 'var(--color-surface-container-high)',
+                      border: '1px solid var(--color-outline-variant)',
+                    }}
+                  >
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', flex: 1, minWidth: 0 }}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelect(proc.id)}
+                        style={{ cursor: 'pointer' }}
+                      />
+                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-on-surface)' }}>
+                          {proc.name} <span style={{ color: 'var(--color-primary)', fontFamily: 'monospace' }}>:{proc.port}</span>
+                        </span>
+                        <span style={{ fontSize: '10px', color: 'var(--color-on-surface-variant)' }}>
+                          {proc.framework || 'Local service'}
+                        </span>
+                      </div>
+                    </label>
+                    {mode === 'unified' && isSelected && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {isPrimary ? (
+                          <span style={{ fontSize: '10px', fontFamily: 'monospace', fontWeight: 'bold', color: 'var(--color-primary)', background: 'color-mix(in srgb, var(--color-primary) 15%, transparent)', padding: '2px 6px', borderRadius: '4px' }}>
+                            Root (/)
+                          </span>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ fontSize: '10px', color: 'var(--color-on-surface-variant)' }}>Path:</span>
+                            <input
+                              type="text"
+                              value={customPrefixes[proc.port] ?? '/api'}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setCustomPrefixes((c) => ({ ...c, [proc.port]: val }));
+                              }}
+                              style={{
+                                width: '70px',
+                                fontSize: '10px',
+                                fontFamily: 'monospace',
+                                padding: '3px 6px',
+                                borderRadius: '4px',
+                                background: 'var(--color-surface-container-lowest)',
+                                border: '1px solid var(--color-outline-variant)',
+                                color: 'var(--color-on-surface)',
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPrimaryPort(proc.port);
+                                setCustomPrefixes((c) => ({ ...c, [proc.port]: '/' }));
+                              }}
+                              style={{
+                                fontSize: '9px',
+                                background: 'none',
+                                border: 'none',
+                                color: 'var(--color-on-surface-variant)',
+                                cursor: 'pointer',
+                                textDecoration: 'underline',
+                              }}
+                              title="Make this server the root (/)"
+                            >
+                              Make Root
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+        <div className="dialog-footer">
+          <button className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button
+            className="btn-primary"
+            disabled={selectedProcesses.length === 0}
+            onClick={() => {
+              if (mode === 'individual') {
+                onLaunchIndividual(selectedProcesses);
+              } else {
+                const primary = selectedProcesses.find((p) => p.port === primaryPort) || selectedProcesses[0];
+                const routes: string[] = [/:];
+                for (const p of selectedProcesses) {
+                  if (p.port !== primary.port) {
+                    const pfx = customPrefixes[p.port] || /;
+                    const cleanPfx = pfx.startsWith('/') ? pfx : /;
+                    routes.push(${cleanPfx}:);
+                  }
+                }
+                onLaunchUnified(primary, routes);
+              }
+              onClose();
+            }}
+          >
+            Launch {selectedProcesses.length} Services
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}

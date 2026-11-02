@@ -39,6 +39,7 @@ export function WorkspaceDashboardView({
   onStopTunnel,
   onStopAllTunnels,
   onInspectTraffic,
+  onLaunchStack,
 }: {
   workspace: WorkspaceConfig | null;
   tunnels: Tunnel[];
@@ -56,6 +57,7 @@ export function WorkspaceDashboardView({
   onStopTunnel: (tunnel: Tunnel) => void;
   onStopAllTunnels?: () => void;
   onInspectTraffic?: (proc: ProcessCandidate) => void;
+  onLaunchStack?: () => void;
 }) {
   const [activeMenuTunnelId, setActiveMenuTunnelId] = useState<string | null>(null);
   const activeTunnels = tunnels.filter((t) => t.status === 'ACTIVE' || t.status === 'STANDBY');
@@ -162,7 +164,7 @@ export function WorkspaceDashboardView({
               </span>
               {workspace?.projectRootPath && workspace.projectRootPath !== 'unknown' && (
                 <>
-                  <span className="text-on-surface-variant/40 text-xs hidden sm:inline">•</span>
+                  <span className="text-on-surface-variant/40 text-xs hidden sm:inline">â€¢</span>
                   <span className="font-mono text-xs text-on-surface-variant/70 truncate max-w-[260px] hidden sm:inline" title={workspace.projectRootPath}>
                     {workspace.projectRootPath}
                   </span>
@@ -194,11 +196,21 @@ export function WorkspaceDashboardView({
           {/* Section 1: Detected Local Servers */}
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-headline-sm text-headline-sm text-on-surface">Detected Local Servers</h3>
                 <span className="font-code-sm text-code-sm text-on-surface-variant px-2 py-0.5 bg-surface-container rounded border border-outline-variant">
                   {processes.length} Running
                 </span>
+                {processes.length >= 2 && onLaunchStack && (
+                  <button
+                    onClick={onLaunchStack}
+                    className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/30 text-[11px] font-mono font-bold text-primary hover:bg-primary/20 transition-all cursor-pointer shadow-xs active:scale-95"
+                    title="Launch all detected servers into a microservices stack"
+                  >
+                    <span className="material-symbols-outlined text-[14px]">layers</span>
+                    <span>Launch Stack ({processes.length})</span>
+                  </button>
+                )}
               </div>
               <button
                 onClick={onScan}
@@ -365,6 +377,21 @@ export function WorkspaceDashboardView({
                                 </button>
                               </div>
                             </div>
+                            {activeT.routes && activeT.routes.length > 0 && (
+                              <div className="pt-2 border-t border-outline-variant/30 flex flex-wrap items-center gap-1">
+                                <span className="text-[9px] font-mono uppercase text-primary font-bold">Routes:</span>
+                                {activeT.routes.map((rt) => {
+                                  const [pfx, pt] = rt.split(':');
+                                  return (
+                                    <span key={rt} className="px-1.5 py-0.5 rounded text-[9.5px] font-mono bg-surface-container-high border border-outline-variant/50 text-on-surface">
+                                      <span className="text-primary font-semibold">{pfx}</span>
+                                      <span className="text-on-surface-variant mx-0.5">→</span>
+                                      <span className="text-amber-400 font-bold">:{pt}</span>
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="bg-surface-container-lowest/80 p-3 rounded-lg border border-outline-variant/40 space-y-1">
@@ -560,6 +587,21 @@ export function WorkspaceDashboardView({
                                 <p className="font-code-sm text-code-sm text-on-surface-variant truncate">
                                   {providerLabel} • Port {tunnel.localPort}
                                 </p>
+                                {tunnel.routes && tunnel.routes.length > 0 && (
+                                  <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                    <span className="text-[10px] font-mono uppercase text-primary font-bold">Routes:</span>
+                                    {tunnel.routes.map((rt) => {
+                                      const [pfx, pt] = rt.split(':');
+                                      return (
+                                        <span key={rt} className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-surface-container-high border border-outline-variant/60 text-on-surface">
+                                          <span className="text-primary font-semibold">{pfx}</span>
+                                          <span className="text-on-surface-variant mx-0.5">→</span>
+                                          <span className="text-amber-400 font-bold">:{pt}</span>
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </div>
                             </>
                           );

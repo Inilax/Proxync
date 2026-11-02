@@ -1,7 +1,45 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [feature/develop-multi-service-stack-and-path-routing] - 2026-11-02 (Multi-Service Stack Orchestration & Path-Prefix Routing)
+- **Summary**:
+  - **Multi-Service Stack Orchestrator (packages/cli/src/commands/stack.rs, rgs.rs, main.rs)**: Added proxync stack [SERVICES...] command supporting multi-port microservice stacks (web:3000 api:8080), declarative config files (proxync.json), and automatic process reconnaissance detection. Runs concurrent tunnels with live tagged terminal streaming ([web] --> GET /, [api] --> POST /users) and single-keystroke graceful teardown.
+  - **Path-Prefix Router Engine (packages/core/src/proxy.rs)**: Implemented local reverse proxy routing engine (start_path_router, match_route, parse_route, RouteEntry) that multiplexes multiple local development services over a single unified public tunnel URL without requiring any cloud edge gateway or Caddy modifications. Implemented longest-prefix routing with root fallback.
+  - **Desktop GUI Multi-Port & Stack Management (packages/desktop/src/App.tsx, components/views/Dialogs.tsx, WorkspaceDashboardView.tsx, ProcessView.tsx, lib/types.ts)**: Integrated path-based routing and stack orchestration directly into the desktop studio UI:
+    - Added "Multi-Port Path Routing" accordion to DomainSelectDialog with quick-add chips for other detected processes and custom prefix/port routing.
+    - Created LaunchStackDialog modal enabling one-click orchestration of all detected local servers into either Unified URL (path routing) or Separate Subdomains (multi-tunnel stack) modes.
+    - Added Launch Stack button in WorkspaceDashboardView when 2+ running development servers are detected.
+    - Added route pill visualizations under public tunnel URLs in both WorkspaceDashboardView and ProcessView.
+    - Extended `Tunnel` interface with `routes?: string[]` and added `startProxyOrPathRouter` routing helper in `App.tsx`.
+  - **CLI Multi-Route Flags (packages/cli/src/args.rs, packages/cli/src/commands/tunnel.rs)**: Added repeatable --route PREFIX:PORT flag to proxync tunnel. Configured effective port resolution, preflight service probes for all routed ports, detached daemon worker route propagation, and enriched terminal route table display.
+  - **Public Port Filtering Utility (packages/core/src/recon.rs)**: Exposed pub fn is_dev_port() to allow CLI commands to filter active developer servers from system daemon ports.
+  - **Tauri IPC Command Binding (packages/desktop/src-tauri/src/proxy.rs, packages/desktop/src-tauri/src/lib.rs)**: Registered start_path_router command in Desktop Tauri runtime to enable microservice stack routing in the desktop studio.
+  - **Unit & Integration Tests (packages/core/src/proxy.rs)**: Added unit test coverage for route parsing (	est_parse_route), longest-prefix matching (	est_match_route), and multi-service routing execution.
+- **Modified Files**:
+  - packages/cli/src/commands/stack.rs
+  - packages/cli/src/commands/mod.rs
+  - packages/cli/src/args.rs
+  - packages/cli/src/commands/tunnel.rs
+  - packages/cli/src/commands/serve.rs
+  - packages/cli/src/main.rs
+  - packages/core/src/proxy.rs
+  - packages/core/src/recon.rs
+  - packages/desktop/src-tauri/src/lib.rs
+  - packages/desktop/src-tauri/src/proxy.rs
+  - packages/desktop/src/lib/types.ts
+  - packages/desktop/src/components/views/Dialogs.tsx
+  - packages/desktop/src/components/views/WorkspaceDashboardView.tsx
+  - packages/desktop/src/components/views/ProcessView.tsx
+  - packages/desktop/src/App.tsx
+  - CHANGELOG.md
+  - .agents/changelog.json
+- **Verification**:
+  - cargo check --manifest-path packages/core/Cargo.toml: passed with 0 errors.
+  - cargo check --manifest-path packages/cli/Cargo.toml: passed with 0 errors.
+  - cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml: passed with 0 errors.
+  - cargo test --manifest-path packages/core/Cargo.toml --lib -- test_match_route: passed (1/1).
+  - cargo test --manifest-path packages/core/Cargo.toml --lib -- test_parse_route: passed (1/1).
 ## [fix/issue-311-x-forwarded-for-rate-limit-bypass] - 2026-10-21 [SECURITY] (Remediate Global Lockout DoS Blast Radius & Harden IPv6 Bracket Parsing)
 - **Summary**:
   - **Eliminate Global Lockout DoS Blast Radius (`packages/core/src/proxy.rs`)**: Resolved P1 blocker in `handle_connection` where valid tunnel owners were rejected with HTTP 429 when global lockout was active. Valid basic auth credentials now authenticate immediately, bypassing lockout and resetting failure counters; lockout is strictly enforced only on invalid credentials or unauthenticated probes.
