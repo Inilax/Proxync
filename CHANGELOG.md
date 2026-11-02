@@ -40,6 +40,91 @@ All notable changes to the Proxync workspace studio project are documented here.
   - cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml: passed with 0 errors.
   - cargo test --manifest-path packages/core/Cargo.toml --lib -- test_match_route: passed (1/1).
   - cargo test --manifest-path packages/core/Cargo.toml --lib -- test_parse_route: passed (1/1).
+## [fix/rustls-upgrade-and-dependabot-target] - 2026-10-28 (Unified rustls 0.23.46 Security Upgrade & Dependabot Branch Target Alignment)
+- **Summary**:
+  - **Unified rustls 0.23.46 Security Upgrade (`Cargo.lock`)**: Synchronized `rustls` from `0.23.45` to `0.23.46` atomically across all Cargo workspaces (`packages/core`, `packages/cli`, and `packages/desktop/src-tauri`). Eliminates TLS session secrets in debug formatting, hardens TLS 1.3 traffic key rotation during fragmented writes, and establishes stream backpressure.
+  - **Dependabot Target Branch Configuration (`.github/dependabot.yml`)**: Added explicit `target-branch: "develop"` for `cargo` package ecosystems across all workspaces (`/packages/core`, `/packages/cli`, and `/packages/desktop/src-tauri`), guaranteeing future automated dependency alerts open PRs against `develop` instead of `main`.
+- **Modified Files**:
+  - `.github/dependabot.yml`
+  - `packages/core/Cargo.lock`
+  - `packages/cli/Cargo.lock`
+  - `packages/desktop/src-tauri/Cargo.lock`
+## [fix/v0.2.5-version-bump] - 2026-10-28 (Workspace & Studio Version Bump to v0.2.5 for Next Release Cycle)
+- **Feature Summary**:
+  - **Comprehensive Version Bump to v0.2.5**: Synchronized workspace and package manifests (`package.json`, `packages/desktop/package.json`, `package-lock.json`, `Cargo.toml`, `Cargo.lock`, and `tauri.conf.json`) to version `0.2.5`.
+  - **Native HTTP Network Headers & Diagnostics**: Updated Rust client diagnostic banner in `storage.rs` to `Proxync v0.2.5 (Engine: Tauri v2.11 Core)`. Synchronized frontend diagnostic logging metadata, log session directives, and support bundle fallbacks in `App.tsx` and `logger.ts` to `v0.2.5-stable`.
+  - **UI Version Presentation Alignment**: Updated `SettingsView.tsx` default prop to `v0.2.5`, `App.tsx` update toast message (`v0.2.5`), and sidebar engine indicator (`v0.2.5-stable`).
+  - **Recon & Documentation Badge Alignment**: Updated README version shield badge and `.agents/architecture.json` static recon map to reflect version `0.2.5`.
+- **Modified Files**:
+  - `README.md`
+  - `package-lock.json`
+  - `package.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/core/Cargo.lock`
+  - `packages/core/Cargo.toml`
+  - `packages/core/src/storage.rs`
+  - `packages/cli/Cargo.lock`
+  - `packages/cli/Cargo.toml`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/lib/logger.ts`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo check --manifest-path packages/core/Cargo.toml`: passed with 0 errors.
+  - `cargo check --manifest-path packages/cli/Cargo.toml`: passed with 0 errors.
+  - `cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml`: passed with 0 errors.
+  - `cargo test --manifest-path packages/core/Cargo.toml`: passed all 59 tests (0 failures).
+  - `npm run build --workspace=packages/desktop`: TypeScript and Vite compilation verified.
+
+---
+
+## [fix/develop-readme-roadmap-refresh] - 2026-10-26 (Synchronize 0.2.4 Roadmap Milestones & Public Tunnel Capabilities)
+- **Summary**:
+  - **Roadmap Milestone Synchronization (`README.md`)**: Marked macOS & Linux production stabilization and the CLI Companion (`proxync-cli`) as completed milestones.
+  - **Upcoming Enterprise Architecture Expansion (`README.md`)**: Formalized upcoming Enterprise Edition features (team collaboration workspaces, persistent shared tunnels, organization-wide custom domains, centralized audit telemetry).
+  - **Developer-Voted Public Tunneling Capabilities (`README.md`)**: Added high-demand developer capabilities to the client roadmap, including smart webhook replay with HMAC signature re-computation/tolerance refresh, local AI agent & MCP server low-latency SSE/streaming gateways, and multi-port microservice routing.
+- **Modified Files**:
+  - `README.md`
+  - `CHANGELOG.md`
+- **Verification**:
+  - Markdown syntax and links verified; previewed against GitHub flavored markdown standards.
+
+---
+
+## [fix/issue-313-known-hosts-pinning] - 2026-10-21 [SECURITY-CVE] (Enforce SSH Host Key Pinning & Prevent JIT known_hosts Overwrites)
+- **Summary**:
+  - **Enforce Host Key Pinning & Prevent known_hosts Overwrite (`packages/core/src/tunnel.rs`)**: Removed the blind unconditional overwrite of `known_hosts` during JIT certificate registration (`POST /api/tunnel/sign-jit-cert`). Implemented `verify_host_key()` with constant-time equality checks against `DEFAULT_PINNED_HOST_KEY` (or custom `PROXYNC_PINNED_HOST_KEY`), failing closed with an explicit security alert if a rogue or mismatched host key is returned by the JIT endpoint (Fixes #313).
+  - **Strict Error Handling for known_hosts Pre-seeding (`packages/core/src/tunnel.rs`)**: Replaced silent error suppression `let _ = std::fs::write(&known_hosts_path, ...)` with explicit error propagation `map_err(...)` to guarantee that SSH host key pinning files are written before starting tunnels.
+  - **Security Regression Unit Tests (`packages/core/src/tunnel.rs`)**: Added `test_verify_host_key_matches_default`, `test_verify_host_key_matches_without_comment_and_extra_spaces`, and `test_verify_host_key_rejects_rogue_keys` verifying constant-time verification, comment handling, and rejection of rogue/mismatched/malformed host keys.
+- **Modified Files**:
+  - `packages/core/src/tunnel.rs`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo check --manifest-path packages/core/Cargo.toml`: passed with 0 errors and 0 warnings.
+  - `cargo test --manifest-path packages/core/Cargo.toml`: passed all 56 unit tests (0 failures).
+
+## [fix/issue-312-constant-time-eq-length-leak] - 2026-10-21 [SECURITY-CVE] (Remediate Basic Auth Credential Length Timing Leaks via Constant-Time Digest Equality)
+- **Summary**:
+  - **Eliminate Slice Length Side-Channel in Constant-Time Equality (`packages/core/src/proxy.rs`)**: Replaced the early-returning slice length comparison and manual XOR loop in `constant_time_eq` with pre-hash SHA-256 digest computation and audited constant-time array comparison via `subtle::ConstantTimeEq`. Normalizing inputs to fixed 32-byte digests before comparison ensures identical execution time regardless of input length discrepancies, eliminating timing side-channels that leak Basic Auth username and password lengths (Fixes #312).
+  - **Prevent Short-Circuit Evaluation on Credentials (`packages/core/src/proxy.rs`)**: Refactored `verify_basic_auth` to evaluate both username and password constant-time equality unconditionally using bitwise AND (`user_valid & pass_valid`), preventing short-circuit timing variations that disclose whether a username exists.
+  - **Audited Constant-Time Primitive Dependency (`packages/core/Cargo.toml`)**: Added `subtle = "2.6"` to `proxync-core` dependencies to provide audited constant-time cryptographic primitives.
+  - **Automated Security Unit Tests (`packages/core/src/proxy.rs`)**: Expanded `test_constant_time_eq` and `test_verify_basic_auth_logic` to test varying length mismatches, empty strings, and long credentials.
+- **Modified Files**:
+  - `packages/core/Cargo.toml`
+  - `packages/core/Cargo.lock`
+  - `packages/cli/Cargo.lock`
+  - `packages/core/src/proxy.rs`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo check --manifest-path packages/core/Cargo.toml`: passed with 0 errors and 0 warnings.
+  - `cargo test --manifest-path packages/core/Cargo.toml`: passed all 53 unit tests (0 failures).
+  - `cargo check --manifest-path packages/cli/Cargo.toml`: passed with 0 errors and 0 warnings.
+
+---
+
 ## [fix/issue-311-x-forwarded-for-rate-limit-bypass] - 2026-10-21 [SECURITY] (Remediate Global Lockout DoS Blast Radius & Harden IPv6 Bracket Parsing)
 - **Summary**:
   - **Eliminate Global Lockout DoS Blast Radius (`packages/core/src/proxy.rs`)**: Resolved P1 blocker in `handle_connection` where valid tunnel owners were rejected with HTTP 429 when global lockout was active. Valid basic auth credentials now authenticate immediately, bypassing lockout and resetting failure counters; lockout is strictly enforced only on invalid credentials or unauthenticated probes.
@@ -53,6 +138,7 @@ All notable changes to the Proxync workspace studio project are documented here.
 - **Verification**:
   - `cargo check --manifest-path packages/core/Cargo.toml` completed with 0 errors.
   - `cargo test --manifest-path packages/core/Cargo.toml` passed all 56 tests (0 failures).
+
 ## [fix/issue-299-cli-updater-cryptographic-verification] - 2026-10-20 [SECURITY-CVE] (Remediate Unverified Standalone CLI Binary Downloads & Add Zip-Slip Sandbox Defense)
 - **Summary**:
   - **Cryptographic Signature & Integrity Pipeline (`packages/core/src/cli_installer.rs`)**: Implemented a fail-closed, multi-tier integrity verification pipeline for standalone CLI self-updates (`proxync update`). Added `verify_download_integrity()` with support for official embedded Minisign Ed25519 digital signatures (`.sig`), standalone SHA-256 checksums (`.sha256`), signed `SHA256SUMS` manifests with `.minisig` validation, and GitHub Release API asset digests with constant-time hex comparison (`constant_time_eq_hex`) to eliminate side-channel timing attacks (Fixes #299).

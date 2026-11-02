@@ -589,6 +589,22 @@ pub fn validate_tunnel_id(tunnel_id: &str) -> Result<&str, String> {
     Ok(trimmed)
 }
 
+pub const DEFAULT_PINNED_HOST_KEY: &str = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDyV3ZNPsHhwJaW6akzFMg/KAE7F1K4WamVtMaeP/vi9 root@Proxync-tunnel";
+
+/// Verifies that a reported host key matches the expected pinned host key.
+///
+/// Compares the SSH key algorithm and public key bytes in constant time to prevent
+/// timing side-channels, ignoring optional trailing comments or surrounding whitespace.
+pub fn verify_host_key(reported_key: &str, pinned_key: &str) -> bool {
+    let rep_parts: Vec<&str> = reported_key.split_whitespace().collect();
+    let pin_parts: Vec<&str> = pinned_key.split_whitespace().collect();
+    if rep_parts.len() < 2 || pin_parts.len() < 2 {
+        return false;
+    }
+    crate::proxy::constant_time_eq(rep_parts[0].as_bytes(), pin_parts[0].as_bytes())
+        & crate::proxy::constant_time_eq(rep_parts[1].as_bytes(), pin_parts[1].as_bytes())
+}
+
 pub async fn open_native_tunnel(
     event_tx: EventSender,
     tunnel_id: String,
@@ -656,12 +672,14 @@ pub async fn open_native_tunnel(
     let strict_host_checking = "yes";
 
     // Pre-seed known_hosts with official Proxync SSH host key to enforce StrictHostKeyChecking=yes
-    let pinned_host_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDyV3ZNPsHhwJaW6akzFMg/KAE7F1K4WamVtMaeP/vi9 root@Proxync-tunnel";
+    let pinned_host_key = std::env::var("PROXYNC_PINNED_HOST_KEY")
+        .unwrap_or_else(|_| DEFAULT_PINNED_HOST_KEY.to_string());
     let seed_entry = format!(
         "[{}]:2222 {}\n[relay.proxync.dev]:2222 {}\n[api.proxync.dev]:2222 {}\n",
         ssh_host, pinned_host_key, pinned_host_key, pinned_host_key
     );
-    let _ = std::fs::write(&known_hosts_path, seed_entry);
+    std::fs::write(&known_hosts_path, seed_entry)
+        .map_err(|e| format!("Failed to pre-seed known_hosts: {}", e))?;
 
     if let Ok(pub_key) = std::fs::read_to_string(&pub_path) {
         let body_json = serde_json::json!({
@@ -688,9 +706,11 @@ pub async fn open_native_tunnel(
                 if parsed.get("success").and_then(|v| v.as_bool()).unwrap_or(false) || parsed.get("hostKey").is_some() {
                     jit_registered = true;
                     if let Some(host_key) = parsed.get("hostKey").and_then(|v| v.as_str()) {
-                        if !host_key.trim().is_empty() {
-                            let entry = format!("[{}]:2222 {}\n", ssh_host, host_key.trim());
-                            let _ = std::fs::write(&known_hosts_path, entry);
+                        let trimmed_key = host_key.trim();
+                        if !trimmed_key.is_empty() {
+                            if !verify_host_key(trimmed_key, &pinned_host_key) {
+                                return Err("SSH host key returned by JIT endpoint does not match pinned Proxync host key. Potential MITM attack detected.".to_string());
+                            }
                         }
                     }
                 }
@@ -1002,6 +1022,36 @@ mod tests {
         assert!(res.is_err());
         let err = res.err().unwrap();
         assert!(err.contains("Invalid tunnel_id"), "Error should mention Invalid tunnel_id, got: {}", err);
+    }
+
+    #[test]
+    fn test_verify_host_key_matches_default() {
+        assert!(verify_host_key(DEFAULT_PINNED_HOST_KEY, DEFAULT_PINNED_HOST_KEY));
+    }
+
+    #[test]
+    fn test_verify_host_key_matches_without_comment_and_extra_spaces() {
+        let key_without_comment = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDyV3ZNPsHhwJaW6akzFMg/KAE7F1K4WamVtMaeP/vi9";
+        assert!(verify_host_key(key_without_comment, DEFAULT_PINNED_HOST_KEY));
+
+        let key_with_spaces_and_custom_comment = "  ssh-ed25519   AAAAC3NzaC1lZDI1NTE5AAAAIDyV3ZNPsHhwJaW6akzFMg/KAE7F1K4WamVtMaeP/vi9   custom-node-host  ";
+        assert!(verify_host_key(key_with_spaces_and_custom_comment, DEFAULT_PINNED_HOST_KEY));
+    }
+
+    #[test]
+    fn test_verify_host_key_rejects_rogue_keys() {
+        // Rogue key payload
+        let rogue_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGattackerRogueKeyInjectedPayload1234567890 root@evil";
+        assert!(!verify_host_key(rogue_key, DEFAULT_PINNED_HOST_KEY));
+
+        // Mismatched key algorithm
+        let rsa_key = "ssh-rsa AAAAC3NzaC1lZDI1NTE5AAAAIDyV3ZNPsHhwJaW6akzFMg/KAE7F1K4WamVtMaeP/vi9 root@Proxync-tunnel";
+        assert!(!verify_host_key(rsa_key, DEFAULT_PINNED_HOST_KEY));
+
+        // Malformed / incomplete keys
+        assert!(!verify_host_key("", DEFAULT_PINNED_HOST_KEY));
+        assert!(!verify_host_key("ssh-ed25519", DEFAULT_PINNED_HOST_KEY));
+        assert!(!verify_host_key("malformed_single_token", DEFAULT_PINNED_HOST_KEY));
     }
 }
 
