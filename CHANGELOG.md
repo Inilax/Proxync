@@ -1,10 +1,10 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to the Proxync workspace studio project are documented here.
 
 ## [feature/develop-multi-service-stack-and-path-routing] - 2026-11-02 (Multi-Service Stack Orchestration & Path-Prefix Routing)
 - **Summary**:
-  - **Multi-Service Stack Orchestrator (packages/cli/src/commands/stack.rs, rgs.rs, main.rs)**: Added proxync stack [SERVICES...] command supporting multi-port microservice stacks (web:3000 api:8080), declarative config files (proxync.json), and automatic process reconnaissance detection. Runs concurrent tunnels with live tagged terminal streaming ([web] --> GET /, [api] --> POST /users) and single-keystroke graceful teardown.
+  - **Multi-Service Stack Orchestrator (packages/cli/src/commands/stack.rs, packages/cli/src/args.rs, packages/cli/src/main.rs)**: Added proxync stack [SERVICES...] command supporting multi-port microservice stacks (web:3000 api:8080), declarative config files (proxync.json), and automatic process reconnaissance detection. Runs concurrent tunnels with live tagged terminal streaming ([web] --> GET /, [api] --> POST /users) and single-keystroke graceful teardown.
   - **Path-Prefix Router Engine (packages/core/src/proxy.rs)**: Implemented local reverse proxy routing engine (start_path_router, match_route, parse_route, RouteEntry) that multiplexes multiple local development services over a single unified public tunnel URL without requiring any cloud edge gateway or Caddy modifications. Implemented longest-prefix routing with root fallback.
   - **Desktop GUI Multi-Port & Stack Management (packages/desktop/src/App.tsx, components/views/Dialogs.tsx, WorkspaceDashboardView.tsx, ProcessView.tsx, lib/types.ts)**: Integrated path-based routing and stack orchestration directly into the desktop studio UI:
     - Added "Multi-Port Path Routing" accordion to DomainSelectDialog with quick-add chips for other detected processes and custom prefix/port routing.
@@ -15,7 +15,11 @@ All notable changes to the Proxync workspace studio project are documented here.
   - **CLI Multi-Route Flags (packages/cli/src/args.rs, packages/cli/src/commands/tunnel.rs)**: Added repeatable --route PREFIX:PORT flag to proxync tunnel. Configured effective port resolution, preflight service probes for all routed ports, detached daemon worker route propagation, and enriched terminal route table display.
   - **Public Port Filtering Utility (packages/core/src/recon.rs)**: Exposed pub fn is_dev_port() to allow CLI commands to filter active developer servers from system daemon ports.
   - **Tauri IPC Command Binding (packages/desktop/src-tauri/src/proxy.rs, packages/desktop/src-tauri/src/lib.rs)**: Registered start_path_router command in Desktop Tauri runtime to enable microservice stack routing in the desktop studio.
-  - **Unit & Integration Tests (packages/core/src/proxy.rs)**: Added unit test coverage for route parsing (	est_parse_route), longest-prefix matching (	est_match_route), and multi-service routing execution.
+  - **Unit & Integration Tests (packages/core/src/proxy.rs)**: Added unit test coverage for route parsing (`test_parse_route`), longest-prefix matching (`test_match_route`), and multi-service routing execution.
+  - **P1 Encoding & BOM Sanitization (Core, CLI, Desktop)**: Stripped leading UTF-8 BOM headers (`\uFEFF`) and resolved Windows ANSI double-encoding mojibake across `proxy.rs`, `tunnel.rs`, `args.rs`, `serve.rs`, `bridge.rs`, `WorkspaceDashboardView.tsx`, and `CHANGELOG.md` (restoring clean UTF-8 unicode arrows `→`, checkmarks `✓`, status badges `🟡`, lock icons `🔒`, clipboard icons `📋`, and bullet separators `•`).
+  - **Dialog Icon Restoration (packages/desktop/src/components/views/Dialogs.tsx)**: Restored path routing and microservices icons (`🔀`), individual subdomain icons (`🌐`), and process selection checkmarks (`✓`) in `DomainSelectDialog` and `LaunchStackDialog`.
+  - **Absolute URI Normalization (packages/core/src/proxy.rs)**: Hardened `match_route` to strip scheme + authority from absolute URIs (e.g. `http://example.com/api/users`) forwarded by HTTP proxy clients per RFC 7230 §5.3.2, preventing premature drop to root `/`. Added unit test coverage.
+  - **Fail-Closed Router Binding in Desktop (packages/desktop/src/App.tsx)**: Configured `startProxyOrPathRouter` to throw and fail closed when explicit multi-service routes fail to bind, ensuring non-root backend service ports are not silently left unrouted.
 - **Modified Files**:
   - packages/cli/src/commands/stack.rs
   - packages/cli/src/commands/mod.rs

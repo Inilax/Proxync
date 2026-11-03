@@ -1892,11 +1892,12 @@ export default function App() {
     let proxyFailed = false;
     let proxyPort: number;
     if (routes && routes.length > 0) {
-      proxyPort = await invoke<number>('start_path_router', { routes, basicAuth: basicAuthHeader }).catch((err) => {
-        console.warn('[App] start_path_router invoke failed:', err);
-        proxyFailed = true;
-        return port;
-      });
+      try {
+        proxyPort = await invoke<number>('start_path_router', { routes, basicAuth: basicAuthHeader });
+      } catch (err) {
+        console.error('[App] start_path_router failed to bind:', err);
+        throw new Error(`Failed to bind multi-port path router: ${err instanceof Error ? err.message : String(err)}`);
+      }
     } else {
       proxyPort = await invoke<number>('start_proxy', { localPort: port, basicAuth: basicAuthHeader }).catch((err) => {
         console.warn('[App] start_proxy invoke failed:', err);

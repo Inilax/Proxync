@@ -1,4 +1,4 @@
-﻿use std::collections::HashMap;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use lazy_static::lazy_static;
@@ -1201,9 +1201,9 @@ pub async fn start_proxy_with_auth(
 }
 
 
-// â”€â”€ Path-prefix routing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Path-prefix routing ──────────────────────────────────────────────────────
 
-/// A path prefix â†’ local port mapping for multi-service tunneling via a single tunnel domain.
+/// A path prefix → local port mapping for multi-service tunneling via a single tunnel domain.
 /// Used by [`start_path_router`].
 #[derive(Clone, Debug)]
 pub struct RouteEntry {
@@ -1233,6 +1233,12 @@ pub fn parse_route(s: &str) -> Result<RouteEntry, String> {
 /// Longest-prefix match: returns the best matching route for a request path.
 /// `"/"` is a catch-all; longer prefixes always win.
 pub fn match_route<'a>(routes: &'a [RouteEntry], path: &str) -> Option<&'a RouteEntry> {
+    // Strip scheme + authority if an HTTP proxy client forwards an absolute URI (e.g. http://host:port/path)
+    let path = if let Some(idx) = path.find("://") {
+        path[idx + 3..].find('/').map(|i| &path[idx + 3 + i..]).unwrap_or("/")
+    } else {
+        path
+    };
     let path_only = path.split('?').next().unwrap_or(path);
     routes
         .iter()
@@ -1250,8 +1256,8 @@ pub fn match_route<'a>(routes: &'a [RouteEntry], path: &str) -> Option<&'a Route
 /// Route matching uses longest-prefix wins:
 /// ```text
 /// routes = [("/api", 8080), ("/", 3000)]
-/// GET /api/users  â†’ :8080   (full path forwarded, no stripping)
-/// GET /           â†’ :3000
+/// GET /api/users  → :8080   (full path forwarded, no stripping)
+/// GET /           → :3000
 /// ```
 pub async fn start_path_router(
     tx: EventSender,
@@ -1387,7 +1393,7 @@ async fn proxy_one_request(
     let hdr_end = match header_end { Some(p) => p, None => return };
     let header_str = String::from_utf8_lossy(&req_buf[..hdr_end]);
 
-    // â”€â”€ Basic Auth gate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Basic Auth gate ───────────────────────────────────────────────────────
     if let Some(ref expected) = auth_clone {
         let client_ip = extract_client_ip(&header_str, peer_ip);
         let now = std::time::Instant::now();
@@ -1416,7 +1422,7 @@ async fn proxy_one_request(
         }
     }
 
-    // â”€â”€ Resolve target port â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Resolve target port ───────────────────────────────────────────────────
     let local_port = if let Some(p) = fixed_target {
         p
     } else if let Some(tbl) = routes {
@@ -1437,7 +1443,7 @@ async fn proxy_one_request(
         display_port
     };
 
-    // â”€â”€ Connect to local service â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Connect to local service ──────────────────────────────────────────────
     const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(500);
     let target_res = tokio::time::timeout(CONNECT_TIMEOUT, async {
         match TcpStream::connect(format!("127.0.0.1:{}", local_port)).await {
@@ -1454,9 +1460,9 @@ async fn proxy_one_request(
                  <body style=\"font-family:system-ui;background:#0b0f19;color:#f8fafc;display:flex;align-items:center;\
                  justify-content:center;height:100vh;margin:0\">\
                  <div style=\"text-align:center;padding:36px;background:#151d2f;border-radius:16px;border:1px solid #1e293b\">\
-                 <div style=\"font-size:36px\">ðŸŸ¡</div>\
+                 <div style=\"font-size:36px\">🟡</div>\
                  <h2 style=\"color:#f59e0b\">Local Service Offline</h2>\
-                 <p style=\"color:#94a3b8\">Tunnel active â€” waiting for port <code style=\"color:#38bdf8\">{}</code>.</p></div></body></html>",
+                 <p style=\"color:#94a3b8\">Tunnel active — waiting for port <code style=\"color:#38bdf8\">{}</code>.</p></div></body></html>",
                 local_port
             );
             let _ = client_stream.write_all(
@@ -1467,7 +1473,7 @@ async fn proxy_one_request(
         }
     };
 
-    // â”€â”€ Header inspection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Header inspection ─────────────────────────────────────────────────────
     let is_ws_upgrade = header_str.lines().any(|l| {
         let ll = l.to_lowercase(); ll.starts_with("upgrade:") && ll.contains("websocket")
     }) || header_str.lines().any(|l| {
@@ -1495,7 +1501,7 @@ async fn proxy_one_request(
         return;
     }
 
-    // â”€â”€ Rewrite & forward headers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Rewrite & forward headers ─────────────────────────────────────────────
     let mut incoming_host = String::new();
     let mut out_headers: Vec<String> = Vec::new();
     let mut safe_headers: HashMap<String, String> = HashMap::new();
@@ -1621,7 +1627,7 @@ async fn proxy_one_request(
         }
     }
 
-    // Response preview (schema drift engine â€” JSON only, 4 KB cap)
+    // Response preview (schema drift engine — JSON only, 4 KB cap)
     const PREVIEW_BYTES: usize = 4096;
     let (resp_hdrs_json, resp_body_preview) = if is_ws_upgrade || is_sse {
         (serde_json::json!({}), None)
@@ -2456,6 +2462,12 @@ mod tests {
         // Specific sub-prefix wins over shorter prefix
         assert_eq!(match_route(&routes, "/api/v2").unwrap().port, 9000);
         assert_eq!(match_route(&routes, "/api/v2/items").unwrap().port, 9000);
+
+        // Absolute URIs from HTTP proxy clients (RFC 7230 §5.3.2)
+        assert_eq!(match_route(&routes, "http://example.com/api/users").unwrap().port, 8080);
+        assert_eq!(match_route(&routes, "http://localhost:3000/").unwrap().port, 3000);
+        assert_eq!(match_route(&routes, "https://api.proxync.dev:8443/api/v2/items").unwrap().port, 9000);
+        assert_eq!(match_route(&routes, "http://proxy.host/app/dashboard").unwrap().port, 3000);
     }
 
     #[tokio::test]

@@ -1,4 +1,4 @@
-﻿use crate::args::{ServeArgs, TunnelArgs};
+use crate::args::{ServeArgs, TunnelArgs};
 use crate::commands::tunnel::handle_tunnel;
 use crate::ui::{calculate_dir_size_with_cap, get_home_dir, guess_mime_type};
 use std::path::PathBuf;

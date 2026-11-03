@@ -1,4 +1,4 @@
-﻿use crate::args::{Provider, TunnelArgs};
+use crate::args::{Provider, TunnelArgs};
 use crate::ui::{
     copy_to_clipboard, format_duration_human, format_qr_code, get_standby_idle_timeout,
     open_in_browser, parse_duration_to_secs, print_hotkey_bar, print_stats, SessionStats,
@@ -18,7 +18,7 @@ pub async fn handle_tunnel(args: TunnelArgs) -> Result<(), Box<dyn std::error::E
         }
     }
 
-    // â”€â”€ Parse routes if provided (Multi-Port Microservice Routing) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Parse routes if provided (Multi-Port Microservice Routing) ───────────
     let parsed_routes: Vec<proxync_core::proxy::RouteEntry> = if let Some(ref route_strs) = args.routes {
         let mut parsed = Vec::new();
         for s in route_strs {
@@ -101,7 +101,7 @@ pub async fn handle_tunnel(args: TunnelArgs) -> Result<(), Box<dyn std::error::E
     if is_multi_route {
         println!("\x1b[1;36m==> Starting {} multi-route tunnel...\x1b[0m", format!("{:?}", args.provider).to_lowercase());
         for r in &parsed_routes {
-            println!("    \x1b[90m{:<10}\x1b[0m â†’ \x1b[1mhttp://localhost:{}\x1b[0m", r.prefix, r.port);
+            println!("    \x1b[90m{:<10}\x1b[0m → \x1b[1mhttp://localhost:{}\x1b[0m", r.prefix, r.port);
         }
     } else {
         println!("\x1b[1;36m==> Starting {} tunnel for port {}...\x1b[0m", format!("{:?}", args.provider).to_lowercase(), effective_port);
@@ -151,7 +151,7 @@ pub async fn handle_tunnel(args: TunnelArgs) -> Result<(), Box<dyn std::error::E
     if is_multi_route {
         println!("  Routes       :");
         for r in &parsed_routes {
-            println!("    \x1b[1;36m{:<12}\x1b[0m â†’ \x1b[1mhttp://localhost:{}\x1b[0m", r.prefix, r.port);
+            println!("    \x1b[1;36m{:<12}\x1b[0m → \x1b[1mhttp://localhost:{}\x1b[0m", r.prefix, r.port);
         }
     } else {
         println!("  Local Target : \x1b[1mhttp://localhost:{}\x1b[0m", effective_port);
@@ -649,7 +649,7 @@ pub async fn spawn_detached_tunnel(args: &TunnelArgs) -> Result<(), Box<dyn std:
         println!("\x1b[1;36m==> Starting background {} multi-route tunnel...\x1b[0m", format!("{:?}", args.provider).to_lowercase());
         for s in rts {
             if let Ok(r) = proxync_core::proxy::parse_route(s) {
-                println!("    \x1b[90m{:<10}\x1b[0m â†’ \x1b[1mhttp://localhost:{}\x1b[0m", r.prefix, r.port);
+                println!("    \x1b[90m{:<10}\x1b[0m → \x1b[1mhttp://localhost:{}\x1b[0m", r.prefix, r.port);
             }
         }
     } else {
@@ -672,12 +672,12 @@ pub async fn spawn_detached_tunnel(args: &TunnelArgs) -> Result<(), Box<dyn std:
     }
 
     if let Some(entry) = registered_entry {
-        println!("\x1b[1;32mâœ“ Tunnel started in background (PID: {})\x1b[0m", child_pid);
+        println!("\x1b[1;32m✓ Tunnel started in background (PID: {})\x1b[0m", child_pid);
         if let Some(ref rts) = args.routes {
             println!("  Routes       :");
             for s in rts {
                 if let Ok(r) = proxync_core::proxy::parse_route(s) {
-                    println!("    \x1b[1;36m{:<12}\x1b[0m â†’ \x1b[1mhttp://localhost:{}\x1b[0m", r.prefix, r.port);
+                    println!("    \x1b[1;36m{:<12}\x1b[0m → \x1b[1mhttp://localhost:{}\x1b[0m", r.prefix, r.port);
                 }
             }
         } else {
@@ -688,10 +688,10 @@ pub async fn spawn_detached_tunnel(args: &TunnelArgs) -> Result<(), Box<dyn std:
             println!("  Auto-Expiry  : {} (Stop anytime with: \x1b[1mproxync stop {}\x1b[0m)", exp, effective_port);
         }
         if args.basic_auth.is_some() {
-            println!("  ðŸ”’ \x1b[33mHTTP Basic Auth: ENABLED (password protected)\x1b[0m");
+            println!("  🔒 \x1b[33mHTTP Basic Auth: ENABLED (password protected)\x1b[0m");
         }
         if copy_to_clipboard(&entry.public_url) {
-            println!("  ðŸ“‹ \x1b[32mURL copied to clipboard!\x1b[0m");
+            println!("  📋 \x1b[32mURL copied to clipboard!\x1b[0m");
         }
         if args.qr {
             if let Some(qr) = format_qr_code(&entry.public_url) {

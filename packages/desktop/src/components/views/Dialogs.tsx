@@ -579,7 +579,7 @@ export function DomainSelectDialog({
               onClick={() => setRoutingEnabled(!routingEnabled)}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '16px' }}>?</span>
+                <span style={{ fontSize: '16px' }}>🔀</span>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   <strong style={{ fontSize: '12px', color: routingEnabled ? 'var(--color-primary)' : 'var(--color-on-surface)' }}>
                     Multi-Port Path Routing (Microservices)
@@ -704,7 +704,7 @@ export function DomainSelectDialog({
                               gap: '4px',
                             }}
                           >
-                            <span>{isAdded ? '?' : '+'}</span>
+                            <span>{isAdded ? '✓' : '+'}</span>
                             <span>{p.name} (:{p.port}) as {defaultPrefix}</span>
                           </button>
                         );
@@ -986,7 +986,7 @@ export function LaunchStackDialog({
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '16px' }}>?</span>
+                  <span style={{ fontSize: '16px' }}>🔀</span>
                   <strong style={{ fontSize: '12px', color: mode === 'unified' ? 'var(--color-primary)' : 'var(--color-on-surface)' }}>Unified URL</strong>
                 </div>
                 <p style={{ fontSize: '10px', color: 'var(--color-on-surface-variant)', lineHeight: 1.3 }}>
@@ -1005,7 +1005,7 @@ export function LaunchStackDialog({
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '16px' }}>??</span>
+                  <span style={{ fontSize: '16px' }}>🌐</span>
                   <strong style={{ fontSize: '12px', color: mode === 'individual' ? 'var(--color-primary)' : 'var(--color-on-surface)' }}>Separate Subdomains</strong>
                 </div>
                 <p style={{ fontSize: '10px', color: 'var(--color-on-surface-variant)', lineHeight: 1.3 }}>

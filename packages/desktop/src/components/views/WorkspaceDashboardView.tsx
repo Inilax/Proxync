@@ -164,7 +164,7 @@ export function WorkspaceDashboardView({
               </span>
               {workspace?.projectRootPath && workspace.projectRootPath !== 'unknown' && (
                 <>
-                  <span className="text-on-surface-variant/40 text-xs hidden sm:inline">â€¢</span>
+                  <span className="text-on-surface-variant/40 text-xs hidden sm:inline">•</span>
                   <span className="font-mono text-xs text-on-surface-variant/70 truncate max-w-[260px] hidden sm:inline" title={workspace.projectRootPath}>
                     {workspace.projectRootPath}
                   </span>
