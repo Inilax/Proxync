@@ -213,6 +213,7 @@ pub async fn handle_serve(args: ServeArgs) -> Result<(), Box<dyn std::error::Err
         relay_url: None,
         no_log: args.no_log,
         daemon_worker: false,
+        routes: None,
     }).await
 }
 
