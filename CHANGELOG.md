@@ -2,6 +2,66 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [feat/emergency-cve-release-automation] - 2026-11-05 (Zero-Drift Emergency CVE Hotfix Pipeline & Pre-Release Versioning)
+- **Summary**:
+  - **Automated Emergency CVE Hotfix Workflow (`.github/workflows/emergency-cve-release.yml`)**: Designed and implemented an autonomous hotfix release workflow that cherry-picks verified dependency security patches from `develop` directly onto a clean branch off `main`, dynamically calculates the next strictly increasing SemVer pre-release version (e.g. `0.2.4` → `0.2.5-cve.1` → `0.2.5-cve.2`), updates all workspace manifests (`package.json`, `packages/desktop/package.json`, `tauri.conf.json`, `Cargo.toml`), formats the release notes with mandatory Proxync client radar tags (`[SECURITY-CVE] [TYPE: CVE-PATCH]`), opens a pull request targeting `main`, and arms GitHub native Auto-Merge (`--auto --squash`).
+  - **Coordinated Feature Release Auto-Bump (`.github/workflows/prepare-release.yml`)**: Synchronized the standard release pipeline to seamlessly promote hotfix pre-releases (e.g. `0.2.5-cve.1`) directly into the final clean feature release (`0.2.5`), ensuring strict SemVer ordering (`0.2.4 < 0.2.5-cve.1 < 0.2.5 < 0.2.6-cve.1 < 0.2.6`) so Tauri desktop clients smoothly install all security and feature updates without version stranding.
+  - **Fast CI Main Branch Gate (`.github/workflows/ci.yml`)**: Expanded pull request trigger branches to include `main` alongside `develop`, ensuring all hotfix pull requests pass the full multi-tier verification suite (TypeScript compilation, Vite build, Core unit tests, CLI tests, and Desktop backend tests) before any merge into production `main` can occur.
+- **Modified Files**:
+  - `.github/workflows/ci.yml`
+  - `.github/workflows/emergency-cve-release.yml`
+  - `.github/workflows/prepare-release.yml`
+  - `CHANGELOG.md`
+- **Verification**:
+  - Validated YAML syntax and schema compatibility across all workflow files.
+  - Verified strictly increasing SemVer evaluation across hotfix and feature transition sequences (`0.2.4 < 0.2.5-cve.1 < 0.2.5`).
+
+---
+
+## [feature/develop-multi-service-stack-and-path-routing] - 2026-11-02 (Multi-Service Stack Orchestration & Path-Prefix Routing)
+- **Summary**:
+  - **Multi-Service Stack Orchestrator (packages/cli/src/commands/stack.rs, packages/cli/src/args.rs, packages/cli/src/main.rs)**: Added proxync stack [SERVICES...] command supporting multi-port microservice stacks (web:3000 api:8080), declarative config files (proxync.json), and automatic process reconnaissance detection. Runs concurrent tunnels with live tagged terminal streaming ([web] --> GET /, [api] --> POST /users) and single-keystroke graceful teardown.
+  - **Path-Prefix Router Engine (packages/core/src/proxy.rs)**: Implemented local reverse proxy routing engine (start_path_router, match_route, parse_route, RouteEntry) that multiplexes multiple local development services over a single unified public tunnel URL without requiring any cloud edge gateway or Caddy modifications. Implemented longest-prefix routing with root fallback.
+  - **Desktop GUI Multi-Port & Stack Management (packages/desktop/src/App.tsx, components/views/Dialogs.tsx, WorkspaceDashboardView.tsx, ProcessView.tsx, lib/types.ts)**: Integrated path-based routing and stack orchestration directly into the desktop studio UI:
+    - Added "Multi-Port Path Routing" accordion to DomainSelectDialog with quick-add chips for other detected processes and custom prefix/port routing.
+    - Created LaunchStackDialog modal enabling one-click orchestration of all detected local servers into either Unified URL (path routing) or Separate Subdomains (multi-tunnel stack) modes.
+    - Added Launch Stack button in WorkspaceDashboardView when 2+ running development servers are detected.
+    - Added route pill visualizations under public tunnel URLs in both WorkspaceDashboardView and ProcessView.
+    - Extended `Tunnel` interface with `routes?: string[]` and added `startProxyOrPathRouter` routing helper in `App.tsx`.
+  - **CLI Multi-Route Flags (packages/cli/src/args.rs, packages/cli/src/commands/tunnel.rs)**: Added repeatable --route PREFIX:PORT flag to proxync tunnel. Configured effective port resolution, preflight service probes for all routed ports, detached daemon worker route propagation, and enriched terminal route table display.
+  - **Public Port Filtering Utility (packages/core/src/recon.rs)**: Exposed pub fn is_dev_port() to allow CLI commands to filter active developer servers from system daemon ports.
+  - **Tauri IPC Command Binding (packages/desktop/src-tauri/src/proxy.rs, packages/desktop/src-tauri/src/lib.rs)**: Registered start_path_router command in Desktop Tauri runtime to enable microservice stack routing in the desktop studio.
+  - **Unit & Integration Tests (packages/core/src/proxy.rs)**: Added unit test coverage for route parsing (`test_parse_route`), longest-prefix matching (`test_match_route`), and multi-service routing execution.
+  - **P1 Encoding & BOM Sanitization (Core, CLI, Desktop)**: Stripped leading UTF-8 BOM headers (`\uFEFF`) and resolved Windows ANSI double-encoding mojibake across `proxy.rs`, `tunnel.rs`, `args.rs`, `serve.rs`, `bridge.rs`, `WorkspaceDashboardView.tsx`, and `CHANGELOG.md` (restoring clean UTF-8 unicode arrows `→`, checkmarks `✓`, status badges `🟡`, lock icons `🔒`, clipboard icons `📋`, and bullet separators `•`).
+  - **Dialog Icon Restoration (packages/desktop/src/components/views/Dialogs.tsx)**: Restored path routing and microservices icons (`🔀`), individual subdomain icons (`🌐`), and process selection checkmarks (`✓`) in `DomainSelectDialog` and `LaunchStackDialog`.
+  - **Absolute URI Normalization (packages/core/src/proxy.rs)**: Hardened `match_route` to strip scheme + authority from absolute URIs (e.g. `http://example.com/api/users`) forwarded by HTTP proxy clients per RFC 7230 §5.3.2, preventing premature drop to root `/`. Added unit test coverage.
+  - **Fail-Closed Router Binding in Desktop (packages/desktop/src/App.tsx)**: Configured `startProxyOrPathRouter` to throw and fail closed when explicit multi-service routes fail to bind, ensuring non-root backend service ports are not silently left unrouted.
+- **Modified Files**:
+  - packages/cli/src/commands/stack.rs
+  - packages/cli/src/commands/mod.rs
+  - packages/cli/src/args.rs
+  - packages/cli/src/commands/tunnel.rs
+  - packages/cli/src/commands/serve.rs
+  - packages/cli/src/main.rs
+  - packages/core/src/proxy.rs
+  - packages/core/src/recon.rs
+  - packages/desktop/src-tauri/src/lib.rs
+  - packages/desktop/src-tauri/src/proxy.rs
+  - packages/desktop/src/lib/types.ts
+  - packages/desktop/src/components/views/Dialogs.tsx
+  - packages/desktop/src/components/views/WorkspaceDashboardView.tsx
+  - packages/desktop/src/components/views/ProcessView.tsx
+  - packages/desktop/src/App.tsx
+  - CHANGELOG.md
+  - .agents/changelog.json
+- **Verification**:
+  - cargo check --manifest-path packages/core/Cargo.toml: passed with 0 errors.
+  - cargo check --manifest-path packages/cli/Cargo.toml: passed with 0 errors.
+  - cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml: passed with 0 errors.
+  - cargo test --manifest-path packages/core/Cargo.toml --lib -- test_match_route: passed (1/1).
+  - cargo test --manifest-path packages/core/Cargo.toml --lib -- test_parse_route: passed (1/1).
+  - tsc --project packages/desktop/tsconfig.json --noEmit: passed with 0 errors.
+  - vite build packages/desktop: passed with 0 errors (67 modules transformed).
 ## [fix/rustls-upgrade-and-dependabot-target] - 2026-10-28 (Unified rustls 0.23.46 Security Upgrade & Dependabot Branch Target Alignment)
 - **Summary**:
   - **Unified rustls 0.23.46 Security Upgrade (`Cargo.lock`)**: Synchronized `rustls` from `0.23.45` to `0.23.46` atomically across all Cargo workspaces (`packages/core`, `packages/cli`, and `packages/desktop/src-tauri`). Eliminates TLS session secrets in debug formatting, hardens TLS 1.3 traffic key rotation during fragmented writes, and establishes stream backpressure.

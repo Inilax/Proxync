@@ -402,6 +402,21 @@ export function ProcessView({
                       >
                         {tunnel.publicUrl}
                       </code>
+                      {tunnel.routes && tunnel.routes.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                          <span className="text-[10px] font-mono uppercase text-primary font-bold">Routes:</span>
+                          {tunnel.routes.map((rt) => {
+                            const [pfx, pt] = rt.split(':');
+                            return (
+                              <span key={rt} className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-surface-container-high border border-outline-variant/60 text-on-surface">
+                                <span className="text-primary font-semibold">{pfx}</span>
+                                <span className="text-on-surface-variant mx-0.5">→</span>
+                                <span className="text-amber-400 font-bold">:{pt}</span>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       {tunnel.basicAuth?.enabled && (
