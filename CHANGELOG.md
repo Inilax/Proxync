@@ -2,6 +2,22 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [feat/emergency-cve-release-automation] - 2026-11-05 (Zero-Drift Emergency CVE Hotfix Pipeline & Pre-Release Versioning)
+- **Summary**:
+  - **Automated Emergency CVE Hotfix Workflow (`.github/workflows/emergency-cve-release.yml`)**: Designed and implemented an autonomous hotfix release workflow that cherry-picks verified dependency security patches from `develop` directly onto a clean branch off `main`, dynamically calculates the next strictly increasing SemVer pre-release version (e.g. `0.2.4` → `0.2.5-cve.1` → `0.2.5-cve.2`), updates all workspace manifests (`package.json`, `packages/desktop/package.json`, `tauri.conf.json`, `Cargo.toml`), formats the release notes with mandatory Proxync client radar tags (`[SECURITY-CVE] [TYPE: CVE-PATCH]`), opens a pull request targeting `main`, and arms GitHub native Auto-Merge (`--auto --squash`).
+  - **Coordinated Feature Release Auto-Bump (`.github/workflows/prepare-release.yml`)**: Synchronized the standard release pipeline to seamlessly promote hotfix pre-releases (e.g. `0.2.5-cve.1`) directly into the final clean feature release (`0.2.5`), ensuring strict SemVer ordering (`0.2.4 < 0.2.5-cve.1 < 0.2.5 < 0.2.6-cve.1 < 0.2.6`) so Tauri desktop clients smoothly install all security and feature updates without version stranding.
+  - **Fast CI Main Branch Gate (`.github/workflows/ci.yml`)**: Expanded pull request trigger branches to include `main` alongside `develop`, ensuring all hotfix pull requests pass the full multi-tier verification suite (TypeScript compilation, Vite build, Core unit tests, CLI tests, and Desktop backend tests) before any merge into production `main` can occur.
+- **Modified Files**:
+  - `.github/workflows/ci.yml`
+  - `.github/workflows/emergency-cve-release.yml`
+  - `.github/workflows/prepare-release.yml`
+  - `CHANGELOG.md`
+- **Verification**:
+  - Validated YAML syntax and schema compatibility across all workflow files.
+  - Verified strictly increasing SemVer evaluation across hotfix and feature transition sequences (`0.2.4 < 0.2.5-cve.1 < 0.2.5`).
+
+---
+
 ## [feature/develop-multi-service-stack-and-path-routing] - 2026-11-02 (Multi-Service Stack Orchestration & Path-Prefix Routing)
 - **Summary**:
   - **Multi-Service Stack Orchestrator (packages/cli/src/commands/stack.rs, packages/cli/src/args.rs, packages/cli/src/main.rs)**: Added proxync stack [SERVICES...] command supporting multi-port microservice stacks (web:3000 api:8080), declarative config files (proxync.json), and automatic process reconnaissance detection. Runs concurrent tunnels with live tagged terminal streaming ([web] --> GET /, [api] --> POST /users) and single-keystroke graceful teardown.
