@@ -1601,8 +1601,9 @@ export default function App() {
     if (discoveringRef.current) return;
     discoveringRef.current = true;
     setDiscovering(true);
+    const forceBypass = bypassCache === true;
     try {
-      const discovered = await readNativeProcesses(bypassCache);
+      const discovered = await readNativeProcesses(forceBypass);
       setProcesses(discovered);
       logApp('RECON', 'INFO', `Scanned and discovered ${discovered.length} local services: [${discovered.map((p) => `:${p.port} (${p.framework || p.name})`).join(', ')}]`);
       if (!selectedProcessId && discovered[0]) setSelectedProcessId(discovered[0].id);
@@ -3796,7 +3797,7 @@ export default function App() {
           sharingPort={sharingPort}
           tunnels={tunnels}
           onClose={() => setDiscoverOpen(false)}
-          onRefresh={discoverProcesses}
+          onRefresh={() => void discoverProcesses(true)}
           onShare={initiatePublicShare}
           onShareLocal={shareProcessLocal}
           onInspectTraffic={(p) => {
@@ -3886,10 +3887,13 @@ export default function App() {
    ══════════════════════════════════════════════ */
 
 async function readNativeProcesses(bypassCache: boolean = false): Promise<ProcessCandidate[]> {
+  const forceBypass = bypassCache === true;
   try {
-    const nativeProcesses = await invoke<ProcessCandidate[]>('scan_processes', { bypassCache });
+    const nativeProcesses = await invoke<ProcessCandidate[]>('scan_processes', { bypassCache: forceBypass });
     if (nativeProcesses.length > 0) return nativeProcesses;
-  } catch { /* fall back */ }
+  } catch (err) {
+    console.debug('scan_processes fallback triggered:', err);
+  }
   const ports = await invoke<number[]>('scan_ports').catch(() => []);
   return ports.map((port) => ({
     id: `port-${port}`, name: `Port ${port}`, port,
