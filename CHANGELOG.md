@@ -2,6 +2,25 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [fix/windows-port-scan-kernel-tcp-table] - 2026-11-10 (Reliable Windows Kernel TCP Table Reconnaissance & GUI Refresh Fix)
+- **Summary**:
+  - **Native Windows Kernel TCP Table Resolution (`packages/core/src/recon.rs`)**: Implemented zero-cost kernel TCP table queries via `iphlpapi.dll`'s `GetExtendedTcpTable` across both IPv4 and IPv6 tables (`scan_windows_tcp_table`). Runs in sub-millisecond time with zero child processes spawned. Correctly detects listening server sockets regardless of Windows internal socket states (`Listen`, `Closed`, `FinWait1`), completely eliminating reliance on localized string matching (`"LISTENING"`) across non-English Windows systems.
+  - **Fail-Soft Port Preservation & Scoped WMI (`packages/core/src/recon.rs`)**: Hardened `scan_processes` so active listening ports with lagging metadata or generic names are preserved as `"Local Service"` instead of being silently dropped via `continue;`. Scoped Windows PowerShell process queries to only discovered listening PIDs (`$pids`) with fallback to `Get-Process -Id $pids`. Hardened `scan_ports()` to only filter out known OS system/infra process names.
+  - **Desktop GUI Refresh & IPC Sanitization (`packages/desktop/src/App.tsx`)**: Fixed `DiscoverDialog` passing a React `MouseEvent` object into `discoverProcesses(bypassCache)`. Wrapped `onRefresh={() => void discoverProcesses(true)}` and enforced strict boolean coercion in `readNativeProcesses` to prevent Tauri Serde IPC deserialization rejections.
+- **Modified Files**:
+  - `packages/core/src/recon.rs`
+  - `packages/desktop/src/App.tsx`
+  - `CHANGELOG.md`
+  - `.agents/changelog.json`
+- **Verification**:
+  - `cargo test --manifest-path packages/core/Cargo.toml --lib`: passed all 60 tests (0 failures), including new `test_win_get_extended_tcp_table`.
+  - `cargo check --manifest-path packages/cli/Cargo.toml`: passed with 0 errors and 0 warnings.
+  - `cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml`: passed with 0 errors and 0 warnings.
+  - `npx tsc --noEmit` in `packages/desktop`: passed with 0 errors.
+  - 5 consecutive live CLI scans verified 100% consistent detection of concurrent test servers (Express on 5002, To-Do on 4000).
+
+---
+
 ## [fix/rustls-upgrade-and-dependabot-target] - 2026-10-28 (Unified rustls 0.23.46 Security Upgrade & Dependabot Branch Target Alignment)
 - **Summary**:
   - **Unified rustls 0.23.46 Security Upgrade (`Cargo.lock`)**: Synchronized `rustls` from `0.23.45` to `0.23.46` atomically across all Cargo workspaces (`packages/core`, `packages/cli`, and `packages/desktop/src-tauri`). Eliminates TLS session secrets in debug formatting, hardens TLS 1.3 traffic key rotation during fragmented writes, and establishes stream backpressure.
