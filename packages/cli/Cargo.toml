@@ -1,6 +1,6 @@
 [package]
 name = "proxync-cli"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2021"
 description = "Proxync CLI companion — Lightweight developer tunneling & reconnaissance from the terminal"
 authors = ["Inilax"]

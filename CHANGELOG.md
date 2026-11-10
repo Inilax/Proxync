@@ -2,6 +2,66 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [fix/windows-port-scan-kernel-tcp-table] - 2026-11-10 (Reliable Windows Kernel TCP Table Reconnaissance & GUI Refresh Fix)
+- **Summary**:
+  - **Native Windows Kernel TCP Table Resolution (`packages/core/src/recon.rs`)**: Implemented zero-cost kernel TCP table queries via `iphlpapi.dll`'s `GetExtendedTcpTable` across both IPv4 and IPv6 tables (`scan_windows_tcp_table`). Runs in sub-millisecond time with zero child processes spawned. Correctly detects listening server sockets regardless of Windows internal socket states (`Listen`, `Closed`, `FinWait1`), completely eliminating reliance on localized string matching (`"LISTENING"`) across non-English Windows systems.
+  - **Fail-Soft Port Preservation & Scoped WMI (`packages/core/src/recon.rs`)**: Hardened `scan_processes` so active listening ports with lagging metadata or generic names are preserved as `"Local Service"` instead of being silently dropped via `continue;`. Scoped Windows PowerShell process queries to only discovered listening PIDs (`$pids`) with fallback to `Get-Process -Id $pids`. Hardened `scan_ports()` to only filter out known OS system/infra process names.
+  - **Desktop GUI Refresh & IPC Sanitization (`packages/desktop/src/App.tsx`)**: Fixed `DiscoverDialog` passing a React `MouseEvent` object into `discoverProcesses(bypassCache)`. Wrapped `onRefresh={() => void discoverProcesses(true)}` and enforced strict boolean coercion in `readNativeProcesses` to prevent Tauri Serde IPC deserialization rejections.
+- **Modified Files**:
+  - `packages/core/src/recon.rs`
+  - `packages/desktop/src/App.tsx`
+  - `CHANGELOG.md`
+  - `.agents/changelog.json`
+- **Verification**:
+  - `cargo test --manifest-path packages/core/Cargo.toml --lib`: passed all 60 tests (0 failures), including new `test_win_get_extended_tcp_table`.
+  - `cargo check --manifest-path packages/cli/Cargo.toml`: passed with 0 errors and 0 warnings.
+  - `cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml`: passed with 0 errors and 0 warnings.
+  - `npx tsc --noEmit` in `packages/desktop`: passed with 0 errors.
+  - 5 consecutive live CLI scans verified 100% consistent detection of concurrent test servers (Express on 5002, To-Do on 4000).
+
+---
+
+## [fix/rustls-upgrade-and-dependabot-target] - 2026-10-28 (Unified rustls 0.23.46 Security Upgrade & Dependabot Branch Target Alignment)
+- **Summary**:
+  - **Unified rustls 0.23.46 Security Upgrade (`Cargo.lock`)**: Synchronized `rustls` from `0.23.45` to `0.23.46` atomically across all Cargo workspaces (`packages/core`, `packages/cli`, and `packages/desktop/src-tauri`). Eliminates TLS session secrets in debug formatting, hardens TLS 1.3 traffic key rotation during fragmented writes, and establishes stream backpressure.
+  - **Dependabot Target Branch Configuration (`.github/dependabot.yml`)**: Added explicit `target-branch: "develop"` for `cargo` package ecosystems across all workspaces (`/packages/core`, `/packages/cli`, and `/packages/desktop/src-tauri`), guaranteeing future automated dependency alerts open PRs against `develop` instead of `main`.
+- **Modified Files**:
+  - `.github/dependabot.yml`
+  - `packages/core/Cargo.lock`
+  - `packages/cli/Cargo.lock`
+  - `packages/desktop/src-tauri/Cargo.lock`
+## [fix/v0.2.5-version-bump] - 2026-10-28 (Workspace & Studio Version Bump to v0.2.5 for Next Release Cycle)
+- **Feature Summary**:
+  - **Comprehensive Version Bump to v0.2.5**: Synchronized workspace and package manifests (`package.json`, `packages/desktop/package.json`, `package-lock.json`, `Cargo.toml`, `Cargo.lock`, and `tauri.conf.json`) to version `0.2.5`.
+  - **Native HTTP Network Headers & Diagnostics**: Updated Rust client diagnostic banner in `storage.rs` to `Proxync v0.2.5 (Engine: Tauri v2.11 Core)`. Synchronized frontend diagnostic logging metadata, log session directives, and support bundle fallbacks in `App.tsx` and `logger.ts` to `v0.2.5-stable`.
+  - **UI Version Presentation Alignment**: Updated `SettingsView.tsx` default prop to `v0.2.5`, `App.tsx` update toast message (`v0.2.5`), and sidebar engine indicator (`v0.2.5-stable`).
+  - **Recon & Documentation Badge Alignment**: Updated README version shield badge and `.agents/architecture.json` static recon map to reflect version `0.2.5`.
+- **Modified Files**:
+  - `README.md`
+  - `package-lock.json`
+  - `package.json`
+  - `packages/desktop/package.json`
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `packages/desktop/src-tauri/Cargo.toml`
+  - `packages/desktop/src-tauri/tauri.conf.json`
+  - `packages/core/Cargo.lock`
+  - `packages/core/Cargo.toml`
+  - `packages/core/src/storage.rs`
+  - `packages/cli/Cargo.lock`
+  - `packages/cli/Cargo.toml`
+  - `packages/desktop/src/App.tsx`
+  - `packages/desktop/src/components/views/SettingsView.tsx`
+  - `packages/desktop/src/lib/logger.ts`
+  - `CHANGELOG.md`
+- **Verification**:
+  - `cargo check --manifest-path packages/core/Cargo.toml`: passed with 0 errors.
+  - `cargo check --manifest-path packages/cli/Cargo.toml`: passed with 0 errors.
+  - `cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml`: passed with 0 errors.
+  - `cargo test --manifest-path packages/core/Cargo.toml`: passed all 59 tests (0 failures).
+  - `npm run build --workspace=packages/desktop`: TypeScript and Vite compilation verified.
+
+---
+
 ## [fix/develop-readme-roadmap-refresh] - 2026-10-26 (Synchronize 0.2.4 Roadmap Milestones & Public Tunnel Capabilities)
 - **Summary**:
   - **Roadmap Milestone Synchronization (`README.md`)**: Marked macOS & Linux production stabilization and the CLI Companion (`proxync-cli`) as completed milestones.
