@@ -3089,7 +3089,7 @@ dependencies = [
 
 [[package]]
 name = "proxync-core"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "base64 0.23.1",
  "futures-util",
@@ -3108,7 +3108,7 @@ dependencies = [
 
 [[package]]
 name = "proxync-desktop"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "base64 0.23.1",
  "futures-util",
