@@ -933,7 +933,7 @@ export default function App() {
 
         if (!update) {
           if (isManual) {
-            showToast('✅ Proxync is up to date (v0.2.5)', 'success');
+            showToast('✅ Proxync is up to date (v0.2.6)', 'success');
           }
           return;
         }
@@ -1183,7 +1183,7 @@ export default function App() {
       trafficLogging: appSettings.trafficLogging ?? false,
     });
     void logAppLaunch({
-      appVersion: 'v0.2.5',
+      appVersion: 'v0.2.6',
       theme: appSettings.theme || 'slate',
       telemetry: appSettings.telemetry || 'enhanced',
       autoUpdate: appSettings.autoUpdate ?? true,
@@ -2832,7 +2832,7 @@ export default function App() {
   async function updateAppLogging(enabled: boolean) {
     setAppSettings((current) => ({ ...current, appLogging: enabled }));
     await setAppLogging(enabled, {
-      appVersion: 'v0.2.5-stable',
+      appVersion: 'v0.2.6-stable',
       theme: appSettings.theme,
       platform: typeof navigator !== 'undefined' ? navigator.platform : 'desktop',
     });
@@ -2847,7 +2847,7 @@ export default function App() {
   async function updateTrafficLogging(enabled: boolean) {
     setAppSettings((current) => ({ ...current, trafficLogging: enabled }));
     await setTrafficLogging(enabled, {
-      appVersion: 'v0.2.5-stable',
+      appVersion: 'v0.2.6-stable',
     });
     showToast(
       enabled
@@ -3316,7 +3316,7 @@ export default function App() {
             <div className="pl-6 pr-4 mb-5 flex items-center justify-between">
               <div className="min-w-0 pr-2">
                 <h2 className="text-headline-sm font-bold text-primary truncate">Proxync Engine</h2>
-                <p className="text-code-sm text-on-surface-variant opacity-60">v0.2.5-stable</p>
+                <p className="text-code-sm text-on-surface-variant opacity-60">v0.2.6-stable</p>
               </div>
               <button
                 onClick={toggleSidebar}
@@ -3695,7 +3695,7 @@ export default function App() {
                 onUpdateTrafficLogging={updateTrafficLogging}
                 onCheckForUpdates={() => runUpdateCheck(false, true)}
                 checkingUpdates={checkingUpdates}
-                appVersion="v0.2.5"
+                appVersion="v0.2.6"
                 initialSection={settingsSection}
               />
             )}
