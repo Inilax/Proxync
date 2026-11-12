@@ -2,6 +2,21 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [chore/sync-desktop-cargo-lock-sha2] - 2026-11-12 (Synchronize Desktop Cargo.lock with Core sha2 0.11 Dependency)
+- **Feature Summary**:
+  - **Inter-Crate Lockfile Synchronization (`packages/desktop/src-tauri/Cargo.lock`)**: Synchronized desktop Tauri lockfile with `proxync-core`'s upgraded `sha2 0.11.1` dependency (merged in PR #342). Explicitly disambiguated the build-time procedural macro dependency (`tauri-codegen` -> `sha2 0.10.9`) from the native runtime engine dependency (`proxync-core` -> `sha2 0.11.1`).
+  - **Zero Production Churn**: Confirmed disjoint dependency subtrees with zero symbol collisions, zero type sharing across crate boundaries, and zero compile or runtime regressions.
+- **Modified Files**:
+  - `packages/desktop/src-tauri/Cargo.lock`
+  - `CHANGELOG.md`
+  - `.agents/changelog.json`
+- **Verification**:
+  - `cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml`: passed in 1.97s with 0 errors and 0 warnings.
+  - `cargo test --manifest-path packages/core/Cargo.toml --lib`: passed all 60 tests (0 failures).
+  - `npx tsc --noEmit` in `packages/desktop`: passed with 0 errors.
+
+---
+
 ## [fix/v0.2.6-version-bump] - 2026-11-11 (Workspace & Studio Version Bump to v0.2.6 for Next Release Cycle)
 - **Feature Summary**:
   - **Comprehensive Version Bump to v0.2.6**: Synchronized workspace and package manifests (`package.json`, `packages/desktop/package.json`, `package-lock.json`, `Cargo.toml`, `Cargo.lock`, and `tauri.conf.json`) across root, core, cli, and desktop packages to version `0.2.6`.
