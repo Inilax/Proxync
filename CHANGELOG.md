@@ -38,14 +38,23 @@ All notable changes to the Proxync workspace studio project are documented here.
   - packages/desktop/src/App.tsx
   - CHANGELOG.md
   - .agents/changelog.json
+  - .github/assets/pr-331/screenshot_01_workspace_dashboard_launch_stack_button.png
+  - .github/assets/pr-331/screenshot_02_launch_stack_dialog_overview.png
+  - .github/assets/pr-331/screenshot_03_launch_stack_dialog_path_routing_configured.png
+  - .github/assets/pr-331/screenshot_04_desktop_studio_unified_tunnel_routes.png
+  - .github/assets/pr-331/screenshot_05_workspace_dashboard_active_tunnel_pill.png
+  - .github/assets/pr-331/screenshot_06_browser_hit_frontend_root.png
+  - .github/assets/pr-331/screenshot_07_browser_hit_backend_api.png
 - **Verification**:
+  - Rebased and merged `develop` (including #340 Windows kernel TCP table port scanning and v0.2.6 version bump).
   - cargo check --manifest-path packages/core/Cargo.toml: passed with 0 errors.
   - cargo check --manifest-path packages/cli/Cargo.toml: passed with 0 errors.
   - cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml: passed with 0 errors.
-  - cargo test --manifest-path packages/core/Cargo.toml --lib -- test_match_route: passed (1/1).
-  - cargo test --manifest-path packages/core/Cargo.toml --lib -- test_parse_route: passed (1/1).
+  - cargo test --manifest-path packages/core/Cargo.toml --lib: passed all 63 unit tests (including `test_win_get_extended_tcp_table`, `test_match_route`, `test_parse_route`, `test_path_router_end_to_end`).
   - tsc --project packages/desktop/tsconfig.json --noEmit: passed with 0 errors.
   - vite build packages/desktop: passed with 0 errors (67 modules transformed).
+  - Live manual dogfooding (CLI): Verified `proxync stack web:3000 api:8080` with tagged stream logging (`[web]`, `[api]`) and `proxync tunnel 3000 --route /:3000 --route /api:8080` single unified URL multiplexer against real running servers.
+  - Live manual dogfooding (GUI): Verified Desktop Studio `⚡ Launch Stack` header action, `LaunchStackDialog` multi-port path router configuration, and live browser hits to unified tunnel URL routing `/` to Frontend (:3000) and `/api` to Backend (:8080). Visual proof screenshots saved to `.github/assets/pr-331/`.
 
 ---
 
