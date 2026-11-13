@@ -352,29 +352,142 @@ fn parse_proc_listening_ports() -> (HashMap<u16, u32>, HashMap<u32, Vec<u16>>) {
 struct WindowsScanner;
 
 #[cfg(target_os = "windows")]
+fn scan_windows_tcp_table(port_to_pid: &mut HashMap<u16, u32>, pid_to_ports: &mut HashMap<u32, Vec<u16>>) -> bool {
+    use std::ffi::c_void;
+
+    type FnGetExtendedTcpTable = unsafe extern "system" fn(
+        p_tcp_table: *mut c_void,
+        pdw_size: *mut u32,
+        b_order: i32,
+        ul_af: u32,
+        table_class: u32,
+        reserved: u32,
+    ) -> u32;
+
+    const AF_INET: u32 = 2;
+    const AF_INET6: u32 = 23;
+    const TCP_TABLE_OWNER_PID_ALL: u32 = 5;
+    const MIB_TCP_STATE_LISTEN: u32 = 2;
+
+    unsafe {
+        let lib = win_peb::LoadLibraryA(b"iphlpapi.dll\0".as_ptr());
+        if lib.is_null() {
+            return false;
+        }
+        let proc = win_peb::GetProcAddress(lib, b"GetExtendedTcpTable\0".as_ptr());
+        if proc.is_null() {
+            return false;
+        }
+        let get_extended_tcp_table: FnGetExtendedTcpTable = std::mem::transmute(proc);
+
+        let mut found_any = false;
+
+        // 1. IPv4 TCP Table
+        let mut size = 0u32;
+        let _ = get_extended_tcp_table(std::ptr::null_mut(), &mut size, 0, AF_INET, TCP_TABLE_OWNER_PID_ALL, 0);
+        if size > 0 {
+            let mut buf = vec![0u8; size as usize];
+            if get_extended_tcp_table(buf.as_mut_ptr() as *mut c_void, &mut size, 0, AF_INET, TCP_TABLE_OWNER_PID_ALL, 0) == 0 {
+                let num_entries = *(buf.as_ptr() as *const u32) as usize;
+                let rows_ptr = buf.as_ptr().add(4) as *const u32;
+                // Each IPv4 row is 6 DWORDs (24 bytes): state, local_addr, local_port, remote_addr, remote_port, owning_pid
+                for i in 0..num_entries {
+                    let row = rows_ptr.add(i * 6);
+                    let state = *row;
+                    let local_port_raw = *row.add(2);
+                    let remote_port_raw = *row.add(4);
+                    let owning_pid = *row.add(5);
+
+                    let port = u16::from_be((local_port_raw & 0xFFFF) as u16);
+                    let remote_port = u16::from_be((remote_port_raw & 0xFFFF) as u16);
+
+                    let is_listener = state == MIB_TCP_STATE_LISTEN || remote_port == 0;
+
+                    if is_listener && owning_pid > 0 && is_dev_port(port) {
+                        port_to_pid.insert(port, owning_pid);
+                        pid_to_ports.entry(owning_pid).or_insert_with(Vec::new).push(port);
+                        found_any = true;
+                    }
+                }
+            }
+        }
+
+        // 2. IPv6 TCP Table
+        let mut size6 = 0u32;
+        let _ = get_extended_tcp_table(std::ptr::null_mut(), &mut size6, 0, AF_INET6, TCP_TABLE_OWNER_PID_ALL, 0);
+        if size6 > 0 {
+            let mut buf6 = vec![0u8; size6 as usize];
+            if get_extended_tcp_table(buf6.as_mut_ptr() as *mut c_void, &mut size6, 0, AF_INET6, TCP_TABLE_OWNER_PID_ALL, 0) == 0 {
+                let num_entries = *(buf6.as_ptr() as *const u32) as usize;
+                // Each IPv6 row is 56 bytes:
+                // ucLocalAddr[16] (offset 0..16), dwLocalScopeId (16..20), dwLocalPort (20..24),
+                // ucRemoteAddr[16] (24..40), dwRemoteScopeId (40..44), dwRemotePort (44..48),
+                // dwState (48..52), dwOwningPid (52..56)
+                for i in 0..num_entries {
+                    let row_ptr = buf6.as_ptr().add(4 + i * 56);
+                    let local_port_raw = *(row_ptr.add(20) as *const u32);
+                    let remote_port_raw = *(row_ptr.add(44) as *const u32);
+                    let state = *(row_ptr.add(48) as *const u32);
+                    let owning_pid = *(row_ptr.add(52) as *const u32);
+
+                    let port = u16::from_be((local_port_raw & 0xFFFF) as u16);
+                    let remote_port = u16::from_be((remote_port_raw & 0xFFFF) as u16);
+
+                    let is_listener = state == MIB_TCP_STATE_LISTEN || remote_port == 0;
+
+                    if is_listener && owning_pid > 0 && is_dev_port(port) {
+                        port_to_pid.insert(port, owning_pid);
+                        pid_to_ports.entry(owning_pid).or_insert_with(Vec::new).push(port);
+                        found_any = true;
+                    }
+                }
+            }
+        }
+
+        found_any
+    }
+}
+
+#[cfg(target_os = "windows")]
 impl PlatformScanner for WindowsScanner {
     fn scan_listening_ports(&self) -> (HashMap<u16, u32>, HashMap<u32, Vec<u16>>) {
         let mut port_to_pid = HashMap::new();
         let mut pid_to_ports = HashMap::new();
 
-        let mut cmd = std::process::Command::new("netstat");
-        cmd.creation_flags(0x08000000);
+        // 1. Fast zero-cost kernel TCP table resolution via iphlpapi.dll
+        let native_success = scan_windows_tcp_table(&mut port_to_pid, &mut pid_to_ports);
 
-        if let Ok(output) = cmd.args(&["-ano"]).output() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                if line.contains("LISTENING") {
+        // 2. Fallback to netstat -ano if native API didn't discover any ports
+        if !native_success || port_to_pid.is_empty() {
+            let mut cmd = std::process::Command::new("netstat");
+            cmd.creation_flags(0x08000000);
+
+            if let Ok(output) = cmd.args(&["-ano"]).output() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
                     let parts: Vec<&str> = line.split_whitespace().collect();
                     if parts.len() >= 5 {
                         let proto = parts[0];
                         if !proto.eq_ignore_ascii_case("TCP") {
                             continue;
                         }
+                        let foreign_addr = parts[2];
+
+                        // ponytail: Match listening sockets across English and non-English Windows language packs,
+                        // and handle Windows Node/libuv sockets where foreign port is 0 (0.0.0.0:0 / [::]:0).
+                        let is_listener = line.contains("LISTENING")
+                            || foreign_addr.ends_with(":0")
+                            || foreign_addr.ends_with(":*");
+
+                        if !is_listener {
+                            continue;
+                        }
+
                         let local_addr = parts[1];
                         if let Some(port_str) = local_addr.split(':').last() {
                             let clean_port = port_str.trim_matches(|c: char| !c.is_ascii_digit());
                             if let (Ok(port), Ok(pid)) = (clean_port.parse::<u16>(), parts[parts.len() - 1].parse::<u32>()) {
-                                if is_dev_port(port) {
+                                if pid > 0 && is_dev_port(port) {
                                     port_to_pid.insert(port, pid);
                                     pid_to_ports.entry(pid).or_insert_with(Vec::new).push(port);
                                 }
@@ -393,14 +506,46 @@ impl PlatformScanner for WindowsScanner {
         (port_to_pid, pid_to_ports)
     }
 
-    fn scan_processes(&self, _listening_pids: Option<&[u32]>) -> HashMap<u32, RawProcess> {
+    fn scan_processes(&self, listening_pids: Option<&[u32]>) -> HashMap<u32, RawProcess> {
+        let mut pids: Vec<u32> = match listening_pids {
+            Some(slice) => slice.to_vec(),
+            None => {
+                let (port_to_pid, _) = self.scan_listening_ports();
+                port_to_pid.values().copied().collect()
+            }
+        };
+        pids.sort_unstable();
+        pids.dedup();
+
+        if pids.is_empty() {
+            return HashMap::new();
+        }
+
         let mut map = HashMap::new();
-        let ps_cmd = "$procs = Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name, ExecutablePath, CommandLine; $procs | ConvertTo-Json -Depth 2";
+        let pid_csv = pids
+            .iter()
+            .map(|p| p.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let filter_clause = pids
+            .iter()
+            .map(|p| format!("ProcessId = {}", p))
+            .collect::<Vec<_>>()
+            .join(" or ");
+
+        let ps_cmd = format!(
+            "$pids = @({}); $filter = '{}'; \
+             $procs = try {{ Get-CimInstance Win32_Process -Filter $filter -ErrorAction Stop | Select-Object ProcessId, ParentProcessId, Name, ExecutablePath, CommandLine }} catch {{ $null }}; \
+             if ($null -eq $procs) {{ $procs = Get-Process -Id $pids -ErrorAction SilentlyContinue | Select-Object @{{N='ProcessId';E={{$_.Id}}}}, @{{N='ParentProcessId';E={{$null}}}}, @{{N='Name';E={{$_.ProcessName}}}}, @{{N='ExecutablePath';E={{$_.Path}}}}, @{{N='CommandLine';E={{$null}}}} }}; \
+             $procs | ConvertTo-Json -Depth 2",
+            pid_csv,
+            filter_clause
+        );
 
         let mut cmd = std::process::Command::new("powershell");
         cmd.creation_flags(0x08000000);
 
-        if let Ok(output) = cmd.args(&["-NoProfile", "-OutputFormat", "Text", "-Command", ps_cmd]).output() {
+        if let Ok(output) = cmd.args(&["-NoProfile", "-OutputFormat", "Text", "-Command", &ps_cmd]).output() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let json_str = if let Some(idx) = stdout.find('[') {
                 &stdout[idx..]
@@ -707,11 +852,17 @@ pub async fn scan_ports() -> Result<Vec<u16>, String> {
                 }
             }
 
-            if !is_system_process_name(name) && !is_infra_process_name(name) {
-                if let ProcessType::Dev { .. } = classify_process(name, cmd) {
-                    ports.push(port);
+            if !name.is_empty() {
+                if is_system_process_name(name) || is_infra_process_name(name) {
+                    continue;
+                }
+                if let ProcessType::Infra { .. } = classify_process(name, cmd) {
+                    continue;
                 }
             }
+
+            // ponytail: Verified listening dev port without system/infra collision is retained
+            ports.push(port);
         }
         ports.sort_unstable();
         Ok(ports)
@@ -1199,8 +1350,9 @@ mod win_peb {
             nSize: usize,
             lpNumberOfBytesRead: *mut usize,
         ) -> i32;
-        fn GetModuleHandleA(lpModuleName: *const u8) -> *mut c_void;
-        fn GetProcAddress(hModule: *mut c_void, lpProcName: *const u8) -> *mut c_void;
+        pub fn GetModuleHandleA(lpModuleName: *const u8) -> *mut c_void;
+        pub fn LoadLibraryA(lpLibFileName: *const u8) -> *mut c_void;
+        pub fn GetProcAddress(hModule: *mut c_void, lpProcName: *const u8) -> *mut c_void;
     }
 
     type NtQueryInformationProcessFn = unsafe extern "system" fn(
@@ -1636,13 +1788,28 @@ pub async fn scan_processes(bypass_cache: bool) -> Result<Vec<ProcessCandidate>,
                     }
                 }
 
-                let (_runtime_label, framework_label) = match classify_process(proc_name, cmd_line) {
-                    ProcessType::Dev { runtime, framework } => {
-                        let fw = framework.unwrap_or_else(|| format!("{} App", runtime));
-                        (runtime, fw)
+                let (_runtime_label, framework_label) = if let Some(proc) = proc_opt {
+                    match classify_process(proc_name, cmd_line) {
+                        ProcessType::Dev { runtime, framework } => {
+                            let fw = framework.unwrap_or_else(|| format!("{} App", runtime));
+                            (runtime, fw)
+                        }
+                        ProcessType::Infra { .. } => continue,
+                        ProcessType::SystemOrUnknown => {
+                            if is_system_process_name(&proc.name) || is_infra_process_name(&proc.name) {
+                                continue;
+                            }
+                            let label = if !proc.name.is_empty() {
+                                proc.name.trim_end_matches(".exe").to_string()
+                            } else {
+                                "Local Service".to_string()
+                            };
+                            (label.clone(), format!("{} App", label))
+                        }
                     }
-                    ProcessType::Infra { .. } => continue,
-                    ProcessType::SystemOrUnknown => continue,
+                } else {
+                    // ponytail: When OS process metadata lookup lags or fails, never drop a verified listening dev port.
+                    ("Local Service".to_string(), "Local Service".to_string())
                 };
 
                 let resolved_dir = if let Some(proc) = proc_opt {
@@ -2211,6 +2378,40 @@ mod tests {
         let self_pid = std::process::id();
         let procs = scanner.scan_processes(Some(&[self_pid]));
         assert!(procs.contains_key(&self_pid), "MacOsScanner should find current process when PID passed");
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_win_get_extended_tcp_table() {
+        use std::ffi::c_void;
+        type FnGetExtendedTcpTable = unsafe extern "system" fn(
+            p_tcp_table: *mut c_void,
+            pdw_size: *mut u32,
+            b_order: i32,
+            ul_af: u32,
+            table_class: u32,
+            reserved: u32,
+        ) -> u32;
+
+        unsafe {
+            let lib = win_peb::LoadLibraryA(b"iphlpapi.dll\0".as_ptr());
+            assert!(!lib.is_null(), "iphlpapi.dll should load");
+            let proc = win_peb::GetProcAddress(lib, b"GetExtendedTcpTable\0".as_ptr());
+            assert!(!proc.is_null(), "GetExtendedTcpTable should exist");
+            let get_extended_tcp_table: FnGetExtendedTcpTable = std::mem::transmute(proc);
+
+            let mut size = 0u32;
+            let _ = get_extended_tcp_table(std::ptr::null_mut(), &mut size, 0, 2, 5, 0);
+            assert!(size > 0, "size should be > 0");
+
+            let mut buf = vec![0u8; size as usize];
+            let ret = get_extended_tcp_table(buf.as_mut_ptr() as *mut c_void, &mut size, 0, 2, 5, 0);
+            assert_eq!(ret, 0, "GetExtendedTcpTable should succeed");
+
+            let num_entries = *(buf.as_ptr() as *const u32);
+            println!("Found {} IPv4 TCP entries", num_entries);
+            assert!(num_entries > 0);
+        }
     }
 }
 

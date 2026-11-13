@@ -44,7 +44,7 @@ export function SettingsView({
   onUpdateTrafficLogging,
   onCheckForUpdates,
   checkingUpdates = false,
-  appVersion = 'v0.2.5',
+  appVersion = 'v0.2.6',
   initialSection = 'general',
 }: {
   workspace: WorkspaceConfig | null;
