@@ -122,9 +122,19 @@ jobs:
           else
             LAST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n1 || true)
             [[ -z "$LAST_TAG" ]] && LAST_TAG="v0.0.0"
-            CURRENT="${LAST_TAG#v}"
-            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
-            NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+            NEW_VERSION=$(LAST_TAG="$LAST_TAG" node -e "
+              const tag = process.env.LAST_TAG.replace(/^v/, '');
+              const cveMatch = tag.match(/^(\d+\.\d+\.\d+)-cve\.\d+$/);
+              if (cveMatch) {
+                // If previous release on main was an emergency hotfix (e.g. 0.2.5-cve.1), full feature release is 0.2.5
+                console.log(cveMatch[1]);
+              } else {
+                // Standard sequential patch increment: 0.2.4 -> 0.2.5, 0.2.5 -> 0.2.6
+                const parts = tag.split('.').map(Number);
+                const nextPatch = parts[2] + 1;
+                console.log(parts[0] + '.' + parts[1] + '.' + nextPatch);
+              }
+            ")
           fi
           echo "New version: $NEW_VERSION"
           echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"

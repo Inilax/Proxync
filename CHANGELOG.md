@@ -2,6 +2,22 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [feat/emergency-cve-release-automation] - 2026-11-05 (Zero-Drift Emergency CVE Hotfix Pipeline & Pre-Release Versioning)
+- **Summary**:
+  - **Automated Emergency CVE Hotfix Workflow (`.github/workflows/emergency-cve-release.yml`)**: Designed and implemented an autonomous hotfix release workflow that cherry-picks verified dependency security patches from `develop` directly onto a clean branch off `main`, dynamically calculates the next strictly increasing SemVer pre-release version (e.g. `0.2.4` → `0.2.5-cve.1` → `0.2.5-cve.2`), updates all workspace manifests (`package.json`, `packages/desktop/package.json`, `tauri.conf.json`, `Cargo.toml`), synchronizes `Cargo.lock` files across workspaces to avoid Fast CI `--locked` mismatches, formats the release notes with mandatory Proxync client radar tags (`[SECURITY-CVE] [TYPE: CVE-PATCH]`), opens a pull request targeting `main`, and arms GitHub native Auto-Merge (`--auto --squash`).
+  - **Coordinated Feature Release Auto-Bump (`.github/workflows/prepare-release.yml`)**: Synchronized the standard release pipeline to seamlessly promote hotfix pre-releases (e.g. `0.2.5-cve.1`) directly into the final clean feature release (`0.2.5`), ensuring strict SemVer ordering (`0.2.4 < 0.2.5-cve.1 < 0.2.5 < 0.2.6-cve.1 < 0.2.6`) so Tauri desktop clients smoothly install all security and feature updates without version stranding.
+  - **Fast CI Main Branch Gate (`.github/workflows/ci.yml`)**: Expanded pull request trigger branches to include `main` alongside `develop`, ensuring all hotfix pull requests pass the full multi-tier verification suite (TypeScript compilation, Vite build, Core unit tests, CLI tests, and Desktop backend tests) before any merge into production `main` can occur.
+- **Modified Files**:
+  - `.github/workflows/ci.yml`
+  - `.github/workflows/emergency-cve-release.yml`
+  - `.github/workflows/prepare-release.yml`
+  - `CHANGELOG.md`
+- **Verification**:
+  - Validated YAML syntax and schema compatibility across all workflow files.
+  - Verified strictly increasing SemVer evaluation across hotfix and feature transition sequences (`0.2.4 < 0.2.5-cve.1 < 0.2.5`).
+
+---
+
 ## [chore/sync-desktop-cargo-lock-sha2] - 2026-11-12 (Synchronize Desktop and CLI Cargo.lock with Core sha2 0.11 Dependency)
 - **Feature Summary**:
   - **Inter-Crate Lockfile Synchronization (`packages/desktop/src-tauri/Cargo.lock`, `packages/cli/Cargo.lock`)**: Synchronized desktop Tauri and CLI companion lockfiles with `proxync-core`'s upgraded `sha2 0.11.1` dependency (merged in PR #342). Explicitly disambiguated the build-time procedural macro dependency (`tauri-codegen` -> `sha2 0.10.9`) from the native runtime engine dependency (`proxync-core` -> `sha2 0.11.1`), and pruned legacy duplicate RustCrypto dependencies from CLI lockfile.
@@ -20,11 +36,6 @@ All notable changes to the Proxync workspace studio project are documented here.
 ---
 
 ## [fix/v0.2.6-version-bump] - 2026-11-11 (Workspace & Studio Version Bump to v0.2.6 for Next Release Cycle)
-- **Feature Summary**:
-  - **Comprehensive Version Bump to v0.2.6**: Synchronized workspace and package manifests (`package.json`, `packages/desktop/package.json`, `package-lock.json`, `Cargo.toml`, `Cargo.lock`, and `tauri.conf.json`) across root, core, cli, and desktop packages to version `0.2.6`.
-  - **Native HTTP Network Headers & Diagnostics**: Updated Rust client diagnostic banner in `storage.rs` to `Proxync v0.2.6 (Engine: Tauri v2.11 Core)`. Synchronized frontend diagnostic logging metadata, log session directives, and support bundle fallbacks in `App.tsx` and `logger.ts` to `v0.2.6-stable`.
-  - **UI Version Presentation Alignment**: Updated `SettingsView.tsx` default prop to `v0.2.6`, `App.tsx` update toast message (`v0.2.6`), and sidebar engine indicator (`v0.2.6-stable`).
-  - **Recon & Documentation Badge Alignment**: Updated README version shield badge and `.agents/architecture.json` static recon map to reflect version `0.2.6`.
 - **Modified Files**:
   - `README.md`
   - `package-lock.json`
