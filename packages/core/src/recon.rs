@@ -51,7 +51,7 @@ lazy_static! {
    PORT DISCOVERY & DEV FILTERING
    ══════════════════════════════════════════════ */
 
-fn is_dev_port(port: u16) -> bool {
+pub fn is_dev_port(port: u16) -> bool {
     // Exclude well-known system, RPC, mDNS, CUPS, and common non-dev ports
     match port {
         111 | 135 | 136 | 137 | 138 | 139 | 445 | 631 | 2869 | 5040 | 5353 | 6463 | 5357 | 49152..=49157 => false,

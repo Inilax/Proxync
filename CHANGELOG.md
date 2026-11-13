@@ -2,6 +2,62 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [feature/develop-multi-service-stack-and-path-routing] - 2026-11-02 (Multi-Service Stack Orchestration & Path-Prefix Routing)
+- **Summary**:
+  - **Multi-Service Stack Orchestrator (packages/cli/src/commands/stack.rs, packages/cli/src/args.rs, packages/cli/src/main.rs)**: Added proxync stack [SERVICES...] command supporting multi-port microservice stacks (web:3000 api:8080), declarative config files (proxync.json), and automatic process reconnaissance detection. Runs concurrent tunnels with live tagged terminal streaming ([web] --> GET /, [api] --> POST /users) and single-keystroke graceful teardown.
+  - **Path-Prefix Router Engine (packages/core/src/proxy.rs)**: Implemented local reverse proxy routing engine (start_path_router, match_route, parse_route, RouteEntry) that multiplexes multiple local development services over a single unified public tunnel URL without requiring any cloud edge gateway or Caddy modifications. Implemented longest-prefix routing with root fallback.
+  - **Desktop GUI Multi-Port & Stack Management (packages/desktop/src/App.tsx, components/views/Dialogs.tsx, WorkspaceDashboardView.tsx, ProcessView.tsx, lib/types.ts)**: Integrated path-based routing and stack orchestration directly into the desktop studio UI:
+    - Added "Multi-Port Path Routing" accordion to DomainSelectDialog with quick-add chips for other detected processes and custom prefix/port routing.
+    - Created LaunchStackDialog modal enabling one-click orchestration of all detected local servers into either Unified URL (path routing) or Separate Subdomains (multi-tunnel stack) modes.
+    - Added Launch Stack button in WorkspaceDashboardView when 2+ running development servers are detected.
+    - Added route pill visualizations under public tunnel URLs in both WorkspaceDashboardView and ProcessView.
+    - Extended `Tunnel` interface with `routes?: string[]` and added `startProxyOrPathRouter` routing helper in `App.tsx`.
+  - **CLI Multi-Route Flags (packages/cli/src/args.rs, packages/cli/src/commands/tunnel.rs)**: Added repeatable --route PREFIX:PORT flag to proxync tunnel. Configured effective port resolution, preflight service probes for all routed ports, detached daemon worker route propagation, and enriched terminal route table display.
+  - **Public Port Filtering Utility (packages/core/src/recon.rs)**: Exposed pub fn is_dev_port() to allow CLI commands to filter active developer servers from system daemon ports.
+  - **Tauri IPC Command Binding (packages/desktop/src-tauri/src/proxy.rs, packages/desktop/src-tauri/src/lib.rs)**: Registered start_path_router command in Desktop Tauri runtime to enable microservice stack routing in the desktop studio.
+  - **Unit & Integration Tests (packages/core/src/proxy.rs)**: Added unit test coverage for route parsing (`test_parse_route`), longest-prefix matching (`test_match_route`), and multi-service routing execution.
+  - **P1 Encoding & BOM Sanitization (Core, CLI, Desktop)**: Stripped leading UTF-8 BOM headers (`\uFEFF`) and resolved Windows ANSI double-encoding mojibake across `proxy.rs`, `tunnel.rs`, `args.rs`, `serve.rs`, `bridge.rs`, `WorkspaceDashboardView.tsx`, and `CHANGELOG.md` (restoring clean UTF-8 unicode arrows `→`, checkmarks `✓`, status badges `🟡`, lock icons `🔒`, clipboard icons `📋`, and bullet separators `•`).
+  - **Dialog Icon Restoration (packages/desktop/src/components/views/Dialogs.tsx)**: Restored path routing and microservices icons (`🔀`), individual subdomain icons (`🌐`), and process selection checkmarks (`✓`) in `DomainSelectDialog` and `LaunchStackDialog`.
+  - **Absolute URI Normalization (packages/core/src/proxy.rs)**: Hardened `match_route` to strip scheme + authority from absolute URIs (e.g. `http://example.com/api/users`) forwarded by HTTP proxy clients per RFC 7230 §5.3.2, preventing premature drop to root `/`. Added unit test coverage.
+  - **Fail-Closed Router Binding in Desktop (packages/desktop/src/App.tsx)**: Configured `startProxyOrPathRouter` to throw and fail closed when explicit multi-service routes fail to bind, ensuring non-root backend service ports are not silently left unrouted.
+- **Modified Files**:
+  - packages/cli/src/commands/stack.rs
+  - packages/cli/src/commands/mod.rs
+  - packages/cli/src/args.rs
+  - packages/cli/src/commands/tunnel.rs
+  - packages/cli/src/commands/serve.rs
+  - packages/cli/src/main.rs
+  - packages/core/src/proxy.rs
+  - packages/core/src/recon.rs
+  - packages/desktop/src-tauri/src/lib.rs
+  - packages/desktop/src-tauri/src/proxy.rs
+  - packages/desktop/src/lib/types.ts
+  - packages/desktop/src/components/views/Dialogs.tsx
+  - packages/desktop/src/components/views/WorkspaceDashboardView.tsx
+  - packages/desktop/src/components/views/ProcessView.tsx
+  - packages/desktop/src/App.tsx
+  - CHANGELOG.md
+  - .agents/changelog.json
+  - .github/assets/pr-331/screenshot_01_workspace_dashboard_launch_stack_button.png
+  - .github/assets/pr-331/screenshot_02_launch_stack_dialog_overview.png
+  - .github/assets/pr-331/screenshot_03_launch_stack_dialog_path_routing_configured.png
+  - .github/assets/pr-331/screenshot_04_desktop_studio_unified_tunnel_routes.png
+  - .github/assets/pr-331/screenshot_05_workspace_dashboard_active_tunnel_pill.png
+  - .github/assets/pr-331/screenshot_06_browser_hit_frontend_root.png
+  - .github/assets/pr-331/screenshot_07_browser_hit_backend_api.png
+- **Verification**:
+  - Rebased and merged `develop` (including #340 Windows kernel TCP table port scanning and v0.2.6 version bump).
+  - cargo check --manifest-path packages/core/Cargo.toml: passed with 0 errors.
+  - cargo check --manifest-path packages/cli/Cargo.toml: passed with 0 errors.
+  - cargo check --manifest-path packages/desktop/src-tauri/Cargo.toml: passed with 0 errors.
+  - cargo test --manifest-path packages/core/Cargo.toml --lib: passed all 63 unit tests (including `test_win_get_extended_tcp_table`, `test_match_route`, `test_parse_route`, `test_path_router_end_to_end`).
+  - tsc --project packages/desktop/tsconfig.json --noEmit: passed with 0 errors.
+  - vite build packages/desktop: passed with 0 errors (67 modules transformed).
+  - Live manual dogfooding (CLI): Verified `proxync stack web:3000 api:8080` with tagged stream logging (`[web]`, `[api]`) and `proxync tunnel 3000 --route /:3000 --route /api:8080` single unified URL multiplexer against real running servers.
+  - Live manual dogfooding (GUI): Verified Desktop Studio `⚡ Launch Stack` header action, `LaunchStackDialog` multi-port path router configuration, and live browser hits to unified tunnel URL routing `/` to Frontend (:3000) and `/api` to Backend (:8080). Visual proof screenshots saved to `.github/assets/pr-331/`.
+
+---
+
 ## [chore/sync-desktop-cargo-lock-sha2] - 2026-11-12 (Synchronize Desktop and CLI Cargo.lock with Core sha2 0.11 Dependency)
 - **Feature Summary**:
   - **Inter-Crate Lockfile Synchronization (`packages/desktop/src-tauri/Cargo.lock`, `packages/cli/Cargo.lock`)**: Synchronized desktop Tauri and CLI companion lockfiles with `proxync-core`'s upgraded `sha2 0.11.1` dependency (merged in PR #342). Explicitly disambiguated the build-time procedural macro dependency (`tauri-codegen` -> `sha2 0.10.9`) from the native runtime engine dependency (`proxync-core` -> `sha2 0.11.1`), and pruned legacy duplicate RustCrypto dependencies from CLI lockfile.
@@ -69,7 +125,6 @@ All notable changes to the Proxync workspace studio project are documented here.
   - 5 consecutive live CLI scans verified 100% consistent detection of concurrent test servers (Express on 5002, To-Do on 4000).
 
 ---
-
 ## [fix/rustls-upgrade-and-dependabot-target] - 2026-10-28 (Unified rustls 0.23.46 Security Upgrade & Dependabot Branch Target Alignment)
 - **Summary**:
   - **Unified rustls 0.23.46 Security Upgrade (`Cargo.lock`)**: Synchronized `rustls` from `0.23.45` to `0.23.46` atomically across all Cargo workspaces (`packages/core`, `packages/cli`, and `packages/desktop/src-tauri`). Eliminates TLS session secrets in debug formatting, hardens TLS 1.3 traffic key rotation during fragmented writes, and establishes stream backpressure.

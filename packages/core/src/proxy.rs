@@ -1200,6 +1200,507 @@ pub async fn start_proxy_with_auth(
     Ok(proxy_port)
 }
 
+
+// ── Path-prefix routing ──────────────────────────────────────────────────────
+
+/// A path prefix → local port mapping for multi-service tunneling via a single tunnel domain.
+/// Used by [`start_path_router`].
+#[derive(Clone, Debug)]
+pub struct RouteEntry {
+    /// URL path prefix, e.g. `"/api"` or `"/"`. Always starts with '/'.
+    pub prefix: String,
+    /// Local port of the target service.
+    pub port: u16,
+}
+
+/// Parse a `"PREFIX:PORT"` string into a [`RouteEntry`].
+///
+/// # Examples
+/// ```
+/// let r = proxync_core::proxy::parse_route("/api:8080").unwrap();
+/// assert_eq!(r.prefix, "/api");
+/// assert_eq!(r.port, 8080);
+/// ```
+pub fn parse_route(s: &str) -> Result<RouteEntry, String> {
+    let (prefix, port_str) = s.rsplit_once(':')
+        .ok_or_else(|| format!("Invalid --route '{}': expected PREFIX:PORT (e.g. /api:8080)", s))?;
+    let port: u16 = port_str.trim().parse()
+        .map_err(|_| format!("Invalid port in --route '{}': '{}' is not a valid port number", s, port_str))?;
+    let prefix = if prefix.starts_with('/') { prefix.to_string() } else { format!("/{}", prefix) };
+    Ok(RouteEntry { prefix, port })
+}
+
+/// Longest-prefix match: returns the best matching route for a request path.
+/// `"/"` is a catch-all; longer prefixes always win.
+pub fn match_route<'a>(routes: &'a [RouteEntry], path: &str) -> Option<&'a RouteEntry> {
+    // Strip scheme + authority if an HTTP proxy client forwards an absolute URI (e.g. http://host:port/path)
+    let path = if let Some(idx) = path.find("://") {
+        path[idx + 3..].find('/').map(|i| &path[idx + 3 + i..]).unwrap_or("/")
+    } else {
+        path
+    };
+    let path_only = path.split('?').next().unwrap_or(path);
+    routes
+        .iter()
+        .filter(|r| {
+            if r.prefix == "/" { return true; }
+            path_only == r.prefix || path_only.starts_with(&format!("{}/", r.prefix))
+        })
+        .max_by_key(|r| r.prefix.len())
+}
+
+/// Start a path-routing local proxy that fans out to multiple local services based on URL
+/// path prefix. A **single ephemeral port** is returned; point the SSH tunnel at that port.
+/// Gateway and Caddy need **zero changes**.
+///
+/// Route matching uses longest-prefix wins:
+/// ```text
+/// routes = [("/api", 8080), ("/", 3000)]
+/// GET /api/users  → :8080   (full path forwarded, no stripping)
+/// GET /           → :3000
+/// ```
+pub async fn start_path_router(
+    tx: EventSender,
+    routes: Vec<RouteEntry>,
+    basic_auth: Option<String>,
+) -> Result<u16, String> {
+    if routes.is_empty() {
+        return Err("start_path_router requires at least one route".to_string());
+    }
+
+    // Primary port: used for liveness events, error-page display, and stop_proxy key.
+    let primary_port = routes[0].port;
+
+    {
+        let mut map = PROXY_HANDLES.lock().await;
+        if let Some((_, old_handles)) = map.remove(&primary_port) {
+            for h in old_handles { h.abort(); }
+        }
+    }
+
+    let auth_expected: Option<Arc<(String, String)>> = match basic_auth {
+        Some(cred) if !cred.trim().is_empty() => {
+            let (u, p) = parse_basic_auth_credentials(&cred)?;
+            Some(Arc::new((u, p)))
+        }
+        _ => None,
+    };
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.map_err(|e| e.to_string())?;
+    let router_port = listener.local_addr().map_err(|e| e.to_string())?.port();
+
+    let routes = Arc::new(routes);
+    let rate_limiter = Arc::new(Mutex::new(AuthRateLimiter::new()));
+    let proxy_tx = tx.clone();
+
+    let listener_handle = tokio::spawn(async move {
+        while let Ok((client_stream, peer_addr)) = listener.accept().await {
+            let _ = client_stream.set_nodelay(true);
+            let tx_clone = proxy_tx.clone();
+            let auth_clone = auth_expected.clone();
+            let rl_clone = rate_limiter.clone();
+            let peer_ip = peer_addr.ip().to_string();
+            let routes_clone = routes.clone();
+
+            tokio::spawn(async move {
+                proxy_one_request(
+                    client_stream,
+                    &peer_ip,
+                    None,               // target resolved per-request
+                    Some(&routes_clone),
+                    primary_port,
+                    auth_clone,
+                    rl_clone,
+                    tx_clone,
+                ).await;
+            });
+        }
+    });
+
+    // Liveness probe on the primary port only (first route's service).
+    let liveness_tx = tx.clone();
+    let liveness_handle = tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
+        let mut last_status = "ACTIVE";
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
+            let is_alive = tokio::time::timeout(
+                tokio::time::Duration::from_millis(250),
+                TcpStream::connect(format!("127.0.0.1:{}", primary_port)),
+            ).await.map(|r| r.is_ok()).unwrap_or(false);
+            let new_status = if is_alive { "ACTIVE" } else { "STANDBY" };
+            if new_status != last_status {
+                last_status = new_status;
+                let _ = liveness_tx.send(ProxyncEvent::TunnelStatusChanged {
+                    port: primary_port,
+                    status: new_status.to_string(),
+                });
+            }
+        }
+    });
+
+    PROXY_HANDLES.lock().await.insert(primary_port, (router_port, vec![listener_handle, liveness_handle]));
+    Ok(router_port)
+}
+
+/// Core per-connection HTTP proxy handler shared by both `start_proxy_with_auth` (single-port)
+/// and `start_path_router` (multi-port).
+///
+/// - `fixed_target`: `Some(port)` for single-service, `None` to resolve via `routes`.
+/// - `routes`: route table used when `fixed_target` is `None`.
+/// - `display_port`: shown in error pages and liveness events.
+#[allow(clippy::too_many_arguments)]
+async fn proxy_one_request(
+    mut client_stream: TcpStream,
+    peer_ip: &str,
+    fixed_target: Option<u16>,
+    routes: Option<&[RouteEntry]>,
+    display_port: u16,
+    auth_clone: Option<Arc<(String, String)>>,
+    rate_limiter_clone: Arc<Mutex<AuthRateLimiter>>,
+    tx_clone: EventSender,
+) {
+    // ponytail: dynamic header reading until \r\n\r\n; 2 MB cap; 15s Slowloris defence
+    const MAX_HEADER_BYTES: usize = 2 * 1024 * 1024;
+    const HEADER_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+    let mut req_buf = Vec::with_capacity(8192);
+    let mut tmp = [0u8; 8192];
+    let mut header_end: Option<usize> = None;
+
+    let read_headers = async {
+        loop {
+            let n = match client_stream.read(&mut tmp).await {
+                Ok(b) if b > 0 => b,
+                _ => break,
+            };
+            req_buf.extend_from_slice(&tmp[..n]);
+            if let Some(pos) = req_buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                header_end = Some(pos + 4);
+                break;
+            }
+            if req_buf.len() > MAX_HEADER_BYTES {
+                let _ = client_stream.write_all(b"HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\n\r\n").await;
+                let _ = client_stream.shutdown().await;
+                return;
+            }
+        }
+    };
+    if tokio::time::timeout(HEADER_READ_TIMEOUT, read_headers).await.is_err() {
+        let _ = client_stream.write_all(b"HTTP/1.1 408 Request Timeout\r\nConnection: close\r\n\r\n").await;
+        let _ = client_stream.shutdown().await;
+        return;
+    }
+    let hdr_end = match header_end { Some(p) => p, None => return };
+    let header_str = String::from_utf8_lossy(&req_buf[..hdr_end]);
+
+    // ── Basic Auth gate ───────────────────────────────────────────────────────
+    if let Some(ref expected) = auth_clone {
+        let client_ip = extract_client_ip(&header_str, peer_ip);
+        let now = std::time::Instant::now();
+        let has_auth = has_authorization_header(&header_str);
+        let is_valid = verify_basic_auth(&header_str, &expected.0, &expected.1);
+        if is_valid {
+            rate_limiter_clone.lock().await.record_success(&client_ip);
+        } else {
+            let locked = { rate_limiter_clone.lock().await.is_locked(&client_ip, now) };
+            if let Some((secs, tier)) = locked {
+                serve_429_lockout(&mut client_stream, secs, tier, display_port).await;
+                return;
+            }
+            if has_auth {
+                let info = { rate_limiter_clone.lock().await.record_failure(&client_ip, now) };
+                tokio::time::sleep(std::time::Duration::from_millis(AUTH_FAILED_DELAY_MS)).await;
+                if let Some((secs, tier)) = info {
+                    serve_429_lockout(&mut client_stream, secs, tier, display_port).await;
+                } else {
+                    serve_401_unauthorized(&mut client_stream, display_port).await;
+                }
+            } else {
+                serve_401_unauthorized(&mut client_stream, display_port).await;
+            }
+            return;
+        }
+    }
+
+    // ── Resolve target port ───────────────────────────────────────────────────
+    let local_port = if let Some(p) = fixed_target {
+        p
+    } else if let Some(tbl) = routes {
+        let req_path = header_str.lines().next()
+            .and_then(|l| l.split_whitespace().nth(1))
+            .unwrap_or("/");
+        match match_route(tbl, req_path) {
+            Some(r) => r.port,
+            None => {
+                let _ = client_stream.write_all(
+                    b"HTTP/1.1 404 Not Found\r\nContent-Length: 36\r\nConnection: close\r\n\r\nNo route matched this path prefix.\r\n"
+                ).await;
+                let _ = client_stream.shutdown().await;
+                return;
+            }
+        }
+    } else {
+        display_port
+    };
+
+    // ── Connect to local service ──────────────────────────────────────────────
+    const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(500);
+    let target_res = tokio::time::timeout(CONNECT_TIMEOUT, async {
+        match TcpStream::connect(format!("127.0.0.1:{}", local_port)).await {
+            Ok(s) => Ok(s),
+            Err(_) => TcpStream::connect(format!("[::1]:{}", local_port)).await,
+        }
+    }).await;
+    let target_stream = match target_res {
+        Ok(Ok(s)) => { let _ = s.set_nodelay(true); s }
+        _ => {
+            // Serve branded 502 standby page
+            let body = format!(
+                "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>502 | Proxync</title></head>\
+                 <body style=\"font-family:system-ui;background:#0b0f19;color:#f8fafc;display:flex;align-items:center;\
+                 justify-content:center;height:100vh;margin:0\">\
+                 <div style=\"text-align:center;padding:36px;background:#151d2f;border-radius:16px;border:1px solid #1e293b\">\
+                 <div style=\"font-size:36px\">🟡</div>\
+                 <h2 style=\"color:#f59e0b\">Local Service Offline</h2>\
+                 <p style=\"color:#94a3b8\">Tunnel active — waiting for port <code style=\"color:#38bdf8\">{}</code>.</p></div></body></html>",
+                local_port
+            );
+            let _ = client_stream.write_all(
+                format!("HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).as_bytes()
+            ).await;
+            let _ = client_stream.shutdown().await;
+            return;
+        }
+    };
+
+    // ── Header inspection ─────────────────────────────────────────────────────
+    let is_ws_upgrade = header_str.lines().any(|l| {
+        let ll = l.to_lowercase(); ll.starts_with("upgrade:") && ll.contains("websocket")
+    }) || header_str.lines().any(|l| {
+        let ll = l.to_lowercase(); ll.starts_with("connection:") && ll.contains("upgrade")
+    });
+    let is_sse = header_str.lines().any(|l| {
+        let ll = l.to_lowercase(); ll.starts_with("accept:") && ll.contains("text/event-stream")
+    });
+
+    let mut content_length: usize = 0;
+    for line in header_str.lines() {
+        if line.to_lowercase().starts_with("content-length:") {
+            if let Some((_, v)) = line.split_once(':') {
+                if let Ok(n) = v.trim().parse::<usize>() { content_length = n; }
+            }
+        }
+    }
+    if content_length > MAX_UPLOAD_BODY_BYTES {
+        let msg = b"{\"error\":\"Upload limit exceeded (50 MB)\"}";
+        let _ = client_stream.write_all(
+            format!("HTTP/1.1 413 Payload Too Large\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", msg.len()).as_bytes()
+        ).await;
+        let _ = client_stream.write_all(msg).await;
+        let _ = client_stream.shutdown().await;
+        return;
+    }
+
+    // ── Rewrite & forward headers ─────────────────────────────────────────────
+    let mut incoming_host = String::new();
+    let mut out_headers: Vec<String> = Vec::new();
+    let mut safe_headers: HashMap<String, String> = HashMap::new();
+    let mut method = "GET".to_string();
+    let mut path = "/".to_string();
+
+    for (idx, line) in header_str.lines().enumerate() {
+        if idx == 0 {
+            let p: Vec<&str> = line.split_whitespace().collect();
+            if p.len() >= 2 { method = p[0].to_string(); path = p[1].to_string(); }
+            out_headers.push(line.to_string());
+            continue;
+        }
+        if let Some((k, v)) = line.split_once(':') {
+            let key = k.trim(); let val = v.trim();
+            let lk = key.to_lowercase();
+            if lk == "host" {
+                incoming_host = val.to_string();
+                out_headers.push(format!("Host: localhost:{}", local_port));
+            } else if lk == "origin" {
+                out_headers.push(format!("Origin: http://localhost:{}", local_port));
+            } else if is_ws_upgrade && (lk == "connection" || lk == "upgrade" || lk.starts_with("sec-websocket-")) {
+                out_headers.push(line.to_string());
+            } else if !is_ws_upgrade && !is_sse && lk == "connection" {
+                out_headers.push("Connection: close".to_string());
+            } else if auth_clone.is_some() && lk == "authorization" {
+                // strip gatekeeper credentials
+            } else {
+                out_headers.push(line.to_string());
+            }
+            let display_val = if matches!(lk.as_str(), "authorization"|"cookie"|"set-cookie"|"x-api-key"|"api-key") {
+                "[REDACTED]".to_string()
+            } else { val.to_string() };
+            safe_headers.insert(key.to_string(), display_val);
+        }
+    }
+    out_headers.push("X-Forwarded-Proto: https".to_string());
+    out_headers.push("X-Forwarded-For: 127.0.0.1".to_string());
+    if !incoming_host.is_empty() {
+        out_headers.push(format!("X-Forwarded-Host: {}", incoming_host));
+    }
+    if !is_ws_upgrade && !is_sse && !out_headers.iter().any(|h| h.to_lowercase().starts_with("connection:")) {
+        out_headers.push("Connection: close".to_string());
+    }
+
+    let out_header_str = format!("{}\r\n\r\n", out_headers.join("\r\n"));
+    let body_bytes = &req_buf[hdr_end..];
+
+    let req_id = format!("req-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
+    let body_preview = String::from_utf8_lossy(&body_bytes[..body_bytes.len().min(4096)]).trim().to_string();
+    let _ = tx_clone.send(ProxyncEvent::RequestLog {
+        id: req_id.clone(), method: method.clone(), path: path.clone(), port: local_port,
+        headers: serde_json::json!(safe_headers), body_preview, tunnel_id: None,
+        timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(),
+    });
+    let start = std::time::Instant::now();
+
+    let (mut cr, mut cw) = client_stream.into_split();
+    let (mut tr, mut tw) = target_stream.into_split();
+
+    if tw.write_all(out_header_str.as_bytes()).await.is_err() { return; }
+    if !body_bytes.is_empty() && tw.write_all(body_bytes).await.is_err() { return; }
+
+    // Upload body streaming (concurrent for WS / large POST)
+    let upload_task = if is_ws_upgrade {
+        Some(tokio::spawn(async move { let _ = tokio::io::copy(&mut cr, &mut tw).await; let _ = tw.shutdown().await; }))
+    } else if content_length > body_bytes.len() {
+        let rem = (content_length - body_bytes.len()) as u64;
+        Some(tokio::spawn(async move {
+            let mut lim = tokio::io::AsyncReadExt::take(cr, rem);
+            let _ = tokio::io::copy(&mut lim, &mut tw).await;
+            let _ = tw.shutdown().await;
+        }))
+    } else { None };
+
+    // Read first response chunk for status + latency
+    let mut res_buf = vec![0u8; 16384];
+    let mut n_res = match tr.read(&mut res_buf).await {
+        Ok(b) if b > 0 => b,
+        _ => { if let Some(t) = upload_task { t.abort(); } return; }
+    };
+
+    let mut status: u16 = 200;
+    let mut resp_cl: Option<usize> = None;
+    let mut no_body = method == "HEAD";
+    let mut is_chunked = false;
+
+    if !is_ws_upgrade && !is_sse {
+        if let Some(pos) = res_buf[..n_res].windows(4).position(|w| w == b"\r\n\r\n") {
+            let hdr = String::from_utf8_lossy(&res_buf[..pos + 4]);
+            if let Some(sl) = hdr.lines().next() {
+                let p: Vec<&str> = sl.split_whitespace().collect();
+                if p.len() >= 2 { if let Ok(c) = p[1].parse::<u16>() { status = c; } }
+            }
+            no_body = method == "HEAD" || status == 204 || status == 304 || (100..=199).contains(&status);
+            let mut is_json = false;
+            for line in hdr.lines().skip(1) {
+                let lo = line.to_ascii_lowercase();
+                if lo.starts_with("content-length:") {
+                    if let Some((_, v)) = line.split_once(':') {
+                        if let Ok(n) = v.trim().parse::<usize>() { resp_cl = Some(n); if n == 0 { no_body = true; } }
+                    }
+                } else if lo.starts_with("transfer-encoding:") && lo.contains("chunked") { is_chunked = true; }
+                  else if lo.starts_with("content-type:") && lo.contains("json") { is_json = true; }
+            }
+            const BODY_PEEK_MS: u64 = 15;
+            if !no_body && is_json && pos + 4 == n_res && n_res < res_buf.len() {
+                if let Ok(Ok(extra)) = tokio::time::timeout(
+                    std::time::Duration::from_millis(BODY_PEEK_MS),
+                    tr.read(&mut res_buf[n_res..]),
+                ).await { n_res += extra; }
+            }
+        }
+    }
+
+    let duration_ms = start.elapsed().as_millis() as u64;
+    let res_str = String::from_utf8_lossy(&res_buf[..n_res]);
+    // Re-parse status in case first read missed status line
+    if status == 200 {
+        if let Some(sl) = res_str.lines().next() {
+            let p: Vec<&str> = sl.split_whitespace().collect();
+            if p.len() >= 2 { if let Ok(c) = p[1].parse::<u16>() { status = c; } }
+        }
+    }
+
+    // Response preview (schema drift engine — JSON only, 4 KB cap)
+    const PREVIEW_BYTES: usize = 4096;
+    let (resp_hdrs_json, resp_body_preview) = if is_ws_upgrade || is_sse {
+        (serde_json::json!({}), None)
+    } else {
+        let parts: Vec<&str> = res_str.splitn(2, "\r\n\r\n").collect();
+        let hdr_sec = parts.get(0).copied().unwrap_or("");
+        let body_sec = parts.get(1).copied().unwrap_or("");
+        let mut hdr_map = serde_json::Map::new();
+        let mut ct = String::new(); let mut ce = String::new();
+        for line in hdr_sec.lines().skip(1) {
+            if let Some((k, v)) = line.split_once(':') {
+                let lk = k.trim().to_lowercase(); let val = v.trim().to_string();
+                if lk == "content-type" { ct = val.clone(); }
+                if lk == "content-encoding" { ce = val.clone(); }
+                hdr_map.insert(k.trim().to_string(), serde_json::Value::String(val));
+            }
+        }
+        let is_json = ct.to_lowercase().contains("json");
+        let is_compressed = !ce.is_empty() && ce != "identity";
+        let preview = if is_json && !is_compressed && !body_sec.is_empty() {
+            let p: String = body_sec.trim().chars().take(PREVIEW_BYTES).collect();
+            if p.is_empty() { None } else { Some(p) }
+        } else { None };
+        (serde_json::Value::Object(hdr_map), preview)
+    };
+
+    let _ = tx_clone.send(ProxyncEvent::ResponseLog {
+        id: req_id.clone(), request_id: req_id.clone(), status, duration_ms,
+        response_headers: resp_hdrs_json, response_body_preview: resp_body_preview,
+        timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(),
+    });
+
+    if cw.write_all(&res_buf[..n_res]).await.is_err() {
+        if let Some(t) = upload_task { t.abort(); } return;
+    }
+
+    // Stream remaining response
+    if !is_ws_upgrade && !is_sse {
+        if no_body {
+            let _ = cw.shutdown().await;
+        } else if let Some(total) = resp_cl {
+            let already = res_buf[..n_res].windows(4).position(|w| w == b"\r\n\r\n")
+                .map(|p| n_res.saturating_sub(p + 4)).unwrap_or(0);
+            let rem = total.saturating_sub(already);
+            if rem > 0 {
+                let mut lim = tokio::io::AsyncReadExt::take(tr, rem as u64);
+                let _ = tokio::io::copy(&mut lim, &mut cw).await;
+            }
+            let _ = cw.shutdown().await;
+        } else if is_chunked {
+            let mut parser = ChunkedBodyParser::new();
+            let body_start = res_buf[..n_res].windows(4).position(|w| w == b"\r\n\r\n")
+                .map(|p| &res_buf[p + 4..n_res]).unwrap_or(&[]);
+            if !body_start.is_empty() { parser.feed(body_start); }
+            if !parser.is_done() {
+                let mut cbuf = vec![0u8; 16384];
+                while !parser.is_done() {
+                    let n = match tr.read(&mut cbuf).await { Ok(b) if b > 0 => b, _ => break };
+                    if cw.write_all(&cbuf[..n]).await.is_err() { break; }
+                    if parser.feed(&cbuf[..n]) { break; }
+                }
+            }
+            let _ = cw.shutdown().await;
+        } else {
+            let _ = tokio::io::copy(&mut tr, &mut cw).await;
+            let _ = cw.shutdown().await;
+        }
+    } else {
+        let _ = tokio::io::copy(&mut tr, &mut cw).await;
+        let _ = cw.shutdown().await;
+    }
+    if let Some(t) = upload_task { t.abort(); }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1920,6 +2421,116 @@ mod tests {
         }
 
         stop_proxy(Some(target_port)).await;
+    }
+    #[test]
+    fn test_parse_route() {
+        let r1 = parse_route("/api:8080").unwrap();
+        assert_eq!(r1.prefix, "/api");
+        assert_eq!(r1.port, 8080);
+
+        // Normalize leading slash if omitted
+        let r2 = parse_route("auth:4000").unwrap();
+        assert_eq!(r2.prefix, "/auth");
+        assert_eq!(r2.port, 4000);
+
+        let r3 = parse_route("/:3000").unwrap();
+        assert_eq!(r3.prefix, "/");
+        assert_eq!(r3.port, 3000);
+
+        assert!(parse_route("invalid-no-port").is_err());
+        assert!(parse_route("/api:notaport").is_err());
+    }
+
+    #[test]
+    fn test_match_route() {
+        let routes = vec![
+            parse_route("/:3000").unwrap(),
+            parse_route("/api:8080").unwrap(),
+            parse_route("/api/v2:9000").unwrap(),
+        ];
+
+        // Root catch-all
+        assert_eq!(match_route(&routes, "/") .unwrap().port, 3000);
+        assert_eq!(match_route(&routes, "/about").unwrap().port, 3000);
+        assert_eq!(match_route(&routes, "/app/dashboard").unwrap().port, 3000);
+
+        // Longest prefix matches
+        assert_eq!(match_route(&routes, "/api").unwrap().port, 8080);
+        assert_eq!(match_route(&routes, "/api/users").unwrap().port, 8080);
+        assert_eq!(match_route(&routes, "/api?key=val").unwrap().port, 8080);
+
+        // Specific sub-prefix wins over shorter prefix
+        assert_eq!(match_route(&routes, "/api/v2").unwrap().port, 9000);
+        assert_eq!(match_route(&routes, "/api/v2/items").unwrap().port, 9000);
+
+        // Absolute URIs from HTTP proxy clients (RFC 7230 §5.3.2)
+        assert_eq!(match_route(&routes, "http://example.com/api/users").unwrap().port, 8080);
+        assert_eq!(match_route(&routes, "http://localhost:3000/").unwrap().port, 3000);
+        assert_eq!(match_route(&routes, "https://api.proxync.dev:8443/api/v2/items").unwrap().port, 9000);
+        assert_eq!(match_route(&routes, "http://proxy.host/app/dashboard").unwrap().port, 3000);
+    }
+
+    #[tokio::test]
+    async fn test_path_router_end_to_end() {
+        // Service 1: Frontend on ephemeral port
+        let fe_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let fe_port = fe_listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = fe_listener.accept().await {
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 1024];
+                    let _ = stream.read(&mut buf).await;
+                    let resp = "HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\nFRONTEND";
+                    let _ = stream.write_all(resp.as_bytes()).await;
+                });
+            }
+        });
+
+        // Service 2: Backend API on another ephemeral port
+        let api_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_port = api_listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = api_listener.accept().await {
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 1024];
+                    let _ = stream.read(&mut buf).await;
+                    let resp = "HTTP/1.1 200 OK\r\nContent-Length: 7\r\nConnection: close\r\n\r\nBACKEND";
+                    let _ = stream.write_all(resp.as_bytes()).await;
+                });
+            }
+        });
+
+        let routes = vec![
+            RouteEntry { prefix: "/api".to_string(), port: api_port },
+            RouteEntry { prefix: "/".to_string(), port: fe_port },
+        ];
+
+        let tx = test_event_sender();
+        let router_port = start_path_router(tx, routes, None).await.unwrap();
+
+        // 1. Request to "/" -> should hit FRONTEND (:fe_port)
+        {
+            let mut stream = TcpStream::connect(format!("127.0.0.1:{}", router_port)).await.unwrap();
+            stream.write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\n\r\n").await.unwrap();
+            let mut res = Vec::new();
+            stream.read_to_end(&mut res).await.unwrap();
+            let s = String::from_utf8_lossy(&res);
+            assert!(s.contains("200 OK"));
+            assert!(s.contains("FRONTEND"));
+        }
+
+        // 2. Request to "/api/users" -> should hit BACKEND (:api_port)
+        {
+            let mut stream = TcpStream::connect(format!("127.0.0.1:{}", router_port)).await.unwrap();
+            stream.write_all(b"GET /api/users HTTP/1.1\r\nHost: localhost\r\n\r\n").await.unwrap();
+            let mut res = Vec::new();
+            stream.read_to_end(&mut res).await.unwrap();
+            let s = String::from_utf8_lossy(&res);
+            assert!(s.contains("200 OK"));
+            assert!(s.contains("BACKEND"));
+        }
+
+        stop_proxy(Some(api_port)).await;
     }
 }
 
