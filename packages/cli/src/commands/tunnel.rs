@@ -18,34 +18,74 @@ pub async fn handle_tunnel(args: TunnelArgs) -> Result<(), Box<dyn std::error::E
         }
     }
 
-    if !args.force {
-        // Guard against Vite dev servers: Vite HMR WebSocket and strict Host-header checks break over public tunnels
-        if let Ok(procs) = proxync_core::recon::scan_processes(false).await {
-            if let Some(proc) = procs.iter().find(|p| p.port == args.port) {
-                let fw = proc.framework.as_deref().unwrap_or(&proc.name).to_lowercase();
-                if fw.contains("vite") {
-                    eprintln!("\x1b[1;31m[!] Error: Vite dev servers are not currently supported for public tunneling.\x1b[0m");
-                    eprintln!("    Support for Vite HMR and dynamic asset routing is under development.");
-                    eprintln!("    Tip: Use --force to bypass this restriction if you wish to proceed anyway.");
-                    return Err("Vite dev servers are not currently supported.".into());
+    // ── Parse routes if provided (Multi-Port Microservice Routing) ───────────
+    let parsed_routes: Vec<proxync_core::proxy::RouteEntry> = if let Some(ref route_strs) = args.routes {
+        let mut parsed = Vec::new();
+        for s in route_strs {
+            match proxync_core::proxy::parse_route(s) {
+                Ok(r) => parsed.push(r),
+                Err(e) => {
+                    eprintln!("\x1b[1;31m[!] Error: {}\x1b[0m", e);
+                    return Err(e.into());
                 }
             }
         }
-        // Pre-Flight Port Probe: Strict verification that a service is actually listening
-        if let Ok(false) = proxync_core::recon::probe_port(args.port).await {
-            eprintln!("\x1b[1;31m[!] Error: No local server detected listening on port {}.\x1b[0m", args.port);
-            eprintln!("    Start your application first (e.g. `npm run dev`) before opening a public tunnel.");
-            eprintln!("    Tip: Use \x1b[1m--force\x1b[0m to bypass this pre-flight check.");
-            return Err("Target port is inactive.".into());
+        parsed
+    } else {
+        Vec::new()
+    };
+
+    let is_multi_route = !parsed_routes.is_empty();
+    let effective_port = if is_multi_route {
+        parsed_routes[0].port
+    } else {
+        args.port
+    };
+
+    if effective_port == 0 {
+        eprintln!("\x1b[1;31m[!] Error: Please specify a target port (e.g. `proxync 3000`) or at least one `--route PREFIX:PORT`.\x1b[0m");
+        return Err("No target port or route specified.".into());
+    }
+
+    if !args.force {
+        let ports_to_check: Vec<u16> = if is_multi_route {
+            parsed_routes.iter().map(|r| r.port).collect()
+        } else {
+            vec![effective_port]
+        };
+
+        // Guard against Vite dev servers: Vite HMR WebSocket and strict Host-header checks break over public tunnels
+        if let Ok(procs) = proxync_core::recon::scan_processes(false).await {
+            for &p_check in &ports_to_check {
+                if let Some(proc) = procs.iter().find(|p| p.port == p_check) {
+                    let fw = proc.framework.as_deref().unwrap_or(&proc.name).to_lowercase();
+                    if fw.contains("vite") {
+                        eprintln!("\x1b[1;31m[!] Error: Vite dev servers (detected on port {}) are not currently supported for public tunneling.\x1b[0m", p_check);
+                        eprintln!("    Support for Vite HMR and dynamic asset routing is under development.");
+                        eprintln!("    Tip: Use --force to bypass this restriction if you wish to proceed anyway.");
+                        return Err("Vite dev servers are not currently supported.".into());
+                    }
+                }
+            }
         }
 
-        // Concurrency Guard: Block opening duplicate tunnels on the same port
-        if let Some(existing) = proxync_core::registry::find_tunnel_by_port(args.port) {
-            eprintln!("\x1b[1;33m[!] Warning: Port {} is already being tunneled!\x1b[0m", args.port);
+        // Pre-Flight Port Probe: Strict verification that services are listening
+        for &p_check in &ports_to_check {
+            if let Ok(false) = proxync_core::recon::probe_port(p_check).await {
+                eprintln!("\x1b[1;31m[!] Error: No local server detected listening on port {}.\x1b[0m", p_check);
+                eprintln!("    Start your application first (e.g. `npm run dev`) before opening a public tunnel.");
+                eprintln!("    Tip: Use \x1b[1m--force\x1b[0m to bypass this pre-flight check.");
+                return Err("Target port is inactive.".into());
+            }
+        }
+
+        // Concurrency Guard: Block opening duplicate tunnels on the same primary port
+        if let Some(existing) = proxync_core::registry::find_tunnel_by_port(effective_port) {
+            eprintln!("\x1b[1;33m[!] Warning: Port {} is already being tunneled!\x1b[0m", effective_port);
             eprintln!("    Active Tunnel URL : \x1b[1;34m{}\x1b[0m", existing.public_url);
             eprintln!("    Process PID       : {}", existing.pid);
-            eprintln!("    Tip: Run \x1b[1mproxync stop {}\x1b[0m to stop it, or \x1b[1m--force\x1b[0m to start anyway.", args.port);
-            return Err(format!("Tunnel on port {} is already running (PID {})", args.port, existing.pid).into());
+            eprintln!("    Tip: Run \x1b[1mproxync stop {}\x1b[0m to stop it, or \x1b[1m--force\x1b[0m to start anyway.", effective_port);
+            return Err(format!("Tunnel on port {} is already running (PID {})", effective_port, existing.pid).into());
         }
     }
 
@@ -58,17 +98,34 @@ pub async fn handle_tunnel(args: TunnelArgs) -> Result<(), Box<dyn std::error::E
     let tunnel_id = format!("tun-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_millis());
     let tunnel_id_clean = tunnel_id.clone();
 
-    println!("\x1b[1;36m==> Starting {} tunnel for port {}...\x1b[0m", format!("{:?}", args.provider).to_lowercase(), args.port);
+    if is_multi_route {
+        println!("\x1b[1;36m==> Starting {} multi-route tunnel...\x1b[0m", format!("{:?}", args.provider).to_lowercase());
+        for r in &parsed_routes {
+            println!("    \x1b[90m{:<10}\x1b[0m → \x1b[1mhttp://localhost:{}\x1b[0m", r.prefix, r.port);
+        }
+    } else {
+        println!("\x1b[1;36m==> Starting {} tunnel for port {}...\x1b[0m", format!("{:?}", args.provider).to_lowercase(), effective_port);
+    }
 
     // Bind local intercepting proxy so that all traffic over the public tunnel
     // is captured, measured in live stats, and streamed in real-time.
-    let proxy_port = match proxync_core::proxy::start_proxy_with_auth(event_tx.clone(), args.port, args.basic_auth.clone()).await {
-        Ok(p) => p,
-        Err(e) if args.basic_auth.is_some() => {
-            eprintln!("\x1b[1;31m[!] Error: Failed to start authenticated proxy: {}\x1b[0m", e);
-            return Err("Cannot expose tunnel: basic auth proxy failed to start.".into());
+    let proxy_port = if is_multi_route {
+        match proxync_core::proxy::start_path_router(event_tx.clone(), parsed_routes.clone(), args.basic_auth.clone()).await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("\x1b[1;31m[!] Error: Failed to start path router: {}\x1b[0m", e);
+                return Err("Cannot expose tunnel: path router failed to start.".into());
+            }
         }
-        Err(_) => args.port,
+    } else {
+        match proxync_core::proxy::start_proxy_with_auth(event_tx.clone(), effective_port, args.basic_auth.clone()).await {
+            Ok(p) => p,
+            Err(e) if args.basic_auth.is_some() => {
+                eprintln!("\x1b[1;31m[!] Error: Failed to start authenticated proxy: {}\x1b[0m", e);
+                return Err("Cannot expose tunnel: basic auth proxy failed to start.".into());
+            }
+            Err(_) => effective_port,
+        }
     };
 
     let public_url = match args.provider {
@@ -91,7 +148,14 @@ pub async fn handle_tunnel(args: TunnelArgs) -> Result<(), Box<dyn std::error::E
     };
 
     println!("\x1b[1;32m✓ Tunnel Established!\x1b[0m");
-    println!("  Local Target : \x1b[1mhttp://localhost:{}\x1b[0m", args.port);
+    if is_multi_route {
+        println!("  Routes       :");
+        for r in &parsed_routes {
+            println!("    \x1b[1;36m{:<12}\x1b[0m → \x1b[1mhttp://localhost:{}\x1b[0m", r.prefix, r.port);
+        }
+    } else {
+        println!("  Local Target : \x1b[1mhttp://localhost:{}\x1b[0m", effective_port);
+    }
     println!("  Public URL   : \x1b[1;34;4m{}\x1b[0m", public_url);
 
     // Register active tunnel entry in persistent registry
@@ -131,7 +195,7 @@ pub async fn handle_tunnel(args: TunnelArgs) -> Result<(), Box<dyn std::error::E
 
     let entry = proxync_core::registry::TunnelEntry {
         id: tunnel_id.clone(),
-        port: args.port,
+        port: effective_port,
         public_url: public_url.clone(),
         provider: format!("{:?}", args.provider).to_lowercase(),
         pid: std::process::id(),
@@ -201,7 +265,7 @@ pub async fn handle_tunnel(args: TunnelArgs) -> Result<(), Box<dyn std::error::E
 
     // Event listener task for live request logging and tunnel liveness monitoring
     let event_tunnel_id = tunnel_id_clean.clone();
-    let event_target_port = args.port;
+    let event_target_port = effective_port;
     let event_exit_tx = hotkey_exit_tx.clone();
     let event_task = tokio::spawn(async move {
         let mut standby_reaper_cancel: Option<tokio::sync::oneshot::Sender<()>> = None;
@@ -461,8 +525,8 @@ pub async fn handle_tunnel(args: TunnelArgs) -> Result<(), Box<dyn std::error::E
     }
 
     let _ = proxync_core::registry::unregister_tunnel(&tunnel_id_clean);
-    let _ = proxync_core::tunnel::close_tunnel(tunnel_id, Some(args.port)).await;
-    let _ = proxync_core::proxy::stop_proxy(Some(args.port)).await;
+    let _ = proxync_core::tunnel::close_tunnel(tunnel_id, Some(effective_port)).await;
+    let _ = proxync_core::proxy::stop_proxy(Some(effective_port)).await;
     if logging_enabled {
         let close_msg = format!(
             "[{}] [INFO] [TUNNEL] Closed tunnel for port {}",
@@ -477,16 +541,33 @@ pub async fn handle_tunnel(args: TunnelArgs) -> Result<(), Box<dyn std::error::E
 }
 
 pub async fn spawn_detached_tunnel(args: &TunnelArgs) -> Result<(), Box<dyn std::error::Error>> {
+    let effective_port = if args.port != 0 {
+        args.port
+    } else if let Some(ref rts) = args.routes {
+        rts.first()
+            .and_then(|s| proxync_core::proxy::parse_route(s).ok())
+            .map(|r| r.port)
+            .unwrap_or(0)
+    } else {
+        0
+    };
+
     let current_exe = std::env::current_exe()?;
     let mut cmd = Command::new(&current_exe);
 
     cmd.arg("tunnel")
-       .arg(args.port.to_string())
+       .arg(effective_port.to_string())
        .arg("--detach")
        .arg("--daemon-worker")
        .arg("--force");
 
     cmd.arg("--provider").arg(format!("{:?}", args.provider).to_lowercase());
+
+    if let Some(ref rts) = args.routes {
+        for r in rts {
+            cmd.arg("--route").arg(r);
+        }
+    }
 
     if let Some(ref auth) = args.basic_auth {
         cmd.env("PROXYNC_BASIC_AUTH", auth);
@@ -564,13 +645,22 @@ pub async fn spawn_detached_tunnel(args: &TunnelArgs) -> Result<(), Box<dyn std:
     };
     let child_pid = child.id();
 
-    println!("\x1b[1;36m==> Starting background {} tunnel for port {}...\x1b[0m", format!("{:?}", args.provider).to_lowercase(), args.port);
+    if let Some(ref rts) = args.routes {
+        println!("\x1b[1;36m==> Starting background {} multi-route tunnel...\x1b[0m", format!("{:?}", args.provider).to_lowercase());
+        for s in rts {
+            if let Ok(r) = proxync_core::proxy::parse_route(s) {
+                println!("    \x1b[90m{:<10}\x1b[0m → \x1b[1mhttp://localhost:{}\x1b[0m", r.prefix, r.port);
+            }
+        }
+    } else {
+        println!("\x1b[1;36m==> Starting background {} tunnel for port {}...\x1b[0m", format!("{:?}", args.provider).to_lowercase(), effective_port);
+    }
 
     // Poll registry until background worker has registered the live tunnel
     let mut registered_entry = None;
     for _ in 0..60 {
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-        if let Some(entry) = proxync_core::registry::find_tunnel_by_port(args.port) {
+        if let Some(entry) = proxync_core::registry::find_tunnel_by_port(effective_port) {
             if entry.pid == child_pid {
                 registered_entry = Some(entry);
                 break;
@@ -583,10 +673,19 @@ pub async fn spawn_detached_tunnel(args: &TunnelArgs) -> Result<(), Box<dyn std:
 
     if let Some(entry) = registered_entry {
         println!("\x1b[1;32m✓ Tunnel started in background (PID: {})\x1b[0m", child_pid);
-        println!("  Local Target : \x1b[1mhttp://localhost:{}\x1b[0m", args.port);
+        if let Some(ref rts) = args.routes {
+            println!("  Routes       :");
+            for s in rts {
+                if let Ok(r) = proxync_core::proxy::parse_route(s) {
+                    println!("    \x1b[1;36m{:<12}\x1b[0m → \x1b[1mhttp://localhost:{}\x1b[0m", r.prefix, r.port);
+                }
+            }
+        } else {
+            println!("  Local Target : \x1b[1mhttp://localhost:{}\x1b[0m", effective_port);
+        }
         println!("  Public URL   : \x1b[1;34;4m{}\x1b[0m", entry.public_url);
         if let Some(ref exp) = entry.expires_at {
-            println!("  Auto-Expiry  : {} (Stop anytime with: \x1b[1mproxync stop {}\x1b[0m)", exp, args.port);
+            println!("  Auto-Expiry  : {} (Stop anytime with: \x1b[1mproxync stop {}\x1b[0m)", exp, effective_port);
         }
         if args.basic_auth.is_some() {
             println!("  🔒 \x1b[33mHTTP Basic Auth: ENABLED (password protected)\x1b[0m");
@@ -601,7 +700,7 @@ pub async fn spawn_detached_tunnel(args: &TunnelArgs) -> Result<(), Box<dyn std:
         }
         let logs_file = proxync_core::storage::get_logs_dir().join("cli.log");
         println!("  CLI Logs     : \x1b[90m{}\x1b[0m", logs_file.display());
-        println!("\nTip: Run \x1b[1mproxync ps\x1b[0m to list running tunnels, or \x1b[1mproxync open {}\x1b[0m to open in browser.", args.port);
+        println!("\nTip: Run \x1b[1mproxync ps\x1b[0m to list running tunnels, or \x1b[1mproxync open {}\x1b[0m to open in browser.", effective_port);
         Ok(())
     } else {
         eprintln!("\x1b[1;31m[!] Error: Background worker (PID {}) failed to establish tunnel within timeout.\x1b[0m", child_pid);

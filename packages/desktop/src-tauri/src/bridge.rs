@@ -1,4 +1,4 @@
-﻿use std::sync::OnceLock;
+use std::sync::OnceLock;
 use tauri::Emitter;
 use proxync_core::events::{create_event_channel, EventSender, ProxyncEvent};
 

@@ -26,6 +26,10 @@ pub enum Commands {
     #[command(alias = "share")]
     Tunnel(TunnelArgs),
 
+    /// Launch a multi-service microservice stack with clean dedicated URLs or declarative config
+    #[command(alias = "microservices")]
+    Stack(StackArgs),
+
     /// Attach to a running tunnel or inspect live HTTP traffic forwarding to a local port
     #[command(alias = "proxy")]
     Inspect(ProxyArgs),
@@ -153,6 +157,7 @@ pub struct DoctorArgs {
 #[derive(Args, Debug, Clone)]
 pub struct TunnelArgs {
     /// Local port to expose (e.g., 3000, 5173, 8080)
+    #[arg(default_value_t = 0)]
     pub port: u16,
 
     /// Tunnel provider to use: 'native' (default, SSH edge tunnel), 'cloudflare' (zero-config public URL), 'relay' (self-hosted ws)
@@ -198,6 +203,12 @@ pub struct TunnelArgs {
     /// Internal flag for background daemon worker process
     #[arg(long, hide = true)]
     pub daemon_worker: bool,
+
+    /// Route multiple local services through a single tunnel via path prefixes.
+    /// Format: PREFIX:PORT (repeatable). Example: --route /api:8080 --route /:3000
+    /// Longest prefix wins. When routes are set, --port is used only for pre-flight checks.
+    #[arg(long = "route", value_name = "PREFIX:PORT", action = clap::ArgAction::Append)]
+    pub routes: Option<Vec<String>>,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -254,6 +265,37 @@ pub struct ServeArgs {
 }
 
 #[derive(Args, Debug, Clone)]
+pub struct StackArgs {
+    /// Services to tunnel in format [NAME:]PORT (e.g. 3000 8080 or web:3000 api:8080)
+    /// If omitted, proxync searches for proxync.json or probes active dev servers
+    pub services: Vec<String>,
+
+    /// Tunnel provider to use: 'native' (default, SSH edge tunnel), 'cloudflare', or 'relay'
+    #[arg(short, long, value_enum, default_value_t = Provider::Native)]
+    pub provider: Provider,
+
+    /// Optional path to stack config JSON file (default: proxync.json)
+    #[arg(short, long)]
+    pub config: Option<String>,
+
+    /// Protect all stack tunnels with HTTP Basic Auth (format: user:password)
+    #[arg(long, value_name = "USER:PASS", env = "PROXYNC_BASIC_AUTH")]
+    pub basic_auth: Option<String>,
+
+    /// Auto-close stack tunnels after duration (e.g. 30m, 1h, 2h)
+    #[arg(long, value_name = "DURATION")]
+    pub expires: Option<String>,
+
+    /// Bypass pre-flight port checks (force tunnel launch even if server is offline)
+    #[arg(long)]
+    pub force: bool,
+
+    /// Disable persisting session traffic to cli.log
+    #[arg(long)]
+    pub no_log: bool,
+}
+
+#[derive(Args, Debug, Clone)]
 pub struct LogsArgs {
     /// Number of lines to display (default: 50)
     #[arg(short = 'n', long, default_value_t = 50)]
@@ -278,7 +320,7 @@ pub fn preprocess_cli_args(raw_args: Vec<String>) -> Vec<String> {
         "scan", "ls", "tunnel", "share", "inspect", "proxy", 
         "serve", "ps", "list", "stop", "status", "open", 
         "logs", "doctor", "diag", "providers", "provider", "gui", 
-        "install", "setup-path", "upgrade", "update", "replay", "completion", "help"
+        "install", "setup-path", "upgrade", "update", "replay", "completion", "help", "stack", "microservices"
     ];
 
     let has_subcommand = args.iter().skip(1).any(|a| known_subcommands.contains(&a.as_str()));

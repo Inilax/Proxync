@@ -4,7 +4,7 @@ mod ui;
 
 use args::*;
 use clap::Parser;
-use commands::{inspect::*, logs::*, manage::*, scan::*, serve::*, system::*, tunnel::*};
+use commands::{inspect::*, logs::*, manage::*, scan::*, serve::*, stack::*, system::*, tunnel::*};
 use proxync_core::recon::scan_processes;
 use ui::*;
 
@@ -22,6 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
         Some(Commands::Scan(args)) => handle_scan(args).await?,
         Some(Commands::Tunnel(args)) => handle_tunnel(args).await?,
+        Some(Commands::Stack(args)) => handle_stack(args).await?,
         Some(Commands::Inspect(args)) => handle_proxy(args).await?,
         Some(Commands::Serve(args)) => handle_serve(args).await?,
         Some(Commands::Ps) => handle_ps().await?,
@@ -83,6 +84,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     no_log: false,
                     force: false,
                     daemon_worker: false,
+                    routes: None,
                 }).await?;
             } else {
                 let selected = interactive_port_picker(&procs)?;
@@ -99,6 +101,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     no_log: false,
                     force: false,
                     daemon_worker: false,
+                    routes: None,
                 }).await?;
             }
         }

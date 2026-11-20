@@ -39,6 +39,7 @@ export function WorkspaceDashboardView({
   onStopTunnel,
   onStopAllTunnels,
   onInspectTraffic,
+  onLaunchStack,
 }: {
   workspace: WorkspaceConfig | null;
   tunnels: Tunnel[];
@@ -56,6 +57,7 @@ export function WorkspaceDashboardView({
   onStopTunnel: (tunnel: Tunnel) => void;
   onStopAllTunnels?: () => void;
   onInspectTraffic?: (proc: ProcessCandidate) => void;
+  onLaunchStack?: () => void;
 }) {
   const [activeMenuTunnelId, setActiveMenuTunnelId] = useState<string | null>(null);
   const activeTunnels = tunnels.filter((t) => t.status === 'ACTIVE' || t.status === 'STANDBY');
@@ -194,11 +196,21 @@ export function WorkspaceDashboardView({
           {/* Section 1: Detected Local Servers */}
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-headline-sm text-headline-sm text-on-surface">Detected Local Servers</h3>
                 <span className="font-code-sm text-code-sm text-on-surface-variant px-2 py-0.5 bg-surface-container rounded border border-outline-variant">
                   {processes.length} Running
                 </span>
+                {processes.length >= 2 && onLaunchStack && (
+                  <button
+                    onClick={onLaunchStack}
+                    className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/30 text-[11px] font-mono font-bold text-primary hover:bg-primary/20 transition-all cursor-pointer shadow-xs active:scale-95"
+                    title="Launch all detected servers into a microservices stack"
+                  >
+                    <span className="material-symbols-outlined text-[14px]">layers</span>
+                    <span>Launch Stack ({processes.length})</span>
+                  </button>
+                )}
               </div>
               <button
                 onClick={onScan}
@@ -233,8 +245,15 @@ export function WorkspaceDashboardView({
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5">
                 {processes.map((proc) => {
-                  const activeT = tunnels.find((t) => t.localPort === proc.port && (t.status === 'ACTIVE' || t.status === 'STANDBY'));
+                  const primaryT = tunnels.find((t) => t.localPort === proc.port && (t.status === 'ACTIVE' || t.status === 'STANDBY'));
+                  const parentStackT = !primaryT ? tunnels.find((t) => (t.status === 'ACTIVE' || t.status === 'STANDBY') && t.routes?.some((r) => r.endsWith(`:${proc.port}`))) : undefined;
+                  const activeT = primaryT || parentStackT;
                   const isLive = Boolean(activeT);
+                  const isSecondaryRouted = Boolean(parentStackT);
+                  const routedPrefix = parentStackT ? (parentStackT.routes?.find((r) => r.endsWith(`:${proc.port}`))?.split(':')[0] || '') : '';
+                  const specificRoutedUrl = parentStackT && activeT?.publicUrl
+                    ? `${activeT.publicUrl.replace(/\/+$/, '')}${routedPrefix.startsWith('/') ? routedPrefix : `/${routedPrefix}`}`
+                    : activeT?.publicUrl;
                   const isStandby = activeT?.status === 'STANDBY';
                   const isSpawning = spawningPorts.includes(proc.port) || sharingPort === proc.port;
                   const displayDir = proc.directory && proc.directory !== 'unknown' ? proc.directory : `localhost:${proc.port}`;
@@ -243,13 +262,15 @@ export function WorkspaceDashboardView({
                     <div
                       key={proc.id}
                       onClick={() => onSelectProcess(proc.id)}
-                      className={`p-4 sm:p-5 bg-surface-container border rounded-2xl flex flex-col justify-between gap-4 transition-all cursor-pointer group shadow-sm hover:shadow-md ${isLive && !isStandby
-                          ? 'border-emerald-500/60 shadow-emerald-500/10'
-                          : isStandby
-                            ? 'border-amber-500/60 shadow-amber-500/10'
-                            : isSpawning
-                              ? 'border-primary/50 ring-1 ring-primary/30'
-                              : 'border-outline-variant/60 hover:border-primary/50'
+                      className={`p-4 sm:p-5 bg-surface-container border rounded-2xl flex flex-col justify-between gap-4 transition-all cursor-pointer group shadow-sm hover:shadow-md ${isSecondaryRouted
+                          ? 'border-cyan-500/60 shadow-cyan-500/10'
+                          : isLive && !isStandby
+                            ? 'border-emerald-500/60 shadow-emerald-500/10'
+                            : isStandby
+                              ? 'border-amber-500/60 shadow-amber-500/10'
+                              : isSpawning
+                                ? 'border-primary/50 ring-1 ring-primary/30'
+                                : 'border-outline-variant/60 hover:border-primary/50'
                         }`}
                     >
                       <div className="space-y-3.5">
@@ -276,14 +297,16 @@ export function WorkspaceDashboardView({
 
                           {/* Top Right Badges */}
                           <div className="flex items-center gap-1.5 shrink-0">
-                            <span className={`px-2.5 py-1 bg-surface-container-high rounded-full border text-[11px] font-mono font-medium flex items-center gap-1.5 ${isLive && !isStandby
-                                ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10'
-                                : isStandby
-                                  ? 'border-amber-500/40 text-amber-400 bg-amber-500/10'
-                                  : 'border-outline-variant/50 text-on-surface-variant'
+                            <span className={`px-2.5 py-1 bg-surface-container-high rounded-full border text-[11px] font-mono font-medium flex items-center gap-1.5 ${isSecondaryRouted
+                                ? 'border-cyan-500/40 text-cyan-400 bg-cyan-500/10'
+                                : isLive && !isStandby
+                                  ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10'
+                                  : isStandby
+                                    ? 'border-amber-500/40 text-amber-400 bg-amber-500/10'
+                                    : 'border-outline-variant/50 text-on-surface-variant'
                               }`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${isLive && !isStandby ? 'bg-emerald-400 animate-pulse' : isStandby ? 'bg-amber-400' : 'bg-outline'}`}></span>
-                              {isLive && !isStandby ? 'ONLINE' : isStandby ? 'STANDBY' : 'LOCAL'}
+                              <span className={`w-1.5 h-1.5 rounded-full ${isSecondaryRouted ? 'bg-cyan-400 animate-pulse' : isLive && !isStandby ? 'bg-emerald-400 animate-pulse' : isStandby ? 'bg-amber-400' : 'bg-outline'}`}></span>
+                              {isSecondaryRouted ? 'ROUTED IN STACK' : isLive && !isStandby ? 'ONLINE' : isStandby ? 'STANDBY' : 'LOCAL'}
                             </span>
                             <span className="px-2.5 py-1 bg-surface-container-high rounded-full border border-outline-variant/50 text-[11px] font-mono font-bold text-primary">
                               :{proc.port}
@@ -303,29 +326,37 @@ export function WorkspaceDashboardView({
 
                         {/* Local Endpoint / Public Endpoint Box */}
                         {isLive && activeT ? (
-                          <div className={`bg-surface-container-lowest/80 p-3 rounded-lg border ${isStandby ? 'border-amber-500/30' : 'border-emerald-500/30'} space-y-1`}>
+                          <div className={`bg-surface-container-lowest/80 p-3 rounded-lg border ${isSecondaryRouted ? 'border-cyan-500/30' : isStandby ? 'border-amber-500/30' : 'border-emerald-500/30'} space-y-1`}>
                             <div className="flex items-center justify-between">
-                              <span className={`text-[10px] font-mono uppercase tracking-wider ${isStandby ? 'text-amber-400' : 'text-emerald-400'} font-bold`}>
-                                {isStandby ? 'STANDBY ENDPOINT' : 'PUBLIC ENDPOINT'}
+                              <span className={`text-[10px] font-mono uppercase tracking-wider ${isSecondaryRouted ? 'text-cyan-400' : isStandby ? 'text-amber-400' : 'text-emerald-400'} font-bold`}>
+                                {isSecondaryRouted ? 'ROUTED STACK ENDPOINT' : isStandby ? 'STANDBY ENDPOINT' : 'PUBLIC ENDPOINT'}
                               </span>
                               <div className="flex items-center gap-1.5 shrink-0">
-                                {activeT.basicAuth?.enabled && (
-                                  <span
-                                    className="flex items-center text-amber-400 shrink-0"
-                                    title={`Protected with Basic Auth (${activeT.basicAuth.username})`}
-                                  >
-                                    {Icons.lock}
+                                {isSecondaryRouted ? (
+                                  <span className="px-1.5 py-0.5 bg-cyan-500/15 text-cyan-400 text-[10px] font-mono rounded font-semibold">
+                                    {routedPrefix}
                                   </span>
+                                ) : (
+                                  <>
+                                    {activeT.basicAuth?.enabled && (
+                                      <span
+                                        className="flex items-center text-amber-400 shrink-0"
+                                        title={`Protected with Basic Auth (${activeT.basicAuth.username})`}
+                                      >
+                                        {Icons.lock}
+                                      </span>
+                                    )}
+                                    <span className={`px-1.5 py-0.5 ${isStandby ? 'bg-amber-500/15 text-amber-400' : 'bg-emerald-500/15 text-emerald-400'} text-[10px] font-mono rounded`}>
+                                      {isStandby ? 'Standby' : 'Live'}
+                                    </span>
+                                  </>
                                 )}
-                                <span className={`px-1.5 py-0.5 ${isStandby ? 'bg-amber-500/15 text-amber-400' : 'bg-emerald-500/15 text-emerald-400'} text-[10px] font-mono rounded`}>
-                                  {isStandby ? 'Standby' : 'Live'}
-                                </span>
                               </div>
                             </div>
                             <div className="flex items-center justify-between gap-2">
-                              <p className="font-mono text-xs font-bold text-on-surface truncate select-all">{activeT.publicUrl}</p>
+                              <p className="font-mono text-xs font-bold text-on-surface truncate select-all">{specificRoutedUrl || activeT.publicUrl}</p>
                               <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                                {activeT.basicAuth?.enabled && (
+                                {activeT.basicAuth?.enabled && !isSecondaryRouted && (
                                   <button
                                     onClick={() => {
                                       if (!activeT.basicAuth) return;
@@ -346,7 +377,8 @@ export function WorkspaceDashboardView({
                                 )}
                                 <button
                                   onClick={() => {
-                                    navigator.clipboard.writeText(activeT.publicUrl);
+                                    const targetUrl = specificRoutedUrl || activeT.publicUrl;
+                                    navigator.clipboard.writeText(targetUrl);
                                     showToast('Public URL copied!', 'success');
                                   }}
                                   className="p-1 rounded text-outline hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer"
@@ -356,7 +388,8 @@ export function WorkspaceDashboardView({
                                 </button>
                                 <button
                                   onClick={() => {
-                                    openUrl(activeT.publicUrl).catch(() => window.open(activeT.publicUrl, '_blank'));
+                                    const targetUrl = specificRoutedUrl || activeT.publicUrl;
+                                    openUrl(targetUrl).catch(() => window.open(targetUrl, '_blank'));
                                   }}
                                   className="p-1 rounded text-outline hover:text-primary hover:bg-surface-container-high transition-colors cursor-pointer"
                                   title="Open in Browser"
@@ -365,6 +398,26 @@ export function WorkspaceDashboardView({
                                 </button>
                               </div>
                             </div>
+                            {isSecondaryRouted && parentStackT ? (
+                              <div className="pt-1.5 border-t border-outline-variant/30 flex items-center justify-between text-[10px] font-mono text-on-surface-variant/80">
+                                <span>Unified via primary tunnel (:{parentStackT.localPort})</span>
+                                <span className="text-cyan-400 font-semibold">{routedPrefix} → :{proc.port}</span>
+                              </div>
+                            ) : activeT.routes && activeT.routes.length > 0 && (
+                              <div className="pt-2 border-t border-outline-variant/30 flex flex-wrap items-center gap-1">
+                                <span className="text-[9px] font-mono uppercase text-primary font-bold">Routes:</span>
+                                {activeT.routes.map((rt) => {
+                                  const [pfx, pt] = rt.split(':');
+                                  return (
+                                    <span key={rt} className="px-1.5 py-0.5 rounded text-[9.5px] font-mono bg-surface-container-high border border-outline-variant/50 text-on-surface">
+                                      <span className="text-primary font-semibold">{pfx}</span>
+                                      <span className="text-on-surface-variant mx-0.5">→</span>
+                                      <span className="text-amber-400 font-bold">:{pt}</span>
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="bg-surface-container-lowest/80 p-3 rounded-lg border border-outline-variant/40 space-y-1">
@@ -413,16 +466,27 @@ export function WorkspaceDashboardView({
                               <span>Inspect Traffic</span>
                               <span className="material-symbols-outlined text-[14px] group-hover/btn:translate-x-0.5 transition-transform">arrow_forward</span>
                             </button>
-                            <button
-                              onClick={() => onStopTunnel(activeT)}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-error/40 bg-error/10 hover:bg-error/20 text-error font-body-sm text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
-                              title="Stop active tunnel"
-                            >
-                              <span className="material-symbols-outlined text-[14px]" style={{ fontVariationSettings: "'FILL' 1" }}>
-                                stop_circle
-                              </span>
-                              <span>Stop</span>
-                            </button>
+                            {isSecondaryRouted && parentStackT ? (
+                              <button
+                                onClick={() => onStopTunnel(parentStackT)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 font-body-sm text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
+                                title={`In active stack hosted on :${parentStackT.localPort}. Click to stop stack tunnel.`}
+                              >
+                                <span className="material-symbols-outlined text-[14px]">layers</span>
+                                <span>In Active Stack</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => onStopTunnel(activeT)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-error/40 bg-error/10 hover:bg-error/20 text-error font-body-sm text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
+                                title="Stop active tunnel"
+                              >
+                                <span className="material-symbols-outlined text-[14px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                                  stop_circle
+                                </span>
+                                <span>Stop</span>
+                              </button>
+                            )}
                           </div>
                         ) : (
                           /* Local / Ready State matching Image 1 */
@@ -560,6 +624,21 @@ export function WorkspaceDashboardView({
                                 <p className="font-code-sm text-code-sm text-on-surface-variant truncate">
                                   {providerLabel} • Port {tunnel.localPort}
                                 </p>
+                                {tunnel.routes && tunnel.routes.length > 0 && (
+                                  <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                    <span className="text-[10px] font-mono uppercase text-primary font-bold">Routes:</span>
+                                    {tunnel.routes.map((rt) => {
+                                      const [pfx, pt] = rt.split(':');
+                                      return (
+                                        <span key={rt} className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-surface-container-high border border-outline-variant/60 text-on-surface">
+                                          <span className="text-primary font-semibold">{pfx}</span>
+                                          <span className="text-on-surface-variant mx-0.5">→</span>
+                                          <span className="text-amber-400 font-bold">:{pt}</span>
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </div>
                             </>
                           );

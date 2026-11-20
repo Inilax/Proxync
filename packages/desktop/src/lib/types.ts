@@ -45,6 +45,7 @@ export interface Tunnel {
   createdAt?: string;
   provider?: string;
   basicAuth?: BasicAuthConfig;
+  routes?: string[];
 }
 
 export interface RequestLog {
