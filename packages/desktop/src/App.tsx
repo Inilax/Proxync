@@ -3739,7 +3739,11 @@ export default function App() {
                 workspace={activeWorkspace}
                 process={selectedProcess}
                 profile={selectedProfile}
-                tunnel={tunnels.find((t) => t.localPort === (selectedProcess?.port || selectedProfile?.port) && (t.status === 'ACTIVE' || t.status === 'STANDBY')) || null}
+                tunnel={
+                  tunnels.find((t) => t.localPort === (selectedProcess?.port || selectedProfile?.port) && (t.status === 'ACTIVE' || t.status === 'STANDBY')) ||
+                  tunnels.find((t) => (t.status === 'ACTIVE' || t.status === 'STANDBY') && t.routes?.some((r) => r.endsWith(`:${selectedProcess?.port || selectedProfile?.port}`))) ||
+                  null
+                }
                 sharingPort={sharingPort}
                 suggestions={starterSuggestions}
                 hasVerifiedDomain={domains.some((d) => d.verified)}
