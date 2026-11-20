@@ -36,6 +36,11 @@ All notable changes to the Proxync workspace studio project are documented here.
 ---
 
 ## [fix/v0.2.6-version-bump] - 2026-11-11 (Workspace & Studio Version Bump to v0.2.6 for Next Release Cycle)
+- **Feature Summary**:
+  - **Comprehensive Version Bump to v0.2.6**: Synchronized workspace and package manifests (`package.json`, `packages/desktop/package.json`, `package-lock.json`, `Cargo.toml`, `Cargo.lock`, and `tauri.conf.json`) across root, core, cli, and desktop packages to version `0.2.6`.
+  - **Native HTTP Network Headers & Diagnostics**: Updated Rust client diagnostic banner in `storage.rs` to `Proxync v0.2.6 (Engine: Tauri v2.11 Core)`. Synchronized frontend diagnostic logging metadata, log session directives, and support bundle fallbacks in `App.tsx` and `logger.ts` to `v0.2.6-stable`.
+  - **UI Version Presentation Alignment**: Updated `SettingsView.tsx` default prop to `v0.2.6`, `App.tsx` update toast message (`v0.2.6`), and sidebar engine indicator (`v0.2.6-stable`).
+  - **Recon & Documentation Badge Alignment**: Updated README version shield badge and `.agents/architecture.json` static recon map to reflect version `0.2.6`.
 - **Modified Files**:
   - `README.md`
   - `package-lock.json`
