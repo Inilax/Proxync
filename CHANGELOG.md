@@ -2,20 +2,19 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
-## [feat/emergency-cve-release-automation] - 2026-11-05 (Zero-Drift Emergency CVE Hotfix Pipeline & Pre-Release Versioning)
+## [feat/emergency-cve-release-automation] - 2026-11-25 (Zero-Drift Emergency CVE Hotfix Pipeline & Pre-Release Versioning)
 - **Summary**:
-  - **Automated Emergency CVE Hotfix Workflow (`.github/workflows/emergency-cve-release.yml`)**: Designed and implemented an autonomous hotfix release workflow that cherry-picks verified dependency security patches from `develop` directly onto a clean branch off `main`, dynamically calculates the next strictly increasing SemVer pre-release version (e.g. `0.2.4` → `0.2.5-cve.1` → `0.2.5-cve.2`), updates all workspace manifests (`package.json`, `packages/desktop/package.json`, `tauri.conf.json`, `Cargo.toml`), synchronizes `Cargo.lock` files across workspaces to avoid Fast CI `--locked` mismatches, formats the release notes with mandatory Proxync client radar tags (`[SECURITY-CVE] [TYPE: CVE-PATCH]`), opens a pull request targeting `main`, and arms GitHub native Auto-Merge (`--auto --squash`).
-  - **YAML Syntax & Indentation Hardening (`.github/workflows/emergency-cve-release.yml`)**: Fixed multiline bash heredoc and template literal indentation in changelog prepender and PR generator steps. Switched multiline strings to structured array `.join('\n')` and `--body-file` patterns to prevent zero-indentation lines from breaking GitHub Actions YAML parser with startup failure ("No jobs were run").
-  - **Coordinated Feature Release Auto-Bump (`.github/workflows/prepare-release.yml`)**: Synchronized the standard release pipeline to seamlessly promote hotfix pre-releases (e.g. `0.2.5-cve.1`) directly into the final clean feature release (`0.2.5`), ensuring strict SemVer ordering (`0.2.4 < 0.2.5-cve.1 < 0.2.5 < 0.2.6-cve.1 < 0.2.6`) so Tauri desktop clients smoothly install all security and feature updates without version stranding.
-  - **Fast CI Main Branch Gate (`.github/workflows/ci.yml`)**: Expanded pull request trigger branches to include `main` alongside `develop`, ensuring all hotfix pull requests pass the full multi-tier verification suite (TypeScript compilation, Vite build, Core unit tests, CLI tests, and Desktop backend tests) before any merge into production `main` can occur.
+  - **Automated Emergency CVE Hotfix Workflow (`.github/workflows/emergency-cve-release.yml`)**: Implemented an autonomous hotfix release workflow that cherry-picks verified dependency security patches from `develop` onto a clean branch off `main`, computes the next strictly increasing SemVer pre-release version using `git -c versionsort.suffix=-` (`0.2.5` → `0.2.6-cve.1` → `0.2.6-cve.2`), updates all workspace manifests (`package.json`, `packages/desktop/package.json`, `tauri.conf.json`, `Cargo.toml`), synchronizes `Cargo.lock` cleanly in ~2s via `cargo update -p` (eliminating cold `cargo check` compilation and GTK apt installs), inserts `[SECURITY-CVE] [TYPE: CVE-PATCH]` release notes right before the first `## ` section in `CHANGELOG.md`, normalizes `commit_sha` casing before hex validation, opens a PR into `main`, and safely arms GitHub Auto-Merge (`--auto --merge --delete-branch`) only when `allow_auto_merge` and `main` branch protection rules are active (preventing premature merges before CI runs and warning if `RELEASE_PAT` is unconfigured).
+  - **Coordinated Feature Release Auto-Bump (`.github/workflows/prepare-release.yml`)**: Updated tag discovery with `git -c versionsort.suffix=-` and regex SemVer parsing so hotfix pre-releases promote cleanly (`0.2.6-cve.1` → `0.2.6`) and post-release tags sort strictly above pre-release CVE tags (`0.2.6` → `0.2.7`).
+  - **Fast CI Main Branch Gate (`.github/workflows/ci.yml`)**: Expanded pull request triggers to `main` and added a `CI Gate` (`ci-gate`) job summarizing `Detect File Changes`, `Frontend Checks`, and `Rust Backend Test` so branch rulesets can enforce one stable required status check.
 - **Modified Files**:
   - `.github/workflows/ci.yml`
   - `.github/workflows/emergency-cve-release.yml`
   - `.github/workflows/prepare-release.yml`
   - `CHANGELOG.md`
 - **Verification**:
-  - Validated YAML syntax and schema compatibility across all workflow files.
-  - Verified strictly increasing SemVer evaluation across hotfix and feature transition sequences (`0.2.4 < 0.2.5-cve.1 < 0.2.5`).
+  - End-to-end live pipeline test on `mohammed-althaf-h/proxync-cve-test` (`v0.2.5` → `v0.2.6-cve.1` PR #7): `emergency-cve-release.yml` completed in 32s, `Fast CI` + `CI Gate` passed in 7m27s, auto-merge completed, and `release.yml` `Prepare Tag & Changelog` created `v0.2.6-cve.1` + `release-v0.2.6-cve.1`.
+  - Verified SemVer transition ordering (`v0.2.5` → `0.2.6-cve.1` / `0.2.6` → `0.2.6-cve.2` → `0.2.7-cve.1` / `0.2.7`).
 
 ---
 
