@@ -246,11 +246,12 @@ export function WorkspaceDashboardView({
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5">
                 {processes.map((proc) => {
                   const primaryT = tunnels.find((t) => t.localPort === proc.port && (t.status === 'ACTIVE' || t.status === 'STANDBY'));
-                  const parentStackT = !primaryT ? tunnels.find((t) => (t.status === 'ACTIVE' || t.status === 'STANDBY') && t.routes?.some((r) => r.endsWith(`:${proc.port}`))) : undefined;
+                  const parentStackT = !primaryT ? tunnels.find((t) => (t.status === 'ACTIVE' || t.status === 'STANDBY') && t.routes?.some((r) => r.split(':').pop() === String(proc.port))) : undefined;
                   const activeT = primaryT || parentStackT;
                   const isLive = Boolean(activeT);
                   const isSecondaryRouted = Boolean(parentStackT);
-                  const routedPrefix = parentStackT ? (parentStackT.routes?.find((r) => r.endsWith(`:${proc.port}`))?.split(':')[0] || '') : '';
+                  const matchingRoute = parentStackT?.routes?.find((r) => r.split(':').pop() === String(proc.port));
+                  const routedPrefix = matchingRoute ? (matchingRoute.split(':')[0] || '') : '';
                   const specificRoutedUrl = parentStackT && activeT?.publicUrl
                     ? `${activeT.publicUrl.replace(/\/+$/, '')}${routedPrefix.startsWith('/') ? routedPrefix : `/${routedPrefix}`}`
                     : activeT?.publicUrl;
@@ -263,7 +264,9 @@ export function WorkspaceDashboardView({
                       key={proc.id}
                       onClick={() => onSelectProcess(proc.id)}
                       className={`p-4 sm:p-5 bg-surface-container border rounded-2xl flex flex-col justify-between gap-4 transition-all cursor-pointer group shadow-sm hover:shadow-md ${isSecondaryRouted
-                          ? 'border-cyan-500/60 shadow-cyan-500/10'
+                          ? isStandby
+                            ? 'border-amber-500/60 shadow-amber-500/10'
+                            : 'border-cyan-500/60 shadow-cyan-500/10'
                           : isLive && !isStandby
                             ? 'border-emerald-500/60 shadow-emerald-500/10'
                             : isStandby
@@ -298,15 +301,17 @@ export function WorkspaceDashboardView({
                           {/* Top Right Badges */}
                           <div className="flex items-center gap-1.5 shrink-0">
                             <span className={`px-2.5 py-1 bg-surface-container-high rounded-full border text-[11px] font-mono font-medium flex items-center gap-1.5 ${isSecondaryRouted
-                                ? 'border-cyan-500/40 text-cyan-400 bg-cyan-500/10'
+                                ? isStandby
+                                  ? 'border-amber-500/40 text-amber-400 bg-amber-500/10'
+                                  : 'border-cyan-500/40 text-cyan-400 bg-cyan-500/10'
                                 : isLive && !isStandby
                                   ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10'
                                   : isStandby
                                     ? 'border-amber-500/40 text-amber-400 bg-amber-500/10'
                                     : 'border-outline-variant/50 text-on-surface-variant'
                               }`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${isSecondaryRouted ? 'bg-cyan-400 animate-pulse' : isLive && !isStandby ? 'bg-emerald-400 animate-pulse' : isStandby ? 'bg-amber-400' : 'bg-outline'}`}></span>
-                              {isSecondaryRouted ? 'ROUTED IN STACK' : isLive && !isStandby ? 'ONLINE' : isStandby ? 'STANDBY' : 'LOCAL'}
+                              <span className={`w-1.5 h-1.5 rounded-full ${isSecondaryRouted ? (isStandby ? 'bg-amber-400' : 'bg-cyan-400 animate-pulse') : isLive && !isStandby ? 'bg-emerald-400 animate-pulse' : isStandby ? 'bg-amber-400' : 'bg-outline'}`}></span>
+                              {isSecondaryRouted ? (isStandby ? 'STANDBY (STACK)' : 'ROUTED IN STACK') : isLive && !isStandby ? 'ONLINE' : isStandby ? 'STANDBY' : 'LOCAL'}
                             </span>
                             <span className="px-2.5 py-1 bg-surface-container-high rounded-full border border-outline-variant/50 text-[11px] font-mono font-bold text-primary">
                               :{proc.port}
@@ -467,14 +472,13 @@ export function WorkspaceDashboardView({
                               <span className="material-symbols-outlined text-[14px] group-hover/btn:translate-x-0.5 transition-transform">arrow_forward</span>
                             </button>
                             {isSecondaryRouted && parentStackT ? (
-                              <button
-                                onClick={() => onStopTunnel(parentStackT)}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 font-body-sm text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
-                                title={`In active stack hosted on :${parentStackT.localPort}. Click to stop stack tunnel.`}
+                              <div
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 font-body-sm text-xs font-semibold select-none cursor-default shrink-0"
+                                title={`Service is routed inside active stack hosted on :${parentStackT.localPort}. Stop the stack from the primary service (:${parentStackT.localPort}) card or process detail view.`}
                               >
                                 <span className="material-symbols-outlined text-[14px]">layers</span>
                                 <span>In Active Stack</span>
-                              </button>
+                              </div>
                             ) : (
                               <button
                                 onClick={() => onStopTunnel(activeT)}

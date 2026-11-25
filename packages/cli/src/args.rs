@@ -26,7 +26,7 @@ pub enum Commands {
     #[command(alias = "share")]
     Tunnel(TunnelArgs),
 
-    /// Launch a multi-service microservice stack with clean dedicated URLs or declarative config
+    /// Launch a multi-service stack (separate subdomains by default, or --unified for single-URL path routing)
     #[command(alias = "microservices")]
     Stack(StackArgs),
 
@@ -265,6 +265,7 @@ pub struct ServeArgs {
 }
 
 #[derive(Args, Debug, Clone)]
+#[command(after_help = "Examples:\n  proxync stack 3000 8080\n  proxync stack --unified web:3000 api:8080\n  proxync tunnel --route /:3000 --route /api:8080   (explicit path-prefix routing)")]
 pub struct StackArgs {
     /// Services to tunnel in format [NAME:]PORT (e.g. 3000 8080 or web:3000 api:8080)
     /// If omitted, proxync searches for proxync.json or probes active dev servers
@@ -293,6 +294,10 @@ pub struct StackArgs {
     /// Disable persisting session traffic to cli.log
     #[arg(long)]
     pub no_log: bool,
+
+    /// Unified mode: Multiplex all stack services under a single tunnel URL via path-prefix routing (e.g. /:3000, /api:8080)
+    #[arg(long, visible_alias = "route")]
+    pub unified: bool,
 }
 
 #[derive(Args, Debug, Clone)]

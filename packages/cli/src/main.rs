@@ -331,6 +331,27 @@ mod tests {
     }
 
     #[test]
+    fn test_cli_parsing_stack_unified() {
+        let cli = Cli::try_parse_from(["proxync", "stack", "3000", "8080", "--unified"]).expect("parse stack unified");
+        match cli.command {
+            Some(Commands::Stack(s)) => {
+                assert!(s.unified);
+                assert_eq!(s.services, vec!["3000", "8080"]);
+            }
+            _ => panic!("expected stack command"),
+        }
+
+        let cli_alias = Cli::try_parse_from(["proxync", "stack", "web:3000", "api:8080", "--route"]).expect("parse stack route alias");
+        match cli_alias.command {
+            Some(Commands::Stack(s)) => {
+                assert!(s.unified);
+                assert_eq!(s.services, vec!["web:3000", "api:8080"]);
+            }
+            _ => panic!("expected stack command"),
+        }
+    }
+
+    #[test]
     fn test_is_tunnel_closure_log_line() {
         assert!(is_tunnel_closure_log_line("[2026-10-01T17:18:24.611Z] [INFO] [TUNNEL] Closed tunnel for port 4000", 4000));
         assert!(is_tunnel_closure_log_line("[2026-10-01T17:18:24.611Z] [INFO] [TUNNEL] Stopped tunnel on port 4000 (PID 123) via CLI", 4000));

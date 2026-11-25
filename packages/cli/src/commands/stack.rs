@@ -101,11 +101,27 @@ pub async fn handle_stack(args: StackArgs) -> Result<(), Box<dyn std::error::Err
 
                 if dev_procs.len() >= 2 {
                     println!("\x1b[1;36m✨ Discovered active microservice stack on your machine:\x1b[0m");
+                    let mut used_names = std::collections::HashSet::new();
                     for p in &dev_procs {
                         let label = p.framework.as_deref().unwrap_or(&p.name);
+                        let base_slug: String = label
+                            .to_lowercase()
+                            .chars()
+                            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+                            .collect::<String>()
+                            .split('-')
+                            .filter(|seg| !seg.is_empty())
+                            .collect::<Vec<_>>()
+                            .join("-");
+                        let slug = if base_slug.is_empty() { format!("srv-{}", p.port) } else { base_slug };
+                        let unique_name = if used_names.insert(slug.clone()) {
+                            slug
+                        } else {
+                            format!("{}-{}", slug, p.port)
+                        };
                         println!("   • \x1b[1m{:<16}\x1b[0m on port \x1b[33m{}\x1b[0m", label, p.port);
                         services.push(StackServiceConfig {
-                            name: label.to_lowercase().replace(' ', "-"),
+                            name: unique_name,
                             port: p.port,
                             basic_auth: args.basic_auth.clone(),
                         });
@@ -131,6 +147,7 @@ pub async fn handle_stack(args: StackArgs) -> Result<(), Box<dyn std::error::Err
         eprintln!("\x1b[1;31m[!] Error: No services specified and no running dev servers discovered.\x1b[0m");
         eprintln!("    Usage: \x1b[1mproxync stack 3000 8080\x1b[0m");
         eprintln!("    Or with labels: \x1b[1mproxync stack web:3000 api:8080\x1b[0m");
+        eprintln!("    Unified single URL: \x1b[1mproxync stack --unified 3000 8080\x1b[0m");
         eprintln!("    Or define a \x1b[1mproxync.json\x1b[0m in your monorepo root.");
         return Err("No stack services to tunnel.".into());
     }
@@ -142,6 +159,47 @@ pub async fn handle_stack(args: StackArgs) -> Result<(), Box<dyn std::error::Err
             eprintln!("\x1b[1;31m[!] Error: Duplicate port {} in stack specification.\x1b[0m", s.port);
             return Err("Duplicate port in stack.".into());
         }
+    }
+
+    // ── Unified Path Routing Mode ──────────────────────────────────────────
+    if args.unified {
+        let mut routes: Vec<String> = Vec::new();
+        for (i, s) in services.iter().enumerate() {
+            let prefix = if s.name.starts_with('/') {
+                s.name.clone()
+            } else if i == 0 {
+                "/".to_string()
+            } else {
+                format!("/{}", s.name)
+            };
+            routes.push(format!("{}:{}", prefix, s.port));
+        }
+
+        println!("\x1b[1;36m==> Launching Unified Proxync Stack ({} services on a single tunnel URL)...\x1b[0m", services.len());
+        println!("    Routes:");
+        for r in &routes {
+            if let Some((pfx, pt)) = r.split_once(':') {
+                println!("      \x1b[36m{:<12}\x1b[0m → http://localhost:{}", pfx, pt);
+            }
+        }
+        println!();
+
+        let tunnel_args = crate::args::TunnelArgs {
+            port: 0,
+            provider: args.provider,
+            detach: false,
+            qr: false,
+            basic_auth: args.basic_auth,
+            expires: args.expires,
+            force: args.force,
+            token: None,
+            workspace: None,
+            relay_url: None,
+            no_log: args.no_log,
+            daemon_worker: false,
+            routes: Some(routes),
+        };
+        return crate::commands::tunnel::handle_tunnel(tunnel_args).await;
     }
 
     // ── 3. Pre-flight verification for all services ─────────────────────────
@@ -245,6 +303,7 @@ pub async fn handle_stack(args: StackArgs) -> Result<(), Box<dyn std::error::Err
             started_epoch_secs,
             expires_at: effective_expires.clone(),
             expires_epoch_secs,
+            routes: None,
         };
         let _ = proxync_core::registry::register_tunnel(&entry);
 

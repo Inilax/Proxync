@@ -33,6 +33,18 @@ pub async fn handle_ps() -> Result<(), Box<dyn std::error::Error>> {
                 uptime_str,
                 expires_str
             );
+            if let Some(ref rts) = t.routes {
+                if !rts.is_empty() {
+                    let formatted_routes: Vec<String> = rts.iter().map(|r| {
+                        if let Some((pfx, pt)) = r.split_once(':') {
+                            format!("\x1b[36m{}\x1b[0m \x1b[90m→\x1b[0m \x1b[33m:{}\x1b[0m", pfx, pt)
+                        } else {
+                            r.clone()
+                        }
+                    }).collect();
+                    println!("         \x1b[90m↳ Routes: {}\x1b[0m", formatted_routes.join(", "));
+                }
+            }
         }
     }
 
@@ -80,7 +92,7 @@ pub async fn handle_stop(args: StopArgs) -> Result<(), Box<dyn std::error::Error
     let targets: Vec<proxync_core::registry::TunnelEntry> = if target_str.eq_ignore_ascii_case("all") {
         registry
     } else if let Ok(port) = target_str.parse::<u16>() {
-        registry.into_iter().filter(|t| t.port == port).collect()
+        registry.into_iter().filter(|t| t.matches_port(port)).collect()
     } else {
         registry.into_iter().filter(|t| t.id == target_str).collect()
     };
@@ -169,7 +181,7 @@ pub async fn handle_status(args: StatusArgs) -> Result<(), Box<dyn std::error::E
     let target_entry = match args.target {
         Some(ref target) => {
             if let Ok(port) = target.parse::<u16>() {
-                registry.into_iter().find(|t| t.port == port)
+                registry.into_iter().find(|t| t.matches_port(port))
             } else {
                 registry.into_iter().find(|t| t.id == *target)
             }
@@ -181,7 +193,11 @@ pub async fn handle_status(args: StatusArgs) -> Result<(), Box<dyn std::error::E
     match target_entry {
         Some(t) => {
             let is_alive = proxync_core::registry::is_process_alive(t.pid);
-            let port_listening = proxync_core::recon::probe_port(t.port).await.unwrap_or(false);
+            let checked_port = args.target.as_deref()
+                .and_then(|s| s.parse::<u16>().ok())
+                .filter(|&p| t.matches_port(p))
+                .unwrap_or(t.port);
+            let port_listening = proxync_core::recon::probe_port(checked_port).await.unwrap_or(false);
             let uptime = elapsed_since(t.started_epoch_secs);
             let now_secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
             let expires_info = match t.expires_epoch_secs {
@@ -192,10 +208,27 @@ pub async fn handle_status(args: StatusArgs) -> Result<(), Box<dyn std::error::E
 
             println!("\x1b[1;36mProxync Tunnel Diagnostic Status:\x1b[0m");
             println!("  Port           : \x1b[1m{}\x1b[0m (Local service listening: {})", 
-                t.port, 
+                checked_port, 
                 if port_listening { "\x1b[32mYES\x1b[0m" } else { "\x1b[33mSTANDBY / OFFLINE\x1b[0m" }
             );
-            println!("  Public URL     : \x1b[1;34;4m{}\x1b[0m", t.public_url);
+            println!("  Public URL     : \x1b[1;34;4m{}\x1b[0m", t.public_url_for_port(checked_port));
+            if let Some(ref rts) = t.routes {
+                if !rts.is_empty() {
+                    let mut statuses = Vec::with_capacity(rts.len());
+                    for r in rts {
+                        if let Some((pfx, pt_str)) = r.rsplit_once(':') {
+                            if let Ok(pt) = pt_str.parse::<u16>() {
+                                let up = proxync_core::recon::probe_port(pt).await.unwrap_or(false);
+                                let tag = if up { "\x1b[32mUP\x1b[0m" } else { "\x1b[31mOFFLINE\x1b[0m" };
+                                statuses.push(format!("{}:{} ({})", pfx, pt, tag));
+                                continue;
+                            }
+                        }
+                        statuses.push(r.clone());
+                    }
+                    println!("  Routes         : {}", statuses.join(", "));
+                }
+            }
             println!("  Provider       : {}", t.provider);
             println!("  Process PID    : {} ({})", t.pid, if is_alive { "\x1b[32mALIVE\x1b[0m" } else { "\x1b[31mDEAD\x1b[0m" });
             println!("  Tunnel ID      : {}", t.id);
@@ -222,7 +255,7 @@ pub fn handle_open(args: OpenArgs) -> Result<(), Box<dyn std::error::Error>> {
 
     let url_to_open = if let Some(ref target) = args.target {
         if let Ok(port) = target.parse::<u16>() {
-            tunnels.iter().find(|t| t.port == port).map(|t| t.public_url.clone())
+            tunnels.iter().find(|t| t.matches_port(port)).map(|t| t.public_url_for_port(port))
         } else {
             tunnels.iter().find(|t| t.id == *target).map(|t| t.public_url.clone())
         }

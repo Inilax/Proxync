@@ -1813,12 +1813,20 @@ export default function App() {
     return false;
   }
 
+  function findExistingTunnelForPort(port: number): Tunnel | undefined {
+    return tunnels.find(
+      (t) =>
+        (t.status === 'ACTIVE' || t.status === 'STANDBY') &&
+        (t.localPort === port || t.routes?.some((r) => r.split(':').pop() === String(port)))
+    );
+  }
+
   async function initiatePublicShare(process: ProcessCandidate) {
     if (!activeWorkspace) {
       showToast('Select or create a workspace first before sharing a port', 'info');
       return;
     }
-    const existingActive = tunnels.find((t) => t.localPort === process.port && t.status === 'ACTIVE');
+    const existingActive = findExistingTunnelForPort(process.port);
     if (existingActive) {
       showToast(`Tunnel is already active for port ${process.port} (${existingActive.publicUrl}). Stop the existing tunnel first.`, 'warning');
       setActiveTunnel(existingActive);
@@ -1911,7 +1919,7 @@ export default function App() {
 
   async function shareProcessCloudflare(process: ProcessCandidate, basicAuth?: BasicAuthConfig, routes?: string[]) {
     if (!activeWorkspace) return;
-    const existingActive = tunnels.find((t) => t.localPort === process.port && t.status === 'ACTIVE');
+    const existingActive = findExistingTunnelForPort(process.port);
     if (existingActive) {
       showToast(`Tunnel is already active for port ${process.port} (${existingActive.publicUrl}). Stop the existing tunnel first.`, 'warning');
       setActiveTunnel(existingActive);
@@ -2007,7 +2015,7 @@ export default function App() {
 
   async function shareProcessNative(process: ProcessCandidate, basicAuth?: BasicAuthConfig, routes?: string[]) {
     if (!activeWorkspace) return;
-    const existingActive = tunnels.find((t) => t.localPort === process.port && t.status === 'ACTIVE');
+    const existingActive = findExistingTunnelForPort(process.port);
     if (existingActive) {
       showToast(`Tunnel is already active for port ${process.port} (${existingActive.publicUrl}). Stop the existing tunnel first.`, 'warning');
       setActiveTunnel(existingActive);
@@ -2108,7 +2116,7 @@ export default function App() {
 
   async function shareProcess(process: ProcessCandidate, customDomain?: string, basicAuth?: BasicAuthConfig, routes?: string[]) {
     if (!activeWorkspace) return;
-    const existingActive = tunnels.find((t) => t.localPort === process.port && t.status === 'ACTIVE');
+    const existingActive = findExistingTunnelForPort(process.port);
     if (existingActive) {
       showToast(`Tunnel is already active for port ${process.port} (${existingActive.publicUrl}). Stop the existing tunnel first.`, 'warning');
       setActiveTunnel(existingActive);
@@ -3739,11 +3747,7 @@ export default function App() {
                 workspace={activeWorkspace}
                 process={selectedProcess}
                 profile={selectedProfile}
-                tunnel={
-                  tunnels.find((t) => t.localPort === (selectedProcess?.port || selectedProfile?.port) && (t.status === 'ACTIVE' || t.status === 'STANDBY')) ||
-                  tunnels.find((t) => (t.status === 'ACTIVE' || t.status === 'STANDBY') && t.routes?.some((r) => r.endsWith(`:${selectedProcess?.port || selectedProfile?.port}`))) ||
-                  null
-                }
+                tunnel={findExistingTunnelForPort(selectedProcess?.port || selectedProfile?.port || 0) || null}
                 sharingPort={sharingPort}
                 suggestions={starterSuggestions}
                 hasVerifiedDomain={domains.some((d) => d.verified)}

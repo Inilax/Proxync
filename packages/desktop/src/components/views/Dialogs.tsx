@@ -55,7 +55,9 @@ export function DiscoverDialog({
         <div className="discovery-list">
           {processes.map((process) => {
             const activeTunnel = tunnels.find(
-              (t) => t.localPort === process.port && t.status === 'ACTIVE'
+              (t) =>
+                (t.status === 'ACTIVE' || t.status === 'STANDBY') &&
+                (t.localPort === process.port || t.routes?.some((r) => r.split(':').pop() === String(process.port)))
             );
             const isExposed = Boolean(activeTunnel);
 
@@ -161,6 +163,23 @@ export function DiscoverDialog({
 
 const LAST_AUTH_USERNAME_KEY = 'proxync_last_tunnel_username';
 
+function normalizeRoutePrefix(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '/';
+  const withSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  return withSlash.length > 1 ? withSlash.replace(/\/+$/, '') || '/' : withSlash;
+}
+
+function findDuplicatePrefixes(prefixes: string[]): string[] {
+  const counts = new Map<string, number>();
+  for (const p of prefixes) {
+    counts.set(p, (counts.get(p) || 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .filter(([, count]) => count > 1)
+    .map(([pfx]) => pfx);
+}
+
 export function DomainSelectDialog({
   process,
   domains,
@@ -190,6 +209,16 @@ export function DomainSelectDialog({
   });
   const [authPassword, setAuthPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
+
+  const domainDuplicatePrefixes = routingEnabled
+    ? findDuplicatePrefixes([
+        '/',
+        ...extraRoutes
+          .filter((r) => r.prefix.trim().length > 0)
+          .map((r) => normalizeRoutePrefix(r.prefix)),
+      ])
+    : [];
+  const hasDuplicateDomainRoutes = domainDuplicatePrefixes.length > 0;
 
   useEffect(() => {
     setAuthEnabled(false);
@@ -628,7 +657,7 @@ export function DomainSelectDialog({
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', background: 'var(--color-surface-container-lowest)', borderRadius: '6px', fontSize: '11px', border: '1px solid var(--color-outline-variant)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <span className="font-mono text-primary font-bold">/</span>
-                    <span className="text-on-surface-variant text-[10px]">?</span>
+                    <span className="text-on-surface-variant text-[10px]">→</span>
                     <span className="font-mono font-bold text-on-surface">:{process.port}</span>
                     <span className="text-[10px] text-on-surface-variant">({process.name})</span>
                   </div>
@@ -636,7 +665,9 @@ export function DomainSelectDialog({
                     Primary Root
                   </span>
                 </div>
-                {extraRoutes.map((rt, idx) => (
+                {extraRoutes.map((rt, idx) => {
+                  const isDup = rt.prefix.trim().length > 0 && domainDuplicatePrefixes.includes(normalizeRoutePrefix(rt.prefix));
+                  return (
                   <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <input
                       type="text"
@@ -647,9 +678,9 @@ export function DomainSelectDialog({
                         const val = e.target.value;
                         setExtraRoutes((curr) => curr.map((r, i) => i === idx ? { ...r, prefix: val } : r));
                       }}
-                      style={{ flex: 1, fontSize: '11px', padding: '5px 8px', borderRadius: '6px', background: 'var(--color-surface-container-lowest)', border: '1px solid var(--color-outline-variant)', color: 'var(--color-on-surface)' }}
+                      style={{ flex: 1, fontSize: '11px', padding: '5px 8px', borderRadius: '6px', background: 'var(--color-surface-container-lowest)', border: isDup ? '1px solid #ef4444' : '1px solid var(--color-outline-variant)', color: isDup ? '#f87171' : 'var(--color-on-surface)' }}
                     />
-                    <span style={{ fontSize: '11px', color: 'var(--color-on-surface-variant)' }}>?</span>
+                    <span style={{ fontSize: '11px', color: 'var(--color-on-surface-variant)' }}>→</span>
                     <input
                       type="number"
                       className="input-field"
@@ -670,7 +701,8 @@ export function DomainSelectDialog({
                       <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>close</span>
                     </button>
                   </div>
-                ))}
+                  );
+                })}
                 {otherProcesses.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '2px' }}>
                     <span style={{ fontSize: '10px', color: 'var(--color-on-surface-variant)', fontWeight: 600 }}>
@@ -733,6 +765,23 @@ export function DomainSelectDialog({
                   <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>add</span>
                   <span>Add Route Prefix</span>
                 </button>
+                {hasDuplicateDomainRoutes && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 10px',
+                    borderRadius: '6px',
+                    background: 'rgba(239, 68, 68, 0.12)',
+                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                    color: '#f87171',
+                    fontSize: '10.5px',
+                    fontWeight: 500,
+                  }}>
+                    <span className="material-symbols-outlined text-[15px]">error</span>
+                    <span>Duplicate route prefix <strong>{domainDuplicatePrefixes.join(', ')}</strong>. Each route must be unique.</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -745,10 +794,10 @@ export function DomainSelectDialog({
           <button className="btn-ghost" onClick={onClose}>Cancel</button>
           <button
             className="btn-primary"
-            disabled={authEnabled && (!authUsername.trim() || !authPassword.trim())}
-            style={authEnabled && (!authUsername.trim() || !authPassword.trim()) ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+            disabled={(authEnabled && (!authUsername.trim() || !authPassword.trim())) || hasDuplicateDomainRoutes}
+            style={(authEnabled && (!authUsername.trim() || !authPassword.trim())) || hasDuplicateDomainRoutes ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
             onClick={() => {
-              if (authEnabled && (!authUsername.trim() || !authPassword.trim())) return;
+              if ((authEnabled && (!authUsername.trim() || !authPassword.trim())) || hasDuplicateDomainRoutes) return;
               if (authEnabled) {
                 try {
                   localStorage.setItem(LAST_AUTH_USERNAME_KEY, authUsername.trim());
@@ -763,7 +812,7 @@ export function DomainSelectDialog({
               const validExtra = routingEnabled
                 ? extraRoutes
                     .filter((r) => r.prefix.trim() && Number(r.port) > 0)
-                    .map((r) => `${r.prefix.trim().startsWith('/') ? r.prefix.trim() : `/${r.prefix.trim()}`}:${r.port}`)
+                    .map((r) => `${normalizeRoutePrefix(r.prefix)}:${r.port}`)
                 : [];
               const routes = validExtra.length > 0 ? [`/:${process.port}`, ...validExtra] : undefined;
               onConfirm(selectedDomain, basicAuth, routes);
@@ -924,7 +973,7 @@ export function ConfirmPurgeDialog({
   );
 }
 
-/* ?????????????????? Launch Stack Dialog ?????????????????? */
+/* ────────────────── Launch Stack Dialog ────────────────── */
 export function LaunchStackDialog({
   processes,
   onClose,
@@ -951,7 +1000,7 @@ export function LaunchStackDialog({
       } else if (p.name.toLowerCase().includes('api') || p.port === 8080 || p.port === 8000) {
         init[p.port] = '/api';
       } else {
-        init[p.port] = `/${p.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+        init[p.port] = `/${p.name.toLowerCase().replace(/[^a-z0-9]/g, '') || 'service'}`;
       }
     }
     return init;
@@ -960,6 +1009,24 @@ export function LaunchStackDialog({
     setSelectedIds((curr) => curr.includes(id) ? curr.filter((i) => i !== id) : [...curr, id]);
   };
   const selectedProcesses = processes.filter((p) => selectedIds.includes(p.id));
+  const effectivePrimary = selectedProcesses.find((p) => p.port === primaryPort) || selectedProcesses[0];
+
+  // Validate duplicate path prefixes in unified routing mode
+  const prefixMap = new Map<number, string>();
+  if (mode === 'unified') {
+    for (const p of selectedProcesses) {
+      if (effectivePrimary && p.port === effectivePrimary.port) {
+        prefixMap.set(p.port, '/');
+      } else {
+        const defaultPfx = `/${p.name.toLowerCase().replace(/[^a-z0-9]/g, '') || 'service'}`;
+        const raw = customPrefixes[p.port] ?? defaultPfx;
+        prefixMap.set(p.port, normalizeRoutePrefix(raw));
+      }
+    }
+  }
+  const duplicatePrefixes = mode === 'unified' ? findDuplicatePrefixes(Array.from(prefixMap.values())) : [];
+  const hasDuplicatePrefixes = duplicatePrefixes.length > 0;
+
   return (
     <div className="dialog-backdrop glass" onClick={onClose}>
       <section className="discover-dialog domain-select-dialog slide-up" onClick={(e) => e.stopPropagation()}>
@@ -1019,7 +1086,7 @@ export function LaunchStackDialog({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {processes.map((proc) => {
                 const isSelected = selectedIds.includes(proc.id);
-                const isPrimary = proc.port === primaryPort;
+                const isPrimary = Boolean(effectivePrimary && proc.port === effectivePrimary.port);
                 return (
                   <div
                     key={proc.id}
@@ -1060,7 +1127,7 @@ export function LaunchStackDialog({
                             <span style={{ fontSize: '10px', color: 'var(--color-on-surface-variant)' }}>Path:</span>
                             <input
                               type="text"
-                              value={customPrefixes[proc.port] ?? '/api'}
+                              value={customPrefixes[proc.port] ?? `/${proc.name.toLowerCase().replace(/[^a-z0-9]/g, '') || 'api'}`}
                               onChange={(e) => {
                                 const val = e.target.value;
                                 setCustomPrefixes((c) => ({ ...c, [proc.port]: val }));
@@ -1072,15 +1139,22 @@ export function LaunchStackDialog({
                                 padding: '3px 6px',
                                 borderRadius: '4px',
                                 background: 'var(--color-surface-container-lowest)',
-                                border: '1px solid var(--color-outline-variant)',
-                                color: 'var(--color-on-surface)',
+                                border: duplicatePrefixes.includes(prefixMap.get(proc.port) ?? '') ? '1px solid #ef4444' : '1px solid var(--color-outline-variant)',
+                                color: duplicatePrefixes.includes(prefixMap.get(proc.port) ?? '') ? '#f87171' : 'var(--color-on-surface)',
                               }}
                             />
                             <button
                               type="button"
                               onClick={() => {
+                                const oldPrimary = effectivePrimary;
                                 setPrimaryPort(proc.port);
-                                setCustomPrefixes((c) => ({ ...c, [proc.port]: '/' }));
+                                setCustomPrefixes((c) => {
+                                  const next = { ...c, [proc.port]: '/' };
+                                  if (oldPrimary && oldPrimary.port !== proc.port && (next[oldPrimary.port] === '/' || !next[oldPrimary.port])) {
+                                    next[oldPrimary.port] = `/${oldPrimary.name.toLowerCase().replace(/[^a-z0-9]/g, '') || 'service'}`;
+                                  }
+                                  return next;
+                                });
                               }}
                               style={{
                                 fontSize: '9px',
@@ -1103,26 +1177,44 @@ export function LaunchStackDialog({
               })}
             </div>
           </div>
+          {mode === 'unified' && hasDuplicatePrefixes && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 12px',
+              borderRadius: '8px',
+              background: 'rgba(239, 68, 68, 0.12)',
+              border: '1px solid rgba(239, 68, 68, 0.35)',
+              color: '#f87171',
+              fontSize: '11px',
+              fontWeight: 500,
+            }}>
+              <span className="material-symbols-outlined text-[16px]">error</span>
+              <span>
+                Duplicate route prefix <strong>{duplicatePrefixes.join(', ')}</strong> specified for multiple services. Each service must have a unique path prefix.
+              </span>
+            </div>
+          )}
         </div>
         <div className="dialog-footer">
           <button className="btn-ghost" onClick={onClose}>Cancel</button>
           <button
             className="btn-primary"
-            disabled={selectedProcesses.length === 0}
+            disabled={selectedProcesses.length === 0 || (mode === 'unified' && hasDuplicatePrefixes)}
+            title={hasDuplicatePrefixes ? 'Resolve duplicate path prefixes before launching' : undefined}
             onClick={() => {
               if (mode === 'individual') {
                 onLaunchIndividual(selectedProcesses);
-              } else {
-                const primary = selectedProcesses.find((p) => p.port === primaryPort) || selectedProcesses[0];
-                const routes: string[] = [`/:${primary.port}`];
+              } else if (effectivePrimary) {
+                const routes: string[] = [`/:${effectivePrimary.port}`];
                 for (const p of selectedProcesses) {
-                  if (p.port !== primary.port) {
-                    const pfx = customPrefixes[p.port] || `/${p.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
-                    const cleanPfx = pfx.startsWith('/') ? pfx : `/${pfx}`;
+                  if (p.port !== effectivePrimary.port) {
+                    const cleanPfx = prefixMap.get(p.port) ?? normalizeRoutePrefix(`/${p.name.toLowerCase().replace(/[^a-z0-9]/g, '') || 'service'}`);
                     routes.push(`${cleanPfx}:${p.port}`);
                   }
                 }
-                onLaunchUnified(primary, routes);
+                onLaunchUnified(effectivePrimary, routes);
               }
               onClose();
             }}

@@ -35,6 +35,18 @@ pub async fn handle_tunnel(args: TunnelArgs) -> Result<(), Box<dyn std::error::E
         Vec::new()
     };
 
+    // Validate duplicate route prefixes
+    let mut seen_prefixes = std::collections::HashSet::new();
+    for r in &parsed_routes {
+        if !seen_prefixes.insert(&r.prefix) {
+            eprintln!(
+                "\x1b[1;31m[!] Error: Duplicate route prefix '{}' specified for multiple ports.\x1b[0m",
+                r.prefix
+            );
+            return Err("Duplicate route prefix in --route.".into());
+        }
+    }
+
     let is_multi_route = !parsed_routes.is_empty();
     let effective_port = if is_multi_route {
         parsed_routes[0].port
@@ -79,13 +91,15 @@ pub async fn handle_tunnel(args: TunnelArgs) -> Result<(), Box<dyn std::error::E
             }
         }
 
-        // Concurrency Guard: Block opening duplicate tunnels on the same primary port
-        if let Some(existing) = proxync_core::registry::find_tunnel_by_port(effective_port) {
-            eprintln!("\x1b[1;33m[!] Warning: Port {} is already being tunneled!\x1b[0m", effective_port);
-            eprintln!("    Active Tunnel URL : \x1b[1;34m{}\x1b[0m", existing.public_url);
-            eprintln!("    Process PID       : {}", existing.pid);
-            eprintln!("    Tip: Run \x1b[1mproxync stop {}\x1b[0m to stop it, or \x1b[1m--force\x1b[0m to start anyway.", effective_port);
-            return Err(format!("Tunnel on port {} is already running (PID {})", effective_port, existing.pid).into());
+        // Concurrency Guard: Block opening duplicate tunnels on any port in the route table
+        for &p_check in &ports_to_check {
+            if let Some(existing) = proxync_core::registry::find_tunnel_by_port(p_check) {
+                eprintln!("\x1b[1;33m[!] Warning: Port {} is already being tunneled!\x1b[0m", p_check);
+                eprintln!("    Active Tunnel URL : \x1b[1;34m{}\x1b[0m", existing.public_url);
+                eprintln!("    Process PID       : {}", existing.pid);
+                eprintln!("    Tip: Run \x1b[1mproxync stop {}\x1b[0m to stop it, or \x1b[1m--force\x1b[0m to start anyway.", p_check);
+                return Err(format!("Tunnel on port {} is already running (PID {})", p_check, existing.pid).into());
+            }
         }
     }
 
@@ -203,6 +217,11 @@ pub async fn handle_tunnel(args: TunnelArgs) -> Result<(), Box<dyn std::error::E
         started_epoch_secs,
         expires_at: effective_expires.clone(),
         expires_epoch_secs,
+        routes: if is_multi_route {
+            Some(parsed_routes.iter().map(|r| format!("{}:{}", r.prefix, r.port)).collect())
+        } else {
+            None
+        },
     };
     let _ = proxync_core::registry::register_tunnel(&entry);
 
@@ -241,7 +260,7 @@ pub async fn handle_tunnel(args: TunnelArgs) -> Result<(), Box<dyn std::error::E
             "[{}] [INFO] [TUNNEL] Started {:?} tunnel for port {} -> {}",
             proxync_core::storage::get_current_iso_timestamp(),
             args.provider,
-            args.port,
+            effective_port,
             public_url
         );
         let _ = proxync_core::storage::append_log_entry("cli".into(), start_msg).await;
@@ -531,7 +550,7 @@ pub async fn handle_tunnel(args: TunnelArgs) -> Result<(), Box<dyn std::error::E
         let close_msg = format!(
             "[{}] [INFO] [TUNNEL] Closed tunnel for port {}",
             proxync_core::storage::get_current_iso_timestamp(),
-            args.port
+            effective_port
         );
         let _ = proxync_core::storage::append_log_entry("cli".into(), close_msg).await;
     }

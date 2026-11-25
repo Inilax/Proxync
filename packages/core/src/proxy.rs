@@ -1222,11 +1222,18 @@ pub struct RouteEntry {
 /// assert_eq!(r.port, 8080);
 /// ```
 pub fn parse_route(s: &str) -> Result<RouteEntry, String> {
-    let (prefix, port_str) = s.rsplit_once(':')
+    let (prefix_raw, port_str) = s.rsplit_once(':')
         .ok_or_else(|| format!("Invalid --route '{}': expected PREFIX:PORT (e.g. /api:8080)", s))?;
     let port: u16 = port_str.trim().parse()
         .map_err(|_| format!("Invalid port in --route '{}': '{}' is not a valid port number", s, port_str))?;
-    let prefix = if prefix.starts_with('/') { prefix.to_string() } else { format!("/{}", prefix) };
+    let trimmed = prefix_raw.trim();
+    let mut prefix = if trimmed.starts_with('/') { trimmed.to_string() } else { format!("/{}", trimmed) };
+    if prefix.len() > 1 {
+        prefix = prefix.trim_end_matches('/').to_string();
+        if prefix.is_empty() {
+            prefix = "/".to_string();
+        }
+    }
     Ok(RouteEntry { prefix, port })
 }
 
@@ -1268,6 +1275,14 @@ pub async fn start_path_router(
         return Err("start_path_router requires at least one route".to_string());
     }
 
+    // Validate no duplicate route prefixes exist in the route table
+    let mut seen_prefixes = std::collections::HashSet::new();
+    for r in &routes {
+        if !seen_prefixes.insert(&r.prefix) {
+            return Err(format!("Duplicate route prefix '{}' specified in route table.", r.prefix));
+        }
+    }
+
     // Primary port: used for liveness events, error-page display, and stop_proxy key.
     let primary_port = routes[0].port;
 
@@ -1288,6 +1303,15 @@ pub async fn start_path_router(
 
     let listener = TcpListener::bind("127.0.0.1:0").await.map_err(|e| e.to_string())?;
     let router_port = listener.local_addr().map_err(|e| e.to_string())?.port();
+
+    // Liveness probe across all unique routed ports
+    let unique_ports: Vec<u16> = {
+        let mut set = std::collections::BTreeSet::new();
+        for r in &routes {
+            set.insert(r.port);
+        }
+        set.into_iter().collect()
+    };
 
     let routes = Arc::new(routes);
     let rate_limiter = Arc::new(Mutex::new(AuthRateLimiter::new()));
@@ -1317,18 +1341,41 @@ pub async fn start_path_router(
         }
     });
 
-    // Liveness probe on the primary port only (first route's service).
     let liveness_tx = tx.clone();
     let liveness_handle = tokio::spawn(async move {
         tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
         let mut last_status = "ACTIVE";
         loop {
             tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
-            let is_alive = tokio::time::timeout(
-                tokio::time::Duration::from_millis(250),
-                TcpStream::connect(format!("127.0.0.1:{}", primary_port)),
-            ).await.map(|r| r.is_ok()).unwrap_or(false);
-            let new_status = if is_alive { "ACTIVE" } else { "STANDBY" };
+            let mut all_alive = true;
+            for &pt in &unique_ports {
+                let is_v4 = tokio::time::timeout(
+                    tokio::time::Duration::from_millis(250),
+                    TcpStream::connect(format!("127.0.0.1:{}", pt)),
+                )
+                .await
+                .map(|r| r.is_ok())
+                .unwrap_or(false);
+
+                let alive = if is_v4 {
+                    true
+                } else {
+                    tokio::time::timeout(
+                        tokio::time::Duration::from_millis(250),
+                        TcpStream::connect(format!("[::1]:{}", pt)),
+                    )
+                    .await
+                    .map(|r| r.is_ok())
+                    .unwrap_or(false)
+                };
+
+                if !alive {
+                    all_alive = false;
+                    break;
+                }
+            }
+
+            let new_status = if all_alive { "ACTIVE" } else { "STANDBY" };
             if new_status != last_status {
                 last_status = new_status;
                 let _ = liveness_tx.send(ProxyncEvent::TunnelStatusChanged {
@@ -1430,7 +1477,29 @@ async fn proxy_one_request(
             .and_then(|l| l.split_whitespace().nth(1))
             .unwrap_or("/");
         match match_route(tbl, req_path) {
-            Some(r) => r.port,
+            Some(r) => {
+                let raw_path = if let Some(idx) = req_path.find("://") {
+                    req_path[idx + 3..].find('/').map(|i| &req_path[idx + 3 + i..]).unwrap_or("/")
+                } else {
+                    req_path
+                };
+                let (path_part, query_part) = match raw_path.find('?') {
+                    Some(i) => (&raw_path[..i], &raw_path[i..]),
+                    None => (raw_path, ""),
+                };
+                // Enforce trailing slash redirect on subpath roots so relative assets resolve properly in browsers
+                if r.prefix != "/" && path_part == r.prefix {
+                    let redirect_location = format!("{}/{}", r.prefix, query_part);
+                    let resp = format!(
+                        "HTTP/1.1 308 Permanent Redirect\r\nLocation: {}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                        redirect_location
+                    );
+                    let _ = client_stream.write_all(resp.as_bytes()).await;
+                    let _ = client_stream.shutdown().await;
+                    return;
+                }
+                r.port
+            }
             None => {
                 let _ = client_stream.write_all(
                     b"HTTP/1.1 404 Not Found\r\nContent-Length: 36\r\nConnection: close\r\n\r\nNo route matched this path prefix.\r\n"
@@ -2437,6 +2506,11 @@ mod tests {
         assert_eq!(r3.prefix, "/");
         assert_eq!(r3.port, 3000);
 
+        // Normalize trailing slash on non-root prefixes
+        let r4 = parse_route("/api/:8080").unwrap();
+        assert_eq!(r4.prefix, "/api");
+        assert_eq!(r4.port, 8080);
+
         assert!(parse_route("invalid-no-port").is_err());
         assert!(parse_route("/api:notaport").is_err());
     }
@@ -2530,7 +2604,42 @@ mod tests {
             assert!(s.contains("BACKEND"));
         }
 
+        // 3. Request to "/api" (without trailing slash) -> should receive 308 redirect to "/api/"
+        {
+            let mut stream = TcpStream::connect(format!("127.0.0.1:{}", router_port)).await.unwrap();
+            stream.write_all(b"GET /api HTTP/1.1\r\nHost: localhost\r\n\r\n").await.unwrap();
+            let mut res = Vec::new();
+            stream.read_to_end(&mut res).await.unwrap();
+            let s = String::from_utf8_lossy(&res);
+            assert!(s.contains("308 Permanent Redirect"));
+            assert!(s.contains("Location: /api/"));
+        }
+
+        // 4. Request to "/api?key=val" -> should receive 308 redirect preserving query
+        {
+            let mut stream = TcpStream::connect(format!("127.0.0.1:{}", router_port)).await.unwrap();
+            stream.write_all(b"GET /api?key=val HTTP/1.1\r\nHost: localhost\r\n\r\n").await.unwrap();
+            let mut res = Vec::new();
+            stream.read_to_end(&mut res).await.unwrap();
+            let s = String::from_utf8_lossy(&res);
+            assert!(s.contains("308 Permanent Redirect"));
+            assert!(s.contains("Location: /api/?key=val"));
+        }
+
         stop_proxy(Some(api_port)).await;
+    }
+
+    #[tokio::test]
+    async fn test_path_router_duplicate_prefix_rejection() {
+        let routes = vec![
+            RouteEntry { prefix: "/api".to_string(), port: 4000 },
+            RouteEntry { prefix: "/api".to_string(), port: 5002 },
+        ];
+        let tx = test_event_sender();
+        let res = start_path_router(tx, routes, None).await;
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        assert!(err.contains("Duplicate route prefix '/api'"));
     }
 }
 
