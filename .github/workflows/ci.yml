@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - develop
+      - main
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -125,3 +126,28 @@ jobs:
       - name: Run Desktop Backend Tests
         working-directory: ${{ env.PKG_DIR }}/src-tauri
         run: cargo test
+
+  ci-gate:
+    name: CI Gate
+    needs: [changes, test-frontend, test-backend]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Verify required CI results
+        shell: bash
+        run: |
+          if [[ "${{ needs.changes.result }}" != "success" ]]; then
+            echo "::error::Change detection failed (${{ needs.changes.result }})"
+            exit 1
+          fi
+          if [[ "${{ needs.test-frontend.result }}" != "success" && "${{ needs.test-frontend.result }}" != "skipped" ]]; then
+            echo "::error::Frontend Checks did not pass (${{ needs.test-frontend.result }})"
+            exit 1
+          fi
+          if [[ "${{ needs.test-backend.result }}" != "success" && "${{ needs.test-backend.result }}" != "skipped" ]]; then
+            echo "::error::Rust Backend Test did not pass (${{ needs.test-backend.result }})"
+            exit 1
+          fi
+          echo "CI Gate passed (frontend=${{ needs.test-frontend.result }}, backend=${{ needs.test-backend.result }})."

@@ -2,6 +2,22 @@
 
 All notable changes to the Proxync workspace studio project are documented here.
 
+## [feat/emergency-cve-release-automation] - 2026-11-25 (Zero-Drift Emergency CVE Hotfix Pipeline & Pre-Release Versioning)
+- **Summary**:
+  - **Automated Emergency CVE Hotfix Workflow (`.github/workflows/emergency-cve-release.yml`)**: Implemented an autonomous hotfix release workflow that cherry-picks verified dependency security patches from `develop` onto a clean branch off `main`, computes the next strictly increasing SemVer pre-release version using `git -c versionsort.suffix=-` (`0.2.5` → `0.2.6-cve.1` → `0.2.6-cve.2`), updates all workspace manifests (`package.json`, `packages/desktop/package.json`, `tauri.conf.json`, `Cargo.toml`), synchronizes `Cargo.lock` cleanly in ~2s via `cargo update -p` (eliminating cold `cargo check` compilation and GTK apt installs), inserts `[SECURITY-CVE] [TYPE: CVE-PATCH]` release notes right before the first `## ` section in `CHANGELOG.md`, normalizes `commit_sha` casing before hex validation, opens a PR into `main`, and safely arms GitHub Auto-Merge (`--auto --merge --delete-branch`) only when `allow_auto_merge` and `main` branch protection rules are active (preventing premature merges before CI runs and warning if `RELEASE_PAT` is unconfigured).
+  - **Coordinated Feature Release Auto-Bump (`.github/workflows/prepare-release.yml`)**: Updated tag discovery with `git -c versionsort.suffix=-` and regex SemVer parsing so hotfix pre-releases promote cleanly (`0.2.6-cve.1` → `0.2.6`) and post-release tags sort strictly above pre-release CVE tags (`0.2.6` → `0.2.7`).
+  - **Fast CI Main Branch Gate (`.github/workflows/ci.yml`)**: Expanded pull request triggers to `main` and added a `CI Gate` (`ci-gate`) job summarizing `Detect File Changes`, `Frontend Checks`, and `Rust Backend Test` so branch rulesets can enforce one stable required status check.
+- **Modified Files**:
+  - `.github/workflows/ci.yml`
+  - `.github/workflows/emergency-cve-release.yml`
+  - `.github/workflows/prepare-release.yml`
+  - `CHANGELOG.md`
+- **Verification**:
+  - End-to-end live pipeline test on `mohammed-althaf-h/proxync-cve-test` (`v0.2.5` → `v0.2.6-cve.1` PR #7): `emergency-cve-release.yml` completed in 32s, `Fast CI` + `CI Gate` passed in 7m27s, auto-merge completed, and `release.yml` `Prepare Tag & Changelog` created `v0.2.6-cve.1` + `release-v0.2.6-cve.1`.
+  - Verified SemVer transition ordering (`v0.2.5` → `0.2.6-cve.1` / `0.2.6` → `0.2.6-cve.2` → `0.2.7-cve.1` / `0.2.7`).
+
+---
+
 ## [chore/sync-desktop-cargo-lock-sha2] - 2026-11-12 (Synchronize Desktop and CLI Cargo.lock with Core sha2 0.11 Dependency)
 - **Feature Summary**:
   - **Inter-Crate Lockfile Synchronization (`packages/desktop/src-tauri/Cargo.lock`, `packages/cli/Cargo.lock`)**: Synchronized desktop Tauri and CLI companion lockfiles with `proxync-core`'s upgraded `sha2 0.11.1` dependency (merged in PR #342). Explicitly disambiguated the build-time procedural macro dependency (`tauri-codegen` -> `sha2 0.10.9`) from the native runtime engine dependency (`proxync-core` -> `sha2 0.11.1`), and pruned legacy duplicate RustCrypto dependencies from CLI lockfile.
