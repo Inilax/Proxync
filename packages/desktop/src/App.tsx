@@ -54,7 +54,7 @@ import { SwaggerView } from './components/views/SwaggerView';
 import { ObservabilityView } from './components/views/ObservabilityView';
 import { SettingsView } from './components/views/SettingsView';
 import { DocsView } from './components/views/DocsView';
-import { DiscoverDialog, DomainSelectDialog, RequestDetailDialog, ConfirmDeleteDialog } from './components/views/Dialogs';
+import { DiscoverDialog, DomainSelectDialog, LaunchStackDialog, RequestDetailDialog, ConfirmDeleteDialog } from './components/views/Dialogs';
 import { KeyboardShortcutsDialog } from './components/views/KeyboardShortcutsDialog';
 import { RequestWorkbenchDialog } from './components/views/RequestWorkbenchDialog';
 import { TerminalDrawer, type TerminalLogEntry } from './components/ui/TerminalDrawer';
@@ -569,6 +569,7 @@ export default function App() {
   const [loadingDomains, setLoadingDomains] = useState(false);
   const [busyDomainId, setBusyDomainId] = useState<string | null>(null);
   const [sharingProcessCandidate, setSharingProcessCandidate] = useState<ProcessCandidate | null>(null);
+  const [stackDialogOpen, setStackDialogOpen] = useState<boolean>(false);
   const [localIp, setLocalIp] = useState<string>('127.0.0.1');
   const [checkingUpdates, setCheckingUpdates] = useState(false);
 
@@ -1812,12 +1813,20 @@ export default function App() {
     return false;
   }
 
+  function findExistingTunnelForPort(port: number): Tunnel | undefined {
+    return tunnels.find(
+      (t) =>
+        (t.status === 'ACTIVE' || t.status === 'STANDBY') &&
+        (t.localPort === port || t.routes?.some((r) => r.split(':').pop() === String(port)))
+    );
+  }
+
   async function initiatePublicShare(process: ProcessCandidate) {
     if (!activeWorkspace) {
       showToast('Select or create a workspace first before sharing a port', 'info');
       return;
     }
-    const existingActive = tunnels.find((t) => t.localPort === process.port && t.status === 'ACTIVE');
+    const existingActive = findExistingTunnelForPort(process.port);
     if (existingActive) {
       showToast(`Tunnel is already active for port ${process.port} (${existingActive.publicUrl}). Stop the existing tunnel first.`, 'warning');
       setActiveTunnel(existingActive);
@@ -1884,9 +1893,33 @@ export default function App() {
     return `${auth.username.trim()}:${auth.password.trim()}`;
   }
 
-  async function shareProcessCloudflare(process: ProcessCandidate, basicAuth?: BasicAuthConfig) {
+  async function startProxyOrPathRouter(
+    port: number,
+    basicAuthHeader?: string,
+    routes?: string[]
+  ): Promise<{ proxyPort: number; proxyFailed: boolean }> {
+    let proxyFailed = false;
+    let proxyPort: number;
+    if (routes && routes.length > 0) {
+      try {
+        proxyPort = await invoke<number>('start_path_router', { routes, basicAuth: basicAuthHeader });
+      } catch (err) {
+        console.error('[App] start_path_router failed to bind:', err);
+        throw new Error(`Failed to bind multi-port path router: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    } else {
+      proxyPort = await invoke<number>('start_proxy', { localPort: port, basicAuth: basicAuthHeader }).catch((err) => {
+        console.warn('[App] start_proxy invoke failed:', err);
+        proxyFailed = true;
+        return port;
+      });
+    }
+    return { proxyPort, proxyFailed };
+  }
+
+  async function shareProcessCloudflare(process: ProcessCandidate, basicAuth?: BasicAuthConfig, routes?: string[]) {
     if (!activeWorkspace) return;
-    const existingActive = tunnels.find((t) => t.localPort === process.port && t.status === 'ACTIVE');
+    const existingActive = findExistingTunnelForPort(process.port);
     if (existingActive) {
       showToast(`Tunnel is already active for port ${process.port} (${existingActive.publicUrl}). Stop the existing tunnel first.`, 'warning');
       setActiveTunnel(existingActive);
@@ -1930,12 +1963,7 @@ export default function App() {
       localStorage.setItem('proxync_workspace', targetWorkspaceId);
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
       const basicAuthHeader = formatBasicAuthHeader(basicAuth);
-      let proxyFailed = false;
-      const proxyPort = await invoke<number>('start_proxy', { localPort: process.port, basicAuth: basicAuthHeader }).catch((err) => {
-        console.warn('[App] start_proxy invoke failed:', err);
-        proxyFailed = true;
-        return process.port;
-      });
+      const { proxyPort, proxyFailed } = await startProxyOrPathRouter(process.port, basicAuthHeader, routes);
       let effectiveBasicAuth = basicAuth;
       if (proxyFailed && basicAuth?.enabled) {
         showToast('Basic auth disabled: proxy binding failed. Tunnel running unauthenticated.', 'warning');
@@ -1958,6 +1986,7 @@ export default function App() {
         publicUrl: cfTunnelUrl,
         subdomain: cfTunnelUrl.replace('https://', '').replace('.trycloudflare.com', ''),
         provider: 'cloudflare',
+        ...(routes && routes.length > 0 ? { routes } : {}),
         ...(effectiveBasicAuth ? { basicAuth: effectiveBasicAuth } : {}),
       };
       setActiveTunnel(cloudflareBoundTunnel);
@@ -1984,9 +2013,9 @@ export default function App() {
     return `${prefix}-${rand}`;
   }
 
-  async function shareProcessNative(process: ProcessCandidate, basicAuth?: BasicAuthConfig) {
+  async function shareProcessNative(process: ProcessCandidate, basicAuth?: BasicAuthConfig, routes?: string[]) {
     if (!activeWorkspace) return;
-    const existingActive = tunnels.find((t) => t.localPort === process.port && t.status === 'ACTIVE');
+    const existingActive = findExistingTunnelForPort(process.port);
     if (existingActive) {
       showToast(`Tunnel is already active for port ${process.port} (${existingActive.publicUrl}). Stop the existing tunnel first.`, 'warning');
       setActiveTunnel(existingActive);
@@ -2022,12 +2051,7 @@ export default function App() {
       localStorage.setItem('proxync_workspace', targetWorkspaceId);
       const tunnel = await api.tunnels.create(targetWorkspaceId, process.port, 'http', undefined);
       const basicAuthHeader = formatBasicAuthHeader(basicAuth);
-      let proxyFailed = false;
-      const proxyPort = await invoke<number>('start_proxy', { localPort: process.port, basicAuth: basicAuthHeader }).catch((err) => {
-        console.warn('[App] start_proxy invoke failed:', err);
-        proxyFailed = true;
-        return process.port;
-      });
+      const { proxyPort, proxyFailed } = await startProxyOrPathRouter(process.port, basicAuthHeader, routes);
       let effectiveBasicAuth = basicAuth;
       if (proxyFailed && basicAuth?.enabled) {
         showToast('Basic auth disabled: proxy binding failed. Tunnel running unauthenticated.', 'warning');
@@ -2050,6 +2074,7 @@ export default function App() {
         publicUrl: nativeTunnelUrl,
         subdomain: suggestedSub,
         provider: 'native',
+        ...(routes && routes.length > 0 ? { routes } : {}),
         ...(effectiveBasicAuth ? { basicAuth: effectiveBasicAuth } : {}),
       };
       setActiveTunnel(boundTunnel);
@@ -2067,10 +2092,31 @@ export default function App() {
     finally { removeSpawningPort(process.port); }
   }
 
+  async function launchStackIndividual(selected: ProcessCandidate[]) {
+    if (!activeWorkspace) {
+      showToast('Select or create a workspace first', 'info');
+      return;
+    }
+    showToast(`Launching stack of ${selected.length} services...`, 'info');
+    for (const proc of selected) {
+      await shareProcessNative(proc);
+    }
+    showToast(`Stack online! ${selected.length} service tunnels active.`, 'success');
+  }
 
-  async function shareProcess(process: ProcessCandidate, customDomain?: string, basicAuth?: BasicAuthConfig) {
+  async function launchStackUnified(primary: ProcessCandidate, routes: string[]) {
+    if (!activeWorkspace) {
+      showToast('Select or create a workspace first', 'info');
+      return;
+    }
+    showToast(`Launching unified path router stack on :${primary.port}...`, 'info');
+    await shareProcessNative(primary, undefined, routes);
+  }
+
+
+  async function shareProcess(process: ProcessCandidate, customDomain?: string, basicAuth?: BasicAuthConfig, routes?: string[]) {
     if (!activeWorkspace) return;
-    const existingActive = tunnels.find((t) => t.localPort === process.port && t.status === 'ACTIVE');
+    const existingActive = findExistingTunnelForPort(process.port);
     if (existingActive) {
       showToast(`Tunnel is already active for port ${process.port} (${existingActive.publicUrl}). Stop the existing tunnel first.`, 'warning');
       setActiveTunnel(existingActive);
@@ -2130,12 +2176,7 @@ export default function App() {
         languageHint: detectLanguageLabel(process),
       }));
       const basicAuthHeader = formatBasicAuthHeader(basicAuth);
-      let proxyFailed = false;
-      const proxyPort = await invoke<number>('start_proxy', { localPort: process.port, basicAuth: basicAuthHeader }).catch((err) => {
-        console.warn('[App] start_proxy invoke failed:', err);
-        proxyFailed = true;
-        return process.port;
-      });
+      const { proxyPort, proxyFailed } = await startProxyOrPathRouter(process.port, basicAuthHeader, routes);
       let effectiveBasicAuth = basicAuth;
       if (proxyFailed && basicAuth?.enabled) {
         showToast('Basic auth disabled: proxy binding failed. Tunnel running unauthenticated.', 'warning');
@@ -2158,6 +2199,7 @@ export default function App() {
           customDomain,
           provider: 'custom',
         } : {}),
+        ...(routes && routes.length > 0 ? { routes } : {}),
         ...(effectiveBasicAuth ? { basicAuth: effectiveBasicAuth } : {}),
       };
       const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:3939') as string;
@@ -3508,6 +3550,7 @@ export default function App() {
                 onShareLocal={shareProcessLocal}
                 onStopTunnel={stopTunnel}
                 onStopAllTunnels={stopAllTunnels}
+                onLaunchStack={() => setStackDialogOpen(true)}
                 onInspectTraffic={(proc) => {
                   if (proc) {
                     setSelectedProcessId(proc.id);
@@ -3704,7 +3747,7 @@ export default function App() {
                 workspace={activeWorkspace}
                 process={selectedProcess}
                 profile={selectedProfile}
-                tunnel={tunnels.find((t) => t.localPort === (selectedProcess?.port || selectedProfile?.port) && (t.status === 'ACTIVE' || t.status === 'STANDBY')) || null}
+                tunnel={findExistingTunnelForPort(selectedProcess?.port || selectedProfile?.port || 0) || null}
                 sharingPort={sharingPort}
                 suggestions={starterSuggestions}
                 hasVerifiedDomain={domains.some((d) => d.verified)}
@@ -3821,21 +3864,31 @@ export default function App() {
         <DomainSelectDialog
           process={sharingProcessCandidate}
           domains={domains.filter((d) => d.verified)}
+          processes={processes}
           onClose={() => setSharingProcessCandidate(null)}
-          onConfirm={(selectedOption, basicAuth) => {
+          onConfirm={(selectedOption, basicAuth, routes) => {
             if (selectedOption === 'proxync_native') {
-              void shareProcessNative(sharingProcessCandidate, basicAuth);
+              void shareProcessNative(sharingProcessCandidate, basicAuth, routes);
             } else if (selectedOption === 'cloudflare') {
-              void shareProcessCloudflare(sharingProcessCandidate, basicAuth);
+              void shareProcessCloudflare(sharingProcessCandidate, basicAuth, routes);
             } else if (selectedOption === 'custom_subdomain_unconnected' || selectedOption === 'default') {
-              showToast('⚠️ Subdomain not connected. Please add and verify your custom subdomain in Settings → Custom Domains.', 'warning');
+              showToast('Subdomain not connected. Please add and verify your custom subdomain in Settings -> Custom Domains.', 'warning');
               setSettingsSection('domains');
               setMainView('settings');
             } else {
-              void shareProcess(sharingProcessCandidate, selectedOption, basicAuth);
+              void shareProcess(sharingProcessCandidate, selectedOption, basicAuth, routes);
             }
             setSharingProcessCandidate(null);
           }}
+        />
+      )}
+
+      {stackDialogOpen && (
+        <LaunchStackDialog
+          processes={processes}
+          onClose={() => setStackDialogOpen(false)}
+          onLaunchIndividual={(selected) => void launchStackIndividual(selected)}
+          onLaunchUnified={(primary, routes) => void launchStackUnified(primary, routes)}
         />
       )}
 

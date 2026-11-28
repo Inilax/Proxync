@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import type { WorkspaceConfig, ProcessCandidate, ProcessProfile, Tunnel, SavedRequest } from './SharedComponents';
 import { InfoTile, formatDate, getTunnelMetadata, Icons } from './SharedComponents';
@@ -109,9 +110,20 @@ export function ProcessView({
     }
   }
 
-  const isTunnelOpen = tunnel?.localPort === processLike.port && (tunnel.status === 'ACTIVE' || tunnel.status === 'STANDBY');
-  const isActive = tunnel?.localPort === processLike.port && tunnel.status === 'ACTIVE';
-  const isStandby = tunnel?.localPort === processLike.port && tunnel.status === 'STANDBY';
+  const [confirmStopStack, setConfirmStopStack] = useState(false);
+
+  const isPrimary = tunnel?.localPort === processLike.port;
+  const isSecondary = Boolean(tunnel && !isPrimary && tunnel.routes?.some((r) => r.split(':').pop() === String(processLike.port)));
+  const isTunnelOpen = (isPrimary || isSecondary) && (tunnel?.status === 'ACTIVE' || tunnel?.status === 'STANDBY');
+  const isActive = (isPrimary || isSecondary) && tunnel?.status === 'ACTIVE';
+  const isStandby = (isPrimary || isSecondary) && tunnel?.status === 'STANDBY';
+
+  const matchingRoute = tunnel?.routes?.find((r) => r.split(':').pop() === String(processLike.port));
+  const routePrefix = matchingRoute ? matchingRoute.split(':')[0] : '';
+  const cleanPrefix = routePrefix ? (routePrefix.startsWith('/') ? routePrefix : `/${routePrefix}`) : '';
+  const displayPublicUrl = tunnel?.publicUrl
+    ? (isSecondary && cleanPrefix && cleanPrefix !== '/' ? `${tunnel.publicUrl.replace(/\/+$/, '')}${cleanPrefix}` : tunnel.publicUrl)
+    : '';
 
   return (
     <div className="w-full max-w-6xl mx-auto space-y-6 sm:space-y-8 fade-in select-none">
@@ -123,12 +135,12 @@ export function ProcessView({
             {isActive && tunnel ? (
               <span className="badge success">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse mr-0.5" />
-                Online • {getTunnelProviderLabel(tunnel)}
+                {isSecondary ? 'Routed in Stack • ' : 'Online • '}{getTunnelProviderLabel(tunnel)}
               </span>
             ) : isStandby && tunnel ? (
               <span className="badge warning" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', borderColor: 'rgba(245, 158, 11, 0.3)' }} title="Local server is offline. Tunnel URL is preserved in standby mode and waiting for server restart.">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 mr-0.5" />
-                Standby • Target Offline
+                {isSecondary ? 'Standby (Stack) • Target Offline' : 'Standby • Target Offline'}
               </span>
             ) : sharingPort === processLike.port ? (
               <span className="badge accent" style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.25)' }}>
@@ -159,10 +171,17 @@ export function ProcessView({
               )}
               <button
                 className="btn-danger flex-1 sm:flex-initial justify-center"
-                onClick={() => onStop(tunnel)}
+                onClick={() => {
+                  if (isSecondary) {
+                    setConfirmStopStack(true);
+                  } else {
+                    onStop(tunnel);
+                  }
+                }}
+                title={isSecondary ? `Stop stack tunnel hosted on :${tunnel.localPort}` : "Stop active tunnel"}
               >
                 <span className="material-symbols-outlined text-[16px]">stop</span>
-                Stop Tunnel
+                {isSecondary ? `Stop Stack (:${tunnel.localPort})` : 'Stop Tunnel'}
               </button>
             </div>
           ) : sharingPort === processLike.port ? (
@@ -246,9 +265,13 @@ export function ProcessView({
                 label="Status"
                 value={
                   isActive && tunnel
-                    ? `Online (${getTunnelProviderLabel(tunnel)})`
+                    ? isSecondary
+                      ? `Routed in Stack (:${tunnel.localPort})`
+                      : `Online (${getTunnelProviderLabel(tunnel)})`
                     : isStandby && tunnel
-                    ? `Standby (${getTunnelProviderLabel(tunnel)})`
+                    ? isSecondary
+                      ? `Standby (Stack :${tunnel.localPort})`
+                      : `Standby (${getTunnelProviderLabel(tunnel)})`
                     : sharingPort === processLike.port
                     ? 'Shared (LAN)'
                     : process
@@ -381,7 +404,7 @@ export function ProcessView({
                     <div className="flex flex-col min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className={`text-[10px] ${isStandby ? 'text-amber-400' : 'text-emerald-400'} font-bold uppercase tracking-wider truncate`}>
-                          {getTunnelProviderLabel(tunnel)} • Public URL
+                          {getTunnelProviderLabel(tunnel)} • {isSecondary ? 'Routed Subpath URL' : 'Public URL'}
                         </span>
                         <span className={`px-1.5 py-0.2 ${isStandby ? 'bg-amber-500/15 text-amber-400' : 'bg-emerald-500/15 text-emerald-400'} text-[9.5px] font-mono rounded font-semibold shrink-0`}>
                           {isStandby ? 'Standby' : 'Live'}
@@ -396,12 +419,35 @@ export function ProcessView({
                         )}
                       </div>
                       <code
-                        onClick={() => handleOpenUrl(tunnel.publicUrl)}
+                        onClick={() => handleOpenUrl(displayPublicUrl)}
                         className="text-xs font-mono text-primary font-bold mt-0.5 hover:underline cursor-pointer select-all truncate"
-                        title={tunnel.publicUrl}
+                        title={displayPublicUrl}
                       >
-                        {tunnel.publicUrl}
+                        {displayPublicUrl}
                       </code>
+                      {tunnel.routes && tunnel.routes.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                          <span className="text-[10px] font-mono uppercase text-primary font-bold">Routes:</span>
+                          {tunnel.routes.map((rt) => {
+                            const [pfx, pt] = rt.split(':');
+                            const isCurrent = Number(pt) === processLike.port;
+                            return (
+                              <span
+                                key={rt}
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-mono border ${
+                                  isCurrent
+                                    ? 'bg-primary/20 border-primary text-primary font-bold'
+                                    : 'bg-surface-container-high border-outline-variant/60 text-on-surface'
+                                }`}
+                              >
+                                <span className={isCurrent ? 'text-primary' : 'text-primary font-semibold'}>{pfx}</span>
+                                <span className="text-on-surface-variant mx-0.5">→</span>
+                                <span className="text-amber-400 font-bold">:{pt}</span>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       {tunnel.basicAuth?.enabled && (
@@ -422,14 +468,14 @@ export function ProcessView({
                         </button>
                       )}
                       <button
-                        onClick={() => handleOpenUrl(tunnel.publicUrl)}
+                        onClick={() => handleOpenUrl(displayPublicUrl)}
                         className="btn-ghost compact cursor-pointer hover:bg-surface-container-high rounded text-primary hover:text-primary/80 transition-colors"
                         title="Open in Browser"
                       >
                         <span className="material-symbols-outlined text-[16px]">open_in_new</span>
                       </button>
                       <button
-                        onClick={() => onCopy(tunnel.publicUrl, 'Public URL copied')}
+                        onClick={() => onCopy(displayPublicUrl, 'Public URL copied')}
                         className="btn-ghost compact cursor-pointer hover:bg-surface-container-high rounded text-on-surface-variant hover:text-on-surface transition-colors"
                         title="Copy Address"
                       >
@@ -476,6 +522,40 @@ export function ProcessView({
           </div>
         </div>
       </div>
+
+      {confirmStopStack && tunnel && (
+        <div className="dialog-backdrop glass" onClick={() => setConfirmStopStack(false)}>
+          <section className="workspace-settings-dialog slide-up max-w-md p-6 flex flex-col gap-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 border-b border-outline-variant/30 pb-4">
+              <div className="w-10 h-10 rounded-full bg-error/15 text-error flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-[22px]">warning</span>
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-on-surface">Stop Stack Tunnel (:{tunnel.localPort})</h2>
+                <p className="text-xs text-on-surface-variant">Shared multi-service tunnel confirmation</p>
+              </div>
+            </div>
+            <p className="text-xs text-on-surface-variant leading-relaxed">
+              Stopping this service will shut down the entire stack tunnel hosted on <strong className="text-on-surface">:{tunnel.localPort}</strong> and disconnect all routed services. Stop all services?
+            </p>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button className="btn-ghost compact cursor-pointer" onClick={() => setConfirmStopStack(false)}>
+                Cancel
+              </button>
+              <button
+                className="btn-danger compact cursor-pointer flex items-center gap-1.5"
+                onClick={() => {
+                  setConfirmStopStack(false);
+                  onStop(tunnel);
+                }}
+              >
+                <span className="material-symbols-outlined text-[16px]">stop</span>
+                Stop All Services
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

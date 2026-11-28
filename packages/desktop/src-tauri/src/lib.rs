@@ -8,7 +8,7 @@ mod cli;
 
 use recon::{scan_ports, scan_processes, resolve_process_directory, probe_port, probe_tcp_latency};
 use tunnel::{open_tunnel, close_tunnel, close_all_tunnels, open_cloudflare_tunnel, open_native_tunnel};
-use proxy::start_proxy;
+use proxy::{start_proxy, start_path_router};
 use storage::{
     scan_directory, read_file_content, get_local_ip, save_app_state, load_app_state,
     append_log_entry, clear_log_files, open_logs_folder, read_logs_summary, open_file_in_editor,
@@ -56,6 +56,7 @@ pub fn run() {
             save_app_state,
             load_app_state,
             start_proxy,
+            start_path_router,
             execute_http_request,
             append_log_entry,
             clear_log_files,

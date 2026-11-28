@@ -51,7 +51,7 @@ lazy_static! {
    PORT DISCOVERY & DEV FILTERING
    ══════════════════════════════════════════════ */
 
-fn is_dev_port(port: u16) -> bool {
+pub fn is_dev_port(port: u16) -> bool {
     // Exclude well-known system, RPC, mDNS, CUPS, and common non-dev ports
     match port {
         111 | 135 | 136 | 137 | 138 | 139 | 445 | 631 | 2869 | 5040 | 5353 | 6463 | 5357 | 49152..=49157 => false,
@@ -2401,7 +2401,12 @@ mod tests {
             let get_extended_tcp_table: FnGetExtendedTcpTable = std::mem::transmute(proc);
 
             let mut size = 0u32;
-            let _ = get_extended_tcp_table(std::ptr::null_mut(), &mut size, 0, 2, 5, 0);
+            let ret = get_extended_tcp_table(std::ptr::null_mut(), &mut size, 0, 2, 5, 0);
+            if ret == 5 {
+                println!("GetExtendedTcpTable returned ERROR_ACCESS_DENIED (restricted container/sandbox environment)");
+                return;
+            }
+            assert!(ret == 122 || ret == 0, "Expected ERROR_INSUFFICIENT_BUFFER or SUCCESS, got {}", ret);
             assert!(size > 0, "size should be > 0");
 
             let mut buf = vec![0u8; size as usize];

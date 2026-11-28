@@ -13,6 +13,8 @@ pub struct TunnelEntry {
     pub started_epoch_secs: u64,         // Unix epoch seconds — enables 1-line zero-dependency elapsed time!
     pub expires_at: Option<String>,      // None = no expiry; Some("30m") = duration string
     pub expires_epoch_secs: Option<u64>, // Epoch seconds when tunnel should auto-expire
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub routes: Option<Vec<String>>,     // e.g. ["/:4000", "/node:5002"]
 }
 
 /// Returns path to the registry file.
@@ -130,7 +132,77 @@ pub fn unregister_tunnel(id: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Check if a live tunnel already exists for this port
+impl TunnelEntry {
+    /// Returns true if `port` matches either the primary port or any routed port in `routes`.
+    pub fn matches_port(&self, port: u16) -> bool {
+        if self.port == port {
+            return true;
+        }
+        if let Some(ref routes) = self.routes {
+            return routes.iter().any(|r| {
+                r.rsplit(':')
+                    .next()
+                    .and_then(|p| p.parse::<u16>().ok())
+                    .map(|p| p == port)
+                    .unwrap_or(false)
+            });
+        }
+        false
+    }
+
+    /// Returns the public URL for `port`, appending the routed subpath if `port` is a secondary service.
+    pub fn public_url_for_port(&self, port: u16) -> String {
+        if self.port != port {
+            if let Some(ref routes) = self.routes {
+                for r in routes {
+                    if let Some((pfx, pt_str)) = r.rsplit_once(':') {
+                        if pt_str.parse::<u16>().ok() == Some(port) && pfx != "/" {
+                            let base = self.public_url.trim_end_matches('/');
+                            let clean_pfx = if pfx.starts_with('/') { pfx.to_string() } else { format!("/{}", pfx) };
+                            return format!("{}{}", base, clean_pfx);
+                        }
+                    }
+                }
+            }
+        }
+        self.public_url.clone()
+    }
+}
+
+/// Check if a live tunnel already exists for this port (either as primary port or inside routes)
 pub fn find_tunnel_by_port(port: u16) -> Option<TunnelEntry> {
-    read_registry().into_iter().find(|t| t.port == port)
+    read_registry().into_iter().find(|t| t.matches_port(port))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tunnel_entry_routes_serialization() {
+        let entry = TunnelEntry {
+            id: "tun-test-1".into(),
+            port: 4000,
+            public_url: "https://px-test.proxync.dev".into(),
+            provider: "native".into(),
+            pid: 1234,
+            started_at: "2026-11-24T00:00:00Z".into(),
+            started_epoch_secs: 1700000000,
+            expires_at: Some("1h".into()),
+            expires_epoch_secs: Some(1700003600),
+            routes: Some(vec!["/:4000".into(), "/node:5002".into()]),
+        };
+
+        let json = serde_json::to_string(&entry).unwrap();
+        assert!(json.contains("\"routes\":[\"/:4000\",\"/node:5002\"]"));
+
+        let deserialized: TunnelEntry = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.port, 4000);
+        assert_eq!(deserialized.routes.as_ref().unwrap().len(), 2);
+        assert!(deserialized.matches_port(4000));
+        assert!(deserialized.matches_port(5002));
+        assert!(!deserialized.matches_port(8080));
+        assert_eq!(deserialized.public_url_for_port(4000), "https://px-test.proxync.dev");
+        assert_eq!(deserialized.public_url_for_port(5002), "https://px-test.proxync.dev/node");
+    }
 }
